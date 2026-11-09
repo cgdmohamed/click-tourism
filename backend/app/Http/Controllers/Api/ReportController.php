@@ -23,13 +23,13 @@ class ReportController extends ApiController
     {
         $data = $this->validateTrialBalance($request);
 
-        return $this->ok($reports->trialBalance($data['from'], $data['to'], $this->branch(), $data['currency']));
+        return $this->ok($reports->trialBalance($data['from'], $data['to'], $this->branch(), $data['currency'], $data['pre_closing']));
     }
 
     public function exportTrialBalance(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
     {
         $data = $this->validateTrialBalance($request);
-        $report = $reports->trialBalance($data['from'], $data['to'], $this->branch(), $data['currency']);
+        $report = $reports->trialBalance($data['from'], $data['to'], $this->branch(), $data['currency'], $data['pre_closing']);
 
         $audit->log('report.exported', null, null, ['report' => 'trial-balance'] + $data, $this->actorId());
 
@@ -132,9 +132,10 @@ class ReportController extends ApiController
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
             'currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')],
+            'pre_closing' => ['nullable', 'boolean'],
         ]);
 
-        return $data + ['currency' => null];
+        return ['pre_closing' => (bool) ($data['pre_closing'] ?? false)] + $data + ['currency' => null];
     }
 
     /**

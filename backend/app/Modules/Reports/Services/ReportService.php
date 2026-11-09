@@ -28,7 +28,7 @@ class ReportService
      * With it, only lines posted in that transaction currency are included
      * and their original-currency amounts are summed (no re-conversion).
      */
-    public function trialBalance(string $from, string $to, ?Branch $branch, ?string $onlyCurrency = null): array
+    public function trialBalance(string $from, string $to, ?Branch $branch, ?string $onlyCurrency = null, bool $preClosing = false): array
     {
         $currency = $onlyCurrency ?? $this->settings->baseCurrency();
         [$debitColumn, $creditColumn] = $this->amountColumns($onlyCurrency);
@@ -41,6 +41,7 @@ class ReportService
             ->whereDate('je.entry_date', '<=', $to)
             ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
             ->when($onlyCurrency, fn ($query) => $query->where('jl.currency_code', $onlyCurrency))
+            ->when($preClosing, fn ($query) => $this->excludeClosing($query))
             ->groupBy('a.id', 'a.public_id', 'a.code', 'a.name_ar', 'a.name_en', 'a.type')
             ->selectRaw('a.id as account_id, a.public_id, a.code, a.name_ar, a.name_en, a.type')
             ->selectRaw("COALESCE(SUM($debitColumn), 0) as debit_minor")
@@ -198,6 +199,7 @@ class ReportService
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
             ->where('je.status', 'posted')
             ->whereIn('a.type', ['revenue', 'expense'])
+            ->tap(fn ($query) => $this->excludeClosing($query))
             ->whereDate('je.entry_date', '>=', $from)
             ->whereDate('je.entry_date', '<=', $to)
             ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
@@ -281,16 +283,41 @@ class ReportService
             };
         }
 
+        // Profit and loss not yet rolled into equity by a year-end close.
+        $earnings = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->where('je.status', 'posted')
+            ->whereDate('je.entry_date', '<=', $asOf)
+            ->whereIn('a.type', ['revenue', 'expense'])
+            ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
+            ->selectRaw('COALESCE(SUM(jl.base_credit_minor), 0) - COALESCE(SUM(jl.base_debit_minor), 0) as net')
+            ->value('net');
+
+        $totalAssets = array_sum(array_column($assets, 'amount_minor'));
+        $totalLiabilities = array_sum(array_column($liabilities, 'amount_minor'));
+        $totalEquity = array_sum(array_column($equity, 'amount_minor'));
+
         return [
             'currency' => $currency,
             'as_of' => $asOf,
             'assets' => $assets,
             'liabilities' => $liabilities,
             'equity' => $equity,
-            'total_assets_minor' => array_sum(array_column($assets, 'amount_minor')),
-            'total_liabilities_minor' => array_sum(array_column($liabilities, 'amount_minor')),
-            'total_equity_minor' => array_sum(array_column($equity, 'amount_minor')),
+            'current_earnings_minor' => (int) $earnings,
+            'total_assets_minor' => $totalAssets,
+            'total_liabilities_minor' => $totalLiabilities,
+            'total_equity_minor' => $totalEquity,
+            'total_liabilities_and_equity_minor' => $totalLiabilities + $totalEquity + (int) $earnings,
         ];
+    }
+
+    /** Hide year-end closing entries (and their reversals) so a closed year still shows its profit. */
+    private function excludeClosing($query)
+    {
+        return $query->where(function ($query) {
+            $query->whereNull('je.source_type')->orWhere('je.source_type', '!=', 'fiscal_year');
+        });
     }
 
     public function aging(string $type, string $asOf, ?Branch $branch): array

@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Accounting\Models\FiscalYear;
+use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Accounting\Services\FiscalCloseService;
 use App\Modules\Core\Services\AuditService;
+use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -23,6 +26,8 @@ class FiscalPeriodController extends ApiController
                 'name' => $year->name,
                 'starts_on' => $year->starts_on->toDateString(),
                 'ends_on' => $year->ends_on->toDateString(),
+                'status' => $year->status,
+                'closed_at' => $year->closed_at?->toIso8601String(),
                 'periods' => $year->periods->map(fn (FiscalPeriod $period) => [
                     'id' => (string) $period->id,
                     'name' => $period->name,
@@ -33,6 +38,23 @@ class FiscalPeriodController extends ApiController
             ]);
 
         return $this->ok($years);
+    }
+
+    public function closeChecks(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
+    {
+        return $this->ok($closing->checks($fiscalYear));
+    }
+
+    public function close(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
+    {
+        return $this->ok($closing->present($closing->close($fiscalYear, $this->actorId())));
+    }
+
+    public function reopen(Request $request, FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'max:255']]);
+
+        return $this->ok($closing->present($closing->reopen($fiscalYear, $data['reason'], $this->actorId())));
     }
 
     public function store(Request $request, AuditService $audit): JsonResponse
@@ -97,6 +119,21 @@ class FiscalPeriodController extends ApiController
             'status' => ['required', 'in:open,soft_closed,closed'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
+
+        if ($period->fiscalYear->isClosed()) {
+            throw new DomainException('This period belongs to a closed fiscal year. Reopen the year instead.');
+        }
+
+        if ($data['status'] === 'closed') {
+            $drafts = JournalEntry::query()->where('status', 'draft')
+                ->whereDate('entry_date', '>=', $period->starts_on)
+                ->whereDate('entry_date', '<=', $period->ends_on)
+                ->count();
+
+            if ($drafts > 0) {
+                throw new DomainException("{$drafts} draft journal entries in this period must be posted or discarded before closing it.");
+            }
+        }
 
         $before = $period->status;
         $period->update(['status' => $data['status']]);
