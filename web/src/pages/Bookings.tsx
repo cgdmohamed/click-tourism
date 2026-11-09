@@ -1,11 +1,30 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Booking, Customer, Supplier } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
+import type { Booking, Customer, Paginated, Supplier } from '../lib/types'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  Loading,
+  Modal,
+  PageHeader,
+  Pagination,
+  SearchableSelect,
+  Select,
+  Table,
+  Td,
+  Th,
+  statusTone,
+} from '../components/ui'
 
 type DraftItem = {
   service_type: string
@@ -35,8 +54,12 @@ export default function Bookings() {
   const { t, locale } = useI18n()
   const { activeBranch, user } = useAuth()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const urlSearch = searchParams.get('search') ?? ''
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const [search, setSearch] = useState(urlSearch)
+  const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
   const [form, setForm] = useState({
     customer_id: '',
@@ -51,15 +74,22 @@ export default function Bookings() {
   })
   const [items, setItems] = useState<DraftItem[]>([emptyItem('EGP')])
 
+  useEffect(() => {
+    setSearch(urlSearch)
+    setPage(1)
+  }, [urlSearch])
+
   const bookingsQuery = useQuery({
-    queryKey: ['bookings', statusFilter, activeBranch?.id],
+    queryKey: ['bookings', statusFilter, search, page, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Booking[] }>('/bookings', {
-        params: { status: statusFilter || undefined },
+      const { data } = await api.get<Paginated<Booking>>('/bookings', {
+        params: { status: statusFilter || undefined, search: search || undefined, page, per_page: 20 },
       })
-      return data.data
+      return data
     },
   })
+
+  const bookings = bookingsQuery.data?.data ?? []
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -170,7 +200,23 @@ export default function Bookings() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
-          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="max-w-[180px]">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            className="max-w-xs"
+          />
+          <Select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value)
+              setPage(1)
+            }}
+            className="max-w-[180px]"
+          >
             <option value="">{locale === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
             {['draft', 'quoted', 'confirmed', 'in_progress', 'completed', 'closed', 'cancelled', 'no_show'].map((status) => (
               <option key={status} value={status}>
@@ -184,8 +230,8 @@ export default function Bookings() {
         {bookingsQuery.isError ? (
           <ErrorState message={errorMessage(bookingsQuery.error)} onRetry={() => void bookingsQuery.refetch()} />
         ) : null}
-        {bookingsQuery.data?.length === 0 ? <EmptyState /> : null}
-        {bookingsQuery.data && bookingsQuery.data.length > 0 ? (
+        {bookingsQuery.data && bookings.length === 0 ? <EmptyState /> : null}
+        {bookings.length > 0 ? (
           <Table>
             <thead>
               <tr>
@@ -200,7 +246,7 @@ export default function Bookings() {
               </tr>
             </thead>
             <tbody>
-              {bookingsQuery.data.map((booking) => (
+              {bookings.map((booking) => (
                 <tr key={booking.id}>
                   <Td className="font-medium">{booking.number}</Td>
                   <Td>{booking.customer?.name_ar ?? booking.customer?.name_en ?? '—'}</Td>
@@ -232,6 +278,11 @@ export default function Bookings() {
             </tbody>
           </Table>
         ) : null}
+        <Pagination
+          page={bookingsQuery.data?.meta.current_page ?? 1}
+          lastPage={bookingsQuery.data?.meta.last_page ?? 1}
+          onChange={setPage}
+        />
       </Card>
 
       <Modal
@@ -254,14 +305,16 @@ export default function Bookings() {
       >
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label={t('customer')} required>
-            <Select value={form.customer_id} onChange={(event) => setForm({ ...form, customer_id: event.target.value })}>
-              <option value="">{locale === 'ar' ? 'اختر العميل' : 'Select customer'}</option>
-              {(customersQuery.data ?? []).map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {locale === 'ar' ? customer.name_ar : customer.name_en}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={form.customer_id}
+              onChange={(customer_id) => setForm({ ...form, customer_id })}
+              placeholder={t('selectCustomer')}
+              options={(customersQuery.data ?? []).map((customer) => ({
+                value: customer.id,
+                label: locale === 'ar' ? customer.name_ar : customer.name_en,
+                hint: locale === 'ar' ? customer.name_en : customer.name_ar,
+              }))}
+            />
           </Field>
           <Field label={t('startDate')} required>
             <Input type="date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} dir="ltr" />
@@ -307,14 +360,17 @@ export default function Bookings() {
                 </Select>
               </div>
               <div className="sm:col-span-3">
-                <Select value={item.supplier_id} onChange={(event) => updateItem(index, { supplier_id: event.target.value })}>
-                  <option value="">{locale === 'ar' ? 'المورد' : 'Supplier'}</option>
-                  {(suppliersQuery.data ?? []).map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {locale === 'ar' ? supplier.name_ar : supplier.name_en}
-                    </option>
-                  ))}
-                </Select>
+                <SearchableSelect
+                  value={item.supplier_id}
+                  onChange={(supplier_id) => updateItem(index, { supplier_id })}
+                  placeholder={t('supplier')}
+                  clearLabel={t('none')}
+                  options={(suppliersQuery.data ?? []).map((supplier) => ({
+                    value: supplier.id,
+                    label: locale === 'ar' ? supplier.name_ar : supplier.name_en,
+                    hint: locale === 'ar' ? supplier.name_en : supplier.name_ar,
+                  }))}
+                />
               </div>
               <div className="sm:col-span-3">
                 <Input

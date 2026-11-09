@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
-import type { Lead } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
+import type { Lead, Paginated } from '../lib/types'
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th, statusTone } from '../components/ui'
 
 const stages = ['new', 'contacted', 'qualified', 'proposal', 'won', 'lost']
 const sources = ['whatsapp', 'facebook', 'instagram', 'website', 'referral', 'walk_in', 'other']
@@ -14,18 +15,31 @@ export default function Leads() {
   const { t, locale } = useI18n()
   const { activeBranch } = useAuth()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const urlSearch = searchParams.get('search') ?? ''
+  const [search, setSearch] = useState(urlSearch)
+  const [page, setPage] = useState(1)
   const [stageFilter, setStageFilter] = useState('')
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'whatsapp', notes: '' })
 
+  useEffect(() => {
+    setSearch(urlSearch)
+    setPage(1)
+  }, [urlSearch])
+
   const query = useQuery({
-    queryKey: ['leads', stageFilter, activeBranch?.id],
+    queryKey: ['leads', stageFilter, search, page, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Lead[] }>('/leads', { params: { stage: stageFilter || undefined } })
-      return data.data
+      const { data } = await api.get<Paginated<Lead>>('/leads', {
+        params: { stage: stageFilter || undefined, search: search || undefined, page, per_page: 20 },
+      })
+      return data
     },
   })
+
+  const leads = useMemo(() => query.data?.data ?? [], [query.data])
 
   const create = useMutation({
     mutationFn: async () => {
@@ -56,12 +70,12 @@ export default function Leads() {
 
   const staleCount = useMemo(() => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000
-    return (query.data ?? []).filter((lead) => {
+    return leads.filter((lead) => {
       if (lead.status !== 'open') return false
       const reference = lead.last_activity_at ?? lead.created_at
       return new Date(reference).getTime() < cutoff
     }).length
-  }, [query.data])
+  }, [leads])
 
   const stageLabel = (value: string) => {
     const labels: Record<string, [string, string]> = {
@@ -94,7 +108,23 @@ export default function Leads() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
-          <Select value={stageFilter} onChange={(event) => setStageFilter(event.target.value)} className="max-w-[180px]">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            className="max-w-xs"
+          />
+          <Select
+            value={stageFilter}
+            onChange={(event) => {
+              setStageFilter(event.target.value)
+              setPage(1)
+            }}
+            className="max-w-[180px]"
+          >
             <option value="">{locale === 'ar' ? 'كل المراحل' : 'All stages'}</option>
             {stages.map((stage) => (
               <option key={stage} value={stage}>
@@ -106,8 +136,8 @@ export default function Leads() {
 
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data?.length === 0 ? <EmptyState /> : null}
-        {query.data && query.data.length > 0 ? (
+        {query.data && leads.length === 0 ? <EmptyState /> : null}
+        {leads.length > 0 ? (
           <Table>
             <thead>
               <tr>
@@ -121,7 +151,7 @@ export default function Leads() {
               </tr>
             </thead>
             <tbody>
-              {query.data.map((lead) => (
+              {leads.map((lead) => (
                 <tr key={lead.id}>
                   <Td className="font-medium">{lead.name}</Td>
                   <Td dir="ltr">{lead.phone ?? '—'}</Td>
@@ -143,6 +173,7 @@ export default function Leads() {
             </tbody>
           </Table>
         ) : null}
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
         {error && !open ? <p className="px-5 py-3 text-sm text-danger-text">{error}</p> : null}
       </Card>
 

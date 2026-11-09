@@ -4,8 +4,26 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Supplier, SupplierObligation, SupplierPayment } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
+import type { Paginated, Supplier, SupplierObligation, SupplierPayment } from '../lib/types'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  Loading,
+  Modal,
+  PageHeader,
+  Pagination,
+  SearchableSelect,
+  Select,
+  Table,
+  Td,
+  Th,
+  statusTone,
+} from '../components/ui'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
@@ -44,18 +62,47 @@ export default function SupplierSettlements() {
   const [applyPayment, setApplyPayment] = useState<SupplierPayment | null>(null)
   const [applyForm, setApplyForm] = useState({ supplier_obligation_id: '', amount: '' })
 
+  const [obligationPage, setObligationPage] = useState(1)
+  const [paymentPage, setPaymentPage] = useState(1)
+
   const obligationsQuery = useQuery({
-    queryKey: ['supplier-obligations', activeBranch?.id],
+    queryKey: ['supplier-obligations', 'list', obligationPage, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: SupplierObligation[] }>('/supplier-obligations')
-      return data.data
+      const { data } = await api.get<Paginated<SupplierObligation>>('/supplier-obligations', {
+        params: { page: obligationPage, per_page: 20 },
+      })
+      return data
     },
   })
 
   const paymentsQuery = useQuery({
-    queryKey: ['supplier-payments', activeBranch?.id],
+    queryKey: ['supplier-payments', 'list', paymentPage, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: SupplierPayment[] }>('/supplier-payments')
+      const { data } = await api.get<Paginated<SupplierPayment>>('/supplier-payments', {
+        params: { page: paymentPage, per_page: 20 },
+      })
+      return data
+    },
+  })
+
+  const paymentObligationsQuery = useQuery({
+    queryKey: ['supplier-obligations', 'payment-picker', paymentForm.supplier_id],
+    enabled: paymentForm.supplier_id !== '',
+    queryFn: async () => {
+      const { data } = await api.get<Paginated<SupplierObligation>>('/supplier-obligations', {
+        params: { supplier_id: paymentForm.supplier_id, per_page: 100 },
+      })
+      return data.data
+    },
+  })
+
+  const applyObligationsQuery = useQuery({
+    queryKey: ['supplier-obligations', 'apply-picker', applyPayment?.supplier_id],
+    enabled: Boolean(applyPayment?.supplier_id),
+    queryFn: async () => {
+      const { data } = await api.get<Paginated<SupplierObligation>>('/supplier-obligations', {
+        params: { supplier_id: applyPayment?.supplier_id, per_page: 100 },
+      })
       return data.data
     },
   })
@@ -77,7 +124,8 @@ export default function SupplierSettlements() {
   })
 
   const suppliers = suppliersQuery.data ?? []
-  const obligations = useMemo(() => obligationsQuery.data ?? [], [obligationsQuery.data])
+  const obligations = obligationsQuery.data?.data ?? []
+  const payments = paymentsQuery.data?.data ?? []
 
   const supplierName = (supplier?: Supplier | null) =>
     supplier ? (locale === 'ar' ? supplier.name_ar : supplier.name_en) : '—'
@@ -89,18 +137,17 @@ export default function SupplierSettlements() {
 
   const openObligations = useMemo(
     () =>
-      obligations.filter(
+      (applyObligationsQuery.data ?? []).filter(
         (obligation) =>
           obligation.status !== 'paid' &&
-          (!applyPayment || obligation.supplier_id === applyPayment.supplier_id) &&
           (!applyPayment || obligation.currency === applyPayment.currency),
       ),
-    [obligations, applyPayment],
+    [applyObligationsQuery.data, applyPayment],
   )
 
   const paymentObligations = useMemo(
-    () => obligations.filter((obligation) => obligation.supplier_id === paymentForm.supplier_id && obligation.status !== 'paid'),
-    [obligations, paymentForm.supplier_id],
+    () => (paymentObligationsQuery.data ?? []).filter((obligation) => obligation.status !== 'paid'),
+    [paymentObligationsQuery.data],
   )
 
   const invalidate = async () => {
@@ -266,8 +313,8 @@ export default function SupplierSettlements() {
           {obligationsQuery.isError ? (
             <ErrorState message={errorMessage(obligationsQuery.error)} onRetry={() => void obligationsQuery.refetch()} />
           ) : null}
-          {obligationsQuery.data?.length === 0 ? <EmptyState /> : null}
-          {obligationsQuery.data && obligationsQuery.data.length > 0 ? (
+          {obligationsQuery.data && obligations.length === 0 ? <EmptyState /> : null}
+          {obligations.length > 0 ? (
             <Table>
               <thead>
                 <tr>
@@ -281,7 +328,7 @@ export default function SupplierSettlements() {
                 </tr>
               </thead>
               <tbody>
-                {obligationsQuery.data.map((obligation) => (
+                {obligations.map((obligation) => (
                   <tr key={obligation.id}>
                     <Td>{supplierName(obligation.supplier)}</Td>
                     <Td dir="ltr">{obligation.invoice_reference ?? '—'}</Td>
@@ -309,6 +356,11 @@ export default function SupplierSettlements() {
               </tbody>
             </Table>
           ) : null}
+          <Pagination
+            page={obligationsQuery.data?.meta.current_page ?? 1}
+            lastPage={obligationsQuery.data?.meta.last_page ?? 1}
+            onChange={setObligationPage}
+          />
         </Card>
       ) : (
         <Card>
@@ -316,8 +368,8 @@ export default function SupplierSettlements() {
           {paymentsQuery.isError ? (
             <ErrorState message={errorMessage(paymentsQuery.error)} onRetry={() => void paymentsQuery.refetch()} />
           ) : null}
-          {paymentsQuery.data?.length === 0 ? <EmptyState /> : null}
-          {paymentsQuery.data && paymentsQuery.data.length > 0 ? (
+          {paymentsQuery.data && payments.length === 0 ? <EmptyState /> : null}
+          {payments.length > 0 ? (
             <Table>
               <thead>
                 <tr>
@@ -331,7 +383,7 @@ export default function SupplierSettlements() {
                 </tr>
               </thead>
               <tbody>
-                {paymentsQuery.data.map((payment) => (
+                {payments.map((payment) => (
                   <tr key={payment.id}>
                     <Td>{supplierName(payment.supplier)}</Td>
                     <Td>{formatDate(payment.paid_at, locale)}</Td>
@@ -359,6 +411,11 @@ export default function SupplierSettlements() {
               </tbody>
             </Table>
           ) : null}
+          <Pagination
+            page={paymentsQuery.data?.meta.current_page ?? 1}
+            lastPage={paymentsQuery.data?.meta.last_page ?? 1}
+            onChange={setPaymentPage}
+          />
         </Card>
       )}
 
@@ -382,14 +439,16 @@ export default function SupplierSettlements() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('supplier')} required>
-            <Select value={obligationForm.supplier_id} onChange={(event) => onSupplierChange(event.target.value, 'obligation')}>
-              <option value="">{t('selectSupplier')}</option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplierName(supplier)}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={obligationForm.supplier_id}
+              onChange={(supplier_id) => onSupplierChange(supplier_id, 'obligation')}
+              placeholder={t('selectSupplier')}
+              options={suppliers.map((supplier) => ({
+                value: supplier.id,
+                label: supplierName(supplier),
+                hint: locale === 'ar' ? supplier.name_en : supplier.name_ar,
+              }))}
+            />
           </Field>
           <Field label={t('currency')} required>
             <Select value={obligationForm.currency} onChange={(event) => setObligationForm({ ...obligationForm, currency: event.target.value })}>
@@ -432,45 +491,47 @@ export default function SupplierSettlements() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('supplier')} required>
-            <Select value={paymentForm.supplier_id} onChange={(event) => onSupplierChange(event.target.value, 'payment')}>
-              <option value="">{t('selectSupplier')}</option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplierName(supplier)}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={paymentForm.supplier_id}
+              onChange={(supplier_id) => onSupplierChange(supplier_id, 'payment')}
+              placeholder={t('selectSupplier')}
+              options={suppliers.map((supplier) => ({
+                value: supplier.id,
+                label: supplierName(supplier),
+                hint: locale === 'ar' ? supplier.name_en : supplier.name_ar,
+              }))}
+            />
           </Field>
           <Field label={t('obligation')} hint={paymentForm.supplier_id && paymentObligations.length === 0 ? t('noOpenObligations') : undefined}>
-            <Select
+            <SearchableSelect
               value={paymentForm.supplier_obligation_id}
-              onChange={(event) => {
-                const obligation = paymentObligations.find((item) => item.id === event.target.value)
+              onChange={(supplier_obligation_id) => {
+                const obligation = paymentObligations.find((item) => item.id === supplier_obligation_id)
                 setPaymentForm({
                   ...paymentForm,
-                  supplier_obligation_id: event.target.value,
+                  supplier_obligation_id,
                   currency: obligation?.currency ?? paymentForm.currency,
                   amount: obligation ? toDecimal(obligation.balance_minor, obligation.currency) : paymentForm.amount,
                 })
               }}
-            >
-              <option value="">{t('advance')}</option>
-              {paymentObligations.map((obligation) => (
-                <option key={obligation.id} value={obligation.id}>
-                  {obligation.invoice_reference ?? obligation.id} — {toDecimal(obligation.balance_minor, obligation.currency)} {obligation.currency}
-                </option>
-              ))}
-            </Select>
+              placeholder={t('advance')}
+              clearLabel={t('advance')}
+              options={paymentObligations.map((obligation) => ({
+                value: obligation.id,
+                label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
+              }))}
+            />
           </Field>
           <Field label={locale === 'ar' ? 'حساب الخزينة/البنك' : 'Cash / bank account'} required>
-            <Select value={paymentForm.cash_account_id} onChange={(event) => setPaymentForm({ ...paymentForm, cash_account_id: event.target.value })}>
-              <option value="">{locale === 'ar' ? 'اختر الحساب' : 'Select account'}</option>
-              {(cashQuery.data ?? []).map((account) => (
-                <option key={account.id} value={account.id}>
-                  {locale === 'ar' ? account.name_ar : account.name_en} ({account.currency})
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={paymentForm.cash_account_id}
+              onChange={(cash_account_id) => setPaymentForm({ ...paymentForm, cash_account_id })}
+              placeholder={t('selectAccount')}
+              options={(cashQuery.data ?? []).map((account) => ({
+                value: account.id,
+                label: `${locale === 'ar' ? account.name_ar : account.name_en} (${account.currency})`,
+              }))}
+            />
           </Field>
           <Field label={t('amount')} required>
             <Input value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} inputMode="decimal" dir="ltr" />
@@ -516,13 +577,13 @@ export default function SupplierSettlements() {
               <Input value={`${toDecimal(applyPayment.unallocated_minor, applyPayment.currency)} ${applyPayment.currency}`} readOnly dir="ltr" />
             </Field>
             <Field label={t('obligation')} required hint={openObligations.length === 0 ? t('noOpenObligations') : undefined}>
-              <Select
+              <SearchableSelect
                 value={applyForm.supplier_obligation_id}
-                onChange={(event) => {
-                  const obligation = openObligations.find((item) => item.id === event.target.value)
+                onChange={(supplier_obligation_id) => {
+                  const obligation = openObligations.find((item) => item.id === supplier_obligation_id)
                   setApplyForm({
                     ...applyForm,
-                    supplier_obligation_id: event.target.value,
+                    supplier_obligation_id,
                     amount: obligation
                       ? toDecimal(
                           Math.min(obligation.balance_minor, applyPayment.unallocated_minor),
@@ -531,14 +592,12 @@ export default function SupplierSettlements() {
                       : applyForm.amount,
                   })
                 }}
-              >
-                <option value="">{t('selectObligation')}</option>
-                {openObligations.map((obligation) => (
-                  <option key={obligation.id} value={obligation.id}>
-                    {obligation.invoice_reference ?? obligation.id} — {toDecimal(obligation.balance_minor, obligation.currency)} {obligation.currency}
-                  </option>
-                ))}
-              </Select>
+                placeholder={t('selectObligation')}
+                options={openObligations.map((obligation) => ({
+                  value: obligation.id,
+                  label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
+                }))}
+              />
             </Field>
             <Field label={t('amount')} required>
               <Input value={applyForm.amount} onChange={(event) => setApplyForm({ ...applyForm, amount: event.target.value })} inputMode="decimal" dir="ltr" />

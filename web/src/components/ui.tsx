@@ -1,5 +1,12 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
-import { useEffect } from 'react'
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { formatMoney } from '../lib/format'
 
@@ -75,6 +82,169 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
     <select className={cx(controlBase, 'h-9', className)} {...props}>
       {children}
     </select>
+  )
+}
+
+export type SelectOption = {
+  value: string
+  label: string
+  hint?: string
+}
+
+/**
+ * Combobox for API-driven option lists.
+ *
+ * Native `<select>` stays the right control for short, static lists. Use this
+ * when the list is dynamic (customers, suppliers, accounts, bookings) and the
+ * user benefits from typing to filter.
+ */
+export function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  clearLabel,
+  disabled,
+  className,
+  id,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: SelectOption[]
+  placeholder?: string
+  clearLabel?: string
+  disabled?: boolean
+  className?: string
+  id?: string
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const selected = useMemo(() => options.find((option) => option.value === value), [options, value])
+
+  const rows = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const filtered = needle
+      ? options.filter(
+          (option) => option.label.toLowerCase().includes(needle) || (option.hint ?? '').toLowerCase().includes(needle),
+        )
+      : options
+    return clearLabel ? [{ value: '', label: clearLabel }, ...filtered] : filtered
+  }, [options, query, clearLabel])
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [open])
+
+  const openList = () => {
+    if (disabled) return
+    setQuery('')
+    setActiveIndex(options.findIndex((option) => option.value === value))
+    setOpen(true)
+  }
+
+  const select = (option: SelectOption) => {
+    onChange(option.value)
+    setOpen(false)
+    setQuery('')
+  }
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      if (!open) {
+        openList()
+        return
+      }
+      setActiveIndex((current) => Math.min(current + 1, rows.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((current) => Math.max(current - 1, 0))
+    } else if (event.key === 'Enter') {
+      if (open && rows[activeIndex]) {
+        event.preventDefault()
+        select(rows[activeIndex])
+      }
+    } else if (event.key === 'Escape') {
+      setOpen(false)
+      setQuery('')
+    } else if (event.key === 'Tab') {
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div ref={containerRef} className={cx('relative', className)}>
+      <input
+        id={id}
+        className={cx(controlBase, 'h-9 pe-8')}
+        value={open ? query : (selected?.label ?? '')}
+        placeholder={placeholder}
+        disabled={disabled}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        autoComplete="off"
+        onFocus={openList}
+        onChange={(event) => {
+          setQuery(event.target.value)
+          setActiveIndex(0)
+          if (!open) setOpen(true)
+        }}
+        onKeyDown={onKeyDown}
+      />
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        className="pointer-events-none absolute end-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle"
+        aria-hidden="true"
+      >
+        <path d="m5 7.5 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {open ? (
+        <div
+          className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-12 border border-border-default bg-surface-default p-1 shadow-3"
+          role="listbox"
+        >
+          {rows.length === 0 ? (
+            <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
+          ) : (
+            rows.map((option, index) => (
+              <button
+                key={`${option.value}-${index}`}
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                className={cx(
+                  'text-medium flex w-full items-center justify-between gap-2 rounded-8 px-3 py-2 text-start transition',
+                  option.value === value ? 'bg-surface-selected text-text-default' : 'text-text-default',
+                  index === activeIndex ? 'bg-surface-hovered' : null,
+                )}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => select(option)}
+              >
+                <span className="truncate">{option.label}</span>
+                {option.hint ? <span className="text-small truncate text-text-subtle">{option.hint}</span> : null}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
   )
 }
 

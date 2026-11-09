@@ -1,17 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { toMinor } from '../lib/format'
-import type { Customer } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import type { Customer, Paginated } from '../lib/types'
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
 
 export default function Customers() {
   const { t, locale } = useI18n()
   const { activeBranch } = useAuth()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const urlSearch = searchParams.get('search') ?? ''
+  const [search, setSearch] = useState(urlSearch)
+  const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
@@ -24,13 +28,22 @@ export default function Customers() {
     credit_limit: '0',
   })
 
+  useEffect(() => {
+    setSearch(urlSearch)
+    setPage(1)
+  }, [urlSearch])
+
   const query = useQuery({
-    queryKey: ['customers', search, activeBranch?.id],
+    queryKey: ['customers', search, page, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Customer[] }>('/customers', { params: { search: search || undefined } })
-      return data.data
+      const { data } = await api.get<Paginated<Customer>>('/customers', {
+        params: { search: search || undefined, page, per_page: 20 },
+      })
+      return data
     },
   })
+
+  const customers = query.data?.data ?? []
 
   const create = useMutation({
     mutationFn: async () => {
@@ -61,12 +74,20 @@ export default function Customers() {
 
       <Card>
         <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('search')} className="max-w-xs" />
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            className="max-w-xs"
+          />
         </div>
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data?.length === 0 ? <EmptyState /> : null}
-        {query.data && query.data.length > 0 ? (
+        {query.data && customers.length === 0 ? <EmptyState /> : null}
+        {customers.length > 0 ? (
           <Table>
             <thead>
               <tr>
@@ -78,7 +99,7 @@ export default function Customers() {
               </tr>
             </thead>
             <tbody>
-              {query.data.map((customer) => (
+              {customers.map((customer) => (
                 <tr key={customer.id}>
                   <Td>
                     <p className="font-medium">{locale === 'ar' ? customer.name_ar : customer.name_en}</p>
@@ -97,6 +118,7 @@ export default function Customers() {
             </tbody>
           </Table>
         ) : null}
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
       </Card>
 
       <Modal

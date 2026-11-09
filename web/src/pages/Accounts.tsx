@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Account } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, SearchableSelect, Select, Table, Td, Th } from '../components/ui'
 
 const accountTypes: Account['type'][] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
@@ -152,14 +152,16 @@ export default function Accounts() {
             <Input value={form.name_en} onChange={(event) => setForm({ ...form, name_en: event.target.value })} dir="ltr" />
           </Field>
           <Field label={locale === 'ar' ? 'الحساب الأب' : 'Parent account'}>
-            <Select value={form.parent_id} onChange={(event) => setForm({ ...form, parent_id: event.target.value })}>
-              <option value="">—</option>
-              {(query.data ?? []).map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.code} — {locale === 'ar' ? account.name_ar : account.name_en}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={form.parent_id}
+              onChange={(parent_id) => setForm({ ...form, parent_id })}
+              placeholder="—"
+              clearLabel="—"
+              options={(query.data ?? []).map((account) => ({
+                value: account.id,
+                label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
+              }))}
+            />
           </Field>
           <Field label={t('postable')}>
             <label className="flex items-center gap-2 py-2 text-sm">

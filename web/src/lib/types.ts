@@ -184,6 +184,23 @@ export type Paginated<T> = {
   meta: { current_page: number; last_page: number; total: number; per_page: number }
 }
 
+export type SearchItem = {
+  id: string
+  title_ar: string
+  title_en: string
+  subtitle?: string
+}
+
+export type SearchGroup = {
+  type: 'customers' | 'suppliers' | 'bookings' | 'payments' | 'leads'
+  items: SearchItem[]
+}
+
+export type SearchResults = {
+  groups: SearchGroup[]
+  total: number
+}
+
 export type ApiError = {
   message: string
   code?: string

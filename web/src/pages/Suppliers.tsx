@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import type { Supplier } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import type { Paginated, Supplier } from '../lib/types'
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
 
 const categories = [
   { value: 'airline', ar: 'شركة طيران', en: 'Airline' },
@@ -20,7 +21,10 @@ export default function Suppliers() {
   const { t, locale } = useI18n()
   const { activeBranch } = useAuth()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
+  const [searchParams] = useSearchParams()
+  const urlSearch = searchParams.get('search') ?? ''
+  const [search, setSearch] = useState(urlSearch)
+  const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
@@ -32,13 +36,22 @@ export default function Suppliers() {
     settlement_currency: 'EGP',
   })
 
+  useEffect(() => {
+    setSearch(urlSearch)
+    setPage(1)
+  }, [urlSearch])
+
   const query = useQuery({
-    queryKey: ['suppliers', search, activeBranch?.id],
+    queryKey: ['suppliers', search, page, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Supplier[] }>('/suppliers', { params: { search: search || undefined } })
-      return data.data
+      const { data } = await api.get<Paginated<Supplier>>('/suppliers', {
+        params: { search: search || undefined, page, per_page: 20 },
+      })
+      return data
     },
   })
+
+  const suppliers = query.data?.data ?? []
 
   const create = useMutation({
     mutationFn: async () => {
@@ -70,12 +83,20 @@ export default function Suppliers() {
 
       <Card>
         <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('search')} className="max-w-xs" />
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            className="max-w-xs"
+          />
         </div>
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data?.length === 0 ? <EmptyState /> : null}
-        {query.data && query.data.length > 0 ? (
+        {query.data && suppliers.length === 0 ? <EmptyState /> : null}
+        {suppliers.length > 0 ? (
           <Table>
             <thead>
               <tr>
@@ -87,7 +108,7 @@ export default function Suppliers() {
               </tr>
             </thead>
             <tbody>
-              {query.data.map((supplier) => (
+              {suppliers.map((supplier) => (
                 <tr key={supplier.id}>
                   <Td>
                     <p className="font-medium">{locale === 'ar' ? supplier.name_ar : supplier.name_en}</p>
@@ -106,6 +127,7 @@ export default function Suppliers() {
             </tbody>
           </Table>
         ) : null}
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
       </Card>
 
       <Modal

@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
@@ -92,6 +93,8 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/balance-sheet', [ReportController::class, 'balanceSheet'])->middleware('permission:reports.view');
         Route::get('reports/aging', [ReportController::class, 'aging'])->middleware('permission:reports.view');
         Route::get('dashboard/summary', [ReportController::class, 'dashboard'])->middleware('permission:reports.view');
+
+        Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1');
 
         Route::get('leads', [LeadController::class, 'index'])->middleware('permission:leads.view');
         Route::post('leads', [LeadController::class, 'store'])->middleware('permission:leads.create');

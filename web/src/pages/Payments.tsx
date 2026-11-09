@@ -1,11 +1,30 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Booking, Customer, Payment } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
+import type { Booking, Customer, Paginated, Payment } from '../lib/types'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  Loading,
+  Modal,
+  PageHeader,
+  Pagination,
+  SearchableSelect,
+  Select,
+  Table,
+  Td,
+  Th,
+  statusTone,
+} from '../components/ui'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
@@ -13,6 +32,10 @@ export default function Payments() {
   const { t, locale } = useI18n()
   const { activeBranch } = useAuth()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const urlSearch = searchParams.get('search') ?? ''
+  const [search, setSearch] = useState(urlSearch)
+  const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
@@ -26,13 +49,22 @@ export default function Payments() {
     fx_rate: '1',
   })
 
+  useEffect(() => {
+    setSearch(urlSearch)
+    setPage(1)
+  }, [urlSearch])
+
   const paymentsQuery = useQuery({
-    queryKey: ['payments', activeBranch?.id],
+    queryKey: ['payments', search, page, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Payment[] }>('/payments')
-      return data.data
+      const { data } = await api.get<Paginated<Payment>>('/payments', {
+        params: { search: search || undefined, page, per_page: 20 },
+      })
+      return data
     },
   })
+
+  const payments = paymentsQuery.data?.data ?? []
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -103,12 +135,23 @@ export default function Payments() {
       />
 
       <Card>
+        <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            className="max-w-xs"
+          />
+        </div>
         {paymentsQuery.isLoading ? <Loading /> : null}
         {paymentsQuery.isError ? (
           <ErrorState message={errorMessage(paymentsQuery.error)} onRetry={() => void paymentsQuery.refetch()} />
         ) : null}
-        {paymentsQuery.data?.length === 0 ? <EmptyState /> : null}
-        {paymentsQuery.data && paymentsQuery.data.length > 0 ? (
+        {paymentsQuery.data && payments.length === 0 ? <EmptyState /> : null}
+        {payments.length > 0 ? (
           <Table>
             <thead>
               <tr>
@@ -122,7 +165,7 @@ export default function Payments() {
               </tr>
             </thead>
             <tbody>
-              {paymentsQuery.data.map((payment) => (
+              {payments.map((payment) => (
                 <tr key={payment.id}>
                   <Td className="font-medium">{payment.number}</Td>
                   <Td>{formatDate(payment.paid_at, locale)}</Td>
@@ -142,6 +185,11 @@ export default function Payments() {
             </tbody>
           </Table>
         ) : null}
+        <Pagination
+          page={paymentsQuery.data?.meta.current_page ?? 1}
+          lastPage={paymentsQuery.data?.meta.last_page ?? 1}
+          onChange={setPage}
+        />
       </Card>
 
       <Modal
@@ -161,34 +209,39 @@ export default function Payments() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('customer')} required>
-            <Select value={form.customer_id} onChange={(event) => setForm({ ...form, customer_id: event.target.value, booking_id: '' })}>
-              <option value="">{locale === 'ar' ? 'اختر العميل' : 'Select customer'}</option>
-              {(customersQuery.data ?? []).map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {locale === 'ar' ? customer.name_ar : customer.name_en}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={form.customer_id}
+              onChange={(customer_id) => setForm({ ...form, customer_id, booking_id: '' })}
+              placeholder={t('selectCustomer')}
+              options={(customersQuery.data ?? []).map((customer) => ({
+                value: customer.id,
+                label: locale === 'ar' ? customer.name_ar : customer.name_en,
+                hint: locale === 'ar' ? customer.name_en : customer.name_ar,
+              }))}
+            />
           </Field>
           <Field label={t('bookings')}>
-            <Select value={form.booking_id} onChange={(event) => setForm({ ...form, booking_id: event.target.value })}>
-              <option value="">{locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}</option>
-              {customerBookings.map((booking) => (
-                <option key={booking.id} value={booking.id}>
-                  {booking.number} — {toDecimal(booking.total_sell_minor, booking.currency)} {booking.currency}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={form.booking_id}
+              onChange={(booking_id) => setForm({ ...form, booking_id })}
+              placeholder={locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}
+              clearLabel={locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}
+              options={customerBookings.map((booking) => ({
+                value: booking.id,
+                label: `${booking.number} — ${toDecimal(booking.total_sell_minor, booking.currency)} ${booking.currency}`,
+              }))}
+            />
           </Field>
           <Field label={locale === 'ar' ? 'حساب الخزينة/البنك' : 'Cash / bank account'} required>
-            <Select value={form.cash_account_id} onChange={(event) => setForm({ ...form, cash_account_id: event.target.value })}>
-              <option value="">{locale === 'ar' ? 'اختر الحساب' : 'Select account'}</option>
-              {(cashQuery.data ?? []).map((account) => (
-                <option key={account.id} value={account.id}>
-                  {locale === 'ar' ? account.name_ar : account.name_en} ({account.currency})
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={form.cash_account_id}
+              onChange={(cash_account_id) => setForm({ ...form, cash_account_id })}
+              placeholder={t('selectAccount')}
+              options={(cashQuery.data ?? []).map((account) => ({
+                value: account.id,
+                label: `${locale === 'ar' ? account.name_ar : account.name_en} (${account.currency})`,
+              }))}
+            />
           </Field>
           <Field label={t('paymentMethod')}>
             <Select value={form.method} onChange={(event) => setForm({ ...form, method: event.target.value })}>

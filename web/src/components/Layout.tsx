@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
+import { GlobalSearch } from './GlobalSearch'
 import { cx, Spinner } from './ui'
 
 type NavItem = { to: string; label: string; icon: string; permission?: string }
@@ -124,6 +125,7 @@ export function Layout() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <GlobalSearch />
             {branches.length > 1 ? (
               <label className="text-small flex items-center gap-2 text-text-subtle">
                 <span className="hidden sm:inline">{t('branch')}</span>

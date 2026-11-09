@@ -18,6 +18,15 @@ class PaymentController extends ApiController
             ->with('customer', 'booking')
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('customer_id'), fn ($query, $customerId) => $query->whereHas('customer', fn ($query) => $query->where('public_id', $customerId)))
+            ->when($request->query('search'), function ($query, $search) {
+                $query->where(function ($query) use ($search) {
+                    $query->where('number', 'like', "%{$search}%")
+                        ->orWhereHas('customer', function ($query) use ($search) {
+                            $query->where('name_ar', 'like', "%{$search}%")
+                                ->orWhere('name_en', 'like', "%{$search}%");
+                        });
+                });
+            })
             ->when($request->query('from'), fn ($query, $from) => $query->where('paid_at', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->where('paid_at', '<=', $to.' 23:59:59'))
             ->orderByDesc('id')

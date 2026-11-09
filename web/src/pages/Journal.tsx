@@ -4,8 +4,26 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Account, JournalEntry } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
+import type { Account, JournalEntry, Paginated } from '../lib/types'
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  Loading,
+  Modal,
+  PageHeader,
+  Pagination,
+  SearchableSelect,
+  Select,
+  Table,
+  Td,
+  Th,
+  statusTone,
+} from '../components/ui'
 
 type DraftLine = { account_id: string; debit: string; credit: string; description: string }
 
@@ -22,6 +40,7 @@ export default function Journal() {
   const [currency, setCurrency] = useState('EGP')
   const [fxRate, setFxRate] = useState('1')
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()])
+  const [page, setPage] = useState(1)
 
   const accountsQuery = useQuery({
     queryKey: ['accounts'],
@@ -32,12 +51,16 @@ export default function Journal() {
   })
 
   const entriesQuery = useQuery({
-    queryKey: ['journal', activeBranch?.id],
+    queryKey: ['journal', page, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: JournalEntry[] }>('/journal-entries')
-      return data.data
+      const { data } = await api.get<Paginated<JournalEntry>>('/journal-entries', {
+        params: { page, per_page: 20 },
+      })
+      return data
     },
   })
+
+  const entries = entriesQuery.data?.data ?? []
 
   const postableAccounts = useMemo(
     () => (accountsQuery.data ?? []).filter((account) => account.is_postable && account.is_active),
@@ -126,8 +149,8 @@ export default function Journal() {
         {entriesQuery.isError ? (
           <ErrorState message={errorMessage(entriesQuery.error)} onRetry={() => void entriesQuery.refetch()} />
         ) : null}
-        {entriesQuery.data?.length === 0 ? <EmptyState /> : null}
-        {entriesQuery.data && entriesQuery.data.length > 0 ? (
+        {entriesQuery.data && entries.length === 0 ? <EmptyState /> : null}
+        {entries.length > 0 ? (
           <Table>
             <thead>
               <tr>
@@ -141,7 +164,7 @@ export default function Journal() {
               </tr>
             </thead>
             <tbody>
-              {entriesQuery.data.map((entry) => (
+              {entries.map((entry) => (
                 <tr key={entry.id}>
                   <Td className="tabular font-medium">{entry.number}</Td>
                   <Td>{formatDate(entry.entry_date, locale)}</Td>
@@ -169,6 +192,11 @@ export default function Journal() {
             </tbody>
           </Table>
         ) : null}
+        <Pagination
+          page={entriesQuery.data?.meta.current_page ?? 1}
+          lastPage={entriesQuery.data?.meta.last_page ?? 1}
+          onChange={setPage}
+        />
       </Card>
 
       <Modal
@@ -222,14 +250,15 @@ export default function Journal() {
           {lines.map((line, index) => (
             <div key={index} className="grid gap-2 rounded-12 border border-border-default p-3 sm:grid-cols-12">
               <div className="sm:col-span-5">
-                <Select value={line.account_id} onChange={(event) => updateLine(index, { account_id: event.target.value })}>
-                  <option value="">{locale === 'ar' ? 'اختر الحساب' : 'Select account'}</option>
-                  {postableAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} — {locale === 'ar' ? account.name_ar : account.name_en}
-                    </option>
-                  ))}
-                </Select>
+                <SearchableSelect
+                  value={line.account_id}
+                  onChange={(account_id) => updateLine(index, { account_id })}
+                  placeholder={t('selectAccount')}
+                  options={postableAccounts.map((account) => ({
+                    value: account.id,
+                    label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
+                  }))}
+                />
               </div>
               <div className="sm:col-span-2">
                 <Input
