@@ -238,21 +238,21 @@ export default function SupplierSettlements() {
       />
 
       {error && !obligationOpen && !paymentOpen && !applyPayment ? (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p>
+        <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
       ) : null}
 
       <div className="mb-4 flex gap-2">
         <button
-          className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
-            tab === 'obligations' ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-line bg-surface text-muted hover:bg-canvas'
+          className={`rounded-12 border px-4 py-2 text-sm font-medium transition ${
+            tab === 'obligations' ? 'border-border-selected bg-surface-selected text-text-default' : 'border-border-subtle bg-surface-default text-text-subtle hover:bg-surface-hovered'
           }`}
           onClick={() => setTab('obligations')}
         >
           {t('obligations')}
         </button>
         <button
-          className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
-            tab === 'payments' ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-line bg-surface text-muted hover:bg-canvas'
+          className={`rounded-12 border px-4 py-2 text-sm font-medium transition ${
+            tab === 'payments' ? 'border-border-selected bg-surface-selected text-text-default' : 'border-border-subtle bg-surface-default text-text-subtle hover:bg-surface-hovered'
           }`}
           onClick={() => setTab('payments')}
         >
@@ -409,7 +409,7 @@ export default function SupplierSettlements() {
             />
           </Field>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
 
       <Modal
@@ -486,7 +486,7 @@ export default function SupplierSettlements() {
             <Input type="date" value={paymentForm.paid_at} onChange={(event) => setPaymentForm({ ...paymentForm, paid_at: event.target.value })} dir="ltr" />
           </Field>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
 
       <Modal
@@ -545,7 +545,7 @@ export default function SupplierSettlements() {
             </Field>
           </div>
         ) : null}
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

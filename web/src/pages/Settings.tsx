@@ -125,9 +125,9 @@ export default function Settings() {
         }
       />
 
-      {error ? <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+      {error ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       {readOnly ? (
-        <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-warning">{t('permissionDenied')}</p>
+        <p className="mb-4 rounded-12 border border-warning-border bg-warning-background px-3 py-2 text-medium text-warning-text">{t('permissionDenied')}</p>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-3">
@@ -258,7 +258,7 @@ export default function Settings() {
                   <Td className="tabular font-medium">{branch.code}</Td>
                   <Td>
                     <p className="font-medium">{locale === 'ar' ? branch.name_ar : branch.name_en}</p>
-                    <p className="text-xs text-muted">{locale === 'ar' ? branch.name_en : branch.name_ar}</p>
+                    <p className="text-xs text-text-subtle">{locale === 'ar' ? branch.name_en : branch.name_ar}</p>
                   </Td>
                   <Td>{branch.accounting_mode}</Td>
                   <Td>

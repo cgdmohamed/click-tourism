@@ -70,14 +70,14 @@ export default function Accounts() {
       />
 
       <Card>
-        <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t('search')}
             className="max-w-xs"
           />
-          <span className="text-xs text-muted">{filtered.length}</span>
+          <span className="text-xs text-text-subtle">{filtered.length}</span>
         </div>
 
         {query.isLoading ? <Loading /> : null}
@@ -101,7 +101,7 @@ export default function Accounts() {
                   <Td className="tabular font-medium">{account.code}</Td>
                   <Td>
                     <span className="font-medium">{locale === 'ar' ? account.name_ar : account.name_en}</span>
-                    <span className="ms-2 text-xs text-muted">{locale === 'ar' ? account.name_en : account.name_ar}</span>
+                    <span className="ms-2 text-xs text-text-subtle">{locale === 'ar' ? account.name_en : account.name_ar}</span>
                   </Td>
                   <Td>{typeLabel(account.type)}</Td>
                   <Td>{account.is_postable ? '✓' : '—'}</Td>
@@ -172,7 +172,7 @@ export default function Accounts() {
             </label>
           </Field>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

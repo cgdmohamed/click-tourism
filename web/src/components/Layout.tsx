@@ -36,7 +36,7 @@ export function Layout() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted">{t('loading')}</div>
+      <div className="text-medium flex min-h-screen items-center justify-center text-text-subtle">{t('loading')}</div>
     )
   }
   if (!user) {
@@ -67,8 +67,10 @@ export function Layout() {
           onClick={() => setMobileOpen(false)}
           className={({ isActive }) =>
             cx(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',
-              isActive ? 'bg-brand-50 text-brand-700' : 'text-muted hover:bg-canvas hover:text-ink',
+              'label flex items-center gap-3 rounded-12 border-s-2 px-3 py-2 transition',
+              isActive
+                ? 'border-border-selected bg-surface-selected text-text-default'
+                : 'border-transparent text-text-subtle hover:bg-surface-hovered hover:text-text-default',
             )
           }
         >
@@ -80,24 +82,24 @@ export function Layout() {
   )
 
   return (
-    <div className="flex min-h-screen bg-canvas">
-      <aside className="no-print hidden w-64 shrink-0 flex-col border-e border-line bg-surface lg:flex">
-        <div className="border-b border-line px-5 py-5">
-          <p className="text-lg font-bold text-brand-700">{t('appName')}</p>
-          <p className="mt-0.5 text-xs text-muted">{t('appTagline')}</p>
+    <div className="flex min-h-screen bg-surface-canvas">
+      <aside className="no-print hidden w-64 shrink-0 flex-col border-e border-border-subtle bg-surface-default lg:flex">
+        <div className="border-b border-border-subtle px-5 py-5">
+          <p className="heading-medium text-brand-1-accent">{t('appName')}</p>
+          <p className="text-small mt-0.5 text-text-subtle">{t('appTagline')}</p>
         </div>
         {nav}
-        <div className="border-t border-line px-4 py-3 text-xs text-muted">
+        <div className="text-small border-t border-border-subtle px-4 py-3 text-text-subtle">
           {user.name} · {user.roles[0] ?? '—'}
         </div>
       </aside>
 
       {mobileOpen ? (
-        <div className="no-print fixed inset-0 z-40 bg-ink/40 lg:hidden" onClick={() => setMobileOpen(false)}>
-          <aside className="flex h-full w-72 flex-col bg-surface" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-line px-4 py-4">
-              <p className="font-bold text-brand-700">{t('appName')}</p>
-              <button className="p-1 text-muted" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+        <div className="no-print fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setMobileOpen(false)}>
+          <aside className="flex h-full w-72 flex-col bg-surface-default" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-4">
+              <p className="heading-small text-brand-1-accent">{t('appName')}</p>
+              <button className="p-1 text-text-subtle" onClick={() => setMobileOpen(false)} aria-label="Close menu">
                 ✕
               </button>
             </div>
@@ -107,23 +109,23 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 py-3 backdrop-blur lg:px-6">
+        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-default/95 px-4 py-3 backdrop-blur lg:px-6">
           <div className="flex items-center gap-3">
-            <button className="rounded-lg border border-line p-2 text-muted lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+            <button className="rounded-12 border border-border-subtle p-2 text-text-subtle lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
               ☰
             </button>
             <div className="hidden sm:block">
-              <p className="text-sm font-semibold text-ink">{t('appName')}</p>
-              <p className="text-xs text-muted">{t('appTagline')}</p>
+              <p className="label text-text-default">{t('appName')}</p>
+              <p className="text-small text-text-subtle">{t('appTagline')}</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             {branches.length > 1 ? (
-              <label className="flex items-center gap-2 text-xs text-muted">
+              <label className="text-small flex items-center gap-2 text-text-subtle">
                 <span className="hidden sm:inline">{t('branch')}</span>
                 <select
-                  className="rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
                   value={activeBranch?.id ?? ''}
                   onChange={(event) => setActiveBranch(event.target.value)}
                 >
@@ -136,13 +138,13 @@ export function Layout() {
               </label>
             ) : null}
             <button
-              className="rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-canvas"
+              className="text-small rounded-12 border border-border-subtle px-2.5 py-1.5 font-medium text-text-subtle hover:bg-surface-hovered"
               onClick={toggleLocale}
               title={t('language')}
             >
               {locale === 'ar' ? 'EN' : 'عربي'}
             </button>
-            <button className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-canvas" onClick={() => void logout()}>
+            <button className="text-small rounded-12 px-2.5 py-1.5 font-medium text-text-subtle hover:bg-surface-hovered" onClick={() => void logout()}>
               {t('logout')}
             </button>
           </div>

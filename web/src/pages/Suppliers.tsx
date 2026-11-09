@@ -69,7 +69,7 @@ export default function Suppliers() {
       />
 
       <Card>
-        <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('search')} className="max-w-xs" />
         </div>
         {query.isLoading ? <Loading /> : null}
@@ -91,7 +91,7 @@ export default function Suppliers() {
                 <tr key={supplier.id}>
                   <Td>
                     <p className="font-medium">{locale === 'ar' ? supplier.name_ar : supplier.name_en}</p>
-                    <p className="text-xs text-muted">{locale === 'ar' ? supplier.name_en : supplier.name_ar}</p>
+                    <p className="text-xs text-text-subtle">{locale === 'ar' ? supplier.name_en : supplier.name_ar}</p>
                   </Td>
                   <Td>{categoryLabel(supplier.category)}</Td>
                   <Td dir="ltr">{supplier.phone ?? '—'}</Td>
@@ -153,7 +153,7 @@ export default function Suppliers() {
             <Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} dir="ltr" />
           </Field>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

@@ -60,7 +60,7 @@ export default function Customers() {
       />
 
       <Card>
-        <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('search')} className="max-w-xs" />
         </div>
         {query.isLoading ? <Loading /> : null}
@@ -82,7 +82,7 @@ export default function Customers() {
                 <tr key={customer.id}>
                   <Td>
                     <p className="font-medium">{locale === 'ar' ? customer.name_ar : customer.name_en}</p>
-                    <p className="text-xs text-muted">{locale === 'ar' ? customer.name_en : customer.name_ar}</p>
+                    <p className="text-xs text-text-subtle">{locale === 'ar' ? customer.name_en : customer.name_ar}</p>
                   </Td>
                   <Td dir="ltr">{customer.phone ?? '—'}</Td>
                   <Td dir="ltr">{customer.email ?? '—'}</Td>
@@ -140,7 +140,7 @@ export default function Customers() {
             <Input value={form.credit_limit} onChange={(event) => setForm({ ...form, credit_limit: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

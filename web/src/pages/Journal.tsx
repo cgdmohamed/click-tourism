@@ -119,7 +119,7 @@ export default function Journal() {
         actions={<Button onClick={() => setOpen(true)}>{t('newJournal')}</Button>}
       />
 
-      {error && !open ? <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+      {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
 
       <Card>
         {entriesQuery.isLoading ? <Loading /> : null}
@@ -177,7 +177,7 @@ export default function Journal() {
         onClose={() => setOpen(false)}
         footer={
           <>
-            <span className={totals.balanced ? 'me-auto text-sm text-positive' : 'me-auto text-sm text-negative'}>
+            <span className={totals.balanced ? 'me-auto text-sm text-success-text' : 'me-auto text-sm text-danger-text'}>
               {t('debit')}: {toDecimal(totals.debit, currency)} · {t('credit')}: {toDecimal(totals.credit, currency)}
             </span>
             <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -220,7 +220,7 @@ export default function Journal() {
 
         <div className="mt-5 flex flex-col gap-3">
           {lines.map((line, index) => (
-            <div key={index} className="grid gap-2 rounded-lg border border-line p-3 sm:grid-cols-12">
+            <div key={index} className="grid gap-2 rounded-12 border border-border-default p-3 sm:grid-cols-12">
               <div className="sm:col-span-5">
                 <Select value={line.account_id} onChange={(event) => updateLine(index, { account_id: event.target.value })}>
                   <option value="">{locale === 'ar' ? 'اختر الحساب' : 'Select account'}</option>
@@ -274,7 +274,7 @@ export default function Journal() {
           </Button>
         </div>
 
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

@@ -70,7 +70,7 @@ export default function Dashboard() {
               <CardHeader
                 title={t('bookings')}
                 actions={
-                  <Link to="/bookings" className="text-sm font-medium text-brand-700">
+                  <Link to="/bookings" className="text-sm font-medium text-brand-1-accent">
                     {t('reports')} →
                   </Link>
                 }
@@ -111,7 +111,7 @@ export default function Dashboard() {
               <CardHeader
                 title={t('payments')}
                 actions={
-                  <Link to="/payments" className="text-sm font-medium text-brand-700">
+                  <Link to="/payments" className="text-sm font-medium text-brand-1-accent">
                     {t('payments')} →
                   </Link>
                 }

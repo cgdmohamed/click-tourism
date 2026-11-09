@@ -85,7 +85,7 @@ export default function Leads() {
       />
 
       {staleCount > 0 ? (
-        <div className="mb-4 rounded-card border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-warning">
+        <div className="mb-4 rounded-16 border border-warning-border bg-warning-background px-4 py-3 text-medium text-warning-text">
           {locale === 'ar'
             ? `${staleCount} عميل محتمل بدون نشاط خلال 24 ساعة — سيُعاد توزيعه تلقائيًا.`
             : `${staleCount} lead(s) without activity for 24h — automatic reassignment will apply.`}
@@ -93,7 +93,7 @@ export default function Leads() {
       ) : null}
 
       <Card>
-        <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Select value={stageFilter} onChange={(event) => setStageFilter(event.target.value)} className="max-w-[180px]">
             <option value="">{locale === 'ar' ? 'كل المراحل' : 'All stages'}</option>
             {stages.map((stage) => (
@@ -143,7 +143,7 @@ export default function Leads() {
             </tbody>
           </Table>
         ) : null}
-        {error && !open ? <p className="px-5 py-3 text-sm text-negative">{error}</p> : null}
+        {error && !open ? <p className="px-5 py-3 text-sm text-danger-text">{error}</p> : null}
       </Card>
 
       <Modal
@@ -186,7 +186,7 @@ export default function Leads() {
             </Field>
           </div>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

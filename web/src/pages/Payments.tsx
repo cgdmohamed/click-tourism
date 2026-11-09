@@ -215,7 +215,7 @@ export default function Payments() {
             <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} dir="ltr" />
           </Field>
         </div>
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )

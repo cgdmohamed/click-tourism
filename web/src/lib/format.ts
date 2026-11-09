@@ -40,7 +40,7 @@ export function formatMoney(amountMinor: number | undefined | null, currency: st
   if (amountMinor === undefined || amountMinor === null) return '—'
   const value = amountMinor / 10 ** exponent(currency)
   try {
-    return new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
+    return new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
       style: 'currency',
       currency,
       minimumFractionDigits: exponent(currency),
@@ -55,7 +55,7 @@ export function formatDate(value: string | undefined | null, locale: 'ar' | 'en'
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
+  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -66,7 +66,7 @@ export function formatDateTime(value: string | undefined | null, locale: 'ar' | 
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
+  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',

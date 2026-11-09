@@ -136,10 +136,10 @@ export default function Reports() {
             key={tab.key}
             onClick={() => setReport(tab.key)}
             className={cx(
-              'rounded-lg border px-3 py-2 text-sm font-medium transition',
+              'rounded-12 border px-3 py-2 text-sm font-medium transition',
               report === tab.key
-                ? 'border-brand-200 bg-brand-50 text-brand-700'
-                : 'border-line bg-surface text-muted hover:text-ink',
+                ? 'border-border-selected bg-surface-selected text-text-default'
+                : 'border-border-subtle bg-surface-default text-text-subtle hover:text-text-default',
             )}
           >
             {locale === 'ar' ? tab.ar : tab.en}
@@ -148,7 +148,7 @@ export default function Reports() {
       </div>
 
       <Card>
-        <div className="flex flex-wrap items-end gap-3 border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-5 py-4">
           {report !== 'balance-sheet' && report !== 'aging' ? (
             <Field label={t('from')}>
               <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} dir="ltr" />
@@ -208,7 +208,7 @@ export default function Reports() {
                             </Td>
                           </tr>
                         ))}
-                        <tr className="bg-canvas/60 font-semibold">
+                        <tr className="bg-surface-subtle font-semibold">
                           <Td />
                           <Td>{t('total')}</Td>
                           <Td className="text-end">
@@ -239,7 +239,7 @@ export default function Reports() {
                   {statementRows(data.revenue, data.currency)}
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'المصروفات' : 'Expenses'}</div>
                   {statementRows(data.expenses, data.currency)}
-                  <div className="flex flex-wrap justify-end gap-6 border-t border-line px-5 py-4 text-sm">
+                  <div className="flex flex-wrap justify-end gap-6 border-t border-border-subtle px-5 py-4 text-sm">
                     <span>
                       {locale === 'ar' ? 'إجمالي الإيرادات' : 'Total revenue'}:{' '}
                       <Money amountMinor={data.total_revenue_minor} currency={data.currency} />
@@ -248,7 +248,7 @@ export default function Reports() {
                       {locale === 'ar' ? 'إجمالي المصروفات' : 'Total expenses'}:{' '}
                       <Money amountMinor={data.total_expense_minor} currency={data.currency} />
                     </span>
-                    <span className={data.net_profit_minor >= 0 ? 'font-semibold text-positive' : 'font-semibold text-negative'}>
+                    <span className={data.net_profit_minor >= 0 ? 'font-semibold text-success-text' : 'font-semibold text-danger-text'}>
                       {locale === 'ar' ? 'صافي الربح' : 'Net profit'}:{' '}
                       <Money amountMinor={data.net_profit_minor} currency={data.currency} />
                     </span>
@@ -270,7 +270,7 @@ export default function Reports() {
                   {statementRows(data.liabilities, data.currency)}
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'حقوق الملكية' : 'Equity'}</div>
                   {statementRows(data.equity, data.currency)}
-                  <div className="flex flex-wrap justify-end gap-6 border-t border-line px-5 py-4 text-sm">
+                  <div className="flex flex-wrap justify-end gap-6 border-t border-border-subtle px-5 py-4 text-sm">
                     <span>
                       {locale === 'ar' ? 'إجمالي الأصول' : 'Total assets'}:{' '}
                       <Money amountMinor={data.total_assets_minor} currency={data.currency} />
@@ -316,7 +316,7 @@ export default function Reports() {
                             </Td>
                           </tr>
                         ))}
-                        <tr className="bg-canvas/60 font-semibold">
+                        <tr className="bg-surface-subtle font-semibold">
                           <Td>{t('total')}</Td>
                           <Td className="text-end">
                             <Money amountMinor={data.total_minor} currency={data.currency} />

@@ -33,21 +33,21 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+    <div className="flex min-h-screen items-center justify-center bg-surface-canvas px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-brand-700">{t('appName')}</h1>
-            <p className="mt-1 text-sm text-muted">{t('appTagline')}</p>
+            <h1 className="heading-large text-brand-1-accent">{t('appName')}</h1>
+            <p className="text-medium mt-1 text-text-subtle">{t('appTagline')}</p>
           </div>
-          <button className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-muted" onClick={toggleLocale}>
+          <button className="rounded-12 border border-border-subtle bg-surface-default px-3 py-1.5 text-small font-medium text-text-subtle" onClick={toggleLocale}>
             {locale === 'ar' ? 'EN' : 'عربي'}
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="rounded-card border border-line bg-surface p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-ink">{t('login')}</h2>
-          <p className="mt-1 text-sm text-muted">{t('appTagline')}</p>
+        <form onSubmit={onSubmit} className="rounded-16 border border-border-subtle bg-surface-default p-6 shadow-2">
+          <h2 className="heading-medium text-text-default">{t('login')}</h2>
+          <p className="text-medium mt-1 text-text-subtle">{t('appTagline')}</p>
 
           <div className="mt-6 flex flex-col gap-4">
             <Field label={t('email')} required>
@@ -72,14 +72,14 @@ export default function Login() {
                 dir="ltr"
               />
             </Field>
-            {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+            {error ? <p className="rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
             <Button type="submit" disabled={submitting} className="w-full">
               {submitting ? t('signingIn') : t('signIn')}
             </Button>
           </div>
         </form>
 
-        <p className="mt-4 text-center text-xs text-muted">
+        <p className="text-small mt-4 text-center text-text-subtle">
           {locale === 'ar' ? 'نسخة تجريبية — بيانات الدخول من ملف التهيئة' : 'Demo build — credentials come from the seeder'}
         </p>
       </div>

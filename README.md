@@ -1,4 +1,4 @@
-# Tourism ERP — Safe Way reference installation
+# Tourism ERP — self-hosted reference installation
 
 Self-hosted accounting and operations system for a tourism business. This is a
 single reusable product installed once per customer — **not SaaS, not
@@ -203,19 +203,33 @@ Also unresolved and tracked in `docs/product/decisions-needed.md`: commission
 recognition, period-closing mechanics and branch accounting mode. Do not enable
 these in production until the accountant has confirmed the treatment.
 
-## Design system replacement point
+## Design system
 
-The customer design system has **not been supplied**. A temporary neutral token
-layer is isolated in one place:
+The supplied design system is the source of truth for the UI and is recorded in
+[`docs/design/DESIGN.md`](docs/design/DESIGN.md). It defines the primitive
+palettes, semantic surface/text/border/action/status roles, typography styles,
+radii, spacing, shadows, and component recipes.
 
-- [`web/src/index.css`](web/src/index.css) — the `@theme` block defines brand,
-  surface, line, ink, positive/negative and radius tokens.
+Implementation points:
+
+- [`web/src/index.css`](web/src/index.css) — Tailwind v4 `@theme` tokens,
+  light/dark role mapping, self-hosted font faces, and the complete typography
+  styles (`display-*`, `heading-*`, `text-*`, `label`).
 - [`web/src/components/ui.tsx`](web/src/components/ui.tsx) — shared primitives
-  (buttons, cards, tables, fields, modals, badges) built only from those tokens.
+  (buttons, cards, tables, fields, modals, badges) built only from semantic
+  tokens.
+- [`web/src/components/Layout.tsx`](web/src/components/Layout.tsx) — application
+  shell using the same tokens.
 
-When the approved design system arrives, replace the token values and primitive
-styles in those two files. Do not add a second UI kit or fork components per
-screen.
+**Fonts:** the client supplied **Suisse Intl** (400/500/600/700). It covers both
+Latin and Arabic, so the same family is used for the Arabic and English
+interfaces. The font files are self-hosted under `web/src/assets/fonts/`; no
+external font CDN is required. Numeric output is always Western digits
+`0123456789`; the Arabic locale uses `ar-EG-u-nu-latn` for dates and money.
+
+Do not add a second UI kit or fork components per screen. Use semantic tokens
+rather than primitive palette values in components, and keep light/dark roles in
+sync.
 
 ## Operational notes
 
@@ -225,9 +239,17 @@ screen.
   blocked until they are.
 - A stale GitHub OAuth token in `%APPDATA%\Composer\auth.json` breaks Composer.
   Rotate or remove it, or use an isolated `COMPOSER_HOME` for local work.
-- The workspace is not yet a git repository. The project rules require one
+- The repository is published at
+  <https://github.com/cgdmohamed/click-tourism>. The project rules require one
   issue → one branch → one PR, tests for every change, no force push, and no
-  deployment without human approval.
+  deployment without human approval. The client proposal
+  (`reference/SAFEWAY_PROPOSAL.txt`) is intentionally excluded from the
+  repository; it stays on the development machine.
+- **Suisse Intl licensing:** Suisse Intl is a commercially licensed typeface
+  supplied by the client. Before redistributing the repository or deploying to a
+  third party, confirm that the license covers the intended self-hosted use and
+  distribution. Replace the files in `web/src/assets/fonts/` if the license does
+  not permit public distribution.
 - When upgrading an existing installation, run
   `php artisan db:seed --class=RolePermissionSeeder` after `php artisan migrate`
   so newly introduced permissions are created and attached to roles. The seeder
@@ -244,6 +266,7 @@ web/            React + TypeScript + Vite frontend
 deploy/         nginx configuration used by the Docker stack
 docs/product/   PRD, module matrix, workflows, decisions, acceptance criteria, issues
 docs/architecture/ ADRs, ERD, event catalog, threat model, OpenAPI draft
+docs/design/    Design-system tokens and implementation notes
 reference/      Source proposal and product context
 tourism_erp_agent_prompts/  Delivery playbook and task/PR templates
 docker-compose.yml          PostgreSQL 16 + Redis + API + SPA

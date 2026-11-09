@@ -166,10 +166,10 @@ export default function Bookings() {
         actions={<Button onClick={() => setOpen(true)}>{t('newBooking')}</Button>}
       />
 
-      {error && !open ? <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+      {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
 
       <Card>
-        <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="max-w-[180px]">
             <option value="">{locale === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
             {['draft', 'quoted', 'confirmed', 'in_progress', 'completed', 'closed', 'cancelled', 'no_show'].map((status) => (
@@ -240,7 +240,7 @@ export default function Bookings() {
         onClose={() => setOpen(false)}
         footer={
           <>
-            <span className="me-auto text-sm text-muted">
+            <span className="me-auto text-sm text-text-subtle">
               {t('total')}: {toDecimal(totals.sell, form.currency)} · {t('margin')}: {toDecimal(totals.margin, form.currency)}
             </span>
             <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -296,7 +296,7 @@ export default function Bookings() {
         <h3 className="mt-6 text-sm font-semibold">{t('items')}</h3>
         <div className="mt-3 flex flex-col gap-3">
           {items.map((item, index) => (
-            <div key={index} className="grid gap-2 rounded-lg border border-line p-3 sm:grid-cols-12">
+            <div key={index} className="grid gap-2 rounded-12 border border-border-default p-3 sm:grid-cols-12">
               <div className="sm:col-span-2">
                 <Select value={item.service_type} onChange={(event) => updateItem(index, { service_type: event.target.value })}>
                   {['flight', 'hotel', 'transport', 'visa', 'program', 'other'].map((service) => (
@@ -368,7 +368,7 @@ export default function Bookings() {
           </Button>
         </div>
 
-        {error ? <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-negative">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
     </div>
   )
