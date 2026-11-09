@@ -13,6 +13,7 @@
 **Test cases:** opening balances, multi-currency, closed periods, branch scope, empty period, large dataset pagination.
 **Owned files:** `backend/app/Modules/Reporting/Ledger`, tests.
 **Reviewer:** Accountant.
+**Status:** Partial. `GET /reports/general-ledger` (account/period/branch, opening/running/closing, pagination, descendant accounts) and its UI tab are implemented with tests. Not yet done: party filter, trial balance by currency, CSV hook, drill-down link to the source document, and accountant review. The route is not yet in `openapi.yaml` (awaiting architect approval).
 
 ---
 

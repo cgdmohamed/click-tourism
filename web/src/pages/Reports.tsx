@@ -5,9 +5,41 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
 import type { Account } from '../lib/types'
-import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Money, PageHeader, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
+import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
 
-type ReportKey = 'trial-balance' | 'income-statement' | 'balance-sheet' | 'aging'
+type ReportKey = 'trial-balance' | 'general-ledger' | 'income-statement' | 'balance-sheet' | 'aging'
+
+type LedgerLine = {
+  entry_id: string
+  number: string
+  entry_date: string
+  memo: string | null
+  description: string | null
+  account_code: string
+  currency: string
+  debit_minor: number
+  credit_minor: number
+  base_debit_minor: number
+  base_credit_minor: number
+  balance_minor: number
+}
+
+type GeneralLedger = {
+  currency: string
+  account: Account
+  from: string
+  to: string
+  opening_minor: number
+  total_debit_minor: number
+  total_credit_minor: number
+  closing_minor: number
+  lines: LedgerLine[]
+}
+
+type LedgerResponse = {
+  data: GeneralLedger
+  meta: { current_page: number; last_page: number; total: number; per_page: number }
+}
 
 type StatementLine = {
   code: string
@@ -72,6 +104,8 @@ export default function Reports() {
   const [from, setFrom] = useState(firstOfYear())
   const [to, setTo] = useState(todayISO())
   const [agingType, setAgingType] = useState<'ar' | 'ap'>('ar')
+  const [ledgerAccount, setLedgerAccount] = useState('')
+  const [ledgerPage, setLedgerPage] = useState(1)
 
   const params = useMemo(() => {
     if (report === 'trial-balance') return { from, to }
@@ -80,16 +114,42 @@ export default function Reports() {
     return { type: agingType, as_of: to }
   }, [report, from, to, agingType])
 
+  const isLedger = report === 'general-ledger'
+
   const query = useQuery({
     queryKey: ['report', report, params, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<{ data: unknown }>(`/reports/${report}`, { params })
       return data.data
     },
+    enabled: !isLedger,
   })
+
+  const accountsQuery = useQuery({
+    queryKey: ['accounts'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: Account[] }>('/accounts')
+      return data.data
+    },
+    enabled: isLedger,
+  })
+
+  const ledgerQuery = useQuery({
+    queryKey: ['report', 'general-ledger', ledgerAccount, from, to, ledgerPage, activeBranch?.id],
+    queryFn: async () => {
+      const { data } = await api.get<LedgerResponse>('/reports/general-ledger', {
+        params: { account_id: ledgerAccount, from, to, page: ledgerPage, per_page: 50 },
+      })
+      return data
+    },
+    enabled: isLedger && ledgerAccount !== '',
+  })
+
+  const active = isLedger ? ledgerQuery : query
 
   const tabs: Array<{ key: ReportKey; ar: string; en: string }> = [
     { key: 'trial-balance', ar: 'ميزان المراجعة', en: 'Trial balance' },
+    { key: 'general-ledger', ar: 'دفتر الأستاذ', en: 'General ledger' },
     { key: 'income-statement', ar: 'قائمة الدخل', en: 'Income statement' },
     { key: 'balance-sheet', ar: 'المركز المالي', en: 'Balance sheet' },
     { key: 'aging', ar: 'أعمار الديون', en: 'Aging' },
@@ -149,13 +209,45 @@ export default function Reports() {
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-5 py-4">
-          {report !== 'balance-sheet' && report !== 'aging' ? (
-            <Field label={t('from')}>
-              <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} dir="ltr" />
+          {isLedger ? (
+            <Field label={t('account')}>
+              <SearchableSelect
+                value={ledgerAccount}
+                onChange={(value) => {
+                  setLedgerAccount(value)
+                  setLedgerPage(1)
+                }}
+                placeholder={t('selectAccount')}
+                options={(accountsQuery.data ?? []).map((account) => ({
+                  value: account.id,
+                  label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
+                }))}
+              />
             </Field>
           ) : null}
-          <Field label={report === 'trial-balance' || report === 'income-statement' ? t('to') : t('asOf')}>
-            <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} dir="ltr" />
+          {report !== 'balance-sheet' && report !== 'aging' ? (
+            <Field label={t('from')}>
+              <Input
+                type="date"
+                value={from}
+                onChange={(event) => {
+                  setFrom(event.target.value)
+                  setLedgerPage(1)
+                }}
+                dir="ltr"
+              />
+            </Field>
+          ) : null}
+          <Field label={report === 'trial-balance' || report === 'income-statement' || isLedger ? t('to') : t('asOf')}>
+            <Input
+              type="date"
+              value={to}
+              onChange={(event) => {
+                setTo(event.target.value)
+                setLedgerPage(1)
+              }}
+              dir="ltr"
+            />
           </Field>
           {report === 'aging' ? (
             <Field label={t('type')}>
@@ -165,13 +257,93 @@ export default function Reports() {
               </Select>
             </Field>
           ) : null}
-          <Button variant="secondary" onClick={() => void query.refetch()} disabled={query.isFetching}>
-            {query.isFetching ? <Spinner className="h-4 w-4" /> : t('run')}
+          <Button
+            variant="secondary"
+            onClick={() => void active.refetch()}
+            disabled={active.isFetching || (isLedger && ledgerAccount === '')}
+          >
+            {active.isFetching ? <Spinner className="h-4 w-4" /> : t('run')}
           </Button>
         </div>
 
-        {query.isLoading ? <Loading /> : null}
-        {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
+        {active.isLoading && active.fetchStatus !== 'idle' ? <Loading /> : null}
+        {active.isError ? <ErrorState message={errorMessage(active.error)} onRetry={() => void active.refetch()} /> : null}
+
+        {isLedger && ledgerAccount === '' ? <EmptyState title={t('selectAccountForLedger')} /> : null}
+
+        {isLedger && ledgerQuery.data
+          ? (() => {
+              const { data, meta } = ledgerQuery.data
+              const accountName = locale === 'ar' ? data.account.name_ar : data.account.name_en
+              return (
+                <>
+                  <CardHeader
+                    title={`${t('generalLedger')} · ${data.account.code} — ${accountName}`}
+                    subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`}
+                  />
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>{t('date')}</Th>
+                        <Th>{t('entryNumber')}</Th>
+                        <Th>{t('description')}</Th>
+                        <Th className="text-end">{t('debit')}</Th>
+                        <Th className="text-end">{t('credit')}</Th>
+                        <Th className="text-end">{t('balance')}</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {meta.current_page === 1 ? (
+                        <tr className="bg-surface-subtle font-semibold">
+                          <Td />
+                          <Td />
+                          <Td>{t('openingBalance')}</Td>
+                          <Td />
+                          <Td />
+                          <Td className="text-end">
+                            <Money amountMinor={data.opening_minor} currency={data.currency} />
+                          </Td>
+                        </tr>
+                      ) : null}
+                      {data.lines.map((line, index) => (
+                        <tr key={`${line.entry_id}-${index}`}>
+                          <Td className="tabular">{formatDate(line.entry_date, locale)}</Td>
+                          <Td className="tabular">{line.number}</Td>
+                          <Td>{line.description || line.memo || '—'}</Td>
+                          <Td className="text-end">
+                            <Money amountMinor={line.base_debit_minor} currency={data.currency} />
+                          </Td>
+                          <Td className="text-end">
+                            <Money amountMinor={line.base_credit_minor} currency={data.currency} />
+                          </Td>
+                          <Td className="text-end">
+                            <Money amountMinor={line.balance_minor} currency={data.currency} />
+                          </Td>
+                        </tr>
+                      ))}
+                      {meta.current_page === meta.last_page ? (
+                        <tr className="bg-surface-subtle font-semibold">
+                          <Td />
+                          <Td />
+                          <Td>{t('closingBalance')}</Td>
+                          <Td className="text-end">
+                            <Money amountMinor={data.total_debit_minor} currency={data.currency} />
+                          </Td>
+                          <Td className="text-end">
+                            <Money amountMinor={data.total_credit_minor} currency={data.currency} />
+                          </Td>
+                          <Td className="text-end">
+                            <Money amountMinor={data.closing_minor} currency={data.currency} />
+                          </Td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </Table>
+                  <Pagination page={meta.current_page} lastPage={meta.last_page} onChange={setLedgerPage} />
+                </>
+              )
+            })()
+          : null}
 
         {query.data && report === 'trial-balance'
           ? (() => {

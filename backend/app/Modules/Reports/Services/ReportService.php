@@ -2,6 +2,7 @@
 
 namespace App\Modules\Reports\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\SettingService;
@@ -57,6 +58,102 @@ class ReportService
             'total_debit_minor' => array_sum(array_column($rows, 'debit_minor')),
             'total_credit_minor' => array_sum(array_column($rows, 'credit_minor')),
         ];
+    }
+
+    /**
+     * General ledger for one account (including its descendants): opening
+     * balance, paginated movements with a running balance, and closing balance.
+     * Amounts are the stored base-currency values; sign is debit minus credit.
+     *
+     * @return array{summary: array<string, mixed>, lines: array<int, array<string, mixed>>, total: int}
+     */
+    public function generalLedger(Account $account, string $from, string $to, ?Branch $branch, int $page, int $perPage): array
+    {
+        $accountIds = $this->descendantIds($account);
+
+        $scoped = fn () => DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->whereIn('jl.account_id', $accountIds)
+            ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id));
+
+        $opening = $scoped()
+            ->whereDate('je.entry_date', '<', $from)
+            ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
+            ->first();
+        $openingMinor = (int) $opening->debit - (int) $opening->credit;
+
+        $period = $scoped()
+            ->whereDate('je.entry_date', '>=', $from)
+            ->whereDate('je.entry_date', '<=', $to);
+
+        $totals = (clone $period)
+            ->selectRaw('COUNT(*) as total, COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
+            ->first();
+
+        $running = (clone $period)
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->selectRaw('jl.id as line_id, je.public_id as entry_id, je.number, je.entry_date, je.memo, je.source_type, je.event')
+            ->selectRaw('a.code as account_code, jl.description, jl.currency_code, jl.debit_minor, jl.credit_minor')
+            ->selectRaw('jl.base_debit_minor, jl.base_credit_minor')
+            ->selectRaw('SUM(jl.base_debit_minor - jl.base_credit_minor) OVER (ORDER BY je.entry_date, je.id, jl.id) as running_minor');
+
+        $lines = DB::query()
+            ->fromSub($running, 't')
+            ->orderBy('entry_date')
+            ->orderBy('line_id')
+            ->offset(($page - 1) * $perPage)
+            ->limit($perPage)
+            ->get()
+            ->map(fn ($row) => [
+                'entry_id' => $row->entry_id,
+                'number' => $row->number,
+                'entry_date' => substr((string) $row->entry_date, 0, 10),
+                'memo' => $row->memo,
+                'description' => $row->description,
+                'account_code' => $row->account_code,
+                'source_type' => $row->source_type,
+                'event' => $row->event,
+                'currency' => $row->currency_code,
+                'debit_minor' => (int) $row->debit_minor,
+                'credit_minor' => (int) $row->credit_minor,
+                'base_debit_minor' => (int) $row->base_debit_minor,
+                'base_credit_minor' => (int) $row->base_credit_minor,
+                'balance_minor' => $openingMinor + (int) $row->running_minor,
+            ])
+            ->all();
+
+        $debit = (int) $totals->debit;
+        $credit = (int) $totals->credit;
+
+        return [
+            'summary' => [
+                'currency' => $this->settings->baseCurrency(),
+                'account' => $account->toApiArray(),
+                'from' => $from,
+                'to' => $to,
+                'opening_minor' => $openingMinor,
+                'total_debit_minor' => $debit,
+                'total_credit_minor' => $credit,
+                'closing_minor' => $openingMinor + $debit - $credit,
+            ],
+            'lines' => $lines,
+            'total' => (int) $totals->total,
+        ];
+    }
+
+    /** @return int[] */
+    private function descendantIds(Account $account): array
+    {
+        $ids = [$account->id];
+        $frontier = [$account->id];
+
+        while ($frontier !== []) {
+            $frontier = Account::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $ids = array_merge($ids, $frontier);
+        }
+
+        return $ids;
     }
 
     public function incomeStatement(string $from, string $to, ?Branch $branch): array

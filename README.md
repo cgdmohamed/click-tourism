@@ -36,7 +36,9 @@ Working end to end against the seeded demo data:
   because it is blocked on DEC-002 (supplier cost recognition).
 - Manual journal entries: balanced validation, save as draft, post a draft,
   reverse a posted entry.
-- Trial balance, income statement, balance sheet, receivables aging, dashboard.
+- Trial balance, general ledger (opening balance, running balance, closing
+  balance, pagination, descendants of parent accounts), income statement,
+  balance sheet, receivables aging, dashboard.
 - CRM leads, conversion to customer, inactivity reassignment.
 - Meta / WhatsApp webhook verification, HMAC validation and message-id dedupe
   (live acceptance still needs real credentials).
@@ -54,7 +56,7 @@ allocation, supplier obligation → payment → advance → apply, manual journa
   `backend/app/Modules/Core/Services/DecisionRegistry.php` and must be kept in
   sync with `docs/product/decisions-needed.md`.
 
-`php artisan test` → **82 passing tests (452 assertions)**. The API smoke script
+`php artisan test` → **93 passing tests (512 assertions)**. The API smoke script
 in `C:\Users\Mohamed\AppData\Local\Temp\opencode\smoke.ps1` also passes against a
 seeded database.
 
