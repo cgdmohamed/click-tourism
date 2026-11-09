@@ -604,6 +604,108 @@ paths:
         '404': { description: Not found }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Validation' }
+  /cost-centers:
+    get:
+      tags: [Accounting]
+      summary: List cost centers (analytical dimension on journal lines)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, archived] } }
+        - { name: include_archived, in: query, schema: { type: boolean } }
+        - { name: with_children, in: query, schema: { type: boolean } }
+      responses:
+        '200': { description: Cost centers }
+    post:
+      tags: [Accounting]
+      summary: Create a cost center
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CostCenterInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /cost-centers/{center}:
+    get:
+      tags: [Accounting]
+      summary: Get a cost center with its children
+      parameters:
+        - { name: center, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cost center }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Accounting]
+      summary: Update a cost center
+      parameters:
+        - { name: center, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CostCenterInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /cost-centers/{center}/archive:
+    post:
+      tags: [Accounting]
+      summary: Archive a cost center (rejected if it carries allocations)
+      parameters:
+        - { name: center, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Archived }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /journal-lines/{line}/cost-allocations:
+    get:
+      tags: [Accounting]
+      summary: Get cost center allocations for a journal line
+      parameters:
+        - { name: line, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Allocations }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    post:
+      tags: [Accounting]
+      summary: Allocate a posted journal line to cost centers
+      parameters:
+        - { name: line, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CostCenterAllocationInput' }
+      responses:
+        '201': { description: Allocations created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/cost-center-pl:
+    get:
+      tags: [Accounting]
+      summary: Cost center profit and loss for a period
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Cost center P&L }
+  /reports/cost-center-unallocated:
+    get:
+      tags: [Accounting]
+      summary: Journal lines without cost center allocations
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Unallocated lines }
   /fiscal-periods:
     get:
       tags: [Accounting]
@@ -1552,3 +1654,54 @@ components:
         tax_account_id: { type: string }
         party_type: { type: string, enum: [customer, supplier], nullable: true }
         party_id: { type: string }
+    CostCenter:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        parent_id: { type: string, nullable: true }
+        status: { type: string, enum: [active, archived] }
+        effective_from: { type: string, format: date, nullable: true }
+        effective_to: { type: string, format: date, nullable: true }
+        is_active: { type: boolean }
+        children:
+          type: array
+          items: { $ref: '#/components/schemas/CostCenter' }
+    CostCenterInput:
+      type: object
+      required: [code, name_ar, name_en]
+      properties:
+        code: { type: string, maxLength: 40 }
+        name_ar: { type: string }
+        name_en: { type: string }
+        parent_id: { type: string }
+        status: { type: string, enum: [active, archived] }
+        effective_from: { type: string, format: date }
+        effective_to: { type: string, format: date }
+        is_active: { type: boolean }
+    CostCenterAllocation:
+      type: object
+      properties:
+        id: { type: string }
+        journal_line_id: { type: integer }
+        cost_center: { $ref: '#/components/schemas/CostCenter' }
+        allocation_type: { type: string, enum: [exact, percent] }
+        amount_minor: { type: integer }
+        percent: { type: string, nullable: true }
+    CostCenterAllocationInput:
+      type: object
+      required: [allocations]
+      properties:
+        allocations:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [cost_center_id]
+            properties:
+              cost_center_id: { type: string }
+              allocation_type: { type: string, enum: [exact, percent] }
+              amount_minor: { type: integer, minimum: 0 }
+              percent: { type: number, minimum: 0, maximum: 100 }

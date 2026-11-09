@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CashAccountController;
+use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ExpenseController;
@@ -85,6 +86,18 @@ Route::prefix('v1')->group(function () {
         Route::post('transfers', [TransferController::class, 'store'])->middleware(['permission:transfers.create', 'idempotent']);
         Route::get('transfers/{transfer}', [TransferController::class, 'show'])->middleware('permission:transfers.view');
         Route::post('transfers/{transfer}/reverse', [TransferController::class, 'reverse'])->middleware('permission:transfers.reverse');
+
+        Route::get('cost-centers', [CostCenterController::class, 'index'])->middleware('permission:cost_centers.view');
+        Route::post('cost-centers', [CostCenterController::class, 'store'])->middleware('permission:cost_centers.manage');
+        Route::get('cost-centers/{center}', [CostCenterController::class, 'show'])->middleware('permission:cost_centers.view');
+        Route::patch('cost-centers/{center}', [CostCenterController::class, 'update'])->middleware('permission:cost_centers.manage');
+        Route::post('cost-centers/{center}/archive', [CostCenterController::class, 'archive'])->middleware('permission:cost_centers.manage');
+
+        Route::get('journal-lines/{line}/cost-allocations', [CostCenterController::class, 'allocations'])->middleware('permission:cost_centers.view');
+        Route::post('journal-lines/{line}/cost-allocations', [CostCenterController::class, 'allocate'])->middleware('permission:cost_centers.manage');
+
+        Route::get('reports/cost-center-pl', [CostCenterController::class, 'profitAndLoss'])->middleware('permission:cost_centers.view');
+        Route::get('reports/cost-center-unallocated', [CostCenterController::class, 'unallocated'])->middleware('permission:cost_centers.view');
 
         Route::get('fiscal-periods', [FiscalPeriodController::class, 'index'])->middleware('permission:periods.view');
         Route::post('fiscal-periods', [FiscalPeriodController::class, 'store'])->middleware('permission:periods.manage');
