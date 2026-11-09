@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Core\Models\Branch;
+use App\Modules\CRM\Models\Lead;
 use App\Modules\CRM\Services\LeadService;
 use App\Modules\Integrations\Models\WebhookEvent;
 use Illuminate\Http\JsonResponse;
@@ -123,7 +124,7 @@ class WebhookController extends ApiController
                     }
 
                     $externalId = (string) ($message['id'] ?? '');
-                    if ($externalId !== '' && \App\Modules\CRM\Models\Lead::query()->where('external_id', $externalId)->exists()) {
+                    if ($externalId !== '' && Lead::query()->where('external_id', $externalId)->exists()) {
                         continue;
                     }
 

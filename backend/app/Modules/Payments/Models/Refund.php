@@ -2,6 +2,7 @@
 
 namespace App\Modules\Payments\Models;
 
+use App\Modules\Bookings\Models\Booking;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -38,6 +39,6 @@ class Refund extends Model
 
     public function booking()
     {
-        return $this->belongsTo(\App\Modules\Bookings\Models\Booking::class);
+        return $this->belongsTo(Booking::class);
     }
 }

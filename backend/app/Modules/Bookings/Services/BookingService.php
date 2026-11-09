@@ -2,6 +2,7 @@
 
 namespace App\Modules\Bookings\Services;
 
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
@@ -48,8 +49,7 @@ class BookingService
         private readonly FxService $fx,
         private readonly PostingService $posting,
         private readonly AuditService $audit,
-    ) {
-    }
+    ) {}
 
     public function create(array $data, ?int $actorId = null): Booking
     {
@@ -211,7 +211,7 @@ class BookingService
 
     public function postRevenue(Booking $booking, ?int $actorId = null): void
     {
-        $alreadyPosted = $booking->status !== 'cancelled' && \App\Modules\Accounting\Models\JournalEntry::query()
+        $alreadyPosted = $booking->status !== 'cancelled' && JournalEntry::query()
             ->where('source_type', 'booking')
             ->where('source_id', $booking->id)
             ->where('event', 'revenue')
@@ -258,7 +258,7 @@ class BookingService
             return;
         }
 
-        $exists = \App\Modules\Accounting\Models\JournalEntry::query()
+        $exists = JournalEntry::query()
             ->where('source_type', 'booking')
             ->where('source_id', $booking->id)
             ->where('event', 'cost')
@@ -317,7 +317,7 @@ class BookingService
 
     private function reverseBookingEntries(Booking $booking, string $reason, ?int $actorId): void
     {
-        $entries = \App\Modules\Accounting\Models\JournalEntry::query()
+        $entries = JournalEntry::query()
             ->where('source_type', 'booking')
             ->where('source_id', $booking->id)
             ->whereNull('reversal_of_id')
@@ -325,7 +325,7 @@ class BookingService
             ->get();
 
         foreach ($entries as $entry) {
-            $alreadyReversed = \App\Modules\Accounting\Models\JournalEntry::query()
+            $alreadyReversed = JournalEntry::query()
                 ->where('reversal_of_id', $entry->id)
                 ->exists();
 

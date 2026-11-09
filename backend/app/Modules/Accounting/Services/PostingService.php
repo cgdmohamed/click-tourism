@@ -14,6 +14,7 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
 use App\Support\Money;
 use DomainException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -31,8 +32,7 @@ class PostingService
         private readonly BranchScope $branchScope,
         private readonly FxService $fx,
         private readonly AuditService $audit,
-    ) {
-    }
+    ) {}
 
     public function post(PostingRequest $request): JournalEntry
     {
@@ -99,7 +99,7 @@ class PostingService
             $prepared = $this->prepareLines($request, $baseCurrency);
 
             $entry = new JournalEntry([
-                'number' => $this->sequences->next('journal', $request->branch, \Illuminate\Support\Carbon::parse($request->entryDate)),
+                'number' => $this->sequences->next('journal', $request->branch, Carbon::parse($request->entryDate)),
                 'entry_date' => $request->entryDate,
                 'branch_id' => $request->branch->id,
                 'fiscal_period_id' => $period->id,

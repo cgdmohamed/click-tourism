@@ -21,8 +21,7 @@ class ReportService
     public function __construct(
         private readonly SettingService $settings,
         private readonly FxService $fx,
-    ) {
-    }
+    ) {}
 
     /**
      * Without $onlyCurrency the report sums stored base-currency amounts.

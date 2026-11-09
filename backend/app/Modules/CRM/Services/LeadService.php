@@ -25,8 +25,7 @@ class LeadService
         private readonly SettingService $settings,
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
-    ) {
-    }
+    ) {}
 
     public function create(array $data, ?int $actorId = null): Lead
     {

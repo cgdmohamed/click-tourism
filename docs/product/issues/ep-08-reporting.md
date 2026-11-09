@@ -13,7 +13,7 @@
 **Test cases:** opening balances, multi-currency, closed periods, branch scope, empty period, large dataset pagination.
 **Owned files:** `backend/app/Modules/Reporting/Ledger`, tests.
 **Reviewer:** Accountant.
-**Status:** Partial. `GET /reports/general-ledger` (account/period/branch, opening/running/closing, pagination, descendant accounts) and its UI tab are implemented with tests. Not yet done: party filter, trial balance by currency, CSV hook, drill-down link to the source document, and accountant review. The route is not yet in `openapi.yaml` (awaiting architect approval).
+**Status:** Implemented, pending accountant review. `GET /reports/general-ledger` (account/period/branch, opening/running/closing, pagination, descendant accounts, currency and customer/supplier filters), trial balance per currency, CSV export (`reports.export`, audited) and drill-down to the journal entry (which shows its source type) are done with tests and are in `openapi.yaml` (additive; architect to confirm). Known limits: booking-cost postings carry no supplier party (DEC-002), so the supplier filter only matches settlement postings; drill-down opens the journal entry rather than the originating document page.
 
 ---
 

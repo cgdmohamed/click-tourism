@@ -2,6 +2,7 @@
 
 namespace App\Modules\Bookings\Models;
 
+use App\Modules\Parties\Models\Supplier;
 use Illuminate\Database\Eloquent\Model;
 
 class BookingItem extends Model
@@ -47,7 +48,7 @@ class BookingItem extends Model
 
     public function supplier()
     {
-        return $this->belongsTo(\App\Modules\Parties\Models\Supplier::class);
+        return $this->belongsTo(Supplier::class);
     }
 
     public function toApiArray(): array

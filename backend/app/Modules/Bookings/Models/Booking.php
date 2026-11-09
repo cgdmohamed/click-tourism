@@ -2,6 +2,10 @@
 
 namespace App\Modules\Bookings\Models;
 
+use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
+use App\Modules\Parties\Models\Customer;
+use App\Modules\Payments\Models\PaymentAllocation;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -61,17 +65,17 @@ class Booking extends Model
 
     public function customer()
     {
-        return $this->belongsTo(\App\Modules\Parties\Models\Customer::class);
+        return $this->belongsTo(Customer::class);
     }
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 
     public function owner()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\User::class, 'owner_user_id');
+        return $this->belongsTo(User::class, 'owner_user_id');
     }
 
     public function items()
@@ -86,7 +90,7 @@ class Booking extends Model
 
     public function allocations()
     {
-        return $this->hasMany(\App\Modules\Payments\Models\PaymentAllocation::class);
+        return $this->hasMany(PaymentAllocation::class);
     }
 
     public function paidMinor(): int

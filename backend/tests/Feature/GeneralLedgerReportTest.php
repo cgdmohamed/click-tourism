@@ -380,7 +380,7 @@ class GeneralLedgerReportTest extends TestCase
         $this->user->givePermissionTo('reports.export');
     }
 
-    private function ledgerExport(?Branch $branch = null): \Illuminate\Testing\TestResponse
+    private function ledgerExport(?Branch $branch = null): TestResponse
     {
         return $this->withHeaders(['X-Branch-Id' => ($branch ?? $this->branch)->public_id])
             ->getJson('/api/v1/reports/general-ledger/export?'.http_build_query([

@@ -2,6 +2,9 @@
 
 namespace App\Modules\Payments\Models;
 
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Core\Models\Branch;
+use App\Modules\Parties\Models\Supplier;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -36,7 +39,7 @@ class SupplierPayment extends Model
 
     public function supplier()
     {
-        return $this->belongsTo(\App\Modules\Parties\Models\Supplier::class);
+        return $this->belongsTo(Supplier::class);
     }
 
     public function obligation()
@@ -46,12 +49,12 @@ class SupplierPayment extends Model
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 
     public function cashAccount()
     {
-        return $this->belongsTo(\App\Modules\Accounting\Models\Account::class, 'cash_account_id');
+        return $this->belongsTo(Account::class, 'cash_account_id');
     }
 
     public function applications()

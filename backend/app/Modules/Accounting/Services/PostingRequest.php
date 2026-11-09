@@ -27,8 +27,7 @@ final class PostingRequest
         public readonly ?int $sourceId = null,
         public readonly ?string $event = null,
         public readonly ?int $actorId = null,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  PostingLine[]  $lines

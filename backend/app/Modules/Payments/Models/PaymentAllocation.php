@@ -2,6 +2,7 @@
 
 namespace App\Modules\Payments\Models;
 
+use App\Modules\Bookings\Models\Booking;
 use Illuminate\Database\Eloquent\Model;
 
 class PaymentAllocation extends Model
@@ -26,6 +27,6 @@ class PaymentAllocation extends Model
 
     public function booking()
     {
-        return $this->belongsTo(\App\Modules\Bookings\Models\Booking::class);
+        return $this->belongsTo(Booking::class);
     }
 }

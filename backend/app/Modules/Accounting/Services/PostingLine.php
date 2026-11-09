@@ -18,8 +18,7 @@ final class PostingLine
         public readonly ?string $partyType = null,
         public readonly ?int $partyId = null,
         public readonly ?string $description = null,
-    ) {
-    }
+    ) {}
 
     public static function debit(Account $account, int $amountMinor, ?string $partyType = null, ?int $partyId = null, ?string $description = null): self
     {

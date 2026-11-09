@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Payments\Models\Payment;
-use App\Modules\Payments\Models\Refund;
 use App\Modules\Payments\Services\PaymentService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;

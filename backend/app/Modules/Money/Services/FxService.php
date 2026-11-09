@@ -2,6 +2,7 @@
 
 namespace App\Modules\Money\Services;
 
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Models\FxRate;
 use App\Support\Money;
 use DomainException;
@@ -16,7 +17,7 @@ use Illuminate\Support\Carbon;
  */
 class FxService
 {
-    public function __construct(private readonly \App\Modules\Core\Services\SettingService $settings) {}
+    public function __construct(private readonly SettingService $settings) {}
 
     public function baseCurrency(): string
     {

@@ -39,8 +39,7 @@ class SupplierSettlementService
         private readonly FxService $fx,
         private readonly PostingService $posting,
         private readonly AuditService $audit,
-    ) {
-    }
+    ) {}
 
     public function createObligation(array $data, ?int $actorId = null): SupplierObligation
     {

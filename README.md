@@ -36,9 +36,19 @@ Working end to end against the seeded demo data:
   because it is blocked on DEC-002 (supplier cost recognition).
 - Manual journal entries: balanced validation, save as draft, post a draft,
   reverse a posted entry.
-- Trial balance, general ledger (opening balance, running balance, closing
-  balance, pagination, descendants of parent accounts), income statement,
-  balance sheet, receivables aging, dashboard.
+- Trial balance (optionally per currency), general ledger (opening, running and
+  closing balance, pagination, descendants of parent accounts, currency and
+  customer/supplier filters, drill-down to the journal entry), income
+  statement, balance sheet, receivables aging, dashboard.
+- CSV export of the trial balance and general ledger
+  (`/reports/trial-balance/export`, `/reports/general-ledger/export`),
+  requiring the new `reports.export` permission (admin and accountant). Exports
+  are audited (`report.exported`), capped at 50,000 rows, and neutralise
+  spreadsheet formulas. Run `php artisan db:seed --class=RolePermissionSeeder`
+  after upgrading so the permission exists.
+- Record-level branch scope: reading or changing a booking, payment, customer,
+  supplier, lead or journal entry of a branch the user is not assigned to
+  returns 403.
 - CRM leads, conversion to customer, inactivity reassignment.
 - Meta / WhatsApp webhook verification, HMAC validation and message-id dedupe
   (live acceptance still needs real credentials).
@@ -49,14 +59,17 @@ allocation, supplier obligation → payment → advance → apply, manual journa
 (draft, post, reverse) and settings save. The production stack is described by
 `docker-compose.yml`; the CI workflow is in `.github/workflows/ci.yml`.
 
-- Public `GET /api/v1/health` reports app, database, cache and queue status (HTTP
-  503 when the database is down) plus the list of unresolved decisions.
+- Public `GET /api/v1/health` reports app, database, cache, Redis, queue (with
+  failed-job count) and scheduler heartbeat (HTTP 503 only when the database is
+  down) plus the list of unresolved decisions; `GET /api/v1/ready` is the
+  readiness probe used by the Docker healthcheck. The version comes from
+  `APP_VERSION`.
   `GET /api/v1/decisions` (permission `settings.view`) returns the same list, and
   **Settings** shows it. The list lives in
   `backend/app/Modules/Core/Services/DecisionRegistry.php` and must be kept in
   sync with `docs/product/decisions-needed.md`.
 
-`php artisan test` → **93 passing tests (512 assertions)**. The API smoke script
+`php artisan test` → **130 passing tests (755 assertions)**. The API smoke script
 in `C:\Users\Mohamed\AppData\Local\Temp\opencode\smoke.ps1` also passes against a
 seeded database.
 

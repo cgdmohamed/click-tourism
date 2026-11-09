@@ -2,6 +2,10 @@
 
 namespace App\Modules\Payments\Models;
 
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Bookings\Models\Booking;
+use App\Modules\Core\Models\Branch;
+use App\Modules\Parties\Models\Customer;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -40,12 +44,12 @@ class Payment extends Model
 
     public function customer()
     {
-        return $this->belongsTo(\App\Modules\Parties\Models\Customer::class);
+        return $this->belongsTo(Customer::class);
     }
 
     public function booking()
     {
-        return $this->belongsTo(\App\Modules\Bookings\Models\Booking::class);
+        return $this->belongsTo(Booking::class);
     }
 
     public function allocations()
@@ -55,12 +59,12 @@ class Payment extends Model
 
     public function cashAccount()
     {
-        return $this->belongsTo(\App\Modules\Accounting\Models\Account::class, 'cash_account_id');
+        return $this->belongsTo(Account::class, 'cash_account_id');
     }
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 
     public function toApiArray(): array

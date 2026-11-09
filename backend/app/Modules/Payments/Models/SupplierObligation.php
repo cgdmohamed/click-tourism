@@ -2,6 +2,9 @@
 
 namespace App\Modules\Payments\Models;
 
+use App\Modules\Bookings\Models\BookingItem;
+use App\Modules\Core\Models\Branch;
+use App\Modules\Parties\Models\Supplier;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -28,17 +31,17 @@ class SupplierObligation extends Model
 
     public function supplier()
     {
-        return $this->belongsTo(\App\Modules\Parties\Models\Supplier::class);
+        return $this->belongsTo(Supplier::class);
     }
 
     public function bookingItem()
     {
-        return $this->belongsTo(\App\Modules\Bookings\Models\BookingItem::class);
+        return $this->belongsTo(BookingItem::class);
     }
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 
     public function applications()

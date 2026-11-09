@@ -2,6 +2,8 @@
 
 namespace App\Modules\Parties\Models;
 
+use App\Modules\Bookings\Models\Booking;
+use App\Modules\Core\Models\Branch;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -32,7 +34,7 @@ class Customer extends Model
 
     public function bookings()
     {
-        return $this->hasMany(\App\Modules\Bookings\Models\Booking::class);
+        return $this->hasMany(Booking::class);
     }
 
     public function toApiArray(): array
@@ -54,6 +56,6 @@ class Customer extends Model
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 }

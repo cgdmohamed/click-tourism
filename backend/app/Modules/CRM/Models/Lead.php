@@ -2,6 +2,10 @@
 
 namespace App\Modules\CRM\Models;
 
+use App\Modules\Bookings\Models\Booking;
+use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
+use App\Modules\Parties\Models\Customer;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -48,7 +52,7 @@ class Lead extends Model
 
     public function owner()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\User::class, 'owner_user_id');
+        return $this->belongsTo(User::class, 'owner_user_id');
     }
 
     public function activities()
@@ -58,7 +62,7 @@ class Lead extends Model
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 
     public function toApiArray(): array
@@ -84,11 +88,11 @@ class Lead extends Model
 
     public function convertedCustomer()
     {
-        return $this->belongsTo(\App\Modules\Parties\Models\Customer::class, 'converted_customer_id');
+        return $this->belongsTo(Customer::class, 'converted_customer_id');
     }
 
     public function convertedBooking()
     {
-        return $this->belongsTo(\App\Modules\Bookings\Models\Booking::class, 'converted_booking_id');
+        return $this->belongsTo(Booking::class, 'converted_booking_id');
     }
 }

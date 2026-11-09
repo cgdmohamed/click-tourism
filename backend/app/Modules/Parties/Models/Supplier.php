@@ -2,6 +2,7 @@
 
 namespace App\Modules\Parties\Models;
 
+use App\Modules\Core\Models\Branch;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
@@ -29,7 +30,7 @@ class Supplier extends Model
 
     public function branch()
     {
-        return $this->belongsTo(\App\Modules\Core\Models\Branch::class);
+        return $this->belongsTo(Branch::class);
     }
 
     public function toApiArray(): array

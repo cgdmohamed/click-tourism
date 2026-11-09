@@ -12,9 +12,9 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Dependencies:** None.
 **API contract changes:** None.
 **Acceptance criteria:**
-- [ ] `docker compose up` from a clean clone runs migrations and serves API + SPA.
-- [x] `/health` reports app/db/redis/queue.
-- [ ] CI runs formatting, static analysis, backend tests, frontend typecheck/build on PR.
+- [ ] `docker compose up` from a clean clone runs migrations and serves API + SPA. **UNVERIFIED** — `docker compose config` validates (including the `workers` profile and API healthcheck), but the stack was never built or started because no Docker daemon was available.
+- [x] `/health` reports app/db/redis/queue (plus scheduler heartbeat and failed-job count); `/ready` is the readiness probe.
+- [ ] CI runs formatting, static analysis, backend tests, frontend typecheck/build on PR. Formatting (Pint), tests, `composer audit`, lint and build are in place; **static analysis (PHPStan/Larastan) is not yet added**.
 - [ ] No secrets committed; `.env.example` documents every required variable.
 **Test commands:** `docker compose config`, backend `php artisan test`, frontend `npm run typecheck && npm run build`.
 **Owned files:** root config, `docker/`, `.github/`, `backend/` bootstrap, `web/` bootstrap.

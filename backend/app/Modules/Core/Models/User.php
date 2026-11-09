@@ -3,6 +3,7 @@
 namespace App\Modules\Core\Models;
 
 use App\Support\HasPublicId;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -46,9 +47,9 @@ class User extends Authenticatable
         return $this->belongsToMany(Branch::class, 'user_branch')->withTimestamps();
     }
 
-    protected static function newFactory(): \Database\Factories\UserFactory
+    protected static function newFactory(): UserFactory
     {
-        return \Database\Factories\UserFactory::new();
+        return UserFactory::new();
     }
 
     public function branchIds(): array

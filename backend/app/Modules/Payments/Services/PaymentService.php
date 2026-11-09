@@ -35,8 +35,7 @@ class PaymentService
         private readonly FxService $fx,
         private readonly PostingService $posting,
         private readonly AuditService $audit,
-    ) {
-    }
+    ) {}
 
     public function record(array $data, ?int $actorId = null, ?string $idempotencyKey = null): Payment
     {
