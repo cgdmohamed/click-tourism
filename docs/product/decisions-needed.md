@@ -36,6 +36,10 @@ No decision may be silently assumed in code. When implementation starts, unresol
 | DEC-028 | ACC | **Booking invoice document** | Is a tax invoice required separate from booking confirmation? | Confirm with accountant; template designed to serve both | BOOK, RPT, TAX |
 | DEC-029 | HUM | **Language of legal documents** | Arabic only, English only, or bilingual PDFs | Bilingual, configurable per template | RPT, UI |
 | DEC-030 | HUM | **Reference data seeding** | Which CoA/tax/commission defaults ship per country | Ship neutral template + country preset packs (Egypt/GCC) | FOUNDATION |
+| DEC-031 | ACC | **Cash and transfer policy** | Block negative cash? In-transit account for transfers? FX treatment of cross-currency transfers (gain/loss account vs. clearing) | Allow negative (setting `treasury.block_negative_cash`); no in-transit; difference to FX gain/loss | TE-018, PAY, RPT |
+| DEC-032 | ACC | **Expense approval and input tax** | Approval thresholds per amount/role; maker-checker; input-VAT account and recoverability | Maker ≠ checker on (setting `expenses.segregation`); no thresholds; input VAT to `accounting.input_tax_account_code` (1160) | TE-019, TAX, RPT |
+| DEC-033 | ACC | **Opening balances cutover** | One batch per branch vs. many; AR/AP detail mandatory; correction by reversal only | One posted batch per branch and date; AR/AP lines must carry a party; reversal then new batch | TE-017, DATA |
+| DEC-034 | ACC | **Year-end close and reopening** | Closing entry per branch vs. consolidated; retained-earnings account; who may reopen; reversal of closing entries on reopen | Per branch, account 3100, `periods.reopen`, closing entries reversed on reopen | TE-021, FIN, RPT |
 
 ## Decision workflow
 

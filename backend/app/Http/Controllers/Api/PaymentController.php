@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Modules\Accounting\Models\Account;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
@@ -65,33 +64,5 @@ class PaymentController extends ApiController
         $payment = $payments->record($data, $this->actorId(), $request->header('Idempotency-Key'));
 
         return $this->created($payment->toApiArray());
-    }
-
-    /**
-     * Cash and bank accounts available for receipts. Configurable through the
-     * chart of accounts; the AR control account is excluded.
-     */
-    public function cashAccounts(): JsonResponse
-    {
-        $arCode = (string) $this->settings()->get('accounting', 'ar_account_code', '1100');
-
-        $accounts = Account::query()
-            ->where('type', 'asset')
-            ->where('is_active', true)
-            ->where('is_postable', true)
-            ->where('code', 'like', '11%')
-            ->where('code', '!=', $arCode)
-            ->orderBy('code')
-            ->get()
-            ->map(fn (Account $account) => [
-                'id' => $account->public_id,
-                'code' => $account->code,
-                'name_ar' => $account->name_ar,
-                'name_en' => $account->name_en,
-                'currency' => $account->currency_code ?? $this->settings()->baseCurrency(),
-                'type' => str_contains(strtolower($account->name_en), 'bank') ? 'bank' : 'cash',
-            ]);
-
-        return $this->ok($accounts);
     }
 }

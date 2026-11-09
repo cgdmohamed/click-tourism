@@ -55,6 +55,8 @@ class SequenceService
             'payment' => 'payment_prefix',
             'refund' => 'refund_prefix',
             'supplier_payment' => 'supplier_payment_prefix',
+            'transfer' => 'transfer_prefix',
+            'expense' => 'expense_prefix',
             default => null,
         };
 

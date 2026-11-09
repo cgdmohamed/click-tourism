@@ -32,8 +32,13 @@ class RolePermissionSeeder extends Seeder
             'payments.view', 'payments.create',
             'refunds.create', 'refunds.approve',
             'reports.view', 'reports.export',
+            'cash_accounts.manage', 'transfers.view', 'transfers.create', 'transfers.reverse',
+            'expense_categories.manage', 'expenses.view', 'expenses.create', 'expenses.approve',
+            'opening_balances.view', 'opening_balances.manage', 'opening_balances.post', 'opening_balances.reverse',
+            'periods.close', 'periods.reopen',
         ],
         'sales' => [
+            'expenses.view', 'expenses.create',
             'branches.view',
             'accounts.view',
             'customers.view', 'customers.create', 'customers.update',
@@ -57,6 +62,7 @@ class RolePermissionSeeder extends Seeder
             'payments.view',
             'reports.view',
             'leads.view',
+            'transfers.view', 'expenses.view', 'opening_balances.view',
         ],
     ];
 
@@ -75,6 +81,10 @@ class RolePermissionSeeder extends Seeder
         'refunds.create', 'refunds.approve',
         'reports.view', 'reports.export',
         'leads.view', 'leads.create', 'leads.update', 'leads.convert',
+        'cash_accounts.manage', 'transfers.view', 'transfers.create', 'transfers.reverse',
+        'expense_categories.manage', 'expenses.view', 'expenses.create', 'expenses.approve',
+        'opening_balances.view', 'opening_balances.manage', 'opening_balances.post', 'opening_balances.reverse',
+        'periods.close', 'periods.reopen',
     ];
 
     public function run(): void

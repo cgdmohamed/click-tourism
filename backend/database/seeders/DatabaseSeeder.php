@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             BranchSeeder::class,
             CurrencySeeder::class,
             ChartOfAccountsSeeder::class,
+            TreasurySeeder::class,
             FiscalYearSeeder::class,
             TaxProfileSeeder::class,
             CrmSeeder::class,

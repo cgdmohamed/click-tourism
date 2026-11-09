@@ -41,6 +41,18 @@ class SettingService
             'tax_payable_account_code' => '2200',
             'fx_gain_account_code' => '7900',
             'fx_loss_account_code' => '6900',
+            // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
+            'bank_charges_account_code' => '6500',
+            'input_tax_account_code' => '1160',
+            'retained_earnings_account_code' => '3100',
+        ],
+        'treasury' => [
+            // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.
+            'block_negative_cash' => 'false',
+        ],
+        'expenses' => [
+            // PENDING ACCOUNTANT APPROVAL (DEC-032): the creator may not approve their own expense.
+            'segregation' => 'true',
         ],
         'tax' => [
             'enabled' => 'false',
@@ -56,6 +68,8 @@ class SettingService
             'payment_prefix' => 'RV',
             'refund_prefix' => 'RF',
             'supplier_payment_prefix' => 'PV',
+            'transfer_prefix' => 'TR',
+            'expense_prefix' => 'EX',
         ],
     ];
 

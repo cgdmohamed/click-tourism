@@ -4,13 +4,16 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
+use App\Http\Controllers\Api\CashAccountController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
@@ -18,6 +21,7 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
+use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -50,7 +54,36 @@ Route::prefix('v1')->group(function () {
 
         Route::get('accounts', [AccountController::class, 'index'])->middleware('permission:accounts.view');
         Route::post('accounts', [AccountController::class, 'store'])->middleware('permission:accounts.create');
-        Route::get('cash-accounts', [PaymentController::class, 'cashAccounts'])->middleware('permission:accounts.view');
+        Route::get('cash-accounts', [CashAccountController::class, 'index'])->middleware('permission:accounts.view');
+        Route::post('cash-accounts', [CashAccountController::class, 'store'])->middleware('permission:cash_accounts.manage');
+        Route::patch('cash-accounts/{cashAccount}', [CashAccountController::class, 'update'])->middleware('permission:cash_accounts.manage');
+
+        Route::get('opening-balances', [OpeningBalanceController::class, 'index'])->middleware('permission:opening_balances.view');
+        Route::post('opening-balances', [OpeningBalanceController::class, 'store'])->middleware('permission:opening_balances.manage');
+        Route::get('opening-balances/{batch}', [OpeningBalanceController::class, 'show'])->middleware('permission:opening_balances.view');
+        Route::delete('opening-balances/{batch}', [OpeningBalanceController::class, 'destroy'])->middleware('permission:opening_balances.manage');
+        Route::get('opening-balances/{batch}/reconciliation', [OpeningBalanceController::class, 'reconciliation'])->middleware('permission:opening_balances.view');
+        Route::post('opening-balances/{batch}/post', [OpeningBalanceController::class, 'post'])->middleware(['permission:opening_balances.post', 'idempotent']);
+        Route::post('opening-balances/{batch}/reverse', [OpeningBalanceController::class, 'reverse'])->middleware('permission:opening_balances.reverse');
+
+        Route::get('expense-categories', [ExpenseController::class, 'categories'])->middleware('permission:expenses.view');
+        Route::post('expense-categories', [ExpenseController::class, 'storeCategory'])->middleware('permission:expense_categories.manage');
+        Route::patch('expense-categories/{category}', [ExpenseController::class, 'updateCategory'])->middleware('permission:expense_categories.manage');
+
+        Route::get('expenses', [ExpenseController::class, 'index'])->middleware('permission:expenses.view');
+        Route::post('expenses', [ExpenseController::class, 'store'])->middleware(['permission:expenses.create', 'idempotent']);
+        Route::get('expenses/{expense}', [ExpenseController::class, 'show'])->middleware('permission:expenses.view');
+        Route::patch('expenses/{expense}', [ExpenseController::class, 'update'])->middleware('permission:expenses.create');
+        Route::post('expenses/{expense}/submit', [ExpenseController::class, 'submit'])->middleware('permission:expenses.create');
+        Route::post('expenses/{expense}/cancel', [ExpenseController::class, 'cancel'])->middleware('permission:expenses.create');
+        Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approve'])->middleware(['permission:expenses.approve', 'idempotent']);
+        Route::post('expenses/{expense}/reject', [ExpenseController::class, 'reject'])->middleware('permission:expenses.approve');
+        Route::post('expenses/{expense}/reverse', [ExpenseController::class, 'reverse'])->middleware('permission:expenses.approve');
+
+        Route::get('transfers', [TransferController::class, 'index'])->middleware('permission:transfers.view');
+        Route::post('transfers', [TransferController::class, 'store'])->middleware(['permission:transfers.create', 'idempotent']);
+        Route::get('transfers/{transfer}', [TransferController::class, 'show'])->middleware('permission:transfers.view');
+        Route::post('transfers/{transfer}/reverse', [TransferController::class, 'reverse'])->middleware('permission:transfers.reverse');
 
         Route::get('fiscal-periods', [FiscalPeriodController::class, 'index'])->middleware('permission:periods.view');
         Route::post('fiscal-periods', [FiscalPeriodController::class, 'store'])->middleware('permission:periods.manage');

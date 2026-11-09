@@ -256,6 +256,38 @@ class DecisionRegistry
             'blocks' => 'FOUNDATION',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-031',
+            'type' => 'ACC',
+            'title_en' => 'Cash and transfer policy',
+            'title_ar' => 'سياسة النقدية والتحويلات',
+            'blocks' => 'TE-018, PAY, RPT',
+            'status' => 'open',
+        ],
+        [
+            'id' => 'DEC-032',
+            'type' => 'ACC',
+            'title_en' => 'Expense approval and input tax',
+            'title_ar' => 'اعتماد المصروفات وضريبة المدخلات',
+            'blocks' => 'TE-019, TAX, RPT',
+            'status' => 'open',
+        ],
+        [
+            'id' => 'DEC-033',
+            'type' => 'ACC',
+            'title_en' => 'Opening balances cutover',
+            'title_ar' => 'ترحيل الأرصدة الافتتاحية',
+            'blocks' => 'TE-017, DATA',
+            'status' => 'open',
+        ],
+        [
+            'id' => 'DEC-034',
+            'type' => 'ACC',
+            'title_en' => 'Year-end close and reopening',
+            'title_ar' => 'إقفال نهاية السنة وإعادة الفتح',
+            'blocks' => 'TE-021, FIN, RPT',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */
