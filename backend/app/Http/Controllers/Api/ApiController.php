@@ -33,6 +33,20 @@ abstract class ApiController extends Controller
         return $branch;
     }
 
+    /** Deny access to a record that belongs to a branch the user is not assigned to (ADR-0005). */
+    protected function authorizeBranchId(?int $branchId): void
+    {
+        $user = request()->user();
+
+        if ($branchId === null || ! $user) {
+            return;
+        }
+
+        if (! in_array($branchId, app(BranchScope::class)->allowedBranchIds($user), true)) {
+            throw new AuthorizationException('You are not assigned to this record\'s branch.');
+        }
+    }
+
     protected function actorId(): ?int
     {
         return request()->user()?->id;

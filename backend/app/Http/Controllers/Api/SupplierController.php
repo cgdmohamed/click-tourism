@@ -63,6 +63,8 @@ class SupplierController extends ApiController
 
     public function update(Request $request, Supplier $supplier, AuditService $audit): JsonResponse
     {
+        $this->authorizeBranchId($supplier->branch_id);
+
         $data = $request->validate([
             'category' => ['nullable', 'string', 'max:30'],
             'name_ar' => ['sometimes', 'string', 'max:255'],

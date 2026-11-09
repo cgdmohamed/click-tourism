@@ -32,8 +32,14 @@ class JournalEntryController extends ApiController
         return $this->paginated($entries);
     }
 
+    private function authorizeBranch(JournalEntry $journalEntry): void
+    {
+        $this->authorizeBranchId($journalEntry->branch_id);
+    }
+
     public function show(JournalEntry $journalEntry): JsonResponse
     {
+        $this->authorizeBranch($journalEntry);
         $journalEntry->load('lines.account', 'reversalOf');
 
         return $this->ok($journalEntry->toApiArray(true));
@@ -119,11 +125,15 @@ class JournalEntryController extends ApiController
 
     public function post(JournalEntry $journalEntry, PostingService $posting): JsonResponse
     {
+        $this->authorizeBranch($journalEntry);
+
         return $this->ok($posting->postDraft($journalEntry, $this->actorId())->toApiArray(true));
     }
 
     public function reverse(Request $request, JournalEntry $journalEntry, PostingService $posting): JsonResponse
     {
+        $this->authorizeBranch($journalEntry);
+
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:255'],
         ]);

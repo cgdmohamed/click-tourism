@@ -39,6 +39,7 @@ class PaymentController extends ApiController
 
     public function show(Payment $payment): JsonResponse
     {
+        $this->authorizeBranchId($payment->branch_id);
         $payment->load('customer', 'booking', 'allocations');
 
         return $this->ok($payment->toApiArray());

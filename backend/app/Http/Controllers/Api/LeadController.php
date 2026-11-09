@@ -55,6 +55,8 @@ class LeadController extends ApiController
 
     public function update(Request $request, Lead $lead, LeadService $leads): JsonResponse
     {
+        $this->authorizeBranchId($lead->branch_id);
+
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
@@ -71,6 +73,8 @@ class LeadController extends ApiController
 
     public function convert(Lead $lead, LeadService $leads): JsonResponse
     {
+        $this->authorizeBranchId($lead->branch_id);
+
         $customer = $leads->convert($lead, $this->actorId());
 
         return $this->ok([

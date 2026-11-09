@@ -38,6 +38,7 @@ class BookingController extends ApiController
 
     public function show(Booking $booking): JsonResponse
     {
+        $this->authorizeBranchId($booking->branch_id);
         $booking->load('customer', 'items', 'statusHistory', 'allocations');
 
         return $this->ok($booking->toApiArray(true));

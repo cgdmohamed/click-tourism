@@ -69,6 +69,8 @@ class CustomerController extends ApiController
 
     public function update(Request $request, Customer $customer, AuditService $audit): JsonResponse
     {
+        $this->authorizeBranchId($customer->branch_id);
+
         $data = $request->validate([
             'type' => ['nullable', Rule::in(['individual', 'company'])],
             'name_ar' => ['sometimes', 'string', 'max:255'],
