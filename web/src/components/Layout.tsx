@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
-import { cx } from './ui'
+import { cx, Spinner } from './ui'
 
 type NavItem = { to: string; label: string; icon: string; permission?: string }
 
@@ -36,7 +36,10 @@ export function Layout() {
 
   if (loading) {
     return (
-      <div className="text-medium flex min-h-screen items-center justify-center text-text-subtle">{t('loading')}</div>
+      <div className="flex min-h-screen items-center justify-center" role="status" aria-live="polite">
+        <span className="sr-only">{t('loading')}</span>
+        <Spinner />
+      </div>
     )
   }
   if (!user) {

@@ -188,9 +188,26 @@ export function EmptyState({ title, hint, action }: { title?: string; hint?: str
   )
 }
 
-export function Loading() {
+export function Spinner({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        'inline-block h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-action-primary-background',
+        className,
+      )}
+    />
+  )
+}
+
+export function Loading({ className }: { className?: string }) {
   const { t } = useI18n()
-  return <div className="text-medium px-6 py-16 text-center text-text-subtle">{t('loading')}</div>
+  return (
+    <div className={cx('flex items-center justify-center px-6 py-16', className)} role="status" aria-live="polite">
+      <span className="sr-only">{t('loading')}</span>
+      <Spinner />
+    </div>
+  )
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {

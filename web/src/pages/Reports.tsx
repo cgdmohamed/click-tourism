@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
 import type { Account } from '../lib/types'
-import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Money, PageHeader, Select, Table, Td, Th, cx } from '../components/ui'
+import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Money, PageHeader, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
 
 type ReportKey = 'trial-balance' | 'income-statement' | 'balance-sheet' | 'aging'
 
@@ -166,7 +166,7 @@ export default function Reports() {
             </Field>
           ) : null}
           <Button variant="secondary" onClick={() => void query.refetch()} disabled={query.isFetching}>
-            {query.isFetching ? t('loading') : t('run')}
+            {query.isFetching ? <Spinner className="h-4 w-4" /> : t('run')}
           </Button>
         </div>
 
