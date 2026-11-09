@@ -55,6 +55,7 @@ export function Layout() {
     { to: '/expenses', label: t('expenses'), icon: icons.settlements, permission: 'expenses.view' },
     { to: '/opening-balances', label: t('openingBalances'), icon: icons.accounts, permission: 'opening_balances.view' },
     { to: '/periods', label: t('fiscalPeriods'), icon: icons.bookings, permission: 'periods.view' },
+{ to: '/invoices', label: t('invoices'), icon: icons.payments, permission: 'invoices.view' },
     { to: '/customers', label: t('customers'), icon: icons.customers },
     { to: '/suppliers', label: t('suppliers'), icon: icons.suppliers },
     { to: '/bookings', label: t('bookings'), icon: icons.bookings },

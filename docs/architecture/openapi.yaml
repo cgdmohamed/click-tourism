@@ -771,6 +771,138 @@ paths:
         '200': { description: Approved }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /invoices:
+    get:
+      tags: [Accounting]
+      summary: List customer and supplier invoices
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [customer_invoice, supplier_invoice, credit_note] } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, submitted, approved, issued, voided] } }
+        - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier] } }
+        - { name: party_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Invoices }
+    post:
+      tags: [Accounting]
+      summary: Create a draft customer or supplier invoice (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}:
+    get:
+      tags: [Accounting]
+      summary: Get an invoice with its lines
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Invoice }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Accounting]
+      summary: Edit a draft invoice
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/submit:
+    post:
+      tags: [Accounting]
+      summary: Submit a draft invoice for approval
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Submitted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/approve:
+    post:
+      tags: [Accounting]
+      summary: Approve a submitted invoice (idempotent)
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/issue:
+    post:
+      tags: [Accounting]
+      summary: Issue (post) an approved invoice through the ledger (idempotent)
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Issued and posted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/void:
+    post:
+      tags: [Accounting]
+      summary: Void a draft or submitted invoice
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Voided }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/credit-note:
+    post:
+      tags: [Accounting]
+      summary: Create a credit note for an issued invoice (idempotent)
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                series: { type: string }
+                issue_date: { type: string, format: date }
+                total_minor: { type: integer }
+                memo: { type: string }
+      responses:
+        '201': { description: Credit note created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+
   /reports/trial-balance:
     get:
       tags: [Reports]
@@ -1349,3 +1481,74 @@ components:
         periods:
           type: array
           items: { type: object }
+    Invoice:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [customer_invoice, supplier_invoice, credit_note] }
+        series: { type: string }
+        number: { type: string }
+        party_type: { type: string, enum: [customer, supplier] }
+        party_id: { type: string }
+        party: { type: object }
+        branch_id: { type: string }
+        booking_id: { type: string }
+        issue_date: { type: string, format: date }
+        due_date: { type: string, format: date, nullable: true }
+        currency: { type: string }
+        fx_rate: { type: string }
+        status: { type: string, enum: [draft, submitted, approved, issued, voided] }
+        subtotal_minor: { type: integer }
+        tax_minor: { type: integer }
+        total_minor: { type: integer }
+        outstanding_minor: { type: integer }
+        journal_entry_id: { type: string, nullable: true }
+        credit_note_of_id: { type: string, nullable: true }
+        memo: { type: string, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        issued_at: { type: string, format: date-time, nullable: true }
+        created_by: { type: string }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceLine' }
+    InvoiceLine:
+      type: object
+      properties:
+        account: { $ref: '#/components/schemas/Account' }
+        description: { type: string, nullable: true }
+        debit_minor: { type: integer }
+        credit_minor: { type: integer }
+        tax_minor: { type: integer }
+        tax_account: { $ref: '#/components/schemas/Account' }
+        party_type: { type: string, nullable: true }
+        party_id: { type: string, nullable: true }
+    InvoiceInput:
+      type: object
+      required: [type, party_type, party_id, issue_date, currency, lines]
+      properties:
+        type: { type: string, enum: [customer_invoice, supplier_invoice] }
+        series: { type: string }
+        party_type: { type: string, enum: [customer, supplier] }
+        party_id: { type: string }
+        booking_id: { type: string }
+        issue_date: { type: string, format: date }
+        due_date: { type: string, format: date }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        memo: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/InvoiceLineInput' }
+    InvoiceLineInput:
+      type: object
+      required: [account_id]
+      properties:
+        account_id: { type: string }
+        description: { type: string }
+        debit_minor: { type: integer, minimum: 0, default: 0 }
+        credit_minor: { type: integer, minimum: 0, default: 0 }
+        tax_minor: { type: integer, minimum: 0, default: 0 }
+        tax_account_id: { type: string }
+        party_type: { type: string, enum: [customer, supplier], nullable: true }
+        party_id: { type: string }

@@ -36,6 +36,7 @@ class RolePermissionSeeder extends Seeder
             'expense_categories.manage', 'expenses.view', 'expenses.create', 'expenses.approve',
             'opening_balances.view', 'opening_balances.manage', 'opening_balances.post', 'opening_balances.reverse',
             'periods.close', 'periods.reopen',
+            'invoices.view', 'invoices.create', 'invoices.approve',
         ],
         'sales' => [
             'expenses.view', 'expenses.create',
@@ -85,6 +86,7 @@ class RolePermissionSeeder extends Seeder
         'expense_categories.manage', 'expenses.view', 'expenses.create', 'expenses.approve',
         'opening_balances.view', 'opening_balances.manage', 'opening_balances.post', 'opening_balances.reverse',
         'periods.close', 'periods.reopen',
+        'invoices.view', 'invoices.create', 'invoices.approve',
     ];
 
     public function run(): void

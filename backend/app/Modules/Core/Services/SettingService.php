@@ -44,6 +44,8 @@ class SettingService
             // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
             'bank_charges_account_code' => '6500',
             'input_tax_account_code' => '1160',
+            // PENDING ACCOUNTANT APPROVAL: output tax collected on customer sales.
+            'output_tax_account_code' => '2200',
             'retained_earnings_account_code' => '3100',
         ],
         'treasury' => [
@@ -70,6 +72,9 @@ class SettingService
             'supplier_payment_prefix' => 'PV',
             'transfer_prefix' => 'TR',
             'expense_prefix' => 'EX',
+            'customer_invoice_prefix' => 'INV',
+            'supplier_invoice_prefix' => 'BIL',
+            'credit_note_prefix' => 'CN',
         ],
     ];
 

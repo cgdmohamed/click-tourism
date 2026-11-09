@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\OpeningBalanceController;
@@ -128,6 +129,16 @@ Route::prefix('v1')->group(function () {
         Route::get('refunds', [RefundController::class, 'index'])->middleware('permission:payments.view');
         Route::post('refunds', [RefundController::class, 'store'])->middleware(['permission:refunds.create', 'idempotent']);
         Route::post('refunds/{refund}/approve', [RefundController::class, 'approve'])->middleware('permission:refunds.approve');
+
+        Route::get('invoices', [InvoiceController::class, 'index'])->middleware('permission:invoices.view');
+        Route::post('invoices', [InvoiceController::class, 'store'])->middleware(['permission:invoices.create', 'idempotent']);
+        Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->middleware('permission:invoices.view');
+        Route::patch('invoices/{invoice}', [InvoiceController::class, 'update'])->middleware('permission:invoices.create');
+        Route::post('invoices/{invoice}/submit', [InvoiceController::class, 'submit'])->middleware('permission:invoices.create');
+        Route::post('invoices/{invoice}/approve', [InvoiceController::class, 'approve'])->middleware(['permission:invoices.approve', 'idempotent']);
+        Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->middleware(['permission:invoices.approve', 'idempotent']);
+        Route::post('invoices/{invoice}/void', [InvoiceController::class, 'void'])->middleware('permission:invoices.create');
+        Route::post('invoices/{invoice}/credit-note', [InvoiceController::class, 'creditNote'])->middleware(['permission:invoices.approve', 'idempotent']);
 
         Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])->middleware('permission:reports.view');
         Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:20,1']);
