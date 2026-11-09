@@ -4,8 +4,11 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
-import type { Account } from '../lib/types'
-import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
+import type { Account, JournalEntry } from '../lib/types'
+import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
+
+type CurrencyRow = { code: string; is_active: boolean }
+type PartyRow = { id: string; name_ar: string; name_en: string }
 
 type ReportKey = 'trial-balance' | 'general-ledger' | 'income-statement' | 'balance-sheet' | 'aging'
 
@@ -26,6 +29,7 @@ type LedgerLine = {
 
 type GeneralLedger = {
   currency: string
+  basis: 'base' | 'original'
   account: Account
   from: string
   to: string
@@ -99,8 +103,14 @@ const firstOfYear = () => `${new Date().getFullYear()}-01-01`
 
 export default function Reports() {
   const { t, locale } = useI18n()
-  const { activeBranch } = useAuth()
+  const { activeBranch, can } = useAuth()
   const [report, setReport] = useState<ReportKey>('trial-balance')
+  const [currency, setCurrency] = useState('')
+  const [partyType, setPartyType] = useState<'' | 'customer' | 'supplier'>('')
+  const [partyId, setPartyId] = useState('')
+  const [entryId, setEntryId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [from, setFrom] = useState(firstOfYear())
   const [to, setTo] = useState(todayISO())
   const [agingType, setAgingType] = useState<'ar' | 'ap'>('ar')
@@ -108,11 +118,22 @@ export default function Reports() {
   const [ledgerPage, setLedgerPage] = useState(1)
 
   const params = useMemo(() => {
-    if (report === 'trial-balance') return { from, to }
+    if (report === 'trial-balance') return { from, to, ...(currency ? { currency } : {}) }
     if (report === 'income-statement') return { from, to }
     if (report === 'balance-sheet') return { as_of: to }
     return { type: agingType, as_of: to }
-  }, [report, from, to, agingType])
+  }, [report, from, to, agingType, currency])
+
+  const ledgerParams = useMemo(
+    () => ({
+      account_id: ledgerAccount,
+      from,
+      to,
+      ...(currency ? { currency } : {}),
+      ...(partyType && partyId ? { party_type: partyType, party_id: partyId } : {}),
+    }),
+    [ledgerAccount, from, to, currency, partyType, partyId],
+  )
 
   const isLedger = report === 'general-ledger'
 
@@ -135,15 +156,70 @@ export default function Reports() {
   })
 
   const ledgerQuery = useQuery({
-    queryKey: ['report', 'general-ledger', ledgerAccount, from, to, ledgerPage, activeBranch?.id],
+    queryKey: ['report', 'general-ledger', ledgerParams, ledgerPage, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<LedgerResponse>('/reports/general-ledger', {
-        params: { account_id: ledgerAccount, from, to, page: ledgerPage, per_page: 50 },
+        params: { ...ledgerParams, page: ledgerPage, per_page: 50 },
       })
       return data
     },
     enabled: isLedger && ledgerAccount !== '',
   })
+
+  const currenciesQuery = useQuery({
+    queryKey: ['currencies'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: CurrencyRow[] }>('/currencies')
+      return data.data
+    },
+    enabled: report === 'trial-balance' || isLedger,
+  })
+
+  const partiesQuery = useQuery({
+    queryKey: ['report-parties', partyType],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PartyRow[] }>(partyType === 'customer' ? '/customers' : '/suppliers', {
+        params: { per_page: 100 },
+      })
+      return data.data
+    },
+    enabled: isLedger && partyType !== '',
+  })
+
+  const entryQuery = useQuery({
+    queryKey: ['journal-entry', entryId],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: JournalEntry & { source_type?: string | null } }>(`/journal-entries/${entryId}`)
+      return data.data
+    },
+    enabled: entryId !== null,
+  })
+
+  const canExport = can('reports.export') && (isLedger ? ledgerAccount !== '' : report === 'trial-balance')
+
+  const downloadCsv = async () => {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const url = isLedger ? '/reports/general-ledger/export' : '/reports/trial-balance/export'
+      const response = await api.get<Blob>(url, { params: isLedger ? ledgerParams : params, responseType: 'blob' })
+      const disposition = String(response.headers['content-disposition'] ?? '')
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${report}.csv`
+      const href = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = href
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(href)
+    } catch {
+      setExportError(t('exportFailed'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const sourceLabel = (sourceType?: string | null) =>
+    !sourceType || sourceType === 'manual' ? t('manualEntry') : sourceType.replace(/_/g, ' ')
 
   const active = isLedger ? ledgerQuery : query
 
@@ -257,6 +333,60 @@ export default function Reports() {
               </Select>
             </Field>
           ) : null}
+          {report === 'trial-balance' || isLedger ? (
+            <Field label={t('currency')}>
+              <Select
+                value={currency}
+                onChange={(event) => {
+                  setCurrency(event.target.value)
+                  setLedgerPage(1)
+                }}
+              >
+                <option value="">{t('baseCurrencyBasis')}</option>
+                {(currenciesQuery.data ?? [])
+                  .filter((row) => row.is_active)
+                  .map((row) => (
+                    <option key={row.code} value={row.code}>
+                      {row.code}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          ) : null}
+          {isLedger ? (
+            <>
+              <Field label={t('party')}>
+                <Select
+                  value={partyType}
+                  onChange={(event) => {
+                    setPartyType(event.target.value as '' | 'customer' | 'supplier')
+                    setPartyId('')
+                    setLedgerPage(1)
+                  }}
+                >
+                  <option value="">{t('allParties')}</option>
+                  <option value="customer">{t('customer')}</option>
+                  <option value="supplier">{t('supplier')}</option>
+                </Select>
+              </Field>
+              {partyType ? (
+                <Field label={partyType === 'customer' ? t('customer') : t('supplier')}>
+                  <SearchableSelect
+                    value={partyId}
+                    onChange={(value) => {
+                      setPartyId(value)
+                      setLedgerPage(1)
+                    }}
+                    clearLabel={t('allParties')}
+                    options={(partiesQuery.data ?? []).map((party) => ({
+                      value: party.id,
+                      label: locale === 'ar' ? party.name_ar : party.name_en,
+                    }))}
+                  />
+                </Field>
+              ) : null}
+            </>
+          ) : null}
           <Button
             variant="secondary"
             onClick={() => void active.refetch()}
@@ -264,7 +394,17 @@ export default function Reports() {
           >
             {active.isFetching ? <Spinner className="h-4 w-4" /> : t('run')}
           </Button>
+          {canExport ? (
+            <Button variant="secondary" onClick={() => void downloadCsv()} disabled={exporting}>
+              {exporting ? <Spinner className="h-4 w-4" /> : t('exportCsv')}
+            </Button>
+          ) : null}
         </div>
+
+        {exportError ? <p className="px-5 py-2 text-small text-danger-text">{exportError}</p> : null}
+        {currency && (report === 'trial-balance' || isLedger) ? (
+          <p className="px-5 py-2 text-small text-text-subtle">{t('originalAmountsNote')}: {currency}</p>
+        ) : null}
 
         {active.isLoading && active.fetchStatus !== 'idle' ? <Loading /> : null}
         {active.isError ? <ErrorState message={errorMessage(active.error)} onRetry={() => void active.refetch()} /> : null}
@@ -308,13 +448,31 @@ export default function Reports() {
                       {data.lines.map((line, index) => (
                         <tr key={`${line.entry_id}-${index}`}>
                           <Td className="tabular">{formatDate(line.entry_date, locale)}</Td>
-                          <Td className="tabular">{line.number}</Td>
+                          <Td className="tabular">
+                            {can('journal.view') ? (
+                              <button
+                                type="button"
+                                className="rounded-8 text-text-default underline underline-offset-2 hover:bg-surface-hovered"
+                                onClick={() => setEntryId(line.entry_id)}
+                              >
+                                {line.number}
+                              </button>
+                            ) : (
+                              line.number
+                            )}
+                          </Td>
                           <Td>{line.description || line.memo || '—'}</Td>
                           <Td className="text-end">
-                            <Money amountMinor={line.base_debit_minor} currency={data.currency} />
+                            <Money
+                              amountMinor={data.basis === 'original' ? line.debit_minor : line.base_debit_minor}
+                              currency={data.currency}
+                            />
                           </Td>
                           <Td className="text-end">
-                            <Money amountMinor={line.base_credit_minor} currency={data.currency} />
+                            <Money
+                              amountMinor={data.basis === 'original' ? line.credit_minor : line.base_credit_minor}
+                              currency={data.currency}
+                            />
                           </Td>
                           <Td className="text-end">
                             <Money amountMinor={line.balance_minor} currency={data.currency} />
@@ -502,6 +660,67 @@ export default function Reports() {
             })()
           : null}
       </Card>
+
+      <Modal
+        open={entryId !== null}
+        title={t('entryDetails')}
+        onClose={() => setEntryId(null)}
+        footer={
+          <Button variant="secondary" onClick={() => setEntryId(null)}>
+            {t('closeLabel')}
+          </Button>
+        }
+      >
+        {entryQuery.isLoading ? <Loading /> : null}
+        {entryQuery.isError ? <ErrorState message={errorMessage(entryQuery.error)} /> : null}
+        {entryQuery.data ? (
+          <div>
+            <dl className="mb-4 grid grid-cols-2 gap-3 text-medium">
+              <div>
+                <dt className="text-small text-text-subtle">{t('entryNumber')}</dt>
+                <dd className="tabular">{entryQuery.data.number}</dd>
+              </div>
+              <div>
+                <dt className="text-small text-text-subtle">{t('date')}</dt>
+                <dd className="tabular">{formatDate(entryQuery.data.entry_date, locale)}</dd>
+              </div>
+              <div>
+                <dt className="text-small text-text-subtle">{t('sourceDocument')}</dt>
+                <dd>{sourceLabel(entryQuery.data.source_type)}</dd>
+              </div>
+              <div>
+                <dt className="text-small text-text-subtle">{t('description')}</dt>
+                <dd>{entryQuery.data.memo || '—'}</dd>
+              </div>
+            </dl>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>{t('account')}</Th>
+                  <Th className="text-end">{t('debit')}</Th>
+                  <Th className="text-end">{t('credit')}</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {(entryQuery.data.lines ?? []).map((line) => (
+                  <tr key={line.id}>
+                    <Td>
+                      <span className="tabular">{line.account?.code}</span>{' '}
+                      {locale === 'ar' ? line.account?.name_ar : line.account?.name_en}
+                    </Td>
+                    <Td className="text-end">
+                      <Money amountMinor={line.debit_minor} currency={entryQuery.data.currency} />
+                    </Td>
+                    <Td className="text-end">
+                      <Money amountMinor={line.credit_minor} currency={entryQuery.data.currency} />
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   )
 }

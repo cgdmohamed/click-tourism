@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Parties\Models\Customer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -49,22 +50,38 @@ class GeneralLedgerReportTest extends TestCase
         Sanctum::actingAs($this->user);
     }
 
-    private function entry(string $date, string $debitCode, string $creditCode, int $amount, ?Branch $branch = null, bool $post = true): void
-    {
+    private function entry(
+        string $date,
+        string $debitCode,
+        string $creditCode,
+        int $amount,
+        ?Branch $branch = null,
+        bool $post = true,
+        string $currency = 'EGP',
+        string $fx = '1',
+        ?string $memo = null,
+        ?Customer $party = null,
+    ): void {
         $branch ??= $this->branch;
 
         $this->withHeaders(['X-Branch-Id' => $branch->public_id])
             ->postJson('/api/v1/journal-entries', [
                 'entry_date' => $date,
                 'branch_id' => $branch->public_id,
-                'currency' => 'EGP',
-                'fx_rate' => '1',
+                'currency' => $currency,
+                'fx_rate' => $fx,
                 'fx_rate_date' => $date,
                 'fx_rate_source' => 'manual',
-                'memo' => "Entry {$debitCode}/{$creditCode}",
+                'memo' => $memo ?? "Entry {$debitCode}/{$creditCode}",
                 'post' => $post,
                 'lines' => [
-                    ['account_id' => $this->account($debitCode)->public_id, 'debit_minor' => $amount, 'credit_minor' => 0],
+                    [
+                        'account_id' => $this->account($debitCode)->public_id,
+                        'debit_minor' => $amount,
+                        'credit_minor' => 0,
+                        'party_type' => $party ? 'customer' : null,
+                        'party_id' => $party?->id,
+                    ],
                     ['account_id' => $this->account($creditCode)->public_id, 'debit_minor' => 0, 'credit_minor' => $amount],
                 ],
             ])
@@ -226,6 +243,151 @@ class GeneralLedgerReportTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.total_debit_minor', 123456)
             ->assertJsonPath('data.total_credit_minor', 123456);
+    }
+
+    public function test_the_currency_filter_reports_original_amounts_of_that_currency_only(): void
+    {
+        $this->entry($this->currentDate, '1110', '4100', 100000);
+        $this->entry($this->currentDate, '1110', '4100', 2000, currency: 'USD', fx: '50');
+
+        $this->ledger()
+            ->assertOk()
+            ->assertJsonPath('data.basis', 'base')
+            ->assertJsonPath('data.currency', 'EGP')
+            ->assertJsonPath('data.total_debit_minor', 200000);
+
+        $this->ledger(['currency' => 'usd'])
+            ->assertOk()
+            ->assertJsonPath('data.basis', 'original')
+            ->assertJsonPath('data.currency', 'USD')
+            ->assertJsonPath('data.total_debit_minor', 2000)
+            ->assertJsonPath('data.closing_minor', 2000)
+            ->assertJsonPath('meta.total', 1);
+
+        $this->ledger(['currency' => 'EGP'])
+            ->assertOk()
+            ->assertJsonPath('data.total_debit_minor', 100000);
+    }
+
+    public function test_the_trial_balance_can_be_limited_to_one_currency(): void
+    {
+        $this->entry($this->currentDate, '1110', '4100', 100000);
+        $this->entry($this->currentDate, '1110', '4100', 2000, currency: 'USD', fx: '50');
+
+        $query = http_build_query([
+            'from' => now()->startOfMonth()->toDateString(),
+            'to' => now()->endOfMonth()->toDateString(),
+            'currency' => 'USD',
+        ]);
+
+        $this->getJson('/api/v1/reports/trial-balance?'.$query)
+            ->assertOk()
+            ->assertJsonPath('data.currency', 'USD')
+            ->assertJsonPath('data.basis', 'original')
+            ->assertJsonPath('data.total_debit_minor', 2000)
+            ->assertJsonPath('data.total_credit_minor', 2000);
+    }
+
+    public function test_the_party_filter_limits_lines_to_one_customer(): void
+    {
+        $first = $this->customer();
+        $second = $this->customer($this->branch);
+
+        $this->entry($this->currentDate, '1110', '4100', 100000, party: $first);
+        $this->entry($this->currentDate, '1110', '4100', 300000, party: $second);
+
+        $this->ledger(['party_type' => 'customer', 'party_id' => $second->public_id])
+            ->assertOk()
+            ->assertJsonPath('data.total_debit_minor', 300000)
+            ->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_party_and_currency_filters_are_validated(): void
+    {
+        $this->ledger(['party_type' => 'customer'])->assertStatus(422);
+        $this->ledger(['party_id' => 'abc'])->assertStatus(422);
+        $this->ledger(['party_type' => 'customer', 'party_id' => 'missing'])->assertStatus(422);
+        $this->ledger(['party_type' => 'employee', 'party_id' => 'x'])->assertStatus(422);
+        $this->ledger(['currency' => 'ZZZ'])->assertStatus(422);
+    }
+
+    public function test_export_requires_the_export_permission(): void
+    {
+        $this->ledgerExport()->assertStatus(403);
+    }
+
+    public function test_the_general_ledger_exports_as_csv_with_decimal_amounts_and_an_audit_record(): void
+    {
+        $this->grantExport();
+        $this->entry($this->previousDate, '1110', '4100', 100000);
+        $this->entry($this->currentDate, '1110', '4100', 123456);
+
+        $response = $this->ledgerExport()->assertOk();
+
+        $this->assertStringStartsWith('text/csv', $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('attachment; filename="general-ledger_1110_', $response->headers->get('Content-Disposition'));
+
+        $csv = $response->getContent();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
+        $this->assertStringContainsString('"Opening balance",,,,,1000.00,EGP', $csv);
+        $this->assertStringContainsString('1234.56', $csv);
+        $this->assertStringContainsString('Totals,,,,1234.56,0.00,2234.56,EGP', $csv);
+
+        $this->assertDatabaseHas('audit_events', ['action' => 'report.exported', 'actor_id' => $this->user->id]);
+    }
+
+    public function test_csv_cells_that_look_like_formulas_are_neutralised(): void
+    {
+        $this->grantExport();
+        $this->entry($this->currentDate, '1110', '4100', 1000, memo: '=HYPERLINK("http://evil","x")');
+
+        $csv = $this->ledgerExport()->assertOk()->getContent();
+
+        $this->assertStringContainsString("'=HYPERLINK", $csv);
+        $this->assertStringNotContainsString(',=HYPERLINK', $csv);
+        $this->assertStringNotContainsString('"=HYPERLINK', $csv);
+    }
+
+    public function test_the_trial_balance_exports_as_csv(): void
+    {
+        $this->grantExport();
+        $this->entry($this->currentDate, '1110', '4100', 123456);
+
+        $csv = $this->getJson('/api/v1/reports/trial-balance/export?'.http_build_query([
+            'from' => now()->startOfMonth()->toDateString(),
+            'to' => now()->endOfMonth()->toDateString(),
+        ]))->assertOk()->getContent();
+
+        $this->assertStringContainsString('1110,"Cash on Hand",', $csv);
+        $this->assertStringContainsString('1234.56,0.00,1234.56,EGP', $csv);
+        $this->assertDatabaseHas('audit_events', ['action' => 'report.exported']);
+    }
+
+    public function test_exports_are_branch_scoped(): void
+    {
+        $this->grantExport();
+        $other = Branch::query()->create([
+            'code' => 'B4', 'name_ar' => 'ف', 'name_en' => 'Branch 4', 'accounting_mode' => 'dimension', 'is_active' => true,
+        ]);
+
+        $this->ledgerExport(branch: $other)->assertStatus(403);
+    }
+
+    private function grantExport(): void
+    {
+        Permission::query()->firstOrCreate(['name' => 'reports.export', 'guard_name' => 'web']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->user->givePermissionTo('reports.export');
+    }
+
+    private function ledgerExport(?Branch $branch = null): \Illuminate\Testing\TestResponse
+    {
+        return $this->withHeaders(['X-Branch-Id' => ($branch ?? $this->branch)->public_id])
+            ->getJson('/api/v1/reports/general-ledger/export?'.http_build_query([
+                'account_id' => $this->account('1110')->public_id,
+                'from' => now()->startOfMonth()->toDateString(),
+                'to' => now()->endOfMonth()->toDateString(),
+            ]));
     }
 
     public function test_dates_are_inclusive_at_the_period_boundaries(): void

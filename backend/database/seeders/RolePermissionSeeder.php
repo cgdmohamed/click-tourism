@@ -31,7 +31,7 @@ class RolePermissionSeeder extends Seeder
             'bookings.view',
             'payments.view', 'payments.create',
             'refunds.create', 'refunds.approve',
-            'reports.view',
+            'reports.view', 'reports.export',
         ],
         'sales' => [
             'branches.view',
@@ -73,7 +73,7 @@ class RolePermissionSeeder extends Seeder
         'bookings.view', 'bookings.create', 'bookings.transition', 'bookings.cancel',
         'payments.view', 'payments.create',
         'refunds.create', 'refunds.approve',
-        'reports.view',
+        'reports.view', 'reports.export',
         'leads.view', 'leads.create', 'leads.update', 'leads.convert',
     ];
 

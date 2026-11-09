@@ -24,9 +24,15 @@ class ReportService
     ) {
     }
 
-    public function trialBalance(string $from, string $to, ?Branch $branch): array
+    /**
+     * Without $onlyCurrency the report sums stored base-currency amounts.
+     * With it, only lines posted in that transaction currency are included
+     * and their original-currency amounts are summed (no re-conversion).
+     */
+    public function trialBalance(string $from, string $to, ?Branch $branch, ?string $onlyCurrency = null): array
     {
-        $currency = $this->settings->baseCurrency();
+        $currency = $onlyCurrency ?? $this->settings->baseCurrency();
+        [$debitColumn, $creditColumn] = $this->amountColumns($onlyCurrency);
 
         $rows = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
@@ -35,10 +41,11 @@ class ReportService
             ->whereDate('je.entry_date', '>=', $from)
             ->whereDate('je.entry_date', '<=', $to)
             ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
+            ->when($onlyCurrency, fn ($query) => $query->where('jl.currency_code', $onlyCurrency))
             ->groupBy('a.id', 'a.public_id', 'a.code', 'a.name_ar', 'a.name_en', 'a.type')
             ->selectRaw('a.id as account_id, a.public_id, a.code, a.name_ar, a.name_en, a.type')
-            ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit_minor')
-            ->selectRaw('COALESCE(SUM(jl.base_credit_minor), 0) as credit_minor')
+            ->selectRaw("COALESCE(SUM($debitColumn), 0) as debit_minor")
+            ->selectRaw("COALESCE(SUM($creditColumn), 0) as credit_minor")
             ->orderBy('a.code')
             ->get()
             ->map(function ($row) {
@@ -52,6 +59,7 @@ class ReportService
 
         return [
             'currency' => $currency,
+            'basis' => $onlyCurrency ? 'original' : 'base',
             'from' => $from,
             'to' => $to,
             'rows' => $rows,
@@ -63,23 +71,40 @@ class ReportService
     /**
      * General ledger for one account (including its descendants): opening
      * balance, paginated movements with a running balance, and closing balance.
-     * Amounts are the stored base-currency values; sign is debit minus credit.
+     * Balances are the stored base-currency values (debit minus credit). With
+     * $onlyCurrency only lines posted in that transaction currency are shown
+     * and balances use their original-currency amounts. $party optionally
+     * limits lines to one customer or supplier: ['type' => string, 'id' => int].
      *
+     * @param  array{type: string, id: int}|null  $party
      * @return array{summary: array<string, mixed>, lines: array<int, array<string, mixed>>, total: int}
      */
-    public function generalLedger(Account $account, string $from, string $to, ?Branch $branch, int $page, int $perPage): array
-    {
+    public function generalLedger(
+        Account $account,
+        string $from,
+        string $to,
+        ?Branch $branch,
+        int $page,
+        int $perPage,
+        ?string $onlyCurrency = null,
+        ?array $party = null,
+    ): array {
         $accountIds = $this->descendantIds($account);
+        [$debitColumn, $creditColumn] = $this->amountColumns($onlyCurrency);
 
         $scoped = fn () => DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.status', 'posted')
             ->whereIn('jl.account_id', $accountIds)
-            ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id));
+            ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
+            ->when($onlyCurrency, fn ($query) => $query->where('jl.currency_code', $onlyCurrency))
+            ->when($party, fn ($query) => $query
+                ->where('jl.party_type', $party['type'])
+                ->where('jl.party_id', $party['id']));
 
         $opening = $scoped()
             ->whereDate('je.entry_date', '<', $from)
-            ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
+            ->selectRaw("COALESCE(SUM($debitColumn), 0) as debit, COALESCE(SUM($creditColumn), 0) as credit")
             ->first();
         $openingMinor = (int) $opening->debit - (int) $opening->credit;
 
@@ -88,7 +113,7 @@ class ReportService
             ->whereDate('je.entry_date', '<=', $to);
 
         $totals = (clone $period)
-            ->selectRaw('COUNT(*) as total, COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
+            ->selectRaw("COUNT(*) as total, COALESCE(SUM($debitColumn), 0) as debit, COALESCE(SUM($creditColumn), 0) as credit")
             ->first();
 
         $running = (clone $period)
@@ -96,7 +121,7 @@ class ReportService
             ->selectRaw('jl.id as line_id, je.public_id as entry_id, je.number, je.entry_date, je.memo, je.source_type, je.event')
             ->selectRaw('a.code as account_code, jl.description, jl.currency_code, jl.debit_minor, jl.credit_minor')
             ->selectRaw('jl.base_debit_minor, jl.base_credit_minor')
-            ->selectRaw('SUM(jl.base_debit_minor - jl.base_credit_minor) OVER (ORDER BY je.entry_date, je.id, jl.id) as running_minor');
+            ->selectRaw("SUM($debitColumn - $creditColumn) OVER (ORDER BY je.entry_date, je.id, jl.id) as running_minor");
 
         $lines = DB::query()
             ->fromSub($running, 't')
@@ -128,7 +153,8 @@ class ReportService
 
         return [
             'summary' => [
-                'currency' => $this->settings->baseCurrency(),
+                'currency' => $onlyCurrency ?? $this->settings->baseCurrency(),
+                'basis' => $onlyCurrency ? 'original' : 'base',
                 'account' => $account->toApiArray(),
                 'from' => $from,
                 'to' => $to,
@@ -140,6 +166,14 @@ class ReportService
             'lines' => $lines,
             'total' => (int) $totals->total,
         ];
+    }
+
+    /** @return array{0: string, 1: string} debit and credit column names for the chosen basis */
+    private function amountColumns(?string $onlyCurrency): array
+    {
+        return $onlyCurrency
+            ? ['jl.debit_minor', 'jl.credit_minor']
+            : ['jl.base_debit_minor', 'jl.base_credit_minor'];
     }
 
     /** @return int[] */
