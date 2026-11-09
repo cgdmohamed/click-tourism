@@ -86,9 +86,11 @@ type BalanceSheet = {
   assets: StatementLine[]
   liabilities: StatementLine[]
   equity: StatementLine[]
+  current_earnings_minor: number
   total_assets_minor: number
   total_liabilities_minor: number
   total_equity_minor: number
+  total_liabilities_and_equity_minor: number
 }
 
 type Aging = {
@@ -600,6 +602,12 @@ export default function Reports() {
                   {statementRows(data.liabilities, data.currency)}
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'حقوق الملكية' : 'Equity'}</div>
                   {statementRows(data.equity, data.currency)}
+                  {data.current_earnings_minor !== 0 ? (
+                    <div className="flex items-center justify-between border-t border-border-subtle px-5 py-3 text-sm">
+                      <span>{t('currentEarnings')}</span>
+                      <Money amountMinor={data.current_earnings_minor} currency={data.currency} />
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap justify-end gap-6 border-t border-border-subtle px-5 py-4 text-sm">
                     <span>
                       {locale === 'ar' ? 'إجمالي الأصول' : 'Total assets'}:{' '}
@@ -607,10 +615,7 @@ export default function Reports() {
                     </span>
                     <span>
                       {locale === 'ar' ? 'الالتزامات + الحقوق' : 'Liabilities + equity'}:{' '}
-                      <Money
-                        amountMinor={data.total_liabilities_minor + data.total_equity_minor}
-                        currency={data.currency}
-                      />
+                      <Money amountMinor={data.total_liabilities_and_equity_minor} currency={data.currency} />
                     </span>
                   </div>
                 </>

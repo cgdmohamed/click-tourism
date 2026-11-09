@@ -15,6 +15,10 @@ import SupplierSettlements from './pages/SupplierSettlements'
 import Reports from './pages/Reports'
 import Leads from './pages/Leads'
 import Settings from './pages/Settings'
+import Treasury from './pages/Treasury'
+import Expenses from './pages/Expenses'
+import OpeningBalances from './pages/OpeningBalances'
+import Periods from './pages/Periods'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +38,10 @@ export default function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="accounts" element={<Accounts />} />
                 <Route path="journal" element={<Journal />} />
+                <Route path="treasury" element={<Treasury />} />
+                <Route path="expenses" element={<Expenses />} />
+                <Route path="opening-balances" element={<OpeningBalances />} />
+                <Route path="periods" element={<Periods />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="suppliers" element={<Suppliers />} />
                 <Route path="bookings" element={<Bookings />} />

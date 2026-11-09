@@ -317,7 +317,13 @@ export function statusTone(status: string): BadgeTone {
     case 'cancelled':
     case 'no_show':
     case 'void':
+    case 'rejected':
+    case 'reversed':
       return 'negative'
+    case 'open':
+      return 'positive'
+    case 'submitted':
+      return 'warning'
     default:
       return 'brand'
   }

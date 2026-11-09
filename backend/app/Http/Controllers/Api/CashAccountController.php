@@ -33,7 +33,7 @@ class CashAccountController extends ApiController
         $branch = $this->branch();
 
         return $this->ok($registered->map(
-            fn (CashAccount $cashAccount) => $cashAccount->toApiArray($treasury->balance($cashAccount, $branch)),
+            fn (CashAccount $cashAccount) => $cashAccount->toApiArray($treasury->balance($cashAccount, $branch), $this->settings()->baseCurrency()),
         )->values());
     }
 
@@ -58,7 +58,7 @@ class CashAccountController extends ApiController
 
         $cashAccount = $treasury->register($data, $this->actorId());
 
-        return $this->created($cashAccount->toApiArray($treasury->balance($cashAccount, $this->branch())));
+        return $this->created($cashAccount->toApiArray($treasury->balance($cashAccount, $this->branch()), $this->settings()->baseCurrency()));
     }
 
     public function update(Request $request, CashAccount $cashAccount, TreasuryService $treasury, AuditService $audit): JsonResponse
@@ -75,7 +75,7 @@ class CashAccountController extends ApiController
         $cashAccount->update($data);
         $audit->log('cash_account.updated', $cashAccount, $before, $data, $this->actorId());
 
-        return $this->ok($cashAccount->refresh()->load('account', 'branch')->toApiArray($treasury->balance($cashAccount, $this->branch())));
+        return $this->ok($cashAccount->refresh()->load('account', 'branch')->toApiArray($treasury->balance($cashAccount, $this->branch()), $this->settings()->baseCurrency()));
     }
 
     /** @return array<int, array<string, mixed>> */
