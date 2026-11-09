@@ -67,10 +67,10 @@ export function Layout() {
           onClick={() => setMobileOpen(false)}
           className={({ isActive }) =>
             cx(
-              'label flex items-center gap-3 rounded-12 border-s-2 px-3 py-2 transition',
+              'label flex items-center gap-3 rounded-12 px-3 py-2 transition',
               isActive
-                ? 'border-border-selected bg-surface-selected text-text-default'
-                : 'border-transparent text-text-subtle hover:bg-surface-hovered hover:text-text-default',
+                ? 'bg-surface-selected text-text-default'
+                : 'text-text-subtle hover:bg-surface-hovered hover:text-text-default',
             )
           }
         >
