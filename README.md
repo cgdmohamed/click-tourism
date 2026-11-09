@@ -47,7 +47,14 @@ allocation, supplier obligation → payment → advance → apply, manual journa
 (draft, post, reverse) and settings save. The production stack is described by
 `docker-compose.yml`; the CI workflow is in `.github/workflows/ci.yml`.
 
-`php artisan test` → **73 passing tests (226 assertions)**. The API smoke script
+- Public `GET /api/v1/health` reports app, database, cache and queue status (HTTP
+  503 when the database is down) plus the list of unresolved decisions.
+  `GET /api/v1/decisions` (permission `settings.view`) returns the same list, and
+  **Settings** shows it. The list lives in
+  `backend/app/Modules/Core/Services/DecisionRegistry.php` and must be kept in
+  sync with `docs/product/decisions-needed.md`.
+
+`php artisan test` → **82 passing tests (452 assertions)**. The API smoke script
 in `C:\Users\Mohamed\AppData\Local\Temp\opencode\smoke.ps1` also passes against a
 seeded database.
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\DecisionRegistry;
 use App\Modules\Core\Services\SettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,6 +13,11 @@ class SettingController extends ApiController
     public function index(SettingService $settings): JsonResponse
     {
         return $this->ok($settings->all());
+    }
+
+    public function decisions(DecisionRegistry $decisions): JsonResponse
+    {
+        return $this->ok($decisions->unresolved());
     }
 
     public function update(Request $request, SettingService $settings, AuditService $audit): JsonResponse

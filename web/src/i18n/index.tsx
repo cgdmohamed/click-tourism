@@ -142,6 +142,11 @@ const messages = {
     branchRequired: 'اختر فرعًا أولًا',
     permissionDenied: 'لا تملك صلاحية لهذا الإجراء',
     saved: 'تم الحفظ',
+    unresolvedDecisions: 'قرارات محاسبية بانتظار الاعتماد',
+    unresolvedDecisionsHint: 'هذه القرارات قابلة للتهيئة لكل تثبيت ولم تُفترض في الكود.',
+    blocks: 'يؤثر على',
+    decisionOpen: 'مفتوح',
+    decisionsLoadError: 'تعذّر تحميل القرارات المعلّقة',
   },
   en: {
     appName: 'Tourism ERP',
@@ -280,6 +285,11 @@ const messages = {
     branchRequired: 'Select a branch first',
     permissionDenied: 'You do not have permission for this action',
     saved: 'Saved',
+    unresolvedDecisions: 'Accounting decisions awaiting approval',
+    unresolvedDecisionsHint: 'These decisions are configurable per installation and are not silently assumed in code.',
+    blocks: 'Blocks',
+    decisionOpen: 'Open',
+    decisionsLoadError: 'Could not load unresolved decisions',
   },
 } as const
 

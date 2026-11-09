@@ -13,7 +13,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **API contract changes:** None.
 **Acceptance criteria:**
 - [ ] `docker compose up` from a clean clone runs migrations and serves API + SPA.
-- [ ] `/health` reports app/db/redis/queue.
+- [x] `/health` reports app/db/redis/queue.
 - [ ] CI runs formatting, static analysis, backend tests, frontend typecheck/build on PR.
 - [ ] No secrets committed; `.env.example` documents every required variable.
 **Test commands:** `docker compose config`, backend `php artisan test`, frontend `npm run typecheck && npm run build`.

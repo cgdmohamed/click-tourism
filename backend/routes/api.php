@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FxRateController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PaymentController;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+
+    Route::get('health', [HealthController::class, 'show']);
 
     // Webhooks are public but signature-verified inside the controller.
     Route::get('webhooks/meta', [WebhookController::class, 'verifyMeta']);
@@ -38,6 +41,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('settings', [SettingController::class, 'index'])->middleware('permission:settings.view');
         Route::put('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
+        Route::get('decisions', [SettingController::class, 'decisions'])->middleware('permission:settings.view');
 
         Route::get('currencies', [CurrencyController::class, 'index']);
         Route::get('fx-rates', [FxRateController::class, 'index'])->middleware('permission:settings.view');
