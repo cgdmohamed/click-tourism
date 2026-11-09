@@ -16,8 +16,8 @@ class SettingService
 {
     public const DEFAULTS = [
         'general' => [
-            'company_name_ar' => 'شركة سيف وي للسياحة',
-            'company_name_en' => 'Safe Way Travel',
+            'company_name_ar' => 'نظام إدارة السياحة',
+            'company_name_en' => 'Tourism ERP',
             'base_currency' => 'EGP',
             'locale' => 'ar',
             'timezone' => 'Africa/Cairo',

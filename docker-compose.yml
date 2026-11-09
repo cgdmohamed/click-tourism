@@ -79,6 +79,12 @@ services:
       - backend
     expose:
       - "8000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   web:
     build:
@@ -98,6 +104,25 @@ services:
       context: ./backend
     restart: unless-stopped
     command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=120"]
+    env_file:
+      - ./.env
+    environment:
+      <<: *backend-environment
+      RUN_MIGRATIONS: "false"
+      APP_OPTIMIZE: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Runs the Laravel scheduler (also feeds the scheduler heartbeat shown by /api/v1/health).
+  scheduler:
+    profiles: ["workers"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
     env_file:
       - ./.env
     environment:

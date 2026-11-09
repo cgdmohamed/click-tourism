@@ -25,6 +25,7 @@ Route::prefix('v1')->group(function () {
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
     Route::get('health', [HealthController::class, 'show']);
+    Route::get('ready', [HealthController::class, 'ready']);
 
     // Webhooks are public but signature-verified inside the controller.
     Route::get('webhooks/meta', [WebhookController::class, 'verifyMeta']);

@@ -31,7 +31,7 @@ No decision may be silently assumed in code. When implementation starts, unresol
 | DEC-023 | HUM | **Payment methods and cash reconciliation** | Methods list; cash drawer counting; who reconciles | Configurable methods; manual reconciliation notes in MVP | PAY |
 | DEC-024 | HUM | **Data retention and PII** | Retention for leads/WhatsApp/audit; redaction; export on request | Financial audit ≥7y; leads/WhatsApp per customer policy; redact secrets | CORE-006, CRM, INT |
 | DEC-025 | ACC | **Negative-margin and zero-value bookings** | Allowed? Approval? | Allowed with warning + permission | BOOK, COMM |
-| DEC-026 | HUM | **Notifications channels** | In-app, email, WhatsApp for assignment/approval | In-app + email MVP; WhatsApp optional | CORE, CRM |
+| DEC-026 | HUM | **Notification channels** | In-app, email, WhatsApp for assignment/approval | In-app + email MVP; WhatsApp optional | CORE, CRM |
 | DEC-027 | ARC | **Idempotency scope** | Header key per endpoint/user; webhook provider event ID; retention window | Key + request hash, 24h retention; webhooks permanent dedupe | ALL |
 | DEC-028 | ACC | **Booking invoice document** | Is a tax invoice required separate from booking confirmation? | Confirm with accountant; template designed to serve both | BOOK, RPT, TAX |
 | DEC-029 | HUM | **Language of legal documents** | Arabic only, English only, or bilingual PDFs | Bilingual, configurable per template | RPT, UI |

@@ -75,7 +75,7 @@ class DecisionRegistry
         [
             'id' => 'DEC-008',
             'type' => 'ACC',
-            'title_en' => 'Period-end FX revaluation',
+            'title_en' => 'Period-end FX revaluation of open AR/AP',
             'title_ar' => 'إعادة تقييم العملات آخر الفترة',
             'blocks' => 'FIN-010, RPT',
             'status' => 'open',
@@ -114,7 +114,7 @@ class DecisionRegistry
         ],
         [
             'id' => 'DEC-013',
-            'type' => 'ACC',
+            'type' => 'ACC/HUM',
             'title_en' => 'Commission rule precedence',
             'title_ar' => 'أولوية قواعد العمولة',
             'blocks' => 'COMM',
@@ -146,7 +146,7 @@ class DecisionRegistry
         ],
         [
             'id' => 'DEC-017',
-            'type' => 'ACC',
+            'type' => 'ACC/HUM',
             'title_en' => 'Approval thresholds and segregation of duties',
             'title_ar' => 'حدود الموافقة وفصل المهام',
             'blocks' => 'FIN, PAY, COMM, AUTH',
@@ -154,7 +154,7 @@ class DecisionRegistry
         ],
         [
             'id' => 'DEC-018',
-            'type' => 'ARC',
+            'type' => 'ARC/HUM',
             'title_en' => 'Document numbering',
             'title_ar' => 'ترقيم المستندات',
             'blocks' => 'CORE-007',
@@ -163,14 +163,14 @@ class DecisionRegistry
         [
             'id' => 'DEC-019',
             'type' => 'ACC',
-            'title_en' => 'Deletion and amendment policy',
+            'title_en' => 'Deletion / amendment policy',
             'title_ar' => 'سياسة الحذف والتعديل',
             'blocks' => 'ALL',
             'status' => 'open',
         ],
         [
             'id' => 'DEC-020',
-            'type' => 'HUM',
+            'type' => 'HUM/ARC',
             'title_en' => 'Multi-company support',
             'title_ar' => 'دعم تعدد الشركات',
             'blocks' => 'architecture',
@@ -179,7 +179,7 @@ class DecisionRegistry
         [
             'id' => 'DEC-021',
             'type' => 'ACC',
-            'title_en' => 'Tax on commissions and withholding',
+            'title_en' => 'Tax on commissions / withholding',
             'title_ar' => 'الضريبة على العمولات والاستقطاع',
             'blocks' => 'COMM, TAX',
             'status' => 'open',
@@ -187,7 +187,7 @@ class DecisionRegistry
         [
             'id' => 'DEC-022',
             'type' => 'HUM',
-            'title_en' => 'Customer and supplier portal',
+            'title_en' => 'Customer/supplier portal',
             'title_ar' => 'بوابة العملاء والموردين',
             'blocks' => 'scope',
             'status' => 'open',
