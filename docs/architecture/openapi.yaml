@@ -1,0 +1,604 @@
+openapi: 3.1.0
+info:
+  title: Tourism ERP API
+  version: 0.1.0-draft
+  description: |
+    Draft contract for the self-hosted Tourism ERP. Additive changes within v1.
+    Money is serialized as a decimal string plus the authoritative minor-unit integer.
+    Every endpoint is authorized by policy and branch scope.
+  contact:
+    name: Architecture
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Platform
+  - name: Accounting
+  - name: Parties
+  - name: Bookings
+  - name: Payments
+  - name: Reports
+  - name: CRM
+  - name: Webhooks
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Authenticate and issue a Sanctum token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                device_name: { type: string, default: web }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      token: { type: string }
+                      user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current token
+      responses:
+        '204': { description: Revoked }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user, roles, permissions, branches
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+
+  /branches:
+    get:
+      tags: [Platform]
+      summary: List branches visible to the user
+      responses:
+        '200':
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Branch' }
+    post:
+      tags: [Platform]
+      summary: Create a branch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BranchInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /settings:
+    get:
+      tags: [Platform]
+      summary: Read installation settings (secrets redacted)
+      responses:
+        '200': { description: Settings }
+    put:
+      tags: [Platform]
+      summary: Update settings
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /currencies:
+    get:
+      tags: [Platform]
+      summary: List enabled currencies
+      responses:
+        '200': { description: Currencies }
+  /fx-rates:
+    get:
+      tags: [Platform]
+      summary: List FX rates
+      parameters:
+        - { name: currency, in: query, schema: { type: string } }
+        - { name: date, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: FX rates }
+    post:
+      tags: [Platform]
+      summary: Record a manual FX rate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currency, rate, rate_date]
+              properties:
+                currency: { type: string, minLength: 3, maxLength: 3 }
+                rate: { type: string, pattern: '^[0-9]+(\.[0-9]+)?$' }
+                rate_date: { type: string, format: date }
+                source: { type: string, default: manual }
+      responses:
+        '201': { description: Created }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /accounts:
+    get:
+      tags: [Accounting]
+      summary: Chart of accounts tree
+      responses:
+        '200': { description: Accounts }
+    post:
+      tags: [Accounting]
+      summary: Create an account
+      responses:
+        '201': { description: Created }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fiscal-periods:
+    get:
+      tags: [Accounting]
+      summary: List fiscal periods and status
+      responses:
+        '200': { description: Periods }
+  /journal-entries:
+    get:
+      tags: [Accounting]
+      summary: List journal entries
+      responses:
+        '200': { description: Entries }
+    post:
+      tags: [Accounting]
+      summary: Create and optionally post a journal entry
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JournalEntryInput' }
+      responses:
+        '201': { description: Created }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /journal-entries/{id}/reverse:
+    post:
+      tags: [Accounting]
+      summary: Reverse a posted entry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '201': { description: Reversal posted }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /customers:
+    get:
+      tags: [Parties]
+      summary: List customers
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: branch_id, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Customers }
+    post:
+      tags: [Parties]
+      summary: Create a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerInput' }
+      responses:
+        '201': { description: Created }
+        '422': { $ref: '#/components/responses/Validation' }
+  /suppliers:
+    get:
+      tags: [Parties]
+      summary: List suppliers
+      responses:
+        '200': { description: Suppliers }
+    post:
+      tags: [Parties]
+      summary: Create a supplier
+      responses:
+        '201': { description: Created }
+
+  /bookings:
+    get:
+      tags: [Bookings]
+      summary: List bookings
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: customer_id, in: query, schema: { type: string } }
+        - { name: branch_id, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Bookings }
+    post:
+      tags: [Bookings]
+      summary: Create a draft booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingInput' }
+      responses:
+        '201': { description: Created }
+        '422': { $ref: '#/components/responses/Validation' }
+  /bookings/{id}/transition:
+    post:
+      tags: [Bookings]
+      summary: Apply a lifecycle transition
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [quoted, confirmed, in_progress, completed, closed, cancelled, no_show]
+                reason: { type: string }
+      responses:
+        '200': { description: Transitioned }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel a booking with policy computation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cancelled with fee/refund preview }
+
+  /payments:
+    get:
+      tags: [Payments]
+      summary: List customer receipts
+      responses:
+        '200': { description: Payments }
+    post:
+      tags: [Payments]
+      summary: Record a customer receipt (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentInput' }
+      responses:
+        '201': { description: Recorded }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /refunds:
+    post:
+      tags: [Payments]
+      summary: Request a refund
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Requested }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /refunds/{id}/approve:
+    post:
+      tags: [Payments]
+      summary: Approve and post a refund
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /reports/trial-balance:
+    get:
+      tags: [Reports]
+      summary: Trial balance for a period/branch
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: branch_id, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Trial balance }
+  /reports/income-statement:
+    get:
+      tags: [Reports]
+      summary: Income statement
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Income statement }
+  /reports/balance-sheet:
+    get:
+      tags: [Reports]
+      summary: Balance sheet as of a date
+      parameters:
+        - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Balance sheet }
+  /reports/aging:
+    get:
+      tags: [Reports]
+      summary: AR/AP aging
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
+        - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Aging buckets }
+
+  /leads:
+    get:
+      tags: [CRM]
+      summary: List leads
+      responses:
+        '200': { description: Leads }
+    post:
+      tags: [CRM]
+      summary: Create a lead
+      responses:
+        '201': { description: Created }
+  /leads/{id}/convert:
+    post:
+      tags: [CRM]
+      summary: Convert a lead to a customer and/or booking (once)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Converted }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /webhooks/meta:
+    get:
+      tags: [Webhooks]
+      security: []
+      summary: Meta webhook verification challenge
+      responses:
+        '200': { description: Challenge echoed }
+    post:
+      tags: [Webhooks]
+      security: []
+      summary: Meta Lead Ads event (signature verified, deduplicated)
+      responses:
+        '200': { description: Accepted or duplicate }
+        '403': { description: Invalid signature }
+  /webhooks/whatsapp:
+    get:
+      tags: [Webhooks]
+      security: []
+      summary: WhatsApp webhook verification challenge
+      responses:
+        '200': { description: Challenge echoed }
+    post:
+      tags: [Webhooks]
+      security: []
+      summary: WhatsApp inbound message (signature verified, deduplicated)
+      responses:
+        '200': { description: Accepted or duplicate }
+        '403': { description: Invalid signature }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+  responses:
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Permission or branch scope denied
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Validation:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: State, idempotency, or concurrency conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+        code: { type: string }
+        errors: { type: object, additionalProperties: { type: array, items: { type: string } } }
+        requestId: { type: string }
+    Money:
+      type: object
+      required: [amount, currency, amountMinor]
+      properties:
+        amount: { type: string, example: '1234.50' }
+        amountMinor: { type: integer, example: 123450 }
+        currency: { type: string, example: EGP }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        locale: { type: string, enum: [ar, en] }
+        roles: { type: array, items: { type: string } }
+        permissions: { type: array, items: { type: string } }
+        branches:
+          type: array
+          items: { $ref: '#/components/schemas/Branch' }
+    Branch:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        accounting_mode: { type: string, enum: [dimension, customer, independent] }
+        is_active: { type: boolean }
+    BranchInput:
+      type: object
+      required: [code, name_ar, name_en]
+      properties:
+        code: { type: string, maxLength: 20 }
+        name_ar: { type: string }
+        name_en: { type: string }
+        accounting_mode: { type: string, enum: [dimension, customer, independent], default: dimension }
+    Account:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        type: { type: string, enum: [asset, liability, equity, revenue, expense] }
+        parent_id: { type: string, nullable: true }
+        is_postable: { type: boolean }
+        is_active: { type: boolean }
+    JournalLineInput:
+      type: object
+      required: [account_id]
+      properties:
+        account_id: { type: string }
+        debit_minor: { type: integer, minimum: 0, default: 0 }
+        credit_minor: { type: integer, minimum: 0, default: 0 }
+        party_type: { type: string, enum: [customer, supplier, payee], nullable: true }
+        party_id: { type: string, nullable: true }
+        description: { type: string }
+    JournalEntryInput:
+      type: object
+      required: [entry_date, branch_id, currency, fx_rate, lines]
+      properties:
+        entry_date: { type: string, format: date }
+        branch_id: { type: string }
+        currency: { type: string }
+        fx_rate: { type: string, example: '1.0000000000' }
+        fx_rate_date: { type: string, format: date }
+        fx_rate_source: { type: string, default: manual }
+        memo: { type: string }
+        post: { type: boolean, default: true }
+        lines:
+          type: array
+          minItems: 2
+          items: { $ref: '#/components/schemas/JournalLineInput' }
+    CustomerInput:
+      type: object
+      required: [type, name_ar, name_en, branch_id]
+      properties:
+        type: { type: string, enum: [individual, company] }
+        name_ar: { type: string }
+        name_en: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email }
+        tax_id: { type: string }
+        branch_id: { type: string }
+        credit_limit_minor: { type: integer, default: 0 }
+    BookingItemInput:
+      type: object
+      required: [service_type, description, quantity, unit_cost_minor, unit_sell_minor]
+      properties:
+        service_type: { type: string, enum: [flight, hotel, transport, visa, program, other] }
+        supplier_id: { type: string, nullable: true }
+        description: { type: string }
+        starts_on: { type: string, format: date }
+        ends_on: { type: string, format: date }
+        quantity: { type: number, default: 1 }
+        unit_cost_minor: { type: integer, minimum: 0 }
+        unit_sell_minor: { type: integer, minimum: 0 }
+        cost_currency: { type: string }
+        sell_currency: { type: string }
+        tax_profile_id: { type: string, nullable: true }
+    BookingInput:
+      type: object
+      required: [customer_id, branch_id, owner_user_id, start_date, currency, fx_rate, items]
+      properties:
+        customer_id: { type: string }
+        branch_id: { type: string }
+        owner_user_id: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        pax_adults: { type: integer, minimum: 1, default: 1 }
+        pax_children: { type: integer, minimum: 0, default: 0 }
+        pax_infants: { type: integer, minimum: 0, default: 0 }
+        currency: { type: string }
+        fx_rate: { type: string }
+        notes: { type: string }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/BookingItemInput' }
+    PaymentInput:
+      type: object
+      required: [customer_id, branch_id, cash_account_id, amount_minor, currency, fx_rate]
+      properties:
+        customer_id: { type: string }
+        booking_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        method: { type: string, enum: [cash, bank_transfer, card, wallet] }
+        cash_account_id: { type: string }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string }
+        fx_rate: { type: string }
+        paid_at: { type: string, format: date-time }
+        allocations:
+          type: array
+          items:
+            type: object
+            required: [booking_id, amount_minor]
+            properties:
+              booking_id: { type: string }
+              amount_minor: { type: integer, minimum: 1 }
+```

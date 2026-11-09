@@ -1,0 +1,23 @@
+# Deployment secrets and local state. Never commit these.
+.env
+.env.*
+!.env.example
+
+# Build output and dependencies (each sub-project also has its own ignore file).
+node_modules/
+dist/
+vendor/
+
+# Local databases and logs
+*.sqlite
+backend/database/*.sqlite
+*.log
+
+# Client-confidential reference material stays on the development machine.
+reference/SAFEWAY_PROPOSAL.txt
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

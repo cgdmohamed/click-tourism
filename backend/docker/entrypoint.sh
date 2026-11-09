@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# Container entrypoint for the Tourism ERP API.
+#
+# Migrations run only when RUN_MIGRATIONS=true (default). Demo seeding is
+# opt-in and intended for the first boot of a demo installation only.
+set -eu
+
+if [ -z "${APP_KEY:-}" ]; then
+    echo "FATAL: APP_KEY is empty." >&2
+    echo "Generate one with: php artisan key:generate --show" >&2
+    echo "Then set APP_KEY in the repository root .env (never commit it)." >&2
+    exit 1
+fi
+
+if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+    echo "Waiting for the database to accept connections..."
+    attempt=0
+    until php artisan db:show >/dev/null 2>&1; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 30 ]; then
+            echo "FATAL: database is not reachable after 30 attempts." >&2
+            exit 1
+        fi
+        sleep 2
+    done
+
+    echo "Running migrations..."
+    php artisan migrate --force
+
+    if [ "${SEED_DEMO:-false}" = "true" ]; then
+        echo "Seeding demo data. Set SEED_DEMO=false once the installation is live."
+        php artisan db:seed --force || true
+    fi
+fi
+
+php artisan storage:link >/dev/null 2>&1 || true
+
+if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
+    echo "Caching configuration, routes, events and views..."
+    php artisan optimize
+fi
+
+exec "$@"

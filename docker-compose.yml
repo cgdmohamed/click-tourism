@@ -1,0 +1,115 @@
+# Self-hosted production stack: PostgreSQL 16, Redis, Laravel API, React SPA.
+#
+#   copy .env.example .env   # then fill in APP_KEY and passwords
+#   docker compose up -d --build
+#   docker compose logs -f backend
+#
+# One installation per customer. This file is not a multi-tenant deployment.
+
+name: tourism-erp
+
+x-backend-environment: &backend-environment
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: ${POSTGRES_DB:-tourism_erp}
+  DB_USERNAME: ${POSTGRES_USER:-tourism}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: database
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tourism_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-tourism}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Not published by default: only the API needs to reach PostgreSQL.
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    expose:
+      - "6379"
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment: *backend-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "9000"
+
+  # nginx that serves Laravel's public directory over FastCGI.
+  api:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/nginx/backend.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_URL: /api/v1
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+
+  # Optional background workers. Enable with: docker compose --profile workers up -d
+  worker:
+    profiles: ["workers"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=120"]
+    env_file:
+      - ./.env
+    environment:
+      <<: *backend-environment
+      RUN_MIGRATIONS: "false"
+      APP_OPTIMIZE: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

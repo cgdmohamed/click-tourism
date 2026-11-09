@@ -1,0 +1,60 @@
+# Threat Model — Tourism ERP
+
+Status: Draft. Scope: self-hosted single-tenant installation. Method: asset inventory + STRIDE + abuse cases.
+
+## 1. Assets
+
+| Asset | Impact if compromised |
+|---|---|
+| Financial ledger (journals, balances) | Fraud, false reporting, legal exposure. |
+| Customer PII (names, phones, emails, travel) | Privacy breach, regulatory exposure. |
+| Supplier and commission data | Commercial harm, disputes. |
+| Credentials (Meta, WhatsApp, DB, SMTP) | Account takeover, messaging abuse. |
+| Audit trail | Loss of accountability. |
+| Backups | Full data compromise. |
+| Availability of the installation | Business stoppage. |
+
+## 2. Trust boundaries
+
+- Browser/SPA ↔ reverse proxy (TLS) ↔ Laravel API.
+- API ↔ PostgreSQL / Redis.
+- API ↔ Meta / WhatsApp (outbound HTTPS + inbound signed webhooks).
+- Operators ↔ server (SSH, deployment).
+- Queue/scheduler ↔ external services.
+
+## 3. STRIDE analysis
+
+| Threat | Scenario | Mitigation |
+|---|---|---|
+| **Spoofing** | Stolen token; forged webhook | Sanctum tokens with expiry/revocation; webhook signature verification; rate limiting; optional 2FA later. |
+| **Tampering** | Editing posted journal; changing amount after approval | Immutable posted rows; policy checks; audit; optimistic locking; DB constraints. |
+| **Repudiation** | User denies creating/approving a refund | Append-only audit with actor, IP, request ID; approval records. |
+| **Information disclosure** | Branch A reads branch B; PII in logs/exports | Branch scope server-side; redaction; export permissions; no secrets/PII in logs; encrypted secrets. |
+| **Denial of service** | Login brute force; expensive report; webhook flood | Rate limiting, queue for heavy reports, request size limits, webhook dedupe. |
+| **Elevation of privilege** | Missing policy on an endpoint; role escalation | Deny-by-default; route coverage test; role-change permission + audit; separation of duties. |
+| **SQL injection** | Unsafe query filters | Eloquent/query builder bindings; whitelisted sort/filter columns; validation. |
+| **XSS** | Stored lead notes rendered in UI | Output encoding; CSP; sanitize rich text; React escaping. |
+| **CSRF** | State-changing request from another origin | Token auth (no cookie-based session for API) + CORS allowlist; SameSite if cookies used. |
+| **SSRF** | User-supplied webhook URL | No arbitrary URL fetching; allowlist providers. |
+| **Insecure deserialization** | Malicious webhook JSON | Validate/schema-check; no PHP object unserialize. |
+| **Supply chain** | Malicious Composer/npm package | Lockfiles, audit in CI, pinned versions, no auto-upgrade. |
+| **Backup theft** | Unencrypted dump | Encrypted backups, restricted storage, restore access controlled. |
+| **Insider fraud** | Accountant creates and approves own refund | Segregation of duties; approval thresholds; audit; reviewer role. |
+
+## 4. Abuse cases to test
+
+1. User with `payments.create` but not `refunds.approve` cannot self-approve a refund.
+2. Branch-scoped user cannot export another branch's ledger by changing a filter.
+3. Replaying a payment request cannot double-post.
+4. Forged Meta webhook signature is rejected and logged.
+5. Deactivated user's token stops working immediately.
+6. Posted journal cannot be edited via mass assignment, direct route, or bulk action.
+7. Export/download URLs are authorized and expire.
+8. Secrets never appear in API responses, audit snapshots, or logs.
+
+## 5. Residual risks / decisions
+
+- No 2FA in MVP → require strong passwords + rate limiting; plan TOTP.
+- Single-server deployment → backup/RTO depends on customer infrastructure.
+- Meta/WhatsApp credentials are customer-managed → compromise is outside product control; provide rotation guidance.
+- No formal penetration test in MVP → schedule before first production if required.

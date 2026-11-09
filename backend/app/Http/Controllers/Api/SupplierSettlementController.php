@@ -1,0 +1,129 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Modules\Payments\Models\SupplierObligation;
+use App\Modules\Payments\Models\SupplierPayment;
+use App\Modules\Payments\Services\SupplierSettlementService;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class SupplierSettlementController extends ApiController
+{
+    public function obligations(Request $request): JsonResponse
+    {
+        $branch = $this->branchOrFail();
+
+        $obligations = SupplierObligation::query()
+            ->with('supplier', 'branch')
+            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->when($request->query('supplier_id'), fn ($query, $supplierId) => $query->whereHas(
+                'supplier',
+                fn ($query) => $query->where('public_id', $supplierId),
+            ))
+            ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            ->orderByDesc('id')
+            ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
+
+        $obligations->getCollection()->transform(fn (SupplierObligation $obligation) => $obligation->toApiArray());
+
+        return $this->paginated($obligations);
+    }
+
+    public function showObligation(SupplierObligation $supplierObligation): JsonResponse
+    {
+        $this->assertBranch($supplierObligation->branch_id);
+
+        $supplierObligation->load('supplier', 'branch', 'bookingItem', 'applications');
+
+        return $this->ok($supplierObligation->toApiArray());
+    }
+
+    public function storeObligation(Request $request, SupplierSettlementService $settlements): JsonResponse
+    {
+        $data = $request->validate([
+            'supplier_id' => ['required', 'string'],
+            'branch_id' => ['required', 'string'],
+            'amount_minor' => ['required', 'integer', 'min:1'],
+            'currency' => ['required', 'string', 'size:3'],
+            'invoice_reference' => ['nullable', 'string', 'max:100'],
+            'booking_item_id' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $obligation = $settlements->createObligation($data, $this->actorId());
+
+        return $this->created($obligation->toApiArray());
+    }
+
+    public function payments(Request $request): JsonResponse
+    {
+        $branch = $this->branchOrFail();
+
+        $payments = SupplierPayment::query()
+            ->with('supplier', 'branch', 'obligation', 'cashAccount')
+            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->when($request->query('supplier_id'), fn ($query, $supplierId) => $query->whereHas(
+                'supplier',
+                fn ($query) => $query->where('public_id', $supplierId),
+            ))
+            ->when($request->query('from'), fn ($query, $from) => $query->whereDate('paid_at', '>=', $from))
+            ->when($request->query('to'), fn ($query, $to) => $query->whereDate('paid_at', '<=', $to))
+            ->orderByDesc('id')
+            ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
+
+        $payments->getCollection()->transform(fn (SupplierPayment $payment) => $payment->toApiArray());
+
+        return $this->paginated($payments);
+    }
+
+    public function showPayment(SupplierPayment $supplierPayment): JsonResponse
+    {
+        $this->assertBranch($supplierPayment->branch_id);
+
+        $supplierPayment->load('supplier', 'branch', 'obligation', 'cashAccount', 'applications');
+
+        return $this->ok($supplierPayment->toApiArray());
+    }
+
+    public function storePayment(Request $request, SupplierSettlementService $settlements): JsonResponse
+    {
+        $data = $request->validate([
+            'supplier_id' => ['required', 'string'],
+            'supplier_obligation_id' => ['nullable', 'string'],
+            'branch_id' => ['required', 'string'],
+            'cash_account_id' => ['required', 'string'],
+            'amount_minor' => ['required', 'integer', 'min:1'],
+            'currency' => ['required', 'string', 'size:3'],
+            'fx_rate' => ['nullable', 'string'],
+            'paid_at' => ['nullable', 'date'],
+        ]);
+
+        $payment = $settlements->recordPayment($data, $this->actorId(), $request->header('Idempotency-Key'));
+
+        return $this->created($payment->toApiArray());
+    }
+
+    public function apply(Request $request, SupplierPayment $supplierPayment, SupplierSettlementService $settlements): JsonResponse
+    {
+        $this->assertBranch($supplierPayment->branch_id);
+
+        $data = $request->validate([
+            'supplier_obligation_id' => ['required', 'string'],
+            'amount_minor' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $payment = $settlements->applyAdvance($supplierPayment, $data, $this->actorId());
+
+        return $this->ok($payment->toApiArray());
+    }
+
+    private function assertBranch(int $branchId): void
+    {
+        $branch = $this->branchOrFail();
+
+        if ($branch->id !== $branchId) {
+            throw new AuthorizationException('This record belongs to another branch.');
+        }
+    }
+}
