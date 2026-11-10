@@ -342,6 +342,7 @@ class SupplierSettlementService
             }
 
             $obligation = $application->obligation;
+            $invoice = $this->recognizedInvoice($obligation);
             $amount = (int) $application->amount_minor;
 
             $application->delete();
@@ -354,10 +355,12 @@ class SupplierSettlementService
                 entryDate: now()->toDateString(),
                 branch: $branch,
                 currency: $payment->currency_code,
-                lines: [
-                    PostingLine::credit($ap, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id),
-                    PostingLine::debit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id),
-                ],
+                lines: $this->realizedFx->balance([
+                    PostingLine::credit($ap, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id)
+                        ->in($payment->currency_code, (string) $invoice->fx_rate),
+                    PostingLine::debit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id)
+                        ->in($payment->currency_code, (string) $payment->fx_rate),
+                ], $payment->currency_code),
                 memo: 'Unapply supplier advance '.$payment->public_id,
                 sourceType: 'supplier_payment_application',
                 sourceId: $application->id,
@@ -368,6 +371,7 @@ class SupplierSettlementService
                 actorId: $actorId,
             ));
 
+            $invoice->update(['outstanding_minor' => (int) $invoice->outstanding_minor + $amount]);
             $this->audit->log('supplier_payment.unapplied', $payment, null, [
                 'obligation' => $obligation->public_id,
                 'amount_minor' => $amount,
