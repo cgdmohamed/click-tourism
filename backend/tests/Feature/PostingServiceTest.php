@@ -174,7 +174,7 @@ class PostingServiceTest extends TestCase
             $this->assertSame('2026-11-10', $reversal->entry_date->toDateString());
             $this->assertSame('2026-10-15', $entry->entry_date->toDateString());
             $this->assertSame('closed', FiscalPeriod::query()->where('name', '2026-10')->firstOrFail()->status);
-            $this->assertSame('2026-11', $reversal->fiscalPeriod->name);
+            $this->assertSame('2026-11', FiscalPeriod::query()->findOrFail($reversal->fiscal_period_id)->name);
             $this->assertSame($entry->id, $reversal->reversal_of_id);
         } finally {
             Carbon::setTestNow();
