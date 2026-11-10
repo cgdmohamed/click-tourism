@@ -91,7 +91,7 @@ export type PaymentMethod = {
   name_en: string
   type: string
   default_cash_account_id: string | null
-  default_cash_account: any | null
+  default_cash_account: { id: string; code: string; name_ar: string; name_en: string; currency: string; is_active: boolean } | null
   is_active: boolean
 }
 

@@ -626,8 +626,8 @@ export function Pagination({
   lastPage: number
   onChange: (page: number) => void
 }) {
-  if (lastPage <= 1) return null
   const { t } = useI18n()
+  if (lastPage <= 1) return null
   return (
     <div className="text-medium flex items-center justify-end gap-2 px-4 py-3">
       <IconButton icon="chevronLeft" label={t('previousPage')} variant="secondary" disabled={page <= 1} onClick={() => onChange(page - 1)} />
