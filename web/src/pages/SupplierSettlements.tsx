@@ -50,6 +50,7 @@ const emptyPaymentForm = {
 
 export default function SupplierSettlements() {
   const { t, locale } = useI18n()
+  const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
   const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
 
