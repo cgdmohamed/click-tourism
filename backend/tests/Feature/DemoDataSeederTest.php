@@ -7,7 +7,9 @@ use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Models\BookingItem;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\Sequence;
+use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SequenceService;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
@@ -18,6 +20,8 @@ use App\Modules\Reports\Services\ReportService;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 class DemoDataSeederTest extends TestCase
@@ -28,6 +32,15 @@ class DemoDataSeederTest extends TestCase
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
+        Permission::query()->firstOrCreate(['name' => 'accounts.post', 'guard_name' => 'web']);
+        Permission::query()->firstOrCreate(['name' => 'journal.reverse', 'guard_name' => 'web']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $owner = User::query()->where('email', 'sales@example.com')->first();
+        if ($owner) {
+            $owner->givePermissionTo(['accounts.post']);
+        }
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'false');
         (new DemoDataSeeder(force: true))->run();
     }
 

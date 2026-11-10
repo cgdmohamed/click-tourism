@@ -13,6 +13,7 @@ use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
 use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Support\Carbon;
+use Spatie\Permission\Models\Permission;
 
 /**
  * Minimal accounting fixtures for feature tests.
@@ -32,6 +33,11 @@ trait BuildsAccounting
     {
         app(SettingService::class)->set('general', 'base_currency', 'EGP');
         app(SettingService::class)->set('accounting', 'approval_status', 'pending_accountant_review');
+        // Tests opt in to auto-posting explicitly; production defaults to false
+        // until the accountant approves the accounting policy.
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'true');
+        app(SettingService::class)->set('accounting', 'schedule_auto_post', 'true');
 
         foreach (['EGP' => 2, 'USD' => 2, 'SAR' => 2, 'KWD' => 3] as $code => $exponent) {
             Currency::query()->firstOrCreate(
@@ -50,6 +56,13 @@ trait BuildsAccounting
 
         $this->user = User::factory()->create();
         $this->user->branches()->attach($this->branch->id);
+        Permission::query()->firstOrCreate(
+            ['name' => 'accounts.post', 'guard_name' => 'web']
+        );
+        Permission::query()->firstOrCreate(
+            ['name' => 'journal.reverse', 'guard_name' => 'web']
+        );
+        $this->user->givePermissionTo(['accounts.post', 'journal.reverse']);
 
         $this->seed(ChartOfAccountsSeeder::class);
 

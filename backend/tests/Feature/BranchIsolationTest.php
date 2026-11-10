@@ -54,6 +54,7 @@ class BranchIsolationTest extends TestCase
         $permissions = [
             'bookings.view', 'payments.view', 'customers.update', 'suppliers.update',
             'leads.update', 'leads.convert', 'journal.view', 'journal.create', 'journal.reverse',
+            'accounts.post',
         ];
         foreach ($permissions as $permission) {
             Permission::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);

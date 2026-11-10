@@ -21,7 +21,7 @@ class RolePermissionSeeder extends Seeder
         'accountant' => [
             'branches.view',
             'settings.view', 'settings.update',
-            'accounts.view', 'accounts.create', 'accounts.update',
+            'accounts.view', 'accounts.create', 'accounts.update', 'accounts.post',
             'periods.view', 'periods.manage', 'periods.post_soft_closed',
             'journal.view', 'journal.create', 'journal.reverse',
             'customers.view', 'customers.update',
@@ -79,7 +79,7 @@ class RolePermissionSeeder extends Seeder
     private const PERMISSIONS = [
         'branches.view', 'branches.create', 'branches.view_all',
         'settings.view', 'settings.update',
-        'accounts.view', 'accounts.create', 'accounts.update',
+        'accounts.view', 'accounts.create', 'accounts.update', 'accounts.post',
         'periods.view', 'periods.manage', 'periods.post_soft_closed',
         'journal.view', 'journal.create', 'journal.reverse',
         'customers.view', 'customers.create', 'customers.update',

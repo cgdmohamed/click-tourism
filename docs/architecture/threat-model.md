@@ -31,7 +31,7 @@ Status: Draft. Scope: self-hosted single-tenant installation. Method: asset inve
 | **Repudiation** | User denies creating/approving a refund | Append-only audit with actor, IP, request ID; approval records. |
 | **Information disclosure** | Branch A reads branch B; PII in logs/exports | Branch scope server-side; redaction; export permissions; no secrets/PII in logs; encrypted secrets. |
 | **Denial of service** | Login brute force; expensive report; webhook flood | Rate limiting, queue for heavy reports, request size limits, webhook dedupe. |
-| **Elevation of privilege** | Missing policy on an endpoint; role escalation | Deny-by-default; route coverage test; role-change permission + audit; separation of duties. |
+| **Elevation of privilege** | Missing policy on an endpoint; role escalation | Deny-by-default; route coverage test; role-change permission + audit; separation of duties; `accounts.post` required for all journal posting; `journal.reverse` required for reversals. |
 | **SQL injection** | Unsafe query filters | Eloquent/query builder bindings; whitelisted sort/filter columns; validation. |
 | **XSS** | Stored lead notes rendered in UI | Output encoding; CSP; sanitize rich text; React escaping. |
 | **CSRF** | State-changing request from another origin | Token auth (no cookie-based session for API) + CORS allowlist; SameSite if cookies used. |
@@ -51,6 +51,10 @@ Status: Draft. Scope: self-hosted single-tenant installation. Method: asset inve
 6. Posted journal cannot be edited via mass assignment, direct route, or bulk action.
 7. Export/download URLs are authorized and expire.
 8. Secrets never appear in API responses, audit snapshots, or logs.
+9. Actor who created a draft journal cannot post it (maker-checker).
+10. Actor who posted a journal cannot reverse it (maker-checker).
+11. Auto-posting is disabled until `accounting_policy_approved` is set to true.
+12. System jobs (actorId=null) can post only when policy is approved; all system postings are audited.
 
 ## 5. Residual risks / decisions
 

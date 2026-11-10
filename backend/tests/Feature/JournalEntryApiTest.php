@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Core\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -20,11 +21,16 @@ class JournalEntryApiTest extends TestCase
         parent::setUp();
         $this->buildAccounting();
 
-        foreach (['journal.view', 'journal.create'] as $permission) {
+        foreach (['journal.view', 'journal.create', 'accounts.post'] as $permission) {
             Permission::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $this->user->givePermissionTo(['journal.view', 'journal.create']);
+
+        // Separate user for posting (maker-checker: creator != poster).
+        $this->poster = User::factory()->create();
+        $this->poster->branches()->attach($this->branch->id);
+        $this->poster->givePermissionTo(['accounts.post', 'journal.view', 'journal.create']);
 
         Sanctum::actingAs($this->user);
     }
@@ -71,6 +77,7 @@ class JournalEntryApiTest extends TestCase
 
         $this->assertSame(0, JournalEntry::query()->where('status', 'posted')->count());
 
+        Sanctum::actingAs($this->poster);
         $this->withHeaders($this->headers())
             ->postJson("/api/v1/journal-entries/{$id}/post")
             ->assertOk()

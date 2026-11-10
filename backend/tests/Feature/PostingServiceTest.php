@@ -7,6 +7,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
+use App\Modules\Core\Models\User;
 use App\Modules\Money\Services\FxService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,10 +20,16 @@ class PostingServiceTest extends TestCase
     use BuildsAccounting;
     use RefreshDatabase;
 
+    private User $poster;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->buildAccounting();
+
+        $this->poster = User::factory()->create();
+        $this->poster->branches()->attach($this->branch->id);
+        $this->poster->givePermissionTo(['accounts.post']);
     }
 
     private function posting(): PostingService
@@ -146,7 +153,7 @@ class PostingServiceTest extends TestCase
         $this->assertNull($draft->posted_at);
         $this->assertSame(0, JournalEntry::query()->where('status', 'posted')->count());
 
-        $posted = $this->posting()->postDraft($draft, $this->user->id);
+        $posted = $this->posting()->postDraft($draft, $this->poster->id);
 
         $this->assertSame('posted', $posted->status);
         $this->assertNotNull($posted->posted_at);
