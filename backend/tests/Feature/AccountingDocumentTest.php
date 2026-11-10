@@ -9,6 +9,8 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Invoices\Services\InvoiceService;
+use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\TreasurySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -347,6 +349,78 @@ class AccountingDocumentTest extends TestCase
         $apAccount = (string) app(SettingService::class)->get('accounting', 'ap_account_code', '2100');
         $this->assertSame(100000, $this->balance($apAccount));
         $this->assertSame(-100000, $this->balance('1110'));
+    }
+
+    public function test_simple_receipt_uses_cash_and_customer_subaccount_without_manual_lines(): void
+    {
+        $customer = $this->customer();
+        $partyAccount = app(InvoiceService::class)->provisionSubaccount(
+            'customer', $customer->id, PartyAccount::ROLE_RECEIVABLE
+        );
+
+        $id = $this->create([
+            'type' => 'receipt_voucher',
+            'simple_mode' => true,
+            'party_type' => 'customer',
+            'party_id' => $customer->public_id,
+            'cash_account_id' => $this->cashAccountPublicId(),
+            'amount_minor' => 150000,
+            'currency' => 'EGP',
+        ])->assertCreated()->assertJsonPath('data.total_minor', 150000)->json('data.id');
+
+        $document = AccountingDocument::query()->where('public_id', $id)->firstOrFail();
+        $this->assertCount(2, $document->lines);
+        $this->assertSame(150000, (int) $document->lines->sum('debit_minor'));
+        $this->assertSame(150000, (int) $document->lines->sum('credit_minor'));
+        $this->assertSame(1, $document->lines->where('account_id', $partyAccount->id)->count());
+
+        $this->postJson("/api/v1/accounting-documents/{$id}/submit")->assertOk();
+        app(SettingService::class)->set('documents', 'segregation', 'false');
+        $this->postJson("/api/v1/accounting-documents/{$id}/approve")->assertOk();
+        $this->postJson("/api/v1/accounting-documents/{$id}/post")->assertOk();
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'accounting_document')->count());
+    }
+
+    public function test_simple_supplier_payment_generates_balanced_lines(): void
+    {
+        $supplier = $this->supplier();
+        $partyAccount = app(InvoiceService::class)->provisionSubaccount(
+            'supplier', $supplier->id, PartyAccount::ROLE_PAYABLE
+        );
+
+        $id = $this->create([
+            'type' => 'payment_voucher',
+            'simple_mode' => true,
+            'party_type' => 'supplier',
+            'party_id' => $supplier->public_id,
+            'cash_account_id' => $this->cashAccountPublicId(),
+            'amount_minor' => 75000,
+            'currency' => 'EGP',
+        ])->assertCreated()->assertJsonPath('data.total_minor', 75000)->json('data.id');
+
+        $lines = AccountingDocument::query()->where('public_id', $id)->firstOrFail()->lines;
+        $this->assertSame(75000, (int) $lines->where('account_id', $partyAccount->id)->sum('debit_minor'));
+        $this->assertSame(75000, (int) $lines->where('account_id', $this->account('1110')->id)->sum('credit_minor'));
+    }
+
+    public function test_simple_mode_rejects_unsupported_types_and_manual_lines(): void
+    {
+        $customer = $this->customer();
+        app(InvoiceService::class)->provisionSubaccount('customer', $customer->id, PartyAccount::ROLE_RECEIVABLE);
+        $payload = [
+            'type' => 'receipt_voucher',
+            'simple_mode' => true,
+            'party_type' => 'customer',
+            'party_id' => $customer->public_id,
+            'cash_account_id' => $this->cashAccountPublicId(),
+            'amount_minor' => 10000,
+            'currency' => 'EGP',
+        ];
+        $this->create($payload + ['lines' => [['account_id' => $this->account('1110')->public_id]]])->assertStatus(422);
+        $this->create(array_merge($payload, ['type' => 'adjustment_voucher']))->assertStatus(422);
+        $this->create(array_merge($payload, ['party_type' => 'supplier']))->assertStatus(422);
+        $this->create(array_merge($payload, ['cash_account_id' => 'missing']))->assertStatus(422);
+        $this->assertSame(0, AccountingDocument::query()->count());
     }
 
     private function cashAccountPublicId(): string
