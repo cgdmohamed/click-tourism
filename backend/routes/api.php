@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\Api\CashAccountController;
 use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FxRateController;
@@ -87,6 +89,23 @@ Route::prefix('v1')->group(function () {
         Route::get('transfers/{transfer}', [TransferController::class, 'show'])->middleware('permission:transfers.view');
         Route::post('transfers/{transfer}/reverse', [TransferController::class, 'reverse'])->middleware('permission:transfers.reverse');
 
+        Route::get('employees', [EmployeeController::class, 'index'])->middleware('permission:employees.view');
+        Route::post('employees', [EmployeeController::class, 'store'])->middleware('permission:employees.manage');
+        Route::get('employees/{employee}', [EmployeeController::class, 'show'])->middleware('permission:employees.view');
+        Route::patch('employees/{employee}', [EmployeeController::class, 'update'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/deactivate', [EmployeeController::class, 'deactivate'])->middleware('permission:employees.manage');
+        Route::get('employees/{employee}/statement', [EmployeeController::class, 'statement'])->middleware('permission:employees.view');
+
+        Route::post('employees/{employee}/advances', [EmployeeController::class, 'requestAdvance'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/advances/{advance}/approve', [EmployeeController::class, 'approveAdvance'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/advances/{advance}/disburse', [EmployeeController::class, 'disburseAdvance'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/advances/{advance}/settle', [EmployeeController::class, 'settleAdvance'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/advances/{advance}/cancel', [EmployeeController::class, 'cancelAdvance'])->middleware('permission:employees.manage');
+
+        Route::post('employees/{employee}/custody', [EmployeeController::class, 'issueCustody'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/custody/{custody}/clear', [EmployeeController::class, 'clearCustody'])->middleware('permission:employees.manage');
+        Route::post('employees/{employee}/custody/{custody}/return', [EmployeeController::class, 'returnCustody'])->middleware('permission:employees.manage');
+
         Route::get('cost-centers', [CostCenterController::class, 'index'])->middleware('permission:cost_centers.view');
         Route::post('cost-centers', [CostCenterController::class, 'store'])->middleware('permission:cost_centers.manage');
         Route::get('cost-centers/{center}', [CostCenterController::class, 'show'])->middleware('permission:cost_centers.view');
@@ -111,6 +130,17 @@ Route::prefix('v1')->group(function () {
         Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->middleware('permission:journal.view');
         Route::post('journal-entries/{journalEntry}/post', [JournalEntryController::class, 'post'])->middleware('permission:journal.create');
         Route::post('journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->middleware('permission:journal.reverse');
+
+        Route::get('accounting-documents', [AccountingDocumentController::class, 'index'])->middleware('permission:documents.view');
+        Route::post('accounting-documents', [AccountingDocumentController::class, 'store'])->middleware(['permission:documents.create', 'idempotent']);
+        Route::get('accounting-documents/{document}', [AccountingDocumentController::class, 'show'])->middleware('permission:documents.view');
+        Route::patch('accounting-documents/{document}', [AccountingDocumentController::class, 'update'])->middleware('permission:documents.create');
+        Route::post('accounting-documents/{document}/submit', [AccountingDocumentController::class, 'submit'])->middleware('permission:documents.create');
+        Route::post('accounting-documents/{document}/approve', [AccountingDocumentController::class, 'approve'])->middleware(['permission:documents.approve', 'idempotent']);
+        Route::post('accounting-documents/{document}/post', [AccountingDocumentController::class, 'post'])->middleware(['permission:documents.approve', 'idempotent']);
+        Route::post('accounting-documents/{document}/cancel', [AccountingDocumentController::class, 'cancel'])->middleware('permission:documents.create');
+        Route::post('accounting-documents/{document}/reject', [AccountingDocumentController::class, 'reject'])->middleware('permission:documents.approve');
+        Route::post('accounting-documents/{document}/correct', [AccountingDocumentController::class, 'correct'])->middleware(['permission:documents.approve', 'idempotent']);
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');

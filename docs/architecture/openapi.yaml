@@ -1153,6 +1153,343 @@ paths:
         '200': { description: Accepted or duplicate }
         '403': { description: Invalid signature }
 
+  /employees:
+    get:
+      tags: [Parties]
+      summary: List employees for the branch
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: include_inactive, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: Employees }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Parties]
+      summary: Create an employee master record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}:
+    get:
+      tags: [Parties]
+      summary: Get an employee with balances
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Employee }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Parties]
+      summary: Update an employee
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/deactivate:
+    post:
+      tags: [Parties]
+      summary: Deactivate an employee (blocked while balances are open)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deactivated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/statement:
+    get:
+      tags: [Parties]
+      summary: Employee subledger statement for a date range
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Statement }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances:
+    post:
+      tags: [Parties]
+      summary: Request an advance for an employee (no posting until disbursed)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeAdvanceInput' }
+      responses:
+        '201': { description: Requested }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/approve:
+    post:
+      tags: [Parties]
+      summary: Approve a requested advance (no posting)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/disburse:
+    post:
+      tags: [Parties]
+      summary: Disburse an approved advance (posts Dr employee advance / Cr cash)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeAdvanceDisburseInput' }
+      responses:
+        '200': { description: Disbursed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/settle:
+    post:
+      tags: [Parties]
+      summary: Settle an advance against expenses (posts Dr expense / Cr employee advance)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeAdvanceSettleInput' }
+      responses:
+        '200': { description: Settled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/cancel:
+    post:
+      tags: [Parties]
+      summary: Cancel a requested or approved advance (no posting)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cancelled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/custody:
+    post:
+      tags: [Parties]
+      summary: Issue a custody item to an employee (posts Dr custody / Cr cash when monetary)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeCustodyInput' }
+      responses:
+        '201': { description: Issued }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/custody/{custody}/clear:
+    post:
+      tags: [Parties]
+      summary: Clear a custody item (employee returned/accounted for it)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: custody, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cleared }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/custody/{custody}/return:
+    post:
+      tags: [Parties]
+      summary: Return a custody item to the company
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: custody, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Returned }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /accounting-documents:
+    get:
+      tags: [Accounting]
+      summary: List accounting documents / vouchers
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [receipt_voucher, payment_voucher, transfer_voucher, adjustment_voucher, refund_voucher] } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, submitted, approved, posted, voided, rejected, cancelled] } }
+        - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier, employee] } }
+        - { name: party_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Documents }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Accounting]
+      summary: Create a draft voucher with balanced lines (idempotent)
+      description: >-
+        Lines must balance (total debit equals total credit). Tax breakdown per
+        line is recorded as document metadata; vouchers do not auto-post tax
+        lines (DEC-036).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountingDocumentInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}:
+    get:
+      tags: [Accounting]
+      summary: Get a document with its lines, journal entry and reversals
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Document }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Accounting]
+      summary: Edit a draft document (lines re-validated, totals recomputed)
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountingDocumentInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}/submit:
+    post:
+      tags: [Accounting]
+      summary: Submit a draft document for approval (idempotent)
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Submitted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}/approve:
+    post:
+      tags: [Accounting]
+      summary: Approve a submitted document (idempotent; maker-checker enforced via documents.segregation)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}/post:
+    post:
+      tags: [Accounting]
+      summary: Post an approved document to the ledger (idempotent — exactly one journal entry)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Posted with journal_entry_id }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}/cancel:
+    post:
+      tags: [Accounting]
+      summary: Cancel a draft or submitted document (posted documents are corrected instead)
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cancelled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}/reject:
+    post:
+      tags: [Accounting]
+      summary: Reject a submitted document with a reason
+      parameters:
+        - { name: document, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200': { description: Rejected }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{document}/correct:
+    post:
+      tags: [Accounting]
+      summary: Create the linked reversal document for a posted document (submitted for approval)
+      description: >-
+        Swaps every line debit/credit, keeps the original trail via
+        reversal_of_id, and leaves the reversal in the submitted state so it
+        goes through the normal approval workflow.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: document, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 255 }
+                series: { type: string, maxLength: 10 }
+                memo: { type: string, maxLength: 255 }
+      responses:
+        '201': { description: Reversal document created (submitted) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1705,3 +2042,178 @@ components:
               allocation_type: { type: string, enum: [exact, percent] }
               amount_minor: { type: integer, minimum: 0 }
               percent: { type: number, minimum: 0, maximum: 100 }
+    Employee:
+      type: object
+      properties:
+        id: { type: string }
+        internal_code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        category: { type: string, enum: [staff, executive, driver, other] }
+        branch_id: { type: string }
+        user_id: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        is_active: { type: boolean }
+        advance_balance_minor: { type: integer }
+        custody_balance_minor: { type: integer }
+    EmployeeInput:
+      type: object
+      required: [internal_code, name_ar, name_en]
+      properties:
+        internal_code: { type: string, maxLength: 40 }
+        name_ar: { type: string }
+        name_en: { type: string }
+        category: { type: string, enum: [staff, executive, driver, other] }
+        branch_id: { type: string }
+        user_id: { type: string, nullable: true }
+        phone: { type: string, maxLength: 30, nullable: true }
+        email: { type: string, nullable: true }
+        is_active: { type: boolean }
+    EmployeeAdvance:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        employee_id: { type: string }
+        amount_minor: { type: integer }
+        settled_minor: { type: integer }
+        status: { type: string, enum: [requested, approved, disbursed, partially_settled, settled, cancelled] }
+        request_date: { type: string, format: date }
+        disbursement: { $ref: '#/components/schemas/Money' }
+        journal_entry_id: { type: string, nullable: true }
+        memo: { type: string, nullable: true }
+    EmployeeAdvanceInput:
+      type: object
+      required: [amount_minor]
+      properties:
+        amount_minor: { type: integer, minimum: 1 }
+        request_date: { type: string, format: date }
+        memo: { type: string, maxLength: 255 }
+    EmployeeAdvanceDisburseInput:
+      type: object
+      required: [disbursement_date, currency, cash_account_id]
+      properties:
+        disbursement_date: { type: string, format: date }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        cash_account_id: { type: string }
+        memo: { type: string, maxLength: 255 }
+    EmployeeAdvanceSettleInput:
+      type: object
+      required: [lines]
+      properties:
+        settlement_date: { type: string, format: date }
+        memo: { type: string, maxLength: 255 }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [expense_account_id, amount_minor]
+            properties:
+              expense_account_id: { type: string }
+              amount_minor: { type: integer, minimum: 1 }
+              description: { type: string, maxLength: 255 }
+    EmployeeCustody:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        employee_id: { type: string }
+        item_name_ar: { type: string }
+        item_name_en: { type: string }
+        value_minor: { type: integer }
+        currency: { type: string }
+        status: { type: string, enum: [issued, cleared, returned] }
+        issue_date: { type: string, format: date }
+        clear_date: { type: string, format: date, nullable: true }
+        return_date: { type: string, format: date, nullable: true }
+        journal_entry_id: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+    EmployeeCustodyInput:
+      type: object
+      required: [item_name_ar, item_name_en, issue_date, currency]
+      properties:
+        item_name_ar: { type: string }
+        item_name_en: { type: string }
+        value_minor: { type: integer, minimum: 0, default: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        issue_date: { type: string, format: date }
+        cash_account_id: { type: string }
+        notes: { type: string, maxLength: 1000 }
+    AccountingDocument:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [receipt_voucher, payment_voucher, transfer_voucher, adjustment_voucher, refund_voucher] }
+        series: { type: string }
+        number: { type: string }
+        party_type: { type: string, enum: [customer, supplier, employee], nullable: true }
+        party_id: { type: integer, nullable: true }
+        party: { type: object, nullable: true, description: Resolved party with id (public id), name_ar and name_en }
+        branch_id: { type: string }
+        booking_id: { type: integer, nullable: true }
+        cash_account_id: { type: string, nullable: true }
+        currency: { type: string }
+        fx_rate: { type: string }
+        fx_rate_date: { type: string, format: date }
+        status: { type: string, enum: [draft, submitted, approved, posted, voided, rejected, cancelled] }
+        subtotal_minor: { type: integer }
+        tax_minor: { type: integer }
+        total_minor: { type: integer }
+        journal_entry_id: { type: string, nullable: true }
+        reversal_of_id: { type: string, nullable: true }
+        reversal_reason: { type: string, nullable: true }
+        memo: { type: string, nullable: true }
+        submitted_at: { type: string, format: date-time, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        posted_at: { type: string, format: date-time, nullable: true }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/AccountingDocumentLine' }
+    AccountingDocumentLine:
+      type: object
+      properties:
+        account: { $ref: '#/components/schemas/Account' }
+        description: { type: string, nullable: true }
+        debit_minor: { type: integer }
+        credit_minor: { type: integer }
+        tax_minor: { type: integer }
+        tax_account: { $ref: '#/components/schemas/Account', nullable: true }
+        party_type: { type: string, enum: [customer, supplier, employee], nullable: true }
+        party_id: { type: integer, nullable: true }
+    AccountingDocumentInput:
+      type: object
+      required: [type, lines]
+      properties:
+        type: { type: string, enum: [receipt_voucher, payment_voucher, transfer_voucher, adjustment_voucher, refund_voucher] }
+        series: { type: string, maxLength: 10 }
+        party_type: { type: string, enum: [customer, supplier, employee] }
+        party_id: { type: string }
+        booking_id: { type: string }
+        cash_account_id: { type: string }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        document_date: { type: string, format: date }
+        memo: { type: string, maxLength: 255 }
+        submit: { type: boolean, default: false }
+        idempotency_key: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/AccountingDocumentLineInput' }
+    AccountingDocumentLineInput:
+      type: object
+      required: [account_id]
+      properties:
+        account_id: { type: string, description: Account public id or code }
+        description: { type: string, maxLength: 255 }
+        debit_minor: { type: integer, minimum: 0 }
+        credit_minor: { type: integer, minimum: 0 }
+        tax_minor: { type: integer, minimum: 0 }
+        tax_account_id: { type: string, description: Tax account public id or code }
+        party_type: { type: string, enum: [customer, supplier, employee] }
+        party_id: { type: string, description: Party public id }
+
