@@ -60,7 +60,7 @@ Artisan::command('demo:window {--seconds=600}', function () {
  * Reconcile and verify all disposable demo accounts after boot and after
  * every reset. Never write to a non-demo installation.
  */
-Artisan::command('demo:ensure-users', function () {
+Artisan::command('demo:ensure-users {--verify-only}', function () {
     if (! config('demo.enabled') || config('app.env') !== 'demo'
         || env('DB_HOST') !== 'demo-db' || env('DB_DATABASE') !== 'demo_erp') {
         $this->error('Refusing to seed demo users outside isolated demo database.');
@@ -68,7 +68,9 @@ Artisan::command('demo:ensure-users', function () {
         return 1;
     }
 
-    Artisan::call('db:seed', ['--class' => UserSeeder::class, '--force' => true]);
+    if (! $this->option('verify-only')) {
+        Artisan::call('db:seed', ['--class' => UserSeeder::class, '--force' => true]);
+    }
 
     $password = (string) env('DEMO_PASSWORD', 'password');
     foreach ([
