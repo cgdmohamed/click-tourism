@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DepreciationRunController;
+use App\Http\Controllers\Api\DemoStatusController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FiscalPeriodController;
@@ -37,6 +38,7 @@ use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+    Route::get('demo/status', [DemoStatusController::class, 'show'])->middleware('throttle:120,1');
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
     Route::get('health', [HealthController::class, 'show']);
