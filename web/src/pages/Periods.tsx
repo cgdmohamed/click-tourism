@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
+import { Icon } from '../components/icons'
 
 type Period = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'soft_closed' | 'closed' }
 type Year = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'closed'; closed_at: string | null; periods: Period[] }
@@ -111,9 +112,10 @@ export default function Periods() {
       <PageHeader
         title={L('السنوات والفترات المالية', 'Fiscal years & periods')}
         subtitle={L('إقفال الفترات والسنوات المالية وإعادة فتحها', 'Close and reopen periods and fiscal years')}
+        icon="calendar"
         actions={
           can('periods.manage') ? (
-            <Button onClick={() => { setError(''); setCreateOpen(true) }}>{L('سنة مالية جديدة', 'New fiscal year')}</Button>
+            <Button icon="plus" onClick={() => { setError(''); setCreateOpen(true) }}>{L('سنة مالية جديدة', 'New fiscal year')}</Button>
           ) : null
         }
       />
@@ -207,7 +209,9 @@ export default function Periods() {
         <ul className="flex flex-col gap-2">
           {(checksQuery.data?.checks ?? []).map((check) => (
             <li key={check.code} className="flex items-start gap-2 text-medium">
-              <span className={check.passed ? 'text-success-text' : 'text-danger-text'}>{check.passed ? '✓' : '✕'}</span>
+              <span className={check.passed ? 'mt-0.5 text-success-text' : 'mt-0.5 text-danger-text'}>
+                <Icon name={check.passed ? 'checkCircle' : 'xCircle'} className="h-4 w-4" />
+              </span>
               <span>
                 {locale === 'ar' ? checkLabels[check.code]?.ar : checkLabels[check.code]?.en}
                 {!check.passed && check.message ? <span className="block text-small text-danger-text">{check.message}</span> : null}

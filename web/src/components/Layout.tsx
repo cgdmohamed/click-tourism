@@ -3,31 +3,12 @@ import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { GlobalSearch } from './GlobalSearch'
-import { cx, Spinner } from './ui'
+import { Icon } from './icons'
+import type { IconName } from './icons'
+import { cx, IconButton, Spinner } from './ui'
 
-type NavItem = { to: string; label: string; icon: string; permission?: string }
-
-function Icon({ path }: { path: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0" aria-hidden="true">
-      <path d={path} />
-    </svg>
-  )
-}
-
-const icons = {
-  dashboard: 'M3 12h7V3H3v9Zm0 9h7v-6H3v6Zm11 0h7V9h-7v12Zm0-15h7V3h-7v3Z',
-  accounts: 'M4 5h16M4 12h16M4 19h16M8 5v14M16 5v14',
-  journal: 'M6 3h12a2 2 0 0 1 2 2v14l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Zm2 5h8M8 12h8',
-  customers: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
-  suppliers: 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-4h6v4M9 10h.01M15 10h.01M9 14h.01M15 14h.01',
-  bookings: 'M3 7h18v13H3V7Zm3-3v6m12-6v6M3 11h18M8 15h3',
-  payments: 'M2 7h20v12H2V7Zm0 4h20M6 15h3',
-  settlements: 'M4 7h16M4 12h10M4 17h7m6-3 3 3-3 3m3-3h-6',
-  reports: 'M4 19V5m0 14h16M8 15V9m4 6V6m4 9v-4',
-  leads: 'M12 2a5 5 0 0 1 5 5c0 3-5 9-5 9S7 10 7 7a5 5 0 0 1 5-5Zm0 3.5A1.5 1.5 0 1 0 12 9a1.5 1.5 0 0 0 0-3.5Z',
-  settings: 'M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm8-3.5a8 8 0 0 0-.1-1l2-1.5-2-3.5-2.3 1a8 8 0 0 0-1.7-1L15.5 3h-4l-.4 2.5a8 8 0 0 0-1.7 1l-2.3-1-2 3.5L7.1 11a8 8 0 0 0 0 2l-2 1.5 2 3.5 2.3-1a8 8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8 8 0 0 0 1.7-1l2.3 1 2-3.5-2-1.5a8 8 0 0 0 .1-1Z',
-}
+type NavItem = { to: string; label: string; icon: IconName; permission?: string }
+type NavGroup = { label?: string; items: NavItem[] }
 
 export function Layout() {
   const { user, loading, logout, branches, activeBranch, setActiveBranch, can } = useAuth()
@@ -47,63 +28,125 @@ export function Layout() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
-  const items: NavItem[] = [
-    { to: '/', label: t('dashboard'), icon: icons.dashboard },
-    { to: '/accounts', label: t('accounts'), icon: icons.accounts },
-    { to: '/journal', label: t('journal'), icon: icons.journal },
-    { to: '/treasury', label: t('treasury'), icon: icons.payments, permission: 'accounts.view' },
-    { to: '/expenses', label: t('expenses'), icon: icons.settlements, permission: 'expenses.view' },
-    { to: '/opening-balances', label: t('openingBalances'), icon: icons.accounts, permission: 'opening_balances.view' },
-    { to: '/periods', label: t('fiscalPeriods'), icon: icons.bookings, permission: 'periods.view' },
-{ to: '/invoices', label: t('invoices'), icon: icons.payments, permission: 'invoices.view' },
-    { to: '/documents', label: t('vouchers'), icon: icons.journal, permission: 'documents.view' },
-    { to: '/reconciliation', label: t('reconciliation'), icon: icons.settlements, permission: 'reconciliation.view' },
-    { to: '/schedules', label: t('schedules'), icon: icons.bookings, permission: 'schedules.view' },
-    { to: '/fixed-assets', label: t('fixedAssets'), icon: icons.accounts, permission: 'assets.view' },
-    { to: '/customers', label: t('customers'), icon: icons.customers },
-    { to: '/suppliers', label: t('suppliers'), icon: icons.suppliers },
-    { to: '/bookings', label: t('bookings'), icon: icons.bookings },
-    { to: '/payments', label: t('payments'), icon: icons.payments },
-    { to: '/supplier-settlements', label: t('supplierSettlements'), icon: icons.settlements },
-    { to: '/reports', label: t('reports'), icon: icons.reports },
-    { to: '/leads', label: t('crm'), icon: icons.leads },
-    { to: '/settings', label: t('settings'), icon: icons.settings },
+  const groups: NavGroup[] = [
+    {
+      items: [{ to: '/', label: t('dashboard'), icon: 'dashboard' }],
+    },
+    {
+      label: t('accounting'),
+      items: [
+        { to: '/accounts', label: t('accounts'), icon: 'ledger' },
+        { to: '/journal', label: t('journal'), icon: 'scale' },
+        { to: '/opening-balances', label: t('openingBalances'), icon: 'landmark', permission: 'opening_balances.view' },
+        { to: '/periods', label: t('fiscalPeriods'), icon: 'calendar', permission: 'periods.view' },
+        { to: '/documents', label: t('vouchers'), icon: 'clipboardCheck', permission: 'documents.view' },
+        { to: '/fixed-assets', label: t('fixedAssets'), icon: 'package', permission: 'assets.view' },
+        { to: '/reports', label: t('reports'), icon: 'chart' },
+      ],
+    },
+    {
+      label: t('operations'),
+      items: [
+        { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
+        { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
+        { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
+        { to: '/payments', label: t('payments'), icon: 'creditCard' },
+        { to: '/supplier-settlements', label: t('supplierSettlements'), icon: 'handshake' },
+        { to: '/reconciliation', label: t('reconciliation'), icon: 'listChecks', permission: 'reconciliation.view' },
+        { to: '/schedules', label: t('schedules'), icon: 'calendarClock', permission: 'schedules.view' },
+      ],
+    },
+    {
+      label: t('parties'),
+      items: [
+        { to: '/customers', label: t('customers'), icon: 'users' },
+        { to: '/suppliers', label: t('suppliers'), icon: 'truck' },
+        { to: '/bookings', label: t('bookings'), icon: 'plane' },
+        { to: '/leads', label: t('crm'), icon: 'target' },
+      ],
+    },
+    {
+      label: t('system'),
+      items: [{ to: '/settings', label: t('settings'), icon: 'settings' }],
+    },
   ]
 
   const nav = (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-      {items.filter((item) => !item.permission || can(item.permission)).map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === '/'}
-          onClick={() => setMobileOpen(false)}
-          className={({ isActive }) =>
-            cx(
-              'label flex items-center gap-3 rounded-12 px-3 py-2 transition',
-              isActive
-                ? 'bg-surface-selected text-text-default'
-                : 'text-text-subtle hover:bg-surface-hovered hover:text-text-default',
-            )
-          }
-        >
-          <Icon path={item.icon} />
-          <span>{item.label}</span>
-        </NavLink>
-      ))}
+    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4" aria-label="Main navigation">
+      {groups.map((group, index) => {
+        const items = group.items.filter((item) => !item.permission || can(item.permission))
+        if (items.length === 0) return null
+        return (
+          <div key={group.label ?? `group-${index}`} className="flex flex-col gap-1">
+            {group.label ? (
+              <p className="text-small px-3 pb-1 font-semibold uppercase tracking-wide text-text-subtlest">{group.label}</p>
+            ) : null}
+            {items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  cx(
+                    'label relative flex items-center gap-3 rounded-12 px-3 py-2 transition',
+                    isActive
+                      ? 'bg-surface-selected text-text-default'
+                      : 'text-text-subtle hover:bg-surface-hovered hover:text-text-default',
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive ? (
+                      <span className="absolute inset-y-1.5 start-0 w-1 rounded-full bg-brand-1-accent" aria-hidden="true" />
+                    ) : null}
+                    <Icon name={item.icon} className={cx('h-5 w-5', isActive && 'text-brand-1-accent')} />
+                    <span className="truncate">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        )
+      })}
     </nav>
   )
+
+  const brand = (
+    <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-16 bg-brand-1-background text-brand-1-text shadow-2">
+        <Icon name="compass" size={22} />
+      </span>
+      <div className="min-w-0">
+        <p className="heading-small truncate text-brand-1-accent">{t('appName')}</p>
+        <p className="text-small truncate text-text-subtle">{t('appTagline')}</p>
+      </div>
+    </div>
+  )
+
+  const initials =
+    user.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?'
 
   return (
     <div className="flex min-h-screen bg-surface-canvas">
       <aside className="no-print hidden w-64 shrink-0 flex-col border-e border-border-subtle bg-surface-default lg:flex">
-        <div className="border-b border-border-subtle px-5 py-5">
-          <p className="heading-medium text-brand-1-accent">{t('appName')}</p>
-          <p className="text-small mt-0.5 text-text-subtle">{t('appTagline')}</p>
-        </div>
+        {brand}
         {nav}
-        <div className="text-small border-t border-border-subtle px-4 py-3 text-text-subtle">
-          {user.name} · {user.roles[0] ?? '—'}
+        <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-3">
+          <span className="text-small flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-subtle font-semibold text-text-subtle">
+            {initials}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-small truncate font-medium text-text-default">{user.name}</p>
+            <p className="text-small truncate text-text-subtle">{user.roles[0] ?? '—'}</p>
+          </div>
+          <IconButton icon="logOut" label={t('logout')} onClick={() => void logout()} />
         </div>
       </aside>
 
@@ -111,10 +154,13 @@ export function Layout() {
         <div className="no-print fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setMobileOpen(false)}>
           <aside className="flex h-full w-72 flex-col bg-surface-default" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-border-subtle px-4 py-4">
-              <p className="heading-small text-brand-1-accent">{t('appName')}</p>
-              <button className="p-1 text-text-subtle" onClick={() => setMobileOpen(false)} aria-label="Close menu">
-                ✕
-              </button>
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-12 bg-brand-1-background text-brand-1-text">
+                  <Icon name="compass" size={20} />
+                </span>
+                <p className="heading-small truncate text-brand-1-accent">{t('appName')}</p>
+              </div>
+              <IconButton icon="x" label={t('closeMenu')} onClick={() => setMobileOpen(false)} />
             </div>
             {nav}
           </aside>
@@ -124,9 +170,7 @@ export function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-default/95 px-4 py-3 backdrop-blur lg:px-6">
           <div className="flex items-center gap-3">
-            <button className="rounded-12 border border-border-subtle p-2 text-text-subtle lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
-              ☰
-            </button>
+            <IconButton icon="menu" label={t('openMenu')} variant="secondary" className="lg:hidden" onClick={() => setMobileOpen(true)} />
             <div className="hidden sm:block">
               <p className="label text-text-default">{t('appName')}</p>
               <p className="text-small text-text-subtle">{t('appTagline')}</p>
@@ -137,6 +181,7 @@ export function Layout() {
             <GlobalSearch />
             {branches.length > 1 ? (
               <label className="text-small flex items-center gap-2 text-text-subtle">
+                <Icon name="building" className="h-4 w-4" />
                 <span className="hidden sm:inline">{t('branch')}</span>
                 <select
                   className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
@@ -152,15 +197,15 @@ export function Layout() {
               </label>
             ) : null}
             <button
-              className="text-small rounded-12 border border-border-subtle px-2.5 py-1.5 font-medium text-text-subtle hover:bg-surface-hovered"
+              className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered hover:text-text-default"
               onClick={toggleLocale}
               title={t('language')}
+              aria-label={t('language')}
             >
+              <Icon name="globe" className="h-4 w-4" />
               {locale === 'ar' ? 'EN' : 'عربي'}
             </button>
-            <button className="text-small rounded-12 px-2.5 py-1.5 font-medium text-text-subtle hover:bg-surface-hovered" onClick={() => void logout()}>
-              {t('logout')}
-            </button>
+            <IconButton icon="logOut" label={t('logout')} onClick={() => void logout()} />
           </div>
         </header>
 

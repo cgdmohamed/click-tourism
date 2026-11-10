@@ -11,6 +11,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  IconButton,
   Input,
   Loading,
   Modal,
@@ -282,9 +283,10 @@ export default function Invoices() {
       <PageHeader
         title={L('الفواتير', 'Invoices')}
         subtitle={L('فواتير العملاء والموردين مع دورة حياة المسودة حتى الإصدار', 'Customer and supplier invoices, from draft to issued')}
+        icon="fileText"
         actions={
           can('invoices.create') ? (
-            <Button onClick={() => { setError(''); setOpen(true) }}>{L('فاتورة جديدة', 'New invoice')}</Button>
+            <Button icon="plus" onClick={() => { setError(''); setOpen(true) }}>{L('فاتورة جديدة', 'New invoice')}</Button>
           ) : null
         }
       />
@@ -463,9 +465,7 @@ export default function Invoices() {
                   />
                 </div>
                 <div className="flex justify-end sm:col-span-1">
-                  <Button variant="ghost" onClick={() => removeLine(index)} aria-label="Remove">
-                    ✕
-                  </Button>
+                  <IconButton icon="x" label={t('removeLine')} onClick={() => removeLine(index)} />
                 </div>
               </div>
             ))}

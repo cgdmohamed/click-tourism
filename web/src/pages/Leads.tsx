@@ -95,7 +95,8 @@ export default function Leads() {
       <PageHeader
         title={t('crm')}
         subtitle={locale === 'ar' ? 'توزيع العملاء المحتملين وإعادة التوزيع بعد 24 ساعة' : 'Lead routing with 24-hour inactivity reassignment'}
-        actions={<Button onClick={() => setOpen(true)}>{locale === 'ar' ? 'عميل محتمل جديد' : 'New lead'}</Button>}
+        icon="target"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{locale === 'ar' ? 'عميل محتمل جديد' : 'New lead'}</Button>}
       />
 
       {staleCount > 0 ? (

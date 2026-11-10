@@ -193,9 +193,10 @@ export default function Expenses() {
       <PageHeader
         title={L('المصروفات', 'Expenses')}
         subtitle={L('تسجيل المصروفات واعتمادها وترحيلها', 'Record, approve and post expenses')}
+        icon="receipt"
         actions={
           can('expenses.create') ? (
-            <Button onClick={() => { setError(''); setOpen(true) }}>{L('مصروف جديد', 'New expense')}</Button>
+            <Button icon="plus" onClick={() => { setError(''); setOpen(true) }}>{L('مصروف جديد', 'New expense')}</Button>
           ) : null
         }
       />

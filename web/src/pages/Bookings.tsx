@@ -193,7 +193,8 @@ export default function Bookings() {
       <PageHeader
         title={t('bookings')}
         subtitle={locale === 'ar' ? 'حجوزات متعددة الخدمات مع التكلفة والربحية' : 'Multi-service bookings with cost and profitability'}
-        actions={<Button onClick={() => setOpen(true)}>{t('newBooking')}</Button>}
+        icon="plane"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newBooking')}</Button>}
       />
 
       {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
@@ -410,12 +411,11 @@ export default function Bookings() {
                 <Button
                   variant="ghost"
                   className="w-full"
+                  icon="x"
                   disabled={items.length <= 1}
                   onClick={() => setItems((current) => current.filter((_, i) => i !== index))}
-                  aria-label="Remove item"
-                >
-                  ✕
-                </Button>
+                  aria-label={t('removeLine')}
+                />
               </div>
             </div>
           ))}

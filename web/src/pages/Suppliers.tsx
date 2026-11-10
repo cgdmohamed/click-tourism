@@ -78,7 +78,8 @@ export default function Suppliers() {
       <PageHeader
         title={t('suppliers')}
         subtitle={locale === 'ar' ? 'الموردون حسب النشاط وأرصدتهم' : 'Suppliers by category and balances'}
-        actions={<Button onClick={() => setOpen(true)}>{t('newSupplier')}</Button>}
+        icon="truck"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newSupplier')}</Button>}
       />
 
       <Card>

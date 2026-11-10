@@ -585,13 +585,15 @@ export default function FixedAssets() {
           'سجل الأصول، إهلاك القسط الثابت، التحويلات التشغيلية، الاستبعاد ومطابقة حسابات الضبط.',
           'Asset register, straight-line depreciation, operational transfers, disposal and control-account reconciliation.',
         )}
+        icon="package"
         actions={
           manage ? (
             <>
-              <Button variant="secondary" onClick={() => setCategoryOpen(true)}>
+              <Button variant="secondary" icon="plus" onClick={() => setCategoryOpen(true)}>
                 {L('تصنيف جديد', 'New category')}
               </Button>
               <Button
+                icon="plus"
                 onClick={() => {
                   setAssetForm({
                     ...emptyAssetForm,

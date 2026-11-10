@@ -131,7 +131,8 @@ export default function Payments() {
       <PageHeader
         title={t('payments')}
         subtitle={locale === 'ar' ? 'سندات القبض والدفعات الجزئية والدفعات المقدمة' : 'Receipts, partial payments, and advances'}
-        actions={<Button onClick={() => setOpen(true)}>{t('newPayment')}</Button>}
+        icon="creditCard"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newPayment')}</Button>}
       />
 
       <Card>
