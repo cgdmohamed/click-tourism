@@ -10,6 +10,7 @@ use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
  * Customer invoice (AR), supplier invoice (AP) or credit note.
@@ -122,13 +123,9 @@ class Invoice extends Model
         return $this->hasMany(self::class, 'credit_note_of_id');
     }
 
-    public function party()
+    public function party(): MorphTo
     {
-        return match ($this->party_type) {
-            'customer' => Customer::query()->find($this->party_id),
-            'supplier' => Supplier::query()->find($this->party_id),
-            default => null,
-        };
+        return $this->morphTo();
     }
 
     public function toApiArray(bool $withLines = false): array
@@ -140,7 +137,7 @@ class Invoice extends Model
             'number' => $this->number,
             'party_type' => $this->party_type,
             'party_id' => $this->party_id,
-            'party' => $this->party()?->toApiArray(),
+            'party' => $this->party?->toApiArray(),
             'branch_id' => $this->branch?->public_id,
             'booking_id' => $this->booking_id,
             'issue_date' => $this->issue_date?->toDateString(),

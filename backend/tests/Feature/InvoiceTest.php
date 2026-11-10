@@ -107,6 +107,18 @@ class InvoiceTest extends TestCase
         return (int) $row->d - (int) $row->c;
     }
 
+    public function test_invoice_index_eager_loads_customer_and_supplier_parties(): void
+    {
+        $this->create($this->customerInvoicePayload())->assertCreated();
+        $this->create($this->supplierInvoicePayload())->assertCreated();
+
+        $response = $this->withHeaders($this->headers())->getJson('/api/v1/invoices')->assertOk();
+
+        $this->assertCount(2, $response->json('data'));
+        $this->assertNotEmpty($response->json('data.0.party.id'));
+        $this->assertNotEmpty($response->json('data.1.party.id'));
+    }
+
     public function test_customer_invoice_lifecycle_posts_to_customer_subaccount(): void
     {
         $payload = $this->customerInvoicePayload();
