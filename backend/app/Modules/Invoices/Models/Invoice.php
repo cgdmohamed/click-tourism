@@ -118,6 +118,11 @@ class Invoice extends Model
         return $this->belongsTo(self::class, 'credit_note_of_id');
     }
 
+    public function applications(): HasMany
+    {
+        return $this->hasMany(InvoiceApplication::class);
+    }
+
     public function creditNotes(): HasMany
     {
         return $this->hasMany(self::class, 'credit_note_of_id');
@@ -159,6 +164,10 @@ class Invoice extends Model
 
         if ($withLines) {
             $payload['lines'] = $this->lines->map(fn (InvoiceLine $line) => $line->toApiArray())->values()->all();
+            $payload['applications'] = $this->applications()->with('payment', 'supplierPayment')->orderBy('id')->get()
+                ->map(fn (InvoiceApplication $application) => $application->toApiArray() + [
+                    'payment_number' => $application->payment?->number,
+                ])->values()->all();
         }
 
         return $payload;

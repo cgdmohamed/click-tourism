@@ -25,6 +25,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel as statusLabelOf } from '../lib/labels'
+import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
@@ -53,6 +54,7 @@ export default function SupplierSettlements() {
 
   const [tab, setTab] = useState<Tab>('obligations')
   const [error, setError] = useState('')
+  const [invoiceTarget, setInvoiceTarget] = useState<ApplyTarget | null>(null)
 
   const [obligationOpen, setObligationOpen] = useState(false)
   const [obligationForm, setObligationForm] = useState(emptyObligationForm)
@@ -407,6 +409,23 @@ export default function SupplierSettlements() {
                           {t('applyAdvance')}
                         </Button>
                       ) : null}
+                      {payment.unallocated_minor > 0 && can('supplier_payments.create') && payment.supplier?.id ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() =>
+                            setInvoiceTarget({
+                              kind: 'supplier',
+                              paymentId: payment.id,
+                              paymentLabel: supplierName(payment.supplier),
+                              partyId: payment.supplier?.id ?? '',
+                              currency: payment.currency,
+                              availableMinor: payment.unallocated_minor,
+                            })
+                          }
+                        >
+                          {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
+                        </Button>
+                      ) : null}
                     </Td>
                   </tr>
                 ))}
@@ -608,6 +627,8 @@ export default function SupplierSettlements() {
         ) : null}
         {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
+
+      <ApplyToInvoiceModal target={invoiceTarget} onClose={() => setInvoiceTarget(null)} />
     </div>
   )
 }

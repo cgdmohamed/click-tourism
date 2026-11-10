@@ -19,11 +19,19 @@ class InvoiceApplication extends Model
         'branch_id',
         'amount_minor',
         'created_by',
+        'reversed_at',
+        'reversal_reason',
+        'reversed_by',
     ];
 
     protected function casts(): array
     {
-        return ['amount_minor' => 'integer'];
+        return ['amount_minor' => 'integer', 'reversed_at' => 'datetime'];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->whereNull('reversed_at');
     }
 
     public function invoice()
@@ -49,6 +57,8 @@ class InvoiceApplication extends Model
             'payment_id' => $this->payment?->public_id,
             'supplier_payment_id' => $this->supplierPayment?->public_id,
             'amount_minor' => (int) $this->amount_minor,
+            'reversed_at' => $this->reversed_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 }

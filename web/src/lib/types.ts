@@ -396,7 +396,18 @@ export type InvoiceLineRecord = {
   tax_minor: number
 }
 
+export type InvoiceApplicationRecord = {
+  id: string
+  payment_id: string | null
+  supplier_payment_id: string | null
+  payment_number?: string | null
+  amount_minor: number
+  reversed_at: string | null
+  created_at: string | null
+}
+
 export type InvoiceRecord = {
+  applications?: InvoiceApplicationRecord[]
   id: string
   type: 'customer_invoice' | 'supplier_invoice' | 'credit_note'
   series: string

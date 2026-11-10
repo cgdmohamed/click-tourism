@@ -27,12 +27,13 @@ import {
   statusTone,
 } from '../components/ui'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
+import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
 export default function Payments() {
   const { t, locale } = useI18n()
-  const { activeBranch } = useAuth()
+  const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const urlSearch = searchParams.get('search') ?? ''
@@ -40,6 +41,7 @@ export default function Payments() {
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const [applyTarget, setApplyTarget] = useState<ApplyTarget | null>(null)
   const [form, setForm] = useState({
     customer_id: '',
     booking_id: '',
@@ -195,6 +197,7 @@ export default function Payments() {
                 <Th>{t('status')}</Th>
                 <Th className="text-end">{t('amount')}</Th>
                 <Th className="text-end">{locale === 'ar' ? 'غير مخصص' : 'Unallocated'}</Th>
+                <Th />
               </tr>
             </thead>
             <tbody>
@@ -212,6 +215,25 @@ export default function Payments() {
                   </Td>
                   <Td className="text-end tabular">
                     {toDecimal(payment.unallocated_minor, payment.currency)} {payment.currency}
+                  </Td>
+                  <Td className="text-end">
+                    {payment.status === 'posted' && payment.unallocated_minor > 0 && can('payments.create') ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          setApplyTarget({
+                            kind: 'customer',
+                            paymentId: payment.id,
+                            paymentLabel: payment.number,
+                            partyId: payment.customer_id,
+                            currency: payment.currency,
+                            availableMinor: payment.unallocated_minor,
+                          })
+                        }
+                      >
+                        {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
+                      </Button>
+                    ) : null}
                   </Td>
                 </tr>
               ))}
@@ -308,6 +330,8 @@ export default function Payments() {
         </div>
         {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       </Modal>
+
+      <ApplyToInvoiceModal target={applyTarget} onClose={() => setApplyTarget(null)} />
     </div>
   )
 }
