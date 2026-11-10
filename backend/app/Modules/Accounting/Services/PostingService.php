@@ -185,11 +185,20 @@ class PostingService
                 actorId: $actorId,
             ));
 
-            $period = $this->resolveOpenPeriod($entry->entry_date->toDateString(), $actorId);
+            // Closed periods remain immutable. Post the correcting movement in
+            // today's open period; never backdate a reversal into a closed year.
+            $originalDate = $entry->entry_date->toDateString();
+            $originalPeriod = FiscalPeriod::query()
+                ->whereDate('starts_on', '<=', $originalDate)
+                ->whereDate('ends_on', '>=', $originalDate)->firstOrFail();
+            $reversalDate = $originalPeriod->status === 'closed'
+                ? now()->toDateString()
+                : $originalDate;
+            $period = $this->resolveOpenPeriod($reversalDate, $actorId);
 
             $reversal = new JournalEntry([
-                'number' => $this->sequences->next('journal', $entry->branch, $entry->entry_date),
-                'entry_date' => $entry->entry_date,
+                'number' => $this->sequences->next('journal', $entry->branch, Carbon::parse($reversalDate)),
+                'entry_date' => $reversalDate,
                 'branch_id' => $entry->branch_id,
                 'fiscal_period_id' => $period->id,
                 'currency_code' => $entry->currency_code,
@@ -231,6 +240,8 @@ class PostingService
             $this->audit->log('journal.reversed', $reversal, ['entry' => $entry->public_id], [
                 'reversal' => $reversal->public_id,
                 'reason' => $reason,
+                'original_entry_date' => $entry->entry_date->toDateString(),
+                'reversal_entry_date' => $reversalDate,
             ], $actorId);
 
             return $reversal->refresh()->load('lines.account');
