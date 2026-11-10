@@ -33,8 +33,11 @@ trait BuildsAccounting
     {
         app(SettingService::class)->set('general', 'base_currency', 'EGP');
         app(SettingService::class)->set('accounting', 'approval_status', 'pending_accountant_review');
-        // Tests opt in to auto-posting explicitly; production defaults to false.
+        // Tests opt in to auto-posting explicitly; production defaults to false
+        // until the accountant approves the accounting policy.
         app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'true');
+        app(SettingService::class)->set('accounting', 'schedule_auto_post', 'true');
 
         foreach (['EGP' => 2, 'USD' => 2, 'SAR' => 2, 'KWD' => 3] as $code => $exponent) {
             Currency::query()->firstOrCreate(
@@ -54,7 +57,13 @@ trait BuildsAccounting
         Permission::query()->firstOrCreate(['name' => 'accounts.post', 'guard_name' => 'web']);
         $this->user = User::factory()->create();
         $this->user->branches()->attach($this->branch->id);
-        $this->user->givePermissionTo('accounts.post');
+        Permission::query()->firstOrCreate(
+            ['name' => 'accounts.post', 'guard_name' => 'web']
+        );
+        Permission::query()->firstOrCreate(
+            ['name' => 'journal.reverse', 'guard_name' => 'web']
+        );
+        $this->user->givePermissionTo(['accounts.post', 'journal.reverse']);
 
         $this->seed(ChartOfAccountsSeeder::class);
 

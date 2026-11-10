@@ -72,7 +72,7 @@ class FinancialReportsReconciliationTest extends TestCase
 
         $this->approver = User::factory()->create();
         $this->approver->branches()->attach($this->branch->id);
-        $this->approver->givePermissionTo('accounts.post');
+        $this->approver->givePermissionTo(['accounts.post', 'journal.reverse']);
 
         Sanctum::actingAs($this->user);
     }

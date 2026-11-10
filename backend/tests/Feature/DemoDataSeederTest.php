@@ -35,10 +35,11 @@ class DemoDataSeederTest extends TestCase
         Permission::query()->firstOrCreate(
             ['name' => 'accounts.post', 'guard_name' => 'web']
         );
+        Permission::query()->firstOrCreate(['name' => 'journal.reverse', 'guard_name' => 'web']);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $owner = User::query()->where('email', 'sales@example.com')->first();
         if ($owner) {
-            $owner->givePermissionTo('accounts.post');
+            $owner->givePermissionTo(['accounts.post']);
         }
         // Demo data creates both bookings and invoices. Disable booking
         // auto-posting so revenue is recognized only through invoices,

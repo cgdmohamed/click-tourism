@@ -57,6 +57,8 @@ class PostingService
                 throw new DomainException('Only draft journal entries can be posted.');
             }
 
+            $this->assertMakerChecker($actorId, $entry->created_by, 'poster');
+
             $this->assertActorMayPost(new PostingRequest(
                 entryDate: $entry->entry_date->toDateString(),
                 branch: $entry->branch,
@@ -165,6 +167,11 @@ class PostingService
 
             if (JournalEntry::query()->where('reversal_of_id', $entry->id)->exists()) {
                 throw new DomainException('This entry has already been reversed.');
+            }
+
+            $user = $actorId !== null ? User::query()->find($actorId) : null;
+            if ($user && ! $user->can('journal.reverse')) {
+                throw new DomainException('Actor does not have the journal.reverse permission.');
             }
 
             $this->assertActorMayPost(new PostingRequest(
@@ -314,8 +321,9 @@ class PostingService
         }
 
         if ($request->actorId === null) {
-            // System jobs may post only when policy is approved (checked above);
-            // no per-user permission exists for machine identity.
+            // System jobs may post only when policy is approved (checked above).
+            // No per-user permission exists for machine identity; all system
+            // job postings are audited with actor_id null.
             return;
         }
 
@@ -328,6 +336,17 @@ class PostingService
 
         if (! $user->can('accounts.post')) {
             throw new DomainException('Actor does not have the accounts.post permission.');
+        }
+    }
+
+    /**
+     * Enforce maker-checker separation of duties: the actor who created a
+     * draft cannot be the one who posts it.
+     */
+    private function assertMakerChecker(?int $actorId, ?int $createdBy, string $action): void
+    {
+        if ($actorId !== null && $createdBy !== null && $actorId === $createdBy) {
+            throw new DomainException("Segregation of duties: the {$action} cannot be performed by the same actor who created the draft.");
         }
     }
 

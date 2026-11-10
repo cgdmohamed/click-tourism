@@ -26,12 +26,14 @@ class FiscalCloseTest extends TestCase
 
     private const PERMISSIONS = [
         'periods.view', 'periods.manage', 'periods.close', 'periods.reopen',
-        'journal.view', 'journal.create', 'reports.view',
+        'journal.view', 'journal.create', 'reports.view', 'accounts.post',
     ];
 
     private int $year;
 
     private int $yearId;
+
+    private User $poster;
 
     protected function setUp(): void
     {
@@ -43,6 +45,11 @@ class FiscalCloseTest extends TestCase
         }
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $this->user->givePermissionTo(self::PERMISSIONS);
+
+        $this->poster = User::factory()->create();
+        $this->poster->branches()->attach($this->branch->id);
+        $this->poster->givePermissionTo(['accounts.post', 'journal.view', 'journal.create', 'periods.close']);
+
         Sanctum::actingAs($this->user);
 
         $this->year = (int) now()->year - 1;
@@ -209,6 +216,7 @@ class FiscalCloseTest extends TestCase
         $this->close()->assertStatus(422);
         $this->assertCount(0, $this->closingEntries());
 
+        Sanctum::actingAs($this->poster);
         $this->withHeaders($this->h())->postJson("/api/v1/journal-entries/{$draft}/post")->assertOk();
         $this->close()->assertOk();
     }
