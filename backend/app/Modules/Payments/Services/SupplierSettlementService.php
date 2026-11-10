@@ -342,7 +342,9 @@ class SupplierSettlementService
             }
 
             $obligation = $application->obligation;
-            $invoice = $this->recognizedInvoice($obligation);
+            // Historical applications created before invoice recognition
+            // remain reversible without inventing a missing accrual.
+            $invoice = $obligation->invoice_id !== null ? $this->recognizedInvoice($obligation) : null;
             $amount = (int) $application->amount_minor;
 
             $application->delete();
@@ -355,12 +357,17 @@ class SupplierSettlementService
                 entryDate: now()->toDateString(),
                 branch: $branch,
                 currency: $payment->currency_code,
-                lines: $this->realizedFx->balance([
-                    PostingLine::credit($ap, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id)
-                        ->in($payment->currency_code, (string) $invoice->fx_rate),
-                    PostingLine::debit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id)
-                        ->in($payment->currency_code, (string) $payment->fx_rate),
-                ], $payment->currency_code),
+                lines: $invoice !== null
+                    ? $this->realizedFx->balance([
+                        PostingLine::credit($ap, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id)
+                            ->in($payment->currency_code, (string) $invoice->fx_rate),
+                        PostingLine::debit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id)
+                            ->in($payment->currency_code, (string) $payment->fx_rate),
+                    ], $payment->currency_code)
+                    : [
+                        PostingLine::credit($ap, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id),
+                        PostingLine::debit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id),
+                    ],
                 memo: 'Unapply supplier advance '.$payment->public_id,
                 sourceType: 'supplier_payment_application',
                 sourceId: $application->id,
@@ -371,7 +378,9 @@ class SupplierSettlementService
                 actorId: $actorId,
             ));
 
-            $invoice->update(['outstanding_minor' => (int) $invoice->outstanding_minor + $amount]);
+            if ($invoice !== null) {
+                $invoice->update(['outstanding_minor' => (int) $invoice->outstanding_minor + $amount]);
+            }
             $this->audit->log('supplier_payment.unapplied', $payment, null, [
                 'obligation' => $obligation->public_id,
                 'amount_minor' => $amount,
