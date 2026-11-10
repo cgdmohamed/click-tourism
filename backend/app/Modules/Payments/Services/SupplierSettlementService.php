@@ -237,6 +237,63 @@ class SupplierSettlementService
         return $application;
     }
 
+    /**
+     * Unapply a supplier payment from an obligation, returning the amount to
+     * the unapplied advance balance. Posts a reversing entry (CR AP / DR
+     * supplier advances) so the ledger stays balanced.
+     */
+    public function unapply(SupplierPayment $payment, string $applicationPublicId, ?int $actorId = null): SupplierPayment
+    {
+        return DB::transaction(function () use ($payment, $applicationPublicId, $actorId) {
+            $payment = SupplierPayment::query()->lockForUpdate()->findOrFail($payment->id);
+            $branch = Branch::query()->findOrFail($payment->branch_id);
+            $this->assertActor($actorId, $branch);
+
+            $application = SupplierPaymentApplication::query()
+                ->where('supplier_payment_id', $payment->id)
+                ->where('public_id', $applicationPublicId)
+                ->first();
+
+            if (! $application) {
+                throw new DomainException('Application not found for this payment.');
+            }
+
+            $obligation = $application->obligation;
+            $amount = (int) $application->amount_minor;
+
+            $application->delete();
+            $obligation->refreshStatus();
+
+            $advanceAccount = $this->posting->account($this->advanceAccountCode());
+            $ap = $this->posting->account($this->apAccountCode());
+
+            $this->posting->post(PostingRequest::make(
+                entryDate: now()->toDateString(),
+                branch: $branch,
+                currency: $payment->currency_code,
+                lines: [
+                    PostingLine::credit($ap, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id),
+                    PostingLine::debit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Unapply advance '.$payment->public_id),
+                ],
+                memo: 'Unapply supplier advance '.$payment->public_id,
+                sourceType: 'supplier_payment_application',
+                sourceId: $application->id,
+                event: 'unapply',
+                fxRate: (string) $payment->fx_rate,
+                fxRateDate: $payment->fx_rate_date,
+                fxRateSource: $payment->fx_rate_source,
+                actorId: $actorId,
+            ));
+
+            $this->audit->log('supplier_payment.unapplied', $payment, null, [
+                'obligation' => $obligation->public_id,
+                'amount_minor' => $amount,
+            ], $actorId);
+
+            return $payment->refresh()->load('supplier', 'obligation', 'branch', 'applications');
+        });
+    }
+
     private function postSettlement(SupplierPayment $payment, Account $cashAccount, int $amount, ?int $actorId): void
     {
         $ap = $this->posting->account($this->apAccountCode());
