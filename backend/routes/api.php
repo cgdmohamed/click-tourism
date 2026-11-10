@@ -62,8 +62,6 @@ Route::prefix('v1')->group(function () {
         Route::get('fx-rates', [FxRateController::class, 'index'])->middleware('permission:settings.view');
         Route::post('fx-rates', [FxRateController::class, 'store'])->middleware('permission:settings.update');
 
-        Route::get('accounts', [AccountController::class, 'index'])->middleware('permission:accounts.view');
-        Route::post('accounts', [AccountController::class, 'store'])->middleware('permission:accounts.create');
         Route::get('cash-accounts', [CashAccountController::class, 'index'])->middleware('permission:accounts.view');
         Route::post('cash-accounts', [CashAccountController::class, 'store'])->middleware('permission:cash_accounts.manage');
         Route::patch('cash-accounts/{cashAccount}', [CashAccountController::class, 'update'])->middleware('permission:cash_accounts.manage');
