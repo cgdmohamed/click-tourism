@@ -24,6 +24,7 @@ class CostCenterTest extends TestCase
     private const PERMISSIONS = [
         'cost_centers.view', 'cost_centers.manage',
         'journal.view', 'journal.create',
+        'reports.view',
     ];
 
     protected function setUp(): void
@@ -196,6 +197,32 @@ class CostCenterTest extends TestCase
         ])->assertCreated();
     }
 
+    /** P1-07: 100 minor units split 3 ways must sum exactly to 100 (33.33/33.33/33.34). */
+    public function test_percent_allocation_splits_exactly_with_largest_remainder(): void
+    {
+        $c1 = $this->center(['code' => 'CC-P1']);
+        $c2 = $this->center(['code' => 'CC-P2']);
+        $c3 = $this->center(['code' => 'CC-P3']);
+        $line = $this->postLine('6100', 100, 0);
+
+        $this->allocate($line['line_id'], [
+            ['cost_center_id' => $c1['id'], 'allocation_type' => 'percent', 'percent' => 33.33],
+            ['cost_center_id' => $c2['id'], 'allocation_type' => 'percent', 'percent' => 33.33],
+            ['cost_center_id' => $c3['id'], 'allocation_type' => 'percent', 'percent' => 33.34],
+        ])->assertCreated();
+
+        $allocs = CostCenterAllocation::query()
+            ->where('journal_line_id', $line['line_id'])
+            ->orderBy('cost_center_id')
+            ->get();
+
+        $this->assertCount(3, $allocs);
+        $this->assertSame(33, $allocs[0]->amount_minor);
+        $this->assertSame(33, $allocs[1]->amount_minor);
+        $this->assertSame(34, $allocs[2]->amount_minor);
+        $this->assertSame(100, $allocs->sum('amount_minor'));
+    }
+
     public function test_profit_and_loss_report_by_cost_center(): void
     {
         $center = $this->center(['code' => 'CC-PL']);
@@ -254,6 +281,32 @@ class CostCenterTest extends TestCase
         $this->allocate($draftLine->id, [
             ['cost_center_id' => $center['id'], 'allocation_type' => 'exact', 'amount_minor' => 10000],
         ])->assertStatus(422);
+    }
+
+    /** P1-07: Trial balance with cost-center filter shows balanced=false when only one side allocated. */
+    public function test_trial_balance_with_cost_center_filter_shows_balanced_flag(): void
+    {
+        $center = $this->center(['code' => 'CC-TB']);
+
+        // Create a journal entry with debit to expense and credit to revenue.
+        // Allocate only the debit side (expense) to the cost center.
+        $line = $this->postLine('6100', 100000, 0); // expense debit
+        $this->allocate($line['line_id'], [
+            ['cost_center_id' => $center['id'], 'allocation_type' => 'exact', 'amount_minor' => 100000],
+        ])->assertCreated();
+
+        $report = $this->withHeaders($this->headers())->getJson(
+            '/api/v1/reports/trial-balance?'.http_build_query([
+                'from' => now()->startOfMonth()->toDateString(),
+                'to' => now()->endOfMonth()->toDateString(),
+                'cost_center_id' => $center['id'],
+            ])
+        )->assertOk()->json('data');
+
+        // With only the expense debit allocated, debits > credits → not balanced.
+        $this->assertFalse($report['balanced']);
+        $this->assertSame(100000, $report['total_debit_minor']);
+        $this->assertSame(0, $report['total_credit_minor']);
     }
 
     public function test_permissions_are_enforced(): void
