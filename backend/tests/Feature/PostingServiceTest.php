@@ -145,6 +145,52 @@ class PostingServiceTest extends TestCase
         $this->posting()->reverse($entry, 'Again', $this->user->id);
     }
 
+    public function test_closed_period_reversal_posts_today_without_changing_old_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-15 12:00:00'));
+        try {
+            // This test uses its own fiscal periods to cover the October close.
+            FiscalPeriod::query()->delete();
+            $year = \App\Modules\Accounting\Models\FiscalYear::query()->firstOrFail();
+            FiscalPeriod::query()->create([
+                'fiscal_year_id' => $year->id,
+                'name' => '2026-10',
+                'starts_on' => '2026-10-01',
+                'ends_on' => '2026-10-31',
+                'status' => 'open',
+            ]);
+            FiscalPeriod::query()->create([
+                'fiscal_year_id' => $year->id,
+                'name' => '2026-11',
+                'starts_on' => '2026-11-01',
+                'ends_on' => '2026-11-30',
+                'status' => 'open',
+            ]);
+            $entry = $this->entry();
+            FiscalPeriod::query()->where('name', '2026-10')->update(['status' => 'closed']);
+
+            Carbon::setTestNow(Carbon::parse('2026-11-10 12:00:00'));
+            $reversal = $this->posting()->reverse($entry, 'Error discovered after close', $this->user->id);
+            $this->assertSame('2026-11-10', $reversal->entry_date->toDateString());
+            $this->assertSame('2026-10-15', $entry->entry_date->toDateString());
+            $this->assertSame('closed', FiscalPeriod::query()->where('name', '2026-10')->firstOrFail()->status);
+            $this->assertSame('2026-11', $reversal->fiscalPeriod->name);
+            $this->assertSame($entry->id, $reversal->reversal_of_id);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_closed_period_reversal_fails_if_no_current_open_period(): void
+    {
+        $entry = $this->entry();
+        FiscalPeriod::query()->update(['status' => 'closed']);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('posting is not allowed');
+        $this->posting()->reverse($entry, 'Correction after close', $this->user->id);
+    }
+
     public function test_it_can_store_a_balanced_draft_and_post_it_later(): void
     {
         $draft = $this->posting()->draft($this->request());
