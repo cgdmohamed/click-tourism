@@ -27,16 +27,33 @@ class UserSeeder extends Seeder
             ['name' => 'مستخدم للقراءة', 'email' => 'viewer@example.com', 'role' => 'viewer', 'branches' => $branches->take(1)],
         ];
 
+        // In a disposable demo, accounts must always match the configured
+        // credentials after a scheduled reset or an interrupted previous seed.
+        // Never overwrite real installation passwords on ordinary seeding.
+        $isIsolatedDemo = filter_var(env('DEMO_MODE', false), FILTER_VALIDATE_BOOL)
+            && env('APP_ENV') === 'demo'
+            && env('DB_HOST') === 'demo-db'
+            && env('DB_DATABASE') === 'demo_erp';
+        $demoPassword = $isIsolatedDemo ? Hash::make(env('DEMO_PASSWORD', 'password')) : null;
+
         foreach ($users as $definition) {
             $user = User::query()->firstOrCreate(
                 ['email' => $definition['email']],
                 [
                     'name' => $definition['name'],
-                    'password' => Hash::make(env('DEMO_PASSWORD', 'password')),
+                    'password' => $demoPassword ?? Hash::make(env('DEMO_PASSWORD', 'password')),
                     'locale' => 'ar',
                     'is_active' => true,
                 ],
             );
+
+            if ($isIsolatedDemo) {
+                $user->forceFill([
+                    'name' => $definition['name'],
+                    'password' => $demoPassword,
+                    'is_active' => true,
+                ])->save();
+            }
 
             $user->syncRoles([$definition['role']]);
             $user->branches()->syncWithoutDetaching($definition['branches']->pluck('id')->all());
