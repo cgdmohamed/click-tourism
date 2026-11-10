@@ -112,6 +112,9 @@ class ReportService
 
         usort($rows, fn ($a, $b) => strcmp($a->code, $b->code));
 
+        $totalDebit = array_sum(array_column($rows, 'debit_minor'));
+        $totalCredit = array_sum(array_column($rows, 'credit_minor'));
+
         return [
             'currency' => $currency,
             'basis' => $onlyCurrency ? 'original' : 'base',
@@ -121,12 +124,17 @@ class ReportService
             'cost_center_id' => $costCenterId,
             'adjustments' => $adjustments,
             'rows' => $rows,
-            'total_debit_minor' => array_sum(array_column($rows, 'debit_minor')),
-            'total_credit_minor' => array_sum(array_column($rows, 'credit_minor')),
+            'total_debit_minor' => $totalDebit,
+            'total_credit_minor' => $totalCredit,
             'total_opening_debit_minor' => array_sum(array_column($rows, 'opening_debit_minor')),
             'total_opening_credit_minor' => array_sum(array_column($rows, 'opening_credit_minor')),
             'total_closing_debit_minor' => array_sum(array_column($rows, 'closing_debit_minor')),
             'total_closing_credit_minor' => array_sum(array_column($rows, 'closing_credit_minor')),
+            // When cost-center filtering is active, only the allocated analytical
+            // portion of each line is shown. If only one side of a journal entry
+            // is allocated to the center, debits and credits will not match.
+            // Consumers should not interpret this as a ledger imbalance.
+            'balanced' => $costCenterId === null || $totalDebit === $totalCredit,
         ];
     }
 
