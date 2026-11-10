@@ -7,6 +7,7 @@ use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Services\LeadService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
@@ -66,6 +67,18 @@ class DemoDataSeeder extends Seeder
         $branch = Branch::query()->where('code', 'HQ')->first();
         if (! $branch || Booking::query()->where('branch_id', $branch->id)->exists()) {
             return;
+        }
+
+        // Only the isolated, disposable demo installation can opt into the
+        // provisional accounting policy needed to generate realistic samples.
+        // Never approve accounting policies implicitly for real installations.
+        if (filter_var(env('DEMO_MODE', false), FILTER_VALIDATE_BOOL)
+            && env('APP_ENV') === 'demo'
+            && env('DB_HOST') === 'demo-db'
+            && env('DB_DATABASE') === 'demo_erp') {
+            $settings = app(SettingService::class);
+            $settings->set('accounting', 'accounting_policy_approved', 'true');
+            $settings->set('accounting', 'auto_post_bookings', 'false');
         }
 
         $this->seedFxRates();
