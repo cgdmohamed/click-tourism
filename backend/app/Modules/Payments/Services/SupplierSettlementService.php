@@ -4,6 +4,7 @@ namespace App\Modules\Payments\Services;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Services\PostingLine;
+use App\Modules\Accounting\Services\RealizedFxService;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Bookings\Models\BookingItem;
@@ -14,6 +15,7 @@ use App\Modules\Core\Services\BranchScope;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\SupplierObligation;
@@ -41,6 +43,7 @@ class SupplierSettlementService
         private readonly PostingService $posting,
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
+        private readonly RealizedFxService $realizedFx,
     ) {}
 
     public function createObligation(array $data, ?int $actorId = null): SupplierObligation
@@ -72,8 +75,13 @@ class SupplierSettlementService
                 }
             }
 
+            $invoice = ! empty($data['invoice_id'])
+                ? $this->eligibleInvoice($data['invoice_id'], $supplier, $branch, $currency, $amount)
+                : null;
+
             $obligation = SupplierObligation::query()->create([
                 'supplier_id' => $supplier->id,
+                'invoice_id' => $invoice?->id,
                 'booking_item_id' => $item?->id,
                 'branch_id' => $branch->id,
                 'amount_minor' => $amount,
@@ -86,6 +94,68 @@ class SupplierSettlementService
 
             return $obligation->refresh()->load('supplier', 'branch', 'bookingItem');
         });
+    }
+
+    /**
+     * Link an operational obligation to an already issued supplier invoice.
+     * The invoice has already recognized AP; linking never creates a second
+     * journal entry. Existing applied payments must be reconciled manually.
+     */
+    public function recognizeObligation(SupplierObligation $obligation, string $invoicePublicId, ?int $actorId): SupplierObligation
+    {
+        return DB::transaction(function () use ($obligation, $invoicePublicId, $actorId) {
+            $obligation = SupplierObligation::query()->lockForUpdate()->findOrFail($obligation->id);
+            $branch = Branch::query()->findOrFail($obligation->branch_id);
+            $this->assertActor($actorId, $branch);
+            if ($obligation->invoice_id !== null) {
+                throw new DomainException('Supplier obligation is already linked to an invoice.');
+            }
+            if ($obligation->applications()->exists()) {
+                throw new DomainException('Previously settled obligations require accountant reconciliation before invoice recognition.');
+            }
+
+            $supplier = Supplier::query()->findOrFail($obligation->supplier_id);
+            $invoice = $this->eligibleInvoice($invoicePublicId, $supplier, $branch, $obligation->currency_code, (int) $obligation->amount_minor);
+            $obligation->update(['invoice_id' => $invoice->id]);
+            $this->audit->log('supplier_obligation.recognized', $obligation, null, [
+                'invoice_id' => $invoice->public_id, 'journal_entry_id' => $invoice->journal_entry_id,
+            ], $actorId);
+
+            return $obligation->refresh()->load('invoice', 'supplier', 'branch');
+        });
+    }
+
+    private function eligibleInvoice(string $publicId, Supplier $supplier, Branch $branch, string $currency, int $amount): Invoice
+    {
+        $invoice = Invoice::query()->where('public_id', $publicId)->lockForUpdate()->first();
+        if ($invoice === null || $invoice->type !== Invoice::TYPE_SUPPLIER_INVOICE
+            || $invoice->status !== Invoice::STATUS_ISSUED || $invoice->journal_entry_id === null
+            || $invoice->party_type !== 'supplier' || $invoice->party_id !== $supplier->id
+            || $invoice->branch_id !== $branch->id || strtoupper($invoice->currency_code) !== strtoupper($currency)
+            || (int) $invoice->total_minor !== $amount) {
+            throw new DomainException('Select an issued supplier invoice matching supplier, branch, currency and full obligation amount.');
+        }
+        if ((int) $invoice->outstanding_minor !== $amount) {
+            throw new DomainException('The invoice must be fully outstanding before linking to an operational obligation.');
+        }
+        if (SupplierObligation::query()->where('invoice_id', $invoice->id)->exists()) {
+            throw new DomainException('This invoice is already linked to another supplier obligation.');
+        }
+
+        return $invoice;
+    }
+
+    private function recognizedInvoice(SupplierObligation $obligation): Invoice
+    {
+        if ($obligation->invoice_id === null) {
+            throw new DomainException('This obligation is operational only. Issue and link its supplier invoice before settling AP; use an unallocated supplier advance for prepayments.');
+        }
+        $invoice = Invoice::query()->whereKey($obligation->invoice_id)->lockForUpdate()->first();
+        if ($invoice === null || $invoice->status !== Invoice::STATUS_ISSUED || $invoice->journal_entry_id === null) {
+            throw new DomainException('A posted supplier invoice is required to settle this obligation.');
+        }
+
+        return $invoice;
     }
 
     public function recordPayment(array $data, ?int $actorId = null, ?string $idempotencyKey = null): SupplierPayment
@@ -124,8 +194,13 @@ class SupplierSettlementService
                 ? $this->obligation($data['supplier_obligation_id'], $supplier, $branch, $currency)
                 : null;
 
+            $recognizedInvoice = $obligation !== null ? $this->recognizedInvoice($obligation) : null;
             if ($obligation !== null && $amount > $obligation->balanceMinor()) {
                 throw new DomainException("Payment exceeds the outstanding balance of obligation {$obligation->public_id}.");
+            }
+
+            if ($recognizedInvoice !== null && $amount > (int) $recognizedInvoice->outstanding_minor) {
+                throw new DomainException('Payment exceeds the issued supplier invoice outstanding amount.');
             }
 
             $payment = SupplierPayment::query()->create([
@@ -146,7 +221,8 @@ class SupplierSettlementService
 
             if ($obligation !== null) {
                 $this->applyToObligation($payment, $obligation, $amount);
-                $this->postSettlement($payment, $cashAccount, $amount, $actorId);
+                $this->postSettlement($payment, $cashAccount, $amount, $recognizedInvoice, $actorId);
+                $recognizedInvoice->update(['outstanding_minor' => (int) $recognizedInvoice->outstanding_minor - $amount]);
             } else {
                 $this->postAdvance($payment, $cashAccount, $amount, $actorId);
             }
@@ -176,6 +252,7 @@ class SupplierSettlementService
                 strtoupper((string) $payment->currency_code),
             );
 
+            $invoice = $this->recognizedInvoice($obligation);
             $amount = (int) ($data['amount_minor'] ?? 0);
             if ($amount <= 0) {
                 throw new DomainException('Application amount must be greater than zero.');
@@ -190,8 +267,8 @@ class SupplierSettlementService
                 throw new DomainException('Application exceeds the unapplied amount of this payment.');
             }
 
-            if ($amount > $obligation->balanceMinor()) {
-                throw new DomainException("Application exceeds the outstanding balance of obligation {$obligation->public_id}.");
+            if ($amount > $obligation->balanceMinor() || $amount > (int) $invoice->outstanding_minor) {
+                throw new DomainException("Application exceeds the outstanding balance of obligation {$obligation->public_id} or its issued invoice.");
             }
 
             $application = $this->applyToObligation($payment, $obligation, $amount);
@@ -199,14 +276,17 @@ class SupplierSettlementService
             $advanceAccount = $this->posting->account($this->advanceAccountCode());
             $ap = $this->ledger->payable($payment->supplier_id);
 
+            $applicationLines = $this->realizedFx->balance([
+                PostingLine::debit($ap, $amount, 'supplier', $payment->supplier_id, 'Apply advance '.$payment->public_id)
+                    ->in($payment->currency_code, (string) $invoice->fx_rate),
+                PostingLine::credit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Apply advance '.$payment->public_id)
+                    ->in($payment->currency_code, (string) $payment->fx_rate),
+            ], $payment->currency_code);
             $this->posting->post(PostingRequest::make(
                 entryDate: now()->toDateString(),
                 branch: $branch,
                 currency: $payment->currency_code,
-                lines: [
-                    PostingLine::debit($ap, $amount, 'supplier', $payment->supplier_id, 'Apply advance '.$payment->public_id),
-                    PostingLine::credit($advanceAccount, $amount, 'supplier', $payment->supplier_id, 'Apply advance '.$payment->public_id),
-                ],
+                lines: $applicationLines,
                 memo: 'Apply supplier advance '.$payment->public_id,
                 sourceType: 'supplier_payment_application',
                 sourceId: $application->id,
@@ -217,6 +297,7 @@ class SupplierSettlementService
                 actorId: $actorId,
             ));
 
+            $invoice->update(['outstanding_minor' => (int) $invoice->outstanding_minor - $amount]);
             $this->audit->log('supplier_payment.applied', $payment, null, [
                 'obligation' => $obligation->public_id,
                 'amount_minor' => $amount,
@@ -296,18 +377,21 @@ class SupplierSettlementService
         });
     }
 
-    private function postSettlement(SupplierPayment $payment, Account $cashAccount, int $amount, ?int $actorId): void
+    private function postSettlement(SupplierPayment $payment, Account $cashAccount, int $amount, Invoice $invoice, ?int $actorId): void
     {
         $ap = $this->ledger->payable($payment->supplier_id);
+        $lines = $this->realizedFx->balance([
+            PostingLine::debit($ap, $amount, 'supplier', $payment->supplier_id, 'Supplier payment '.$payment->public_id)
+                ->in($payment->currency_code, (string) $invoice->fx_rate),
+            PostingLine::credit($cashAccount, $amount, null, null, 'Supplier payment '.$payment->public_id)
+                ->in($payment->currency_code, (string) $payment->fx_rate),
+        ], $payment->currency_code);
 
         $this->posting->post(PostingRequest::make(
             entryDate: $payment->paid_at->toDateString(),
             branch: Branch::query()->findOrFail($payment->branch_id),
             currency: $payment->currency_code,
-            lines: [
-                PostingLine::debit($ap, $amount, 'supplier', $payment->supplier_id, 'Supplier payment '.$payment->public_id),
-                PostingLine::credit($cashAccount, $amount, null, null, 'Supplier payment '.$payment->public_id),
-            ],
+            lines: $lines,
             memo: 'Supplier payment '.$payment->public_id,
             sourceType: 'supplier_payment',
             sourceId: $payment->id,
