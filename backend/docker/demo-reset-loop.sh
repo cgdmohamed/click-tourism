@@ -25,6 +25,7 @@ while :; do
     fi
 
     until php artisan migrate:fresh --seed --force &&
+          php artisan demo:ensure-users &&
           find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + &&
           mkdir -p storage/app/public &&
           php artisan cache:clear &&
