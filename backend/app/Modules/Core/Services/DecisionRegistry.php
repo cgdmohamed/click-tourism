@@ -328,6 +328,14 @@ class DecisionRegistry
             'blocks' => 'TE-025, FIN, RPT',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-040',
+            'type' => 'HUM/ARC',
+            'title_en' => 'Report export formats',
+            'title_ar' => 'تنسيقات تصدير التقارير',
+            'blocks' => 'TE-028, RPT',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */

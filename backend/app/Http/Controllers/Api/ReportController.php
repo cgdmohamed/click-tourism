@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\CostCenter;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Reports\Services\AgingReconciliationService;
+use App\Modules\Reports\Services\PartyStatementService;
 use App\Modules\Reports\Services\ReportCsv;
 use App\Modules\Reports\Services\ReportService;
 use Illuminate\Http\JsonResponse;
@@ -23,13 +27,31 @@ class ReportController extends ApiController
     {
         $data = $this->validateTrialBalance($request);
 
-        return $this->ok($reports->trialBalance($data['from'], $data['to'], $this->branch(), $data['currency'], $data['pre_closing']));
+        return $this->ok($reports->trialBalance(
+            $data['from'],
+            $data['to'],
+            $this->branch(),
+            $data['currency'],
+            $data['pre_closing'],
+            $data['max_level'],
+            $data['cost_center_id'],
+            $data['adjustments'],
+        ));
     }
 
     public function exportTrialBalance(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
     {
         $data = $this->validateTrialBalance($request);
-        $report = $reports->trialBalance($data['from'], $data['to'], $this->branch(), $data['currency'], $data['pre_closing']);
+        $report = $reports->trialBalance(
+            $data['from'],
+            $data['to'],
+            $this->branch(),
+            $data['currency'],
+            $data['pre_closing'],
+            $data['max_level'],
+            $data['cost_center_id'],
+            $data['adjustments'],
+        );
 
         $audit->log('report.exported', null, null, ['report' => 'trial-balance'] + $data, $this->actorId());
 
@@ -94,18 +116,52 @@ class ReportController extends ApiController
         $data = $request->validate([
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
+            'compare_from' => ['nullable', 'date', 'required_with:compare_to'],
+            'compare_to' => ['nullable', 'date', 'after_or_equal:compare_from', 'required_with:compare_from'],
         ]);
 
-        return $this->ok($reports->incomeStatement($data['from'], $data['to'], $this->branch()));
+        return $this->ok($reports->incomeStatement(
+            $data['from'],
+            $data['to'],
+            $this->branch(),
+            $data['compare_from'] ?? null,
+            $data['compare_to'] ?? null,
+        ));
+    }
+
+    public function exportIncomeStatement(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    {
+        $data = $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+        ]);
+
+        $report = $reports->incomeStatement($data['from'], $data['to'], $this->branch());
+        $audit->log('report.exported', null, null, ['report' => 'income-statement'] + $data, $this->actorId());
+
+        return $this->csvResponse($csv->incomeStatement($report), "income-statement_{$data['from']}_{$data['to']}.csv");
     }
 
     public function balanceSheet(Request $request, ReportService $reports): JsonResponse
     {
         $data = $request->validate([
             'as_of' => ['required', 'date'],
+            'compare_as_of' => ['nullable', 'date'],
         ]);
 
-        return $this->ok($reports->balanceSheet($data['as_of'], $this->branch()));
+        return $this->ok($reports->balanceSheet($data['as_of'], $this->branch(), $data['compare_as_of'] ?? null));
+    }
+
+    public function exportBalanceSheet(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    {
+        $data = $request->validate([
+            'as_of' => ['required', 'date'],
+        ]);
+
+        $report = $reports->balanceSheet($data['as_of'], $this->branch());
+        $audit->log('report.exported', null, null, ['report' => 'balance-sheet'] + $data, $this->actorId());
+
+        return $this->csvResponse($csv->balanceSheet($report), "balance-sheet_{$data['as_of']}.csv");
     }
 
     public function aging(Request $request, ReportService $reports): JsonResponse
@@ -118,12 +174,112 @@ class ReportController extends ApiController
         return $this->ok($reports->aging($data['type'], $data['as_of'], $this->branch()));
     }
 
+    public function exportAging(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:ar,ap'],
+            'as_of' => ['required', 'date'],
+        ]);
+
+        $report = $reports->aging($data['type'], $data['as_of'], $this->branch());
+        $audit->log('report.exported', null, null, ['report' => 'aging'] + $data, $this->actorId());
+
+        return $this->csvResponse($csv->aging($report), "aging-{$data['type']}_{$data['as_of']}.csv");
+    }
+
+    public function agingReconciliation(Request $request, AgingReconciliationService $reconciliation): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:ar,ap'],
+            'as_of' => ['required', 'date'],
+        ]);
+
+        return $this->ok($reconciliation->reconcile($data['type'], $data['as_of'], $this->branch()));
+    }
+
+    public function exportAgingReconciliation(Request $request, AgingReconciliationService $reconciliation, ReportCsv $csv, AuditService $audit): Response
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:ar,ap'],
+            'as_of' => ['required', 'date'],
+        ]);
+
+        $report = $reconciliation->reconcile($data['type'], $data['as_of'], $this->branch());
+        $audit->log('report.exported', null, null, ['report' => 'aging-reconciliation'] + $data, $this->actorId());
+
+        return $this->csvResponse($csv->agingReconciliation($report), "aging-reconciliation-{$data['type']}_{$data['as_of']}.csv");
+    }
+
+    public function partyStatement(Request $request, PartyStatementService $statements): JsonResponse
+    {
+        $data = $this->validatePartyStatement($request);
+
+        $result = $statements->statement(
+            $data['party_type'],
+            $data['party_id'],
+            $data['from'],
+            $data['to'],
+            $this->branch(),
+            $data['page'],
+            $data['per_page'],
+            $data['currency'],
+        );
+
+        $perPage = $data['per_page'];
+
+        return response()->json([
+            'data' => $result,
+            'meta' => [
+                'current_page' => $data['page'],
+                'last_page' => max(1, (int) ceil($result['total'] / $perPage)),
+                'total' => $result['total'],
+                'per_page' => $perPage,
+            ],
+        ]);
+    }
+
+    public function exportPartyStatement(Request $request, PartyStatementService $statements, ReportCsv $csv, AuditService $audit): Response
+    {
+        $data = $this->validatePartyStatement($request, paginated: false);
+
+        $report = $statements->statement(
+            $data['party_type'],
+            $data['party_id'],
+            $data['from'],
+            $data['to'],
+            $this->branch(),
+            1,
+            self::EXPORT_MAX_ROWS,
+            $data['currency'],
+        );
+
+        if ($report['total'] > self::EXPORT_MAX_ROWS) {
+            throw ValidationException::withMessages([
+                'from' => ['Too many rows to export ('.$report['total'].'). Narrow the date range or filters.'],
+            ]);
+        }
+
+        $audit->log('report.exported', null, null, [
+            'report' => 'party-statement',
+            'party_type' => $data['party_type'],
+            'party_id' => $data['party_id'],
+            'from' => $data['from'],
+            'to' => $data['to'],
+            'rows' => $report['total'],
+        ], $this->actorId());
+
+        return $this->csvResponse(
+            $csv->partyStatement($report),
+            "party-statement-{$data['party_type']}-{$data['party_id']}_{$data['from']}_{$data['to']}.csv",
+        );
+    }
+
     public function dashboard(ReportService $reports): JsonResponse
     {
         return $this->ok($reports->dashboard($this->branch()));
     }
 
-    /** @return array{from: string, to: string, currency: ?string} */
+    /** @return array{from: string, to: string, currency: ?string, pre_closing: bool, max_level: ?int, cost_center_id: ?int, adjustments: string} */
     private function validateTrialBalance(Request $request): array
     {
         $this->normaliseCurrency($request);
@@ -133,9 +289,22 @@ class ReportController extends ApiController
             'to' => ['required', 'date', 'after_or_equal:from'],
             'currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')],
             'pre_closing' => ['nullable', 'boolean'],
+            'max_level' => ['nullable', 'integer', 'min:1', 'max:20'],
+            'cost_center_id' => ['nullable', 'string', Rule::exists('cost_centers', 'public_id')],
+            'adjustments' => ['nullable', 'in:include,exclude,only'],
         ]);
 
-        return ['pre_closing' => (bool) ($data['pre_closing'] ?? false)] + $data + ['currency' => null];
+        $costCenterId = null;
+        if (! empty($data['cost_center_id'])) {
+            $costCenterId = CostCenter::query()->where('public_id', $data['cost_center_id'])->value('id');
+        }
+
+        return [
+            'pre_closing' => (bool) ($data['pre_closing'] ?? false),
+            'max_level' => isset($data['max_level']) ? (int) $data['max_level'] : null,
+            'cost_center_id' => $costCenterId !== null ? (int) $costCenterId : null,
+            'adjustments' => $data['adjustments'] ?? 'include',
+        ] + $data + ['currency' => null];
     }
 
     /**
@@ -150,7 +319,7 @@ class ReportController extends ApiController
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
             'currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')],
-            'party_type' => ['nullable', 'in:customer,supplier', 'required_with:party_id'],
+            'party_type' => ['nullable', 'in:customer,supplier,employee', 'required_with:party_id'],
             'party_id' => ['nullable', 'string', 'required_with:party_type'],
         ];
 
@@ -163,7 +332,11 @@ class ReportController extends ApiController
 
         $party = null;
         if (! empty($data['party_type'])) {
-            $model = $data['party_type'] === 'customer' ? Customer::class : Supplier::class;
+            $model = match ($data['party_type']) {
+                'customer' => Customer::class,
+                'supplier' => Supplier::class,
+                default => Employee::class,
+            };
             $found = $model::query()->where('public_id', $data['party_id'])->first();
 
             if (! $found) {
@@ -181,6 +354,48 @@ class ReportController extends ApiController
             'party' => $party,
             'page' => $data['page'] ?? 1,
             'per_page' => $data['per_page'] ?? 50,
+        ];
+    }
+
+    /** @return array{party_type: string, party_id: int, from: string, to: string, currency: ?string, page: int, per_page: int} */
+    private function validatePartyStatement(Request $request, bool $paginated = true): array
+    {
+        $this->normaliseCurrency($request);
+
+        $rules = [
+            'party_type' => ['required', 'in:customer,supplier,employee'],
+            'party_id' => ['required', 'string'],
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+            'currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')],
+        ];
+
+        if ($paginated) {
+            $rules['page'] = ['nullable', 'integer', 'min:1'];
+            $rules['per_page'] = ['nullable', 'integer', 'min:1', 'max:500'];
+        }
+
+        $data = $request->validate($rules);
+
+        $model = match ($data['party_type']) {
+            'customer' => Customer::class,
+            'supplier' => Supplier::class,
+            default => Employee::class,
+        };
+
+        $party = $model::query()->where('public_id', $data['party_id'])->first();
+        if (! $party) {
+            throw ValidationException::withMessages(['party_id' => ['The selected party does not exist.']]);
+        }
+
+        return [
+            'party_type' => $data['party_type'],
+            'party_id' => (int) $party->id,
+            'from' => $data['from'],
+            'to' => $data['to'],
+            'currency' => $data['currency'] ?? null,
+            'page' => $data['page'] ?? 1,
+            'per_page' => $data['per_page'] ?? 200,
         ];
     }
 

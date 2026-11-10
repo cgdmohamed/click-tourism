@@ -1021,8 +1021,11 @@ paths:
           description: Limit to lines posted in this transaction currency and sum original-currency amounts (`basis=original`). Omit for base-currency totals.
           schema: { type: string, minLength: 3, maxLength: 3 }
         - { name: pre_closing, in: query, description: Exclude year-end closing entries and show pre-close balances, schema: { type: boolean, default: false } }
+        - { name: max_level, in: query, description: 'Roll every posting up to this chart-of-accounts depth (root = 1) without double counting', schema: { type: integer, minimum: 1, maximum: 20 } }
+        - { name: cost_center_id, in: query, description: 'Limit to the analytical portion allocated to this cost center (public id)', schema: { type: string } }
+        - { name: adjustments, in: query, description: 'Period-end adjustment voucher scope: include, exclude, or only', schema: { type: string, enum: [include, exclude, only], default: include } }
       responses:
-        '200': { description: Trial balance }
+        '200': { description: 'Trial balance with opening, period movements, closing balances and balance totals' }
   /reports/trial-balance/export:
     get:
       tags: [Reports]
@@ -1031,6 +1034,9 @@ paths:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
+        - { name: max_level, in: query, schema: { type: integer, minimum: 1, maximum: 20 } }
+        - { name: cost_center_id, in: query, schema: { type: string } }
+        - { name: adjustments, in: query, schema: { type: string, enum: [include, exclude, only] } }
       responses:
         '200':
           description: UTF-8 CSV with BOM; formula-like cells are neutralised
@@ -1048,13 +1054,13 @@ paths:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: currency, in: query, description: 'Original-currency view of one transaction currency', schema: { type: string, minLength: 3, maxLength: 3 } }
-        - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier] } }
+        - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier, employee] } }
         - { name: party_id, in: query, description: Public id; required with party_type, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
         - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
       responses:
         '200':
-          description: Ledger with pagination meta
+          description: 'Ledger with pagination meta and source-document/party drilldown fields'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GeneralLedger' }
@@ -1069,7 +1075,7 @@ paths:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
-        - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier] } }
+        - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier, employee] } }
         - { name: party_id, in: query, schema: { type: string } }
       responses:
         '200':
@@ -1082,29 +1088,115 @@ paths:
   /reports/income-statement:
     get:
       tags: [Reports]
-      summary: Income statement
+      summary: Income statement with optional comparison period and variance
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: compare_from, in: query, description: Prior-period start; required with compare_to, schema: { type: string, format: date } }
+        - { name: compare_to, in: query, description: Prior-period end; required with compare_from, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Income statement plus comparison and variance when requested' }
+  /reports/income-statement/export:
+    get:
+      tags: [Reports]
+      summary: Income statement as CSV (requires reports.export; audited)
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
       responses:
-        '200': { description: Income statement }
+        '200': { description: UTF-8 CSV with BOM }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /reports/balance-sheet:
     get:
       tags: [Reports]
-      summary: Balance sheet as of a date
+      summary: Balance sheet as of a date with optional comparison and balance check
+      parameters:
+        - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+        - { name: compare_as_of, in: query, description: Prior comparison date, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Balance sheet with balanced flag, comparison and variance when requested' }
+  /reports/balance-sheet/export:
+    get:
+      tags: [Reports]
+      summary: Balance sheet as CSV (requires reports.export; audited)
       parameters:
         - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
       responses:
-        '200': { description: Balance sheet }
+        '200': { description: UTF-8 CSV with BOM }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /reports/aging:
     get:
       tags: [Reports]
-      summary: AR/AP aging
+      summary: Operational AR/AP aging
       parameters:
         - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
         - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
       responses:
         '200': { description: Aging buckets }
+  /reports/aging/export:
+    get:
+      tags: [Reports]
+      summary: Operational AR/AP aging as CSV (requires reports.export; audited)
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
+        - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: UTF-8 CSV with BOM }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/aging-reconciliation:
+    get:
+      tags: [Reports]
+      summary: Ledger-based AR/AP aging reconciliation
+      description: Compares the posted control-account family with open invoice balances and unapplied advances. Differences are returned explicitly with codes; nothing is written off.
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
+        - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Ledger, operational totals, buckets, advances, differences and per-party breakdown' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/aging-reconciliation/export:
+    get:
+      tags: [Reports]
+      summary: AR/AP aging reconciliation as CSV (requires reports.export; audited)
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
+        - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: UTF-8 CSV with BOM }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/party-statement:
+    get:
+      tags: [Reports]
+      summary: Customer, supplier or employee statement from the posted ledger
+      description: Reads the party control-account family plus genuine subaccounts; reconciles closing balance to operational open invoices/advances and returns explicit differences.
+      parameters:
+        - { name: party_type, in: query, required: true, schema: { type: string, enum: [customer, supplier, employee] } }
+        - { name: party_id, in: query, required: true, description: Public id, schema: { type: string } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: currency, in: query, description: 'Original-currency view of one transaction currency', schema: { type: string, minLength: 3, maxLength: 3 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+      responses:
+        '200': { description: 'Statement with opening, movements, closing, subaccount split and reconciliation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/party-statement/export:
+    get:
+      tags: [Reports]
+      summary: Party statement as CSV (requires reports.export; audited; max 50,000 rows)
+      parameters:
+        - { name: party_type, in: query, required: true, schema: { type: string, enum: [customer, supplier, employee] } }
+        - { name: party_id, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
+      responses:
+        '200': { description: UTF-8 CSV with BOM }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /leads:
     get:

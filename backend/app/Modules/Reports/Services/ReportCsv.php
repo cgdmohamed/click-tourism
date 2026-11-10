@@ -134,4 +134,171 @@ class ReportCsv
 
         return $this->build($rows);
     }
+
+    /** @param array<string, mixed> $statement Result of PartyStatementService::statement() */
+    public function partyStatement(array $statement): string
+    {
+        $currency = $statement['currency'];
+        $exp = $this->exponent($currency);
+        $reconciliation = $statement['reconciliation'];
+
+        $rows = [
+            ['Party', $statement['party']['name_en'], $statement['party']['name_ar'], $statement['party_type']],
+            ['Period', $statement['from'], $statement['to'], "Basis: {$statement['basis']}"],
+            ['Control account', $statement['control_account']['code'], $statement['control_account']['name_en'], $statement['control_account']['name_ar']],
+            ['Opening balance', '', '', '', '', $this->amount($statement['opening_minor'], $exp), $currency],
+            ['Date', 'Entry no.', 'Account', 'Description', 'Source', 'Debit', 'Credit', 'Balance', 'Currency'],
+        ];
+
+        foreach ($statement['lines'] as $line) {
+            $debit = $statement['basis'] === 'original' ? $line['debit_minor'] : $line['base_debit_minor'];
+            $credit = $statement['basis'] === 'original' ? $line['credit_minor'] : $line['base_credit_minor'];
+
+            $rows[] = [
+                $line['entry_date'],
+                $line['number'],
+                $line['account_code'],
+                $line['description'] ?: $line['memo'],
+                $line['source_reference'] ?: $line['source_type'],
+                $this->amount($debit, $exp),
+                $this->amount($credit, $exp),
+                $this->amount($line['balance_minor'], $exp),
+                $currency,
+            ];
+        }
+
+        $rows[] = [
+            'Totals', '', '', '', '',
+            $this->amount($statement['total_debit_minor'], $exp),
+            $this->amount($statement['total_credit_minor'], $exp),
+            $this->amount($statement['closing_minor'], $exp),
+            $currency,
+        ];
+
+        $rows[] = [];
+        $rows[] = ['Reconciliation', 'Ledger', 'Operational', 'Difference', 'Currency'];
+        $rows[] = [
+            'Open invoices / advances',
+            $this->amount($reconciliation['normalized_ledger_minor'], $exp),
+            $this->amount($reconciliation['operational_open_invoices_minor'], $exp),
+            $this->amount($reconciliation['difference_minor'], $exp),
+            $currency,
+        ];
+        $rows[] = ['Unapplied credits', $this->amount($reconciliation['unapplied_credits_minor'], $exp), '', '', $currency];
+
+        foreach ($reconciliation['differences'] as $difference) {
+            $rows[] = ['Difference: '.$difference['code'], $this->amount($difference['amount_minor'], $exp), '', '', $currency];
+        }
+
+        return $this->build($rows);
+    }
+
+    /** @param array<string, mixed> $report Result of AgingReconciliationService::reconcile() */
+    public function agingReconciliation(array $report): string
+    {
+        $currency = $report['currency'];
+        $exp = $this->exponent($currency);
+
+        $rows = [
+            ['Type', $report['type'], 'As of', $report['as_of']],
+            ['Control account', $report['ledger']['control_account']['code'], $report['ledger']['control_account']['name_en']],
+            ['Ledger balance', $this->amount($report['ledger']['balance_minor'], $exp), $currency, ''],
+            ['Open invoices', $this->amount($report['operational']['open_invoices_minor'], $exp), $currency, ''],
+            ['Unapplied advances', $this->amount($report['operational']['unapplied_advances_minor'], $exp), $currency, ''],
+            ['Difference', $this->amount($report['difference_minor'], $exp), $currency, $report['reconciled'] ? 'Yes' : 'No'],
+            [],
+            ['Bucket', 'Amount', 'Currency', ''],
+        ];
+
+        foreach ($report['operational']['buckets'] as $bucket) {
+            $rows[] = [$bucket['key'], $this->amount($bucket['amount_minor'], $exp), $currency, ''];
+        }
+
+        $rows[] = ['Total open invoices', $this->amount($report['operational']['open_invoices_minor'], $exp), $currency, ''];
+        $rows[] = [];
+        $rows[] = ['Party', 'Ledger', 'Open invoices', 'Difference', 'Currency'];
+
+        foreach ($report['parties'] as $party) {
+            $rows[] = [
+                $party['name_en'] ?? $party['name_ar'] ?? $party['party_id'],
+                $this->amount($party['ledger_minor'], $exp),
+                $this->amount($party['open_invoices_minor'], $exp),
+                $this->amount($party['difference_minor'], $exp),
+                $currency,
+            ];
+        }
+
+        foreach ($report['differences'] as $difference) {
+            $rows[] = ['Difference: '.$difference['code'], $this->amount($difference['amount_minor'], $exp), '', '', $currency];
+        }
+
+        return $this->build($rows);
+    }
+
+    /** @param array<string, mixed> $report Result of ReportService::incomeStatement() */
+    public function incomeStatement(array $report): string
+    {
+        $currency = $report['currency'];
+        $exp = $this->exponent($currency);
+        $rows = [
+            ['Income statement', $report['from'], $report['to']],
+            ['Section', 'Code', 'Name (EN)', 'Name (AR)', 'Amount', 'Currency'],
+        ];
+
+        foreach ($report['revenue'] as $line) {
+            $rows[] = ['Revenue', $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
+        }
+        $rows[] = ['Total revenue', '', '', '', $this->amount($report['total_revenue_minor'], $exp), $currency];
+
+        foreach ($report['expenses'] as $line) {
+            $rows[] = ['Expense', $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
+        }
+        $rows[] = ['Total expenses', '', '', '', $this->amount($report['total_expense_minor'], $exp), $currency];
+        $rows[] = ['Net profit', '', '', '', $this->amount($report['net_profit_minor'], $exp), $currency];
+
+        return $this->build($rows);
+    }
+
+    /** @param array<string, mixed> $report Result of ReportService::balanceSheet() */
+    public function balanceSheet(array $report): string
+    {
+        $currency = $report['currency'];
+        $exp = $this->exponent($currency);
+        $rows = [
+            ['Balance sheet', $report['as_of']],
+            ['Section', 'Code', 'Name (EN)', 'Name (AR)', 'Amount', 'Currency'],
+        ];
+
+        foreach (['assets' => 'Asset', 'liabilities' => 'Liability', 'equity' => 'Equity'] as $key => $label) {
+            foreach ($report[$key] as $line) {
+                $rows[] = [$label, $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
+            }
+        }
+
+        $rows[] = ['Current earnings', '', '', '', $this->amount($report['current_earnings_minor'], $exp), $currency];
+        $rows[] = ['Total assets', '', '', '', $this->amount($report['total_assets_minor'], $exp), $currency];
+        $rows[] = ['Total liabilities and equity', '', '', '', $this->amount($report['total_liabilities_and_equity_minor'], $exp), $currency];
+        $rows[] = ['Balanced', $report['balanced'] ? 'Yes' : 'No'];
+
+        return $this->build($rows);
+    }
+
+    /** @param array<string, mixed> $report Result of ReportService::aging() */
+    public function aging(array $report): string
+    {
+        $currency = $report['currency'];
+        $exp = $this->exponent($currency);
+        $rows = [
+            ['Aging', $report['type'], $report['as_of']],
+            ['Bucket', 'Amount', 'Currency'],
+        ];
+
+        foreach ($report['buckets'] as $bucket) {
+            $rows[] = [$bucket['label'], $this->amount($bucket['amount_minor'], $exp), $currency];
+        }
+
+        $rows[] = ['Total', $this->amount($report['total_minor'], $exp), $currency];
+
+        return $this->build($rows);
+    }
 }
