@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use Database\Seeders\ProductionBootstrapSeeder;
+use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -54,6 +55,41 @@ Artisan::command('demo:window {--seconds=600}', function () {
 
     return 0;
 })->purpose('Record the active ephemeral demo window');
+
+/**
+ * Reconcile and verify all disposable demo accounts after boot and after
+ * every reset. Never write to a non-demo installation.
+ */
+Artisan::command('demo:ensure-users', function () {
+    if (! config('demo.enabled') || config('app.env') !== 'demo'
+        || env('DB_HOST') !== 'demo-db' || env('DB_DATABASE') !== 'demo_erp') {
+        $this->error('Refusing to seed demo users outside isolated demo database.');
+
+        return 1;
+    }
+
+    Artisan::call('db:seed', ['--class' => UserSeeder::class, '--force' => true]);
+
+    $password = (string) env('DEMO_PASSWORD', 'password');
+    foreach ([
+        'admin@example.com' => 'admin',
+        'accountant@example.com' => 'accountant',
+        'sales@example.com' => 'sales',
+        'viewer@example.com' => 'viewer',
+    ] as $email => $role) {
+        $user = User::query()->with('branches')->where('email', $email)->first();
+        if ($user === null || ! $user->is_active || ! Hash::check($password, $user->password)
+            || ! $user->hasRole($role) || $user->branches->isEmpty()) {
+            $this->error("Demo user verification failed for {$email}.");
+
+            return 1;
+        }
+    }
+
+    $this->info('Demo users verified (4 accounts, credentials, roles and branches).');
+
+    return 0;
+})->purpose('Repair and verify isolated demo user accounts');
 
 /**
  * Production bootstrap: no demo user credentials. Run interactively through
