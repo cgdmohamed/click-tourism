@@ -52,16 +52,22 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
         sleep 2
     done
 
-    echo "Running migrations..."
-    php artisan migrate --force
-
-    if [ "${SEED_DEMO:-false}" = "true" ]; then
-        if [ "${DEMO_MODE:-false}" != "true" ]; then
-            echo "FATAL: SEED_DEMO=true is permitted only in isolated demo mode." >&2
+    if [ "${DEMO_MODE:-false}" = "true" ]; then
+        # Always construct the immutable baseline from clean demo schema.
+        # Never bootstrap a snapshot from users' previous edits.
+        [ "${SEED_DEMO:-false}" = "true" ] && [ "${DEMO_SEED:-false}" = "true" ] || {
+            echo "FATAL: demo baseline requires both SEED_DEMO and DEMO_SEED." >&2
+            exit 1
+        }
+        echo "Building isolated demo baseline..."
+        php artisan migrate:fresh --seed --force
+    else
+        echo "Running production migrations..."
+        php artisan migrate --force
+        if [ "${SEED_DEMO:-false}" = "true" ]; then
+            echo "FATAL: SEED_DEMO is not permitted in production." >&2
             exit 1
         fi
-        echo "Seeding isolated demo dataset..."
-        php artisan db:seed --force
     fi
 fi
 
@@ -69,6 +75,16 @@ fi
 # A partially seeded database must never be reported ready.
 if [ "${DEMO_MODE:-false}" = "true" ]; then
     php artisan demo:ensure-users
+    echo "Saving verified immutable demo baseline..."
+    export PGHOST="${DB_HOST}" PGPORT="${DB_PORT:-5432}" PGDATABASE="${DB_DATABASE}" PGUSER="${DB_USERNAME}" PGPASSWORD="${DB_PASSWORD}"
+    SNAPSHOT=/var/www/html/storage/framework/demo-baseline.dump
+    rm -f "${SNAPSHOT}"
+    pg_dump --format=custom --no-owner --no-acl --file="${SNAPSHOT}.tmp"
+    pg_restore --list "${SNAPSHOT}.tmp" >/dev/null
+    test -s "${SNAPSHOT}.tmp"
+    mv "${SNAPSHOT}.tmp" "${SNAPSHOT}"
+    echo "Verified demo snapshot is ready."
+    php artisan up
 fi
 
 if [ "${APP_OPTIMIZE:-true}" = "true" ]; then

@@ -42,7 +42,12 @@ jobs:
           php artisan key:generate
 
       - name: Check code style
-        run: vendor/bin/pint --test
+        run: |
+          if ! vendor/bin/pint --test; then
+            vendor/bin/pint
+            git diff -- app/
+            exit 1
+          fi
 
       - name: Run tests
         run: php artisan test

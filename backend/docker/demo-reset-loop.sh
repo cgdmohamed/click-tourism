@@ -1,39 +1,48 @@
 #!/bin/sh
-# DEMO ONLY. Resets isolated PostgreSQL and temporary uploads every 600 seconds.
-# Never run against a production database.
+# DEMO ONLY: restore an immutable PostgreSQL snapshot every 600 seconds.
+# No migrations, seeders, or new user passwords during scheduled resets.
 set -eu
 if [ "${DEMO_MODE:-false}" != "true" ] || [ "${APP_ENV:-}" != "demo" ] ||
-   [ "${DB_HOST:-}" != "demo-db" ] || [ "${DB_DATABASE:-}" != "demo_erp" ]; then
-    echo "FATAL: refusing demo reset outside demo-db/demo_erp." >&2
+   [ "${DB_HOST:-}" != "demo-db" ] || [ "${DB_DATABASE:-}" != "demo_erp" ] ||
+   [ "${DB_CONNECTION:-}" != "pgsql" ]; then
+    echo "FATAL: refusing demo reset outside isolated PostgreSQL demo." >&2
     exit 1
 fi
 if [ "${DEMO_RESET_SECONDS:-600}" != "600" ]; then
-    echo "FATAL: demo reset interval is fixed to 600 seconds." >&2
+    echo "FATAL: demo reset interval must be 600." >&2
     exit 1
 fi
+export PGHOST="${DB_HOST}" PGPORT="${DB_PORT:-5432}" PGDATABASE="${DB_DATABASE}"
+export PGUSER="${DB_USERNAME}" PGPASSWORD="${DB_PASSWORD}"
+SNAPSHOT=/var/www/html/storage/framework/demo-baseline.dump
 cd /var/www/html
-# Always fail closed while data is incomplete, but keep retrying the reset
-# automatically rather than abandoning the worker forever on the first error.
-# The protected target is the demo-db/demo_erp installation only.
+test -s "${SNAPSHOT}" || { echo "FATAL: immutable demo snapshot missing." >&2; exit 1; }
+pg_restore --list "${SNAPSHOT}" >/dev/null || exit 1
+
+restore_baseline() {
+    # Restore never mutates the saved archive. Fail closed until all stages pass.
+    psql -X -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' || return 1
+    pg_restore --exit-on-error --no-owner --no-acl --dbname="${PGDATABASE}" "${SNAPSHOT}" || return 1
+    php artisan demo:ensure-users --verify-only || return 1
+    find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
+    mkdir -p storage/app/public || return 1
+    php artisan cache:clear || return 1
+    php artisan demo:window --seconds=600 || return 1
+    php artisan up || return 1
+}
+
 while :; do
     sleep 600
-    echo "Demo: starting scheduled ephemeral data reset"
+    echo "Demo: restoring baseline snapshot"
     if ! php artisan down --retry=30; then
-        echo "ERROR: unable to enter demo maintenance mode; retrying in 30s" >&2
+        echo "ERROR: unable to enter maintenance mode; retrying" >&2
         sleep 30
         continue
     fi
 
-    until php artisan migrate:fresh --seed --force &&
-          php artisan demo:ensure-users &&
-          find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + &&
-          mkdir -p storage/app/public &&
-          php artisan cache:clear &&
-          php artisan demo:window --seconds=600 &&
-          php artisan up; do
-        echo "ERROR: demo reset failed; staying in maintenance and retrying in 30s" >&2
+    until restore_baseline; do
+        echo "ERROR: snapshot restore failed; keeping maintenance mode and retrying in 30s" >&2
         sleep 30
     done
-
-    echo "Demo: fresh seeded dataset available"
+    echo "Demo: baseline snapshot restored and users verified"
 done
