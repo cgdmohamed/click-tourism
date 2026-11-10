@@ -138,7 +138,7 @@ class ReportService
             // portion of each line is shown. If only one side of a journal entry
             // is allocated to the center, debits and credits will not match.
             // Consumers should not interpret this as a ledger imbalance.
-            'balanced' => $costCenterId === null || $totalDebit === $totalCredit,
+            'balanced' => $totalDebit === $totalCredit,
         ];
     }
 
@@ -624,10 +624,10 @@ class ReportService
         }
 
         $labels = [
-            '0-30' => $type === 'ar' ? '0-30 يوم' : '0-30 days',
-            '31-60' => $type === 'ar' ? '31-60 يوم' : '31-60 days',
-            '61-90' => $type === 'ar' ? '61-90 يوم' : '61-90 days',
-            '90+' => $type === 'ar' ? 'أكثر من 90 يوم' : '90+ days',
+            '0-30' => app()->getLocale() === 'ar' ? '0-30 يوم' : '0-30 days',
+            '31-60' => app()->getLocale() === 'ar' ? '31-60 يوم' : '31-60 days',
+            '61-90' => app()->getLocale() === 'ar' ? '61-90 يوم' : '61-90 days',
+            '90+' => app()->getLocale() === 'ar' ? 'أكثر من 90 يوم' : '90+ days',
         ];
 
         $result = [];

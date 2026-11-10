@@ -16,8 +16,8 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
-use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Models\PartyAccount;
+use App\Modules\Parties\Models\Supplier;
 use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -85,7 +85,7 @@ class AccountingDocumentService
             $lines = $this->prepareLines($rawLines, $currency);
             $this->assertBalanced($lines);
 
-            $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
+            $subtotal = (int) array_sum(array_column($lines, 'debit_minor'));
             $tax = (int) array_sum(array_column($lines, 'tax_minor'));
             // In simplified settlement mode the document amount is the single
             // cash movement; summing debit + credit would double-count it.
@@ -192,7 +192,7 @@ class AccountingDocumentService
                     ]);
                 }
 
-                $attributes['subtotal_minor'] = (int) array_sum(array_column($lines, 'subtotal_minor'));
+                $attributes['subtotal_minor'] = (int) array_sum(array_column($lines, 'debit_minor'));
                 $attributes['tax_minor'] = (int) array_sum(array_column($lines, 'tax_minor'));
                 $attributes['total_minor'] = $attributes['subtotal_minor'] + $attributes['tax_minor'];
             }
@@ -477,7 +477,7 @@ class AccountingDocumentService
         }
         $cash = CashAccount::query()->with('account')
             ->where('public_id', $data['cash_account_id'])
-            ->where('branch_id', $branch->id)
+            ->where(fn ($query) => $query->where('branch_id', $branch->id)->orWhereNull('branch_id'))
             ->where('is_active', true)->first();
         if ($cash === null || $cash->account === null || $cash->account->is_active === false || $cash->account->is_postable === false
             || strtoupper($cash->currency_code) !== $currency) {
