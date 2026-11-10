@@ -313,6 +313,9 @@ export default function SupplierSettlements() {
 
       {tab === 'obligations' ? (
         <Card>
+          <div className="border-b border-border-subtle px-5 py-3 text-small text-text-subtle">
+            {L('تنبيه محاسبي: هذه التزامات تشغيلية غير مُرحّلة للأستاذ العام. لا تعتبرها أرصدة موردين محاسبية معتمدة حتى يتم ربطها بمستند استحقاق مُرحّل.', 'Accounting notice: these are operational obligations not posted to the general ledger. Do not treat them as recognized payables without a posted accrual document.')}
+          </div>
           {obligationsQuery.isLoading ? <Loading /> : null}
           {obligationsQuery.isError ? (
             <ErrorState message={errorMessage(obligationsQuery.error)} onRetry={() => void obligationsQuery.refetch()} />
