@@ -4,9 +4,9 @@ namespace App\Modules\Invoices\Services;
 
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
-use App\Modules\Accounting\Services\RealizedFxService;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
+use App\Modules\Accounting\Services\RealizedFxService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
