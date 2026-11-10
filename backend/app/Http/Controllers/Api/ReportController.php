@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\CostCenter;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
@@ -421,7 +422,7 @@ class ReportController extends ApiController
         ]);
         $format = $options['format'] ?? 'csv';
         $language = $options['language'] ?? 'bilingual';
-        $documents = app(ReportDocument::class);
+        $documents = new ReportDocument(app(SettingService::class));
         [$content, $contentType] = match ($format) {
             'xlsx' => [$documents->xlsx($csv), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
             'pdf' => [$documents->pdf($csv, $title, $language), 'application/pdf'],
