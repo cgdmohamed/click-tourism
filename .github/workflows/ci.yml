@@ -153,3 +153,5 @@ jobs:
           sh -n backend/docker/demo-reset-loop.sh
       - name: Build Laravel nginx API image
         run: docker build -f deploy/Dockerfile.api -t click-tourism-api:ci .
+      - name: Build Laravel PHP-FPM image
+        run: docker build -f backend/Dockerfile -t click-tourism-backend:ci backend
