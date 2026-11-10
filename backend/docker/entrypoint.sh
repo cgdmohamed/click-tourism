@@ -46,7 +46,16 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     fi
 fi
 
-php artisan storage:link >/dev/null 2>&1 || true
+# public/storage is created in the Docker image. Re-creating it on
+# every boot can introduce broken/cyclic links with the demo upload mount.
+# In demo mode, repair only a symlink occupying the expected upload directory.
+if [ "${DEMO_MODE:-false}" = "true" ]; then
+    if [ -L storage/app/public ]; then
+        echo "Repairing invalid demo upload symlink..."
+        rm storage/app/public
+    fi
+    mkdir -p storage/app/public
+fi
 
 if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
     echo "Caching configuration, routes, events and views..."
@@ -54,7 +63,6 @@ if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
 fi
 
 if [ "${DEMO_MODE:-false}" = "true" ]; then
-    mkdir -p storage/app/public
     # This loop shares this container's ephemeral upload directory.
     php artisan demo:window --seconds="${DEMO_RESET_SECONDS:-600}"
     /bin/sh /usr/local/bin/demo-reset-loop &
