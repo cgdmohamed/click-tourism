@@ -215,4 +215,83 @@ class PostingServiceTest extends TestCase
 
         $this->entry();
     }
+
+    /** Concurrency and invariant tests (P1-06) */
+    public function test_concurrent_posting_of_same_source_event_posts_only_once(): void
+    {
+        $lines = [
+            PostingLine::debit($this->account('1110'), 100000),
+            PostingLine::credit($this->account('4100'), 100000),
+        ];
+
+        $request = PostingRequest::make(
+            entryDate: now()->toDateString(),
+            branch: $this->branch,
+            currency: 'EGP',
+            lines: $lines,
+            memo: 'Concurrent test entry',
+            sourceType: 'test_concurrent',
+            sourceId: 999,
+            event: 'sale',
+            fxRate: '1',
+            fxRateDate: now()->toDateString(),
+            fxRateSource: 'manual',
+            actorId: $this->user->id,
+        );
+
+        // First posting succeeds.
+        $this->posting()->post($request);
+
+        // Second posting with same source/event is rejected.
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('already been posted');
+        $this->posting()->post($request);
+    }
+
+    public function test_posted_entry_is_balanced_in_base_currency(): void
+    {
+        $entry = $this->entry();
+
+        $debitSum = (int) $entry->lines->sum('base_debit_minor');
+        $creditSum = (int) $entry->lines->sum('base_credit_minor');
+
+        $this->assertSame($debitSum, $creditSum, 'Posted entry must balance in base currency.');
+    }
+
+    public function test_posted_entry_cannot_be_modified(): void
+    {
+        $entry = $this->entry();
+
+        // Direct model update should be blocked by model events.
+        $this->expectException(DomainException::class);
+        $entry->update(['memo' => 'Tampered']);
+    }
+
+    public function test_posted_entry_lines_cannot_be_modified(): void
+    {
+        $entry = $this->entry();
+
+        $this->expectException(DomainException::class);
+        $entry->lines->first()->update(['debit_minor' => 1]);
+    }
+
+    public function test_closed_period_rejects_posting(): void
+    {
+        FiscalPeriod::query()->update(['status' => 'closed']);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('posting is not allowed');
+
+        $this->entry();
+    }
+
+    public function test_reversal_of_reversal_is_rejected(): void
+    {
+        $entry = $this->entry();
+        $reversal = $this->posting()->reverse($entry, 'First reversal', $this->user->id);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('A reversal entry cannot itself be reversed');
+        $this->posting()->reverse($reversal, 'Second reversal', $this->user->id);
+    }
 }
