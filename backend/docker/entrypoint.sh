@@ -84,6 +84,7 @@ if [ "${DEMO_MODE:-false}" = "true" ]; then
     test -s "${SNAPSHOT}.tmp"
     mv "${SNAPSHOT}.tmp" "${SNAPSHOT}"
     echo "Verified demo snapshot is ready."
+    php artisan up
 fi
 
 if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
