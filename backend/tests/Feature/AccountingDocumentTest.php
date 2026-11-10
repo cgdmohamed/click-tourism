@@ -423,6 +423,23 @@ class AccountingDocumentTest extends TestCase
         $this->assertSame(0, AccountingDocument::query()->count());
     }
 
+    public function test_simple_voucher_does_not_silently_settle_foreign_receivables_at_current_rate(): void
+    {
+        $customer = $this->customer();
+        app(InvoiceService::class)->provisionSubaccount('customer', $customer->id, PartyAccount::ROLE_RECEIVABLE);
+        $this->create([
+            'type' => 'receipt_voucher',
+            'simple_mode' => true,
+            'party_type' => 'customer',
+            'party_id' => $customer->public_id,
+            'cash_account_id' => $this->cashAccountPublicId(),
+            'amount_minor' => 10000,
+            'currency' => 'USD',
+            'fx_rate' => '52',
+        ])->assertStatus(422);
+        $this->assertSame(0, AccountingDocument::query()->count());
+    }
+
     private function cashAccountPublicId(): string
     {
         return CashAccount::query()->whereHas('account', fn ($q) => $q->where('code', '1110'))->first()->public_id;
