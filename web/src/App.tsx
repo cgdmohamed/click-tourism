@@ -19,6 +19,7 @@ import Payments from './pages/Payments'
 import SupplierSettlements from './pages/SupplierSettlements'
 import Reports from './pages/Reports'
 import Leads from './pages/Leads'
+import AssignmentRules from './pages/AssignmentRules'
 import Settings from './pages/Settings'
 import Treasury from './pages/Treasury'
 import Expenses from './pages/Expenses'
@@ -71,6 +72,7 @@ export default function App() {
                   <Route path="supplier-settlements" element={<SupplierSettlements />} />
                   <Route path="reports" element={<Reports />} />
                   <Route path="leads" element={<Leads />} />
+                  <Route path="assignment-rules" element={<AssignmentRules />} />
                   <Route path="settings" element={<Settings />} />
                 </Route>
               </Routes>

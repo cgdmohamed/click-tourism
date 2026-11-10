@@ -55,7 +55,7 @@ class RolePermissionSeeder extends Seeder
             'payments.view', 'payments.create',
             'refunds.create',
             'reports.view',
-            'leads.view', 'leads.create', 'leads.update', 'leads.convert',
+            'leads.view', 'leads.create', 'leads.update', 'leads.convert', 'leads.manage_rules',
         ],
         'viewer' => [
             'branches.view',
@@ -90,7 +90,7 @@ class RolePermissionSeeder extends Seeder
         'payments.view', 'payments.create', 'payments.manage',
         'refunds.create', 'refunds.approve',
         'reports.view', 'reports.export',
-        'leads.view', 'leads.create', 'leads.update', 'leads.convert',
+        'leads.view', 'leads.create', 'leads.update', 'leads.convert', 'leads.manage_rules',
         'cash_accounts.manage', 'transfers.view', 'transfers.create', 'transfers.reverse',
         'expense_categories.manage', 'expenses.view', 'expenses.create', 'expenses.approve',
         'opening_balances.view', 'opening_balances.manage', 'opening_balances.post', 'opening_balances.reverse',

@@ -195,6 +195,18 @@ export type Lead = {
   last_activity_at?: string | null
 }
 
+export type AssignmentRule = {
+  id: string
+  priority: number
+  branch_id: string | null
+  source_id: string | null
+  service_category: string | null
+  strategy: string
+  target_user_id: string | null
+  max_leads_per_user: number | null
+  is_active: boolean
+}
+
 export type Paginated<T> = {
   data: T[]
   meta: { current_page: number; last_page: number; total: number; per_page: number }
