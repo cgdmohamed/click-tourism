@@ -643,13 +643,18 @@ class ReportService
         ];
     }
 
-    public function dashboard(?Branch $branch): array
+    public function dashboard(?Branch $branch, array $filters = []): array
     {
         $currency = $this->settings->baseCurrency();
         $today = now()->toDateString();
-        $monthStart = now()->startOfMonth()->toDateString();
-        $monthEnd = now()->endOfMonth()->toDateString();
-        $sixMonthsAgo = now()->subMonths(5)->startOfMonth()->toDateString();
+        $period = $filters['period'] ?? 'thisMonth';
+        [$monthStart, $monthEnd] = match ($period) {
+            'today' => [$today, $today],
+            'lastMonth' => [now()->subMonthNoOverflow()->startOfMonth()->toDateString(), now()->subMonthNoOverflow()->endOfMonth()->toDateString()],
+            'customRange' => [$filters['from'], $filters['to']],
+            default => [now()->startOfMonth()->toDateString(), $today],
+        };
+        $monthEnd = min($monthEnd, $today);
 
         $bookingScope = fn () => Booking::query()->when($branch, fn ($query) => $query->where('branch_id', $branch->id));
 
@@ -714,15 +719,16 @@ class ReportService
             ->map(fn (Payment $payment) => $payment->toApiArray())
             ->all();
 
-        // ---------- New financial command center data ----------
-
-        // Cash and bank balances per registered cash account
+        // Use base currency amounts from posted GL; never sum foreign cash at
+        // an artificial FX rate. Account figures retain native currencies.
         $cashAccounts = CashAccount::query()
-            ->when($branch, fn ($q) => $q->where(function ($q2) use ($branch) { $q2->where('branch_id', $branch->id)->orWhereNull('branch_id'); }))
+            ->when($branch, fn ($q) => $q->where(function ($sub) use ($branch) {
+                $sub->where('branch_id', $branch->id)->orWhereNull('branch_id');
+            }))
             ->where('is_active', true)
             ->with('account')
             ->get()
-            ->map(fn ($ca) => [
+            ->map(fn (CashAccount $ca) => [
                 'id' => $ca->public_id,
                 'name_ar' => $ca->name_ar,
                 'name_en' => $ca->name_en,
@@ -731,61 +737,32 @@ class ReportService
                 'balance_minor' => $this->treasury->balance($ca, $branch),
             ]);
 
-        $cashBalanceMinor = $cashAccounts->sum(fn ($ca) => (new Money($ca['balance_minor'], $ca['currency']))
-            ->convertTo($currency, '1')->amountMinor);
+        $hasForeignCash = $cashAccounts->contains(fn ($ca) => strtoupper($ca['currency']) !== $currency);
+        $cashBalanceMinor = $hasForeignCash ? null : (int) $cashAccounts->sum('balance_minor');
 
-        // AR Outstanding: issued customer invoices with outstanding > 0
-        $arOutstandingMinor = Invoice::query()
-            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+        $invoiceScope = fn ($type) => Invoice::query()
+            ->where('type', $type)
             ->where('status', Invoice::STATUS_ISSUED)
             ->where('outstanding_minor', '>', 0)
-            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->get()
-            ->sum(fn ($inv) => (new Money($inv->outstanding_minor, $inv->currency_code))
-                ->convertTo($currency, (string) $inv->fx_rate)->amountMinor);
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id));
 
-        // AP Outstanding: issued supplier invoices with outstanding > 0
-        $apOutstandingMinor = Invoice::query()
-            ->where('type', Invoice::TYPE_SUPPLIER_INVOICE)
-            ->where('status', Invoice::STATUS_ISSUED)
-            ->where('outstanding_minor', '>', 0)
-            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->get()
-            ->sum(fn ($inv) => (new Money($inv->outstanding_minor, $inv->currency_code))
-                ->convertTo($currency, (string) $inv->fx_rate)->amountMinor);
+        $convertInvoice = fn (Invoice $invoice) => (new Money(
+            $invoice->outstanding_minor, $invoice->currency_code,
+        ))->convertTo($currency, (string) $invoice->fx_rate)->amountMinor;
 
-        // Overdue Receivables: issued customer invoices past due_date
-        $overdueArMinor = Invoice::query()
-            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
-            ->where('status', Invoice::STATUS_ISSUED)
-            ->where('outstanding_minor', '>', 0)
-            ->where('due_date', '<', $today)
-            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->get()
-            ->sum(fn ($inv) => (new Money($inv->outstanding_minor, $inv->currency_code))
-                ->convertTo($currency, (string) $inv->fx_rate)->amountMinor);
+        $arOutstandingMinor = $invoiceScope(Invoice::TYPE_CUSTOMER_INVOICE)->get()->sum($convertInvoice);
+        $apOutstandingMinor = $invoiceScope(Invoice::TYPE_SUPPLIER_INVOICE)->get()->sum($convertInvoice);
+        $overdueArMinor = $invoiceScope(Invoice::TYPE_CUSTOMER_INVOICE)
+            ->whereDate('due_date', '<', $today)->get()->sum($convertInvoice);
+        $overdueApMinor = $invoiceScope(Invoice::TYPE_SUPPLIER_INVOICE)
+            ->whereDate('due_date', '<', $today)->get()->sum($convertInvoice);
 
-        // Overdue Payables: issued supplier invoices past due_date
-        $overdueApMinor = Invoice::query()
-            ->where('type', Invoice::TYPE_SUPPLIER_INVOICE)
-            ->where('status', Invoice::STATUS_ISSUED)
-            ->where('outstanding_minor', '>', 0)
-            ->where('due_date', '<', $today)
-            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->get()
-            ->sum(fn ($inv) => (new Money($inv->outstanding_minor, $inv->currency_code))
-                ->convertTo($currency, (string) $inv->fx_rate)->amountMinor);
-
-        // Customer Advances: posted payments with unallocated balance
         $customerAdvancesMinor = Payment::query()
-            ->where('status', 'posted')
-            ->where('unallocated_minor', '>', 0)
+            ->where('status', 'posted')->where('unallocated_minor', '>', 0)
             ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->get()
-            ->sum(fn ($p) => (new Money($p->unallocated_minor, $p->currency_code))
+            ->get()->sum(fn (Payment $p) => (new Money($p->unallocated_minor, $p->currency_code))
                 ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
 
-        // Unreconciled Bank Transactions: statement lines without matches
         $unreconciledBankCount = DB::table('bank_statement_lines as bsl')
             ->leftJoin('bank_reconciliation_matches as brm', 'brm.bank_statement_line_id', '=', 'bsl.id')
             ->join('bank_statements as bs', 'bs.id', '=', 'bsl.bank_statement_id')
@@ -793,130 +770,119 @@ class ReportService
             ->when($branch, fn ($q) => $q->where('bs.branch_id', $branch->id))
             ->count();
 
-        // Net Profit/Loss for current month-to-date (from posted journals)
         $netProfitMinor = $this->netProfitMinor($monthStart, $monthEnd, $branch, $currency);
 
-        // Aging buckets (AR)
-        $aging = $this->aging('ar', $today, $branch);
+        // Aging uses invoice due dates and OUTSTANDING amounts, not booking
+        // start dates. All numbers are converted using document snapshots.
+        $agingTotals = ['current' => 0, '1-30' => 0, '31-60' => 0, '61-90' => 0, '90+' => 0];
+        $invoiceScope(Invoice::TYPE_CUSTOMER_INVOICE)->get()
+            ->each(function (Invoice $invoice) use (&$agingTotals, $convertInvoice, $today) {
+                $days = $invoice->due_date
+                    ? max(0, (int) floor((strtotime($today) - strtotime((string) $invoice->due_date)) / 86400))
+                    : 0;
+                $bucket = $days === 0 ? 'current' : ($days <= 30 ? '1-30'
+                    : ($days <= 60 ? '31-60' : ($days <= 90 ? '61-90' : '90+')));
+                $agingTotals[$bucket] += $convertInvoice($invoice);
+            });
+        $agingLabels = [
+            'current' => ['Current', 'غير مستحق'],
+            '1-30' => ['1–30 days', '١–٣٠ يوم'],
+            '31-60' => ['31–60 days', '٣١–٦٠ يوم'],
+            '61-90' => ['61–90 days', '٦١–٩٠ يوم'],
+            '90+' => ['90+ days', 'أكثر من ٩٠ يوم'],
+        ];
         $agingBuckets = [];
-        foreach (($aging['buckets'] ?? []) as $i => $b) {
+        foreach ($agingTotals as $key => $amount) {
             $agingBuckets[] = [
-                'key' => ['current', '1-30', '31-60', '61-90', '90+'][$i] ?? (string) $i,
-                'label_en' => $b['label'],
-                'label_ar' => $b['label'],
-                'amount_minor' => $b['amount_minor'],
+                'key' => $key,
+                'label_en' => $agingLabels[$key][0],
+                'label_ar' => $agingLabels[$key][1],
+                'amount_minor' => $amount,
             ];
         }
 
-        // Monthly cash flow: last 6 months (inflow - outflow in base currency)
+        // Actual cash movements: posted receipts and supplier payments.
+        // Revenue/expense is computed separately from posted GL account types.
         $monthlyCashFlow = [];
+        $monthlyProfitLoss = [];
         for ($i = 5; $i >= 0; $i--) {
-            $mStart = now()->subMonths($i)->startOfMonth()->toDateString();
-            $mEnd = now()->subMonths($i)->endOfMonth()->toDateString();
+            $at = now()->subMonthsNoOverflow($i);
+            $from = $at->copy()->startOfMonth()->toDateString();
+            $to = min($at->copy()->endOfMonth()->toDateString(), $today);
             $inflow = Payment::query()
                 ->where('status', 'posted')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-                ->whereBetween('paid_at', [$mStart, $mEnd])
-                ->get()
-                ->sum(fn ($p) => (new Money($p->amount_minor, $p->currency_code))
+                ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
+                ->get()->sum(fn (Payment $p) => (new Money($p->amount_minor, $p->currency_code))
                     ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
-            $outflow = SupplierObligation::query()  // supplier payments via obligations
+            $outflow = \App\Modules\Payments\Models\SupplierPayment::query()
+                ->where('status', 'posted')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-                ->whereIn('status', ['paid', 'partially_paid'])
-                ->whereBetween('paid_at', [$mStart, $mEnd])
-                ->get()
-                ->sum(fn ($o) => (new Money($o->amount_minor, $o->currency_code))
-                    ->convertTo($currency, (string) $o->fx_rate ?? '1')->amountMinor);
+                ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
+                ->get()->sum(fn ($p) => (new Money($p->amount_minor, $p->currency_code))
+                    ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
             $monthlyCashFlow[] = [
-                'month' => now()->subMonths($i)->format('Y-m'),
+                'month' => $at->format('Y-m'),
                 'inflow_minor' => $inflow,
                 'outflow_minor' => $outflow,
                 'net_minor' => $inflow - $outflow,
             ];
-        }
 
-        // Attention items
-        $attentionItems = [];
-
-        // Overdue customer invoices
-        $overdueInvoices = Invoice::query()
-            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
-            ->where('status', Invoice::STATUS_ISSUED)
-            ->where('outstanding_minor', '>', 0)
-            ->where('due_date', '<', $today)
-            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->with('party')
-            ->orderBy('due_date', 'asc')
-            ->limit(5)
-            ->get()
-            ->map(fn ($inv) => [
-                'type' => 'overdue_invoice',
-                'severity' => 'high',
-                'amount_minor' => $inv->outstanding_minor,
-                'currency' => $inv->currency_code,
-                'due_date' => $inv->due_date,
-                'days_overdue' => now()->parse($inv->due_date)->diffInDays(now()),
-                'title' => __('Overdue Invoice #:number', ['number' => $inv->number]),
-                'party_name' => $inv->party?->name_ar ?? $inv->party?->name_en,
-                'url' => '/invoices/' . $inv->public_id,
-            ])
-            ->all();
-        $attentionItems = array_merge($attentionItems, $overdueInvoices);
-
-        // Unallocated customer receipts
-        $unallocatedReceipts = Payment::query()
-            ->where('status', 'posted')
-            ->where('unallocated_minor', '>', 0)
-            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-            ->with('customer')
-            ->orderBy('paid_at', 'asc')
-            ->limit(5)
-            ->get()
-            ->map(fn ($p) => [
-                'type' => 'unallocated_receipt',
-                'severity' => 'medium',
-                'amount_minor' => $p->unallocated_minor,
-                'currency' => $p->currency_code,
-                'paid_at' => $p->paid_at,
-                'title' => 'Unallocated Receipt #' . $p->number,
-                'party_name' => $p->customer?->name_ar ?? $p->customer?->name_en,
-                'url' => '/payments/' . $p->public_id,
-            ])
-            ->all();
-        $attentionItems = array_merge($attentionItems, $unallocatedReceipts);
-
-        // Unreconciled bank entries
-        $unreconciledLines = DB::table('bank_statement_lines as bsl')
-            ->leftJoin('bank_reconciliation_matches as brm', 'brm.bank_statement_line_id', '=', 'bsl.id')
-            ->join('bank_statements as bs', 'bs.id', '=', 'bsl.bank_statement_id')
-            ->whereNull('brm.id')
-            ->when($branch, fn ($q) => $q->where('bs.branch_id', $branch->id))
-            ->orderBy('bsl.line_date', 'desc')
-            ->limit(5)
-            ->get();
-        foreach ($unreconciledLines as $line) {
-            $attentionItems[] = [
-                'type' => 'unreconciled_bank',
-                'severity' => 'medium',
-                'amount_minor' => abs((int) $line->amount_minor),
-                'currency' => null,
-                'date' => $line->line_date,
-                'title' => 'Unreconciled Bank Transaction',
-                'party_name' => $line->description ?? $line->bank_reference,
-                'url' => '/reconciliation',
+            $glTotals = DB::table('journal_lines as jl')
+                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+                ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+                ->where('je.status', 'posted')->whereIn('a.type', ['revenue', 'expense'])
+                ->whereBetween('je.entry_date', [$from, $to])
+                ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
+                ->selectRaw('a.type, SUM(jl.base_debit_minor) AS debits, SUM(jl.base_credit_minor) AS credits')
+                ->groupBy('a.type')->get()->keyBy('type');
+            $revenue = (int) ($glTotals->get('revenue')?->credits ?? 0)
+                - (int) ($glTotals->get('revenue')?->debits ?? 0);
+            $expenses = (int) ($glTotals->get('expense')?->debits ?? 0)
+                - (int) ($glTotals->get('expense')?->credits ?? 0);
+            $monthlyProfitLoss[] = [
+                'month' => $at->format('Y-m'),
+                'revenue_minor' => $revenue,
+                'expenses_minor' => $expenses,
             ];
         }
 
-        // Sort attention items by severity then date
-        usort($attentionItems, function ($a, $b) {
-            $severityOrder = ['high' => 0, 'medium' => 1, 'low' => 2];
-            $sa = $severityOrder[$a['severity']] ?? 99;
-            $sb = $severityOrder[$b['severity']] ?? 99;
-            if ($sa !== $sb) {
-                return $sa - $sb;
-            }
-            return strcmp((string) ($a['date'] ?? $a['due_date'] ?? ''), (string) ($b['date'] ?? $b['due_date'] ?? ''));
-        });
+        $attentionItems = [];
+        foreach ($invoiceScope(Invoice::TYPE_CUSTOMER_INVOICE)
+            ->whereDate('due_date', '<', $today)->with('party')
+            ->orderBy('due_date')->limit(8)->get() as $invoice) {
+            $attentionItems[] = [
+                'id' => 'invoice-'.$invoice->public_id,
+                'type' => 'overdue_invoice',
+                'severity' => 'high',
+                'amount_minor' => $invoice->outstanding_minor,
+                'currency' => $invoice->currency_code,
+                'due_date' => $invoice->due_date,
+                'title' => 'Overdue invoice '.$invoice->number,
+                'party_name' => $invoice->party?->name_ar ?? $invoice->party?->name_en,
+                'url' => '/invoices/'.$invoice->public_id,
+                'action_url' => '/invoices/'.$invoice->public_id,
+                'action_label' => 'View invoice',
+            ];
+        }
+        foreach (Payment::query()->where('status', 'posted')->where('unallocated_minor', '>', 0)
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
+            ->with('customer')->oldest('paid_at')->limit(8)->get() as $payment) {
+            $attentionItems[] = [
+                'id' => 'payment-'.$payment->public_id,
+                'type' => 'unallocated_receipt',
+                'severity' => 'medium',
+                'amount_minor' => $payment->unallocated_minor,
+                'currency' => $payment->currency_code,
+                'title' => 'Unallocated receipt '.$payment->number,
+                'party_name' => $payment->customer?->name_ar ?? $payment->customer?->name_en,
+                'url' => '/payments',
+                'action_url' => '/payments',
+                'action_label' => 'Review receipt',
+            ];
+        }
+        usort($attentionItems, fn ($a, $b) => ['high' => 0, 'medium' => 1, 'low' => 2][$a['severity']]
+            <=> ['high' => 0, 'medium' => 1, 'low' => 2][$b['severity']]);
 
         return [
             'customers_count' => $customers,
@@ -932,6 +898,7 @@ class ReportService
             'recent_payments' => $recentPayments,
             // New KPI data
             'cash_balance_minor' => $cashBalanceMinor,
+            'cash_balance_mixed_currency' => $hasForeignCash,
             'cash_accounts' => $cashAccounts->values()->all(),
             'ar_outstanding_minor' => $arOutstandingMinor,
             'ap_outstanding_minor' => $apOutstandingMinor,
@@ -942,6 +909,9 @@ class ReportService
             'net_profit_minor' => $netProfitMinor,
             'aging_buckets' => $agingBuckets,
             'monthly_cash_flow' => $monthlyCashFlow,
+            'monthly_profit_loss' => $monthlyProfitLoss,
+            'period_from' => $monthStart,
+            'period_to' => $monthEnd,
             'attention_items' => array_slice($attentionItems, 0, 10),
             'as_of' => $today,
         ];

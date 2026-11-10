@@ -279,9 +279,25 @@ class ReportController extends ApiController
         );
     }
 
-    public function dashboard(ReportService $reports): JsonResponse
+    public function dashboard(Request $request, ReportService $reports): JsonResponse
     {
-        return $this->ok($reports->dashboard($this->branch()));
+        $data = $request->validate([
+            'period' => ['nullable', Rule::in(['today', 'thisMonth', 'lastMonth', 'customRange'])],
+            'from' => ['required_if:period,customRange', 'nullable', 'date'],
+            'to' => ['required_if:period,customRange', 'nullable', 'date', 'after_or_equal:from'],
+            'currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')],
+        ]);
+
+        // Dashboard reporting uses the installation base currency. Never
+        // relabel base-ledger amounts as another currency without FX policy.
+        $base = $this->settings()->baseCurrency();
+        if (! empty($data['currency']) && strtoupper($data['currency']) !== $base) {
+            throw ValidationException::withMessages([
+                'currency' => ['Dashboard aggregation currently supports the base currency only.'],
+            ]);
+        }
+
+        return $this->ok($reports->dashboard($this->branch(), $data));
     }
 
     /** @return array{from: string, to: string, currency: ?string, pre_closing: bool, max_level: ?int, cost_center_id: ?int, adjustments: string} */

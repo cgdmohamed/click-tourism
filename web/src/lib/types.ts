@@ -236,6 +236,7 @@ export type MonthlyCashFlow = {
 }
 
 export type AttentionItem = {
+  id: string
   type: string
   severity: 'high' | 'medium' | 'low'
   amount_minor?: number
@@ -276,7 +277,8 @@ export type DashboardSummary = {
   currency: string
   recent_bookings: Booking[]
   recent_payments: Payment[]
-  cash_balance_minor: number
+  cash_balance_minor: number | null
+  cash_balance_mixed_currency: boolean
   cash_accounts: CashAccountRow[]
   ar_outstanding_minor: number
   ap_outstanding_minor: number
@@ -287,6 +289,9 @@ export type DashboardSummary = {
   net_profit_minor: number
   aging_buckets: AgingBucket[]
   monthly_cash_flow: MonthlyCashFlow[]
+  monthly_profit_loss: Array<{ month: string; revenue_minor: number; expenses_minor: number }>
+  period_from: string
+  period_to: string
   attention_items: AttentionItem[]
   as_of: string
 }
