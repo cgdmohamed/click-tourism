@@ -251,7 +251,7 @@ class AccountingDocumentTest extends TestCase
             ],
         ])->assertOk()
             ->assertJsonPath('data.memo', 'Updated memo')
-            ->assertJsonPath('data.total_minor', 100000);
+            ->assertJsonPath('data.total_minor', 50000);
 
         // Unbalanced edits are rejected and leave the draft untouched.
         $this->patchJson("/api/v1/accounting-documents/{$id}", [
@@ -262,7 +262,7 @@ class AccountingDocumentTest extends TestCase
         ])->assertStatus(422);
 
         $document = AccountingDocument::query()->where('public_id', $id)->firstOrFail();
-        $this->assertSame(100000, $document->total_minor);
+        $this->assertSame(50000, $document->total_minor);
         $this->assertSame(2, $document->lines()->count());
     }
 

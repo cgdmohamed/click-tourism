@@ -123,6 +123,12 @@ class InvoiceService
                 : PartyAccount::ROLE_PAYABLE);
 
             $currency = strtoupper((string) ($data['currency'] ?? $this->settings->baseCurrency()));
+            $subaccount = $this->provisionSubaccount($partyType, $partyId, $partyType === 'customer'
+                ? PartyAccount::ROLE_RECEIVABLE
+                : PartyAccount::ROLE_PAYABLE);
+            if ($subaccount->currency_code !== null && strtoupper($subaccount->currency_code) !== $currency) {
+                throw new DomainException("This party's ledger account only accepts {$subaccount->currency_code}; the invoice currency is {$currency}.");
+            }
             $issueDate = (string) $data['issue_date'];
             $dueDate = $data['due_date'] ?? null;
             $fxRate = $currency === $this->settings->baseCurrency()
@@ -145,7 +151,7 @@ class InvoiceService
                 'party_type' => $partyType,
                 'party_id' => $partyId,
                 'branch_id' => $branch->id,
-                'booking_id' => $data['booking_id'] ?? null,
+                'booking_id' => $this->resolveBookingId($data['booking_id'] ?? null),
                 'issue_date' => $issueDate,
                 'due_date' => $dueDate,
                 'currency_code' => $currency,
@@ -187,6 +193,76 @@ class InvoiceService
 
             if (! empty($data['submit'])) {
                 $this->submit($invoice, $actorId);
+            }
+
+            return $invoice->refresh()->load('lines.account', 'branch');
+        });
+    }
+
+    /**
+     * Edit a draft invoice. Only the supplied fields change; replacing the
+     * lines recomputes subtotal, tax, total and outstanding.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function updateDraft(Invoice $invoice, array $data, ?int $actorId): Invoice
+    {
+        return DB::transaction(function () use ($invoice, $data, $actorId) {
+            $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            if ($invoice->status !== 'draft') {
+                throw new DomainException('Only draft invoices can be edited.');
+            }
+
+            $currency = strtoupper((string) ($data['currency'] ?? $invoice->currency_code));
+            $issueDate = (string) ($data['issue_date'] ?? $invoice->issue_date);
+            $attributes = [];
+
+            if (array_key_exists('issue_date', $data)) {
+                $attributes['issue_date'] = $issueDate;
+                $attributes['fx_rate_date'] = $issueDate;
+            }
+            if (array_key_exists('due_date', $data)) {
+                $attributes['due_date'] = $data['due_date'];
+            }
+            if (array_key_exists('memo', $data)) {
+                $attributes['memo'] = $data['memo'];
+            }
+            if (isset($data['currency']) || isset($data['fx_rate']) || isset($data['issue_date'])) {
+                $attributes['currency_code'] = $currency;
+                $attributes['fx_rate'] = $currency === $this->settings->baseCurrency()
+                    ? '1'
+                    : (string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $issueDate));
+            }
+
+            if (isset($data['lines'])) {
+                $lines = $this->prepareLines($data, $currency, $invoice->branch);
+                $invoice->lines()->delete();
+                foreach ($lines as $line) {
+                    InvoiceLine::query()->create([
+                        'invoice_id' => $invoice->id,
+                        'account_id' => $line['account_id'],
+                        'description' => $line['description'],
+                        'quantity' => $line['quantity'],
+                        'unit_price_minor' => $line['unit_price_minor'],
+                        'debit_minor' => $line['debit_minor'],
+                        'credit_minor' => $line['credit_minor'],
+                        'tax_minor' => $line['tax_minor'],
+                        'tax_account_id' => $line['tax_account_id'] ?? null,
+                        'party_type' => $line['party_type'] ?? null,
+                        'party_id' => $line['party_id'] ?? null,
+                    ]);
+                }
+                $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
+                $tax = (int) array_sum(array_column($lines, 'tax_minor'));
+                $attributes['subtotal_minor'] = $subtotal;
+                $attributes['tax_minor'] = $tax;
+                $attributes['total_minor'] = $subtotal + $tax;
+                $attributes['outstanding_minor'] = $subtotal + $tax;
+            }
+
+            if ($attributes !== []) {
+                $invoice->update($attributes);
+                $this->audit->log('invoice.updated', $invoice, null, ['fields' => array_keys($attributes)], $actorId);
             }
 
             return $invoice->refresh()->load('lines.account', 'branch');
@@ -367,15 +443,25 @@ class InvoiceService
                 'credit_note_of_id' => $invoice->id,
             ];
 
-            // Override amounts when partial credit is requested.
-            if (isset($data['total_minor']) && (int) $data['total_minor'] !== 0) {
-                $ratio = $invoice->total_minor !== 0
-                    ? (int) $data['total_minor'] / $invoice->total_minor
-                    : 1;
-                $creditNoteData['subtotal_minor'] = (int) round($invoice->subtotal_minor * $ratio);
-                $creditNoteData['tax_minor'] = (int) round($invoice->tax_minor * $ratio);
-                $creditNoteData['total_minor'] = (int) $data['total_minor'];
-                $creditNoteData['outstanding_minor'] = (int) $data['total_minor'];
+            // Cumulative credit can never exceed the invoice total.
+            $alreadyCredited = (int) Invoice::query()
+                ->where('credit_note_of_id', $invoice->id)
+                ->where('status', '!=', Invoice::STATUS_VOIDED)
+                ->sum('total_minor');
+            $requested = isset($data['total_minor']) && (int) $data['total_minor'] !== 0
+                ? abs((int) $data['total_minor'])
+                : (int) $invoice->total_minor - $alreadyCredited;
+            if ($requested <= 0) {
+                throw new DomainException('The credit amount must be greater than zero.');
+            }
+            if ($requested + $alreadyCredited > (int) $invoice->total_minor) {
+                throw new DomainException('Credit notes cannot exceed the invoice total.');
+            }
+
+            // Partial credit: scale every line proportionally; the last line
+            // absorbs the rounding residual so the note adds up exactly.
+            if ($requested !== (int) $invoice->total_minor) {
+                $creditNoteData['lines'] = $this->scaleLines($creditNoteLines, $invoice, $requested);
             }
 
             $creditNote = $this->create($creditNoteData, $invoice->branch, $actorId);
@@ -384,6 +470,48 @@ class InvoiceService
 
             return $creditNote->refresh()->load('lines.account', 'creditNoteOf');
         });
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    private function scaleLines(array $lines, Invoice $invoice, int $targetTotal): array
+    {
+        $total = (int) $invoice->total_minor;
+        $targetTax = $total === 0 ? 0 : intdiv((int) $invoice->tax_minor * $targetTotal + intdiv($total, 2), $total);
+        $targetSubtotal = $targetTotal - $targetTax;
+        $subtotal = max(1, (int) $invoice->subtotal_minor);
+        $last = array_key_last($lines);
+        $usedAmount = 0;
+        $usedTax = 0;
+
+        foreach ($lines as $index => &$line) {
+            $amount = (int) $line['debit_minor'] + (int) $line['credit_minor'];
+            $tax = (int) $line['tax_minor'];
+            if ($index === $last) {
+                $newAmount = $targetSubtotal - $usedAmount;
+                $newTax = $targetTax - $usedTax;
+            } else {
+                $newAmount = intdiv($amount * $targetSubtotal + intdiv($subtotal, 2), $subtotal);
+                $newTax = (int) $invoice->tax_minor === 0 ? 0 : intdiv($tax * $targetTax + intdiv((int) $invoice->tax_minor, 2), (int) $invoice->tax_minor);
+            }
+            $usedAmount += $newAmount;
+            $usedTax += $newTax;
+            $debit = (int) $line['debit_minor'] > 0;
+            $line['debit_minor'] = $debit ? $newAmount : 0;
+            $line['credit_minor'] = $debit ? 0 : $newAmount;
+            $line['tax_minor'] = $newTax;
+        }
+        unset($line);
+
+        foreach ($lines as $line) {
+            if ((int) $line['debit_minor'] + (int) $line['credit_minor'] <= 0) {
+                throw new DomainException('The credit amount is too small to spread across the invoice lines.');
+            }
+        }
+
+        return $lines;
     }
 
     /** @return array<int, array{account_id: int, description: string, debit_minor: int, credit_minor: int, tax_minor: int, tax_account_id: ?int, party_type: ?string, party_id: ?int, subtotal_minor: int}> */
@@ -571,6 +699,21 @@ class InvoiceService
         }
 
         return $party->id;
+    }
+
+    private function resolveBookingId(string|int|null $reference): ?int
+    {
+        if ($reference === null || $reference === '') {
+            return null;
+        }
+        $booking = is_int($reference)
+            ? Booking::query()->find($reference)
+            : Booking::query()->where('public_id', $reference)->first();
+        if (! $booking) {
+            throw new DomainException('The selected booking does not exist.');
+        }
+
+        return $booking->id;
     }
 
     private function resolveAccountId(?string $reference): int

@@ -85,7 +85,7 @@ class AccountingDocumentService
             $lines = $this->prepareLines($rawLines, $currency);
             $this->assertBalanced($lines);
 
-            $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
+            $subtotal = (int) array_sum(array_column($lines, 'debit_minor'));
             $tax = (int) array_sum(array_column($lines, 'tax_minor'));
             // In simplified settlement mode the document amount is the single
             // cash movement; summing debit + credit would double-count it.
@@ -192,7 +192,7 @@ class AccountingDocumentService
                     ]);
                 }
 
-                $attributes['subtotal_minor'] = (int) array_sum(array_column($lines, 'subtotal_minor'));
+                $attributes['subtotal_minor'] = (int) array_sum(array_column($lines, 'debit_minor'));
                 $attributes['tax_minor'] = (int) array_sum(array_column($lines, 'tax_minor'));
                 $attributes['total_minor'] = $attributes['subtotal_minor'] + $attributes['tax_minor'];
             }

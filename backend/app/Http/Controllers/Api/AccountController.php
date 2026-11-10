@@ -76,10 +76,18 @@ class AccountController extends ApiController
             'name_en' => ['sometimes', 'string', 'max:255'],
             'type' => ['sometimes', Rule::in(['asset', 'liability', 'equity', 'revenue', 'expense'])],
             'parent_id' => ['sometimes', 'nullable', 'string'],
-            'is_postable' => $hasHistory ? ['sometimes', 'boolean', 'in:true'] : ['sometimes', 'boolean'],
+            'is_postable' => $hasHistory ? ['sometimes', 'boolean', 'accepted'] : ['sometimes', 'boolean'],
             'currency_code' => ['sometimes', 'string', 'size:3'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+
+        if ($hasHistory) {
+            foreach (['code', 'type'] as $locked) {
+                if (isset($data[$locked]) && $data[$locked] !== $account->{$locked}) {
+                    return $this->errorResponse("The {$locked} cannot be changed once the account has postings.", 'account_has_history', 422);
+                }
+            }
+        }
 
         if (isset($data['parent_id']) && ! empty($data['parent_id'])) {
             $parent = Account::query()->where('public_id', $data['parent_id'])->first();
@@ -107,9 +115,7 @@ class AccountController extends ApiController
 
     public function export(Request $request): Response
     {
-        $branch = $this->branch();
         $accounts = Account::query()
-            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->orderBy('code')
             ->get();
 

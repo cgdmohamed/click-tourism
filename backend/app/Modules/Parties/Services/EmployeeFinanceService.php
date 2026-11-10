@@ -391,7 +391,7 @@ class EmployeeFinanceService
                 memo: 'Employee advance settled '.$advance->public_id,
                 sourceType: 'employee_advance',
                 sourceId: $advance->id,
-                event: 'settled',
+                event: 'settled:'.$advance->outstanding_minor,
                 fxRate: $fxRate,
                 fxRateDate: $date,
                 actorId: $actorId,
@@ -452,6 +452,19 @@ class EmployeeFinanceService
             $cashAccount = $this->cashAccount($data['cash_account_id'] ?? null);
             $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1150'));
 
+            $custody = EmployeeCustody::query()->create([
+                'employee_id' => $employee->id,
+                'branch_id' => $branch->id,
+                'amount_minor' => $amount,
+                'outstanding_minor' => $amount,
+                'status' => EmployeeCustody::STATUS_ISSUED,
+                'cash_account_id' => $cashAccount->id,
+                'item_description' => $data['item_description'] ?? null,
+                'issue_date' => $date,
+                'memo' => $data['memo'] ?? null,
+                'created_by' => $actorId,
+            ]);
+
             $entry = $this->posting->post(PostingRequest::make(
                 entryDate: $date,
                 branch: $branch,
@@ -462,28 +475,14 @@ class EmployeeFinanceService
                 ],
                 memo: 'Employee custody issued '.$employee->internal_code,
                 sourceType: 'employee_custody',
-                sourceId: 0, // set after create below
+                sourceId: $custody->id,
                 event: 'issued',
                 fxRate: $fxRate,
                 fxRateDate: $date,
                 actorId: $actorId,
             ));
 
-            $custody = EmployeeCustody::query()->create([
-                'employee_id' => $employee->id,
-                'branch_id' => $branch->id,
-                'amount_minor' => $amount,
-                'outstanding_minor' => $amount,
-                'status' => EmployeeCustody::STATUS_ISSUED,
-                'issuance_journal_entry_id' => $entry->id,
-                'cash_account_id' => $cashAccount->id,
-                'item_description' => $data['item_description'] ?? null,
-                'issue_date' => $date,
-                'memo' => $data['memo'] ?? null,
-                'created_by' => $actorId,
-            ]);
-
-            // Fix the source_id on the entry was created before custody existed; update reference not needed.
+            $custody->update(['issuance_journal_entry_id' => $entry->id]);
 
             $this->recordTransaction($employee, $branch, EmployeeTransaction::TYPE_CUSTODY_ISSUED, $amount, $entry, $custody, $actorId, 'Custody issued');
 
@@ -551,7 +550,7 @@ class EmployeeFinanceService
                 memo: 'Employee custody cleared '.$custody->public_id,
                 sourceType: 'employee_custody',
                 sourceId: $custody->id,
-                event: 'cleared',
+                event: 'cleared:'.$custody->outstanding_minor,
                 fxRate: $fxRate,
                 fxRateDate: $date,
                 actorId: $actorId,

@@ -216,6 +216,39 @@ class InvoiceTest extends TestCase
         $this->assertSame(0, $this->balance('4100'));
     }
 
+    public function test_partial_credit_note_uses_the_requested_amount_and_is_capped(): void
+    {
+        $id = $this->create($this->customerInvoicePayload(['submit' => true]))->assertCreated()->json('data.id');
+        $this->postJson("/api/v1/invoices/{$id}/approve")->assertOk();
+        $this->postJson("/api/v1/invoices/{$id}/issue")->assertOk();
+
+        $this->postJson("/api/v1/invoices/{$id}/credit-note", ['total_minor' => 30000])
+            ->assertCreated()
+            ->assertJsonPath('data.total_minor', 30000);
+
+        $this->postJson("/api/v1/invoices/{$id}/credit-note", ['total_minor' => 80000])->assertStatus(422);
+        $this->postJson("/api/v1/invoices/{$id}/credit-note", ['total_minor' => 70000])->assertCreated();
+    }
+
+    public function test_draft_invoice_edit_recomputes_totals_and_allows_memo_only_changes(): void
+    {
+        $id = $this->create($this->customerInvoicePayload())->assertCreated()->json('data.id');
+
+        $this->patchJson("/api/v1/invoices/{$id}", ['memo' => 'Edited'])
+            ->assertOk()
+            ->assertJsonPath('data.total_minor', 100000);
+
+        $this->patchJson("/api/v1/invoices/{$id}", ['lines' => [
+            ['account_id' => $this->account('4100')->public_id, 'credit_minor' => 250000],
+        ]])->assertOk()
+            ->assertJsonPath('data.total_minor', 250000)
+            ->assertJsonPath('data.outstanding_minor', 250000);
+
+        $this->postJson("/api/v1/invoices/{$id}/submit")->assertOk();
+        $this->postJson("/api/v1/invoices/{$id}/approve")->assertOk();
+        $this->postJson("/api/v1/invoices/{$id}/issue")->assertOk();
+    }
+
     public function test_simple_invoice_line_preserves_quantity_and_unit_price(): void
     {
         $payload = $this->customerInvoicePayload();

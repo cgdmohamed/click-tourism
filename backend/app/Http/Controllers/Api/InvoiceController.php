@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Modules\Accounting\Models\Account;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
 use Illuminate\Http\JsonResponse;
@@ -114,33 +113,7 @@ class InvoiceController extends ApiController
             $data['fx_rate'] = (string) $request->input('fx_rate');
         }
 
-        // Rebuild lines for a draft invoice.
-        $invoice->lines()->delete();
-        foreach ($data['lines'] ?? [] as $line) {
-            $account = Account::query()->where('public_id', $line['account_id'])->firstOrFail();
-            $invoice->lines()->create([
-                'account_id' => $account->id,
-                'description' => $line['description'] ?? null,
-                'quantity' => (int) ($line['quantity'] ?? 1),
-                'unit_price_minor' => $line['unit_price_minor'] ?? null,
-                'debit_minor' => (int) ($line['debit_minor'] ?? 0),
-                'credit_minor' => (int) ($line['credit_minor'] ?? 0),
-                'tax_minor' => (int) ($line['tax_minor'] ?? 0),
-                'tax_account_id' => $line['tax_account_id'] ?? null,
-                'party_type' => $line['party_type'] ?? null,
-                'party_id' => $line['party_id'] ?? null,
-            ]);
-        }
-
-        $invoice->update(array_filter([
-            'issue_date' => $data['issue_date'],
-            'due_date' => $data['due_date'] ?? null,
-            'currency_code' => $data['currency'] ?? null,
-            'fx_rate' => $data['fx_rate'] ?? null,
-            'memo' => $data['memo'] ?? null,
-        ]));
-
-        return $this->ok($invoice->refresh()->load('lines.account')->toApiArray(true));
+        return $this->ok($invoices->updateDraft($invoice, $data, $this->actorId())->toApiArray(true));
     }
 
     public function submit(Invoice $invoice, InvoiceService $invoices): JsonResponse

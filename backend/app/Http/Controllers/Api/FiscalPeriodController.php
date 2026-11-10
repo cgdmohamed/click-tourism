@@ -72,6 +72,14 @@ class FiscalPeriodController extends ApiController
             'months' => ['nullable', 'integer', 'min:1', 'max:12'],
         ]);
 
+        $overlap = FiscalYear::query()
+            ->whereDate('starts_on', '<=', $data['ends_on'])
+            ->whereDate('ends_on', '>=', $data['starts_on'])
+            ->first();
+        if ($overlap) {
+            throw new DomainException("The dates overlap the existing fiscal year {$overlap->name}.");
+        }
+
         $year = DB::transaction(function () use ($data) {
             $year = FiscalYear::query()->create([
                 'name' => $data['name'],

@@ -150,6 +150,30 @@ class EmployeeFinanceTest extends TestCase
         $this->cancelAdvance($emp['id'], $advance2['id'])->assertOk()->assertJsonPath('data.status', 'cancelled');
     }
 
+    public function test_several_custodies_and_partial_clearings_can_be_posted(): void
+    {
+        $emp = $this->employee();
+        $issue = fn () => $this->withHeaders($this->headers())->postJson('/api/v1/employees/'.$emp['id'].'/custody', [
+            'amount_minor' => 50000,
+            'currency' => 'EGP',
+            'cash_account_id' => $this->cashAccountPublicId(),
+        ])->assertCreated()->json('data');
+
+        $first = $issue();
+        $second = $issue();
+        $this->assertNotSame($first['id'], $second['id']);
+
+        foreach ([10000, 15000] as $amount) {
+            $this->withHeaders($this->headers())->postJson(
+                "/api/v1/employees/{$emp['id']}/custody/{$first['id']}/clear",
+                ['currency' => 'EGP', 'cleared_amount_minor' => $amount,
+                    'expense_lines' => [['account_id' => $this->account('6600')->public_id, 'amount_minor' => $amount, 'description' => 'Fuel']]]
+            )->assertOk();
+        }
+
+        $this->assertSame(25000, $this->balance('6600'));
+    }
+
     public function test_custody_issue_clear_return(): void
     {
         $emp = $this->employee();
