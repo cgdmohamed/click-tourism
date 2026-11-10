@@ -168,6 +168,8 @@ export type SupplierObligation = {
   balance_minor: number
   currency: string
   invoice_reference?: string | null
+  invoice_id?: string | null
+  accounting_status?: 'recognized' | 'unposted'
   status: 'open' | 'partially_paid' | 'paid'
 }
 
