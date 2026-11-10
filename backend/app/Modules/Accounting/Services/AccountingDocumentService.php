@@ -79,7 +79,7 @@ class AccountingDocumentService
                 ? '1'
                 : (string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $date));
 
-            $rawLines = ! empty($data['simple_mode'])
+            $rawLines = ($data['simple_mode'] ?? false) === true
                 ? $this->simpleSettlementLines($data, $branch, $currency, $partyType, $partyId)
                 : ($data['lines'] ?? []);
             $lines = $this->prepareLines($rawLines, $currency);
@@ -89,8 +89,8 @@ class AccountingDocumentService
             $tax = (int) array_sum(array_column($lines, 'tax_minor'));
             // In simplified settlement mode the document amount is the single
             // cash movement; summing debit + credit would double-count it.
-            $total = ! empty($data['simple_mode']) ? (int) $data['amount_minor'] : $subtotal + $tax;
-            if (! empty($data['simple_mode'])) {
+            $total = ($data['simple_mode'] ?? false) === true ? (int) $data['amount_minor'] : $subtotal + $tax;
+            if (($data['simple_mode'] ?? false) === true) {
                 $subtotal = $total;
             }
 
@@ -465,11 +465,11 @@ class AccountingDocumentService
         if ($partyType !== $expectedParty || $partyId === null) {
             throw new DomainException('Select the required customer or supplier for this voucher.');
         }
-        if (! empty($data['booking_id']) || ! empty($data['lines']) || ! empty($data['tax_minor'])) {
+        if (empty($data['booking_id']) === false || empty($data['lines']) === false || empty($data['tax_minor']) === false) {
             throw new DomainException('Simplified vouchers cannot carry bookings, manual posting lines or tax overrides.');
         }
         $amount = $data['amount_minor'] ?? null;
-        if (! is_int($amount) || $amount <= 0) {
+        if (is_int($amount) === false || $amount <= 0) {
             throw new DomainException('Voucher amount must be a positive integer in minor currency units.');
         }
         if (empty($data['cash_account_id'])) {
@@ -479,22 +479,22 @@ class AccountingDocumentService
             ->where('public_id', $data['cash_account_id'])
             ->where('branch_id', $branch->id)
             ->where('is_active', true)->first();
-        if (! $cash || ! $cash->account || ! $cash->account->is_active || ! $cash->account->is_postable
+        if ($cash === null || $cash->account === null || $cash->account->is_active === false || $cash->account->is_postable === false
             || strtoupper($cash->currency_code) !== $currency) {
             throw new DomainException('Cash/bank account must be active, postable, in this branch and use the voucher currency.');
         }
         $party = $expectedParty === 'customer'
             ? Customer::query()->find($partyId)
             : Supplier::query()->find($partyId);
-        if (! $party || $party->branch_id !== $branch->id) {
+        if ($party === null || $party->branch_id !== $branch->id) {
             throw new DomainException('The selected party does not belong to this branch.');
         }
         $role = $expectedParty === 'customer' ? PartyAccount::ROLE_RECEIVABLE : PartyAccount::ROLE_PAYABLE;
         $partyAccount = PartyAccount::query()->with('account')
             ->where('party_type', $partyType)->where('party_id', $partyId)
             ->where('role', $role)->first();
-        if (! $partyAccount || ! $partyAccount->account || ! $partyAccount->account->is_active
-            || ! $partyAccount->account->is_postable
+        if ($partyAccount === null || $partyAccount->account === null || $partyAccount->account->is_active === false
+            || $partyAccount->account->is_postable === false
             || ($partyAccount->account->currency_code !== null && strtoupper($partyAccount->account->currency_code) !== $currency)) {
             throw new DomainException('No matching active party ledger account exists. Use the accounting workflow to configure it.');
         }
