@@ -87,6 +87,8 @@ class LeadServiceTest extends TestCase
 
     public function test_stale_leads_are_reassigned_to_another_owner(): void
     {
+        // Business-hour logic must not depend on the CI runner's wall clock.
+        $this->travelTo(Carbon::parse('2026-11-09 14:00:00', 'Africa/Cairo'));
         app(SettingService::class)->set('crm', 'reassign_after_hours', '1');
 
         $other = User::factory()->create();
