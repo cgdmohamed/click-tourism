@@ -2,6 +2,7 @@
 
 namespace App\Modules\Accounting\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Models\AccountingSchedule;
 use App\Modules\Accounting\Models\AccountingScheduleEvent;
@@ -245,20 +246,31 @@ class PeriodEndChecklistService
         $arCode = (string) $this->settings->get('accounting', 'ar_account_code', '1100');
         $apCode = (string) $this->settings->get('accounting', 'ap_account_code', '2100');
 
-        $rows = DB::table('journal_lines as jl')
-            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
-            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-            ->where('je.status', 'posted')
-            ->whereDate('je.entry_date', '<=', $end)
-            ->whereIn('a.code', [$arCode, $apCode])
-            ->when($branchId, fn ($query) => $query->where('jl.branch_id', $branchId))
-            ->groupBy('a.code')
-            ->selectRaw('a.code, COALESCE(SUM(jl.base_debit_minor),0) - COALESCE(SUM(jl.base_credit_minor),0) as balance')
-            ->get()
-            ->keyBy('code');
+        $family = function (string $code) use ($end, $branchId): int {
+            $root = Account::query()->where('code', $code)->first();
+            if (! $root) {
+                return 0;
+            }
+            $ids = [$root->id];
+            $frontier = [$root->id];
+            while ($frontier !== []) {
+                $frontier = Account::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+                $ids = array_merge($ids, $frontier);
+            }
+            $row = DB::table('journal_lines as jl')
+                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+                ->where('je.status', 'posted')
+                ->whereDate('je.entry_date', '<=', $end)
+                ->whereIn('jl.account_id', $ids)
+                ->when($branchId, fn ($query) => $query->where('jl.branch_id', $branchId))
+                ->selectRaw('COALESCE(SUM(jl.base_debit_minor),0) - COALESCE(SUM(jl.base_credit_minor),0) as balance')
+                ->first();
 
-        $arBalance = (int) ($rows[$arCode]->balance ?? 0);
-        $apBalance = (int) ($rows[$apCode]->balance ?? 0);
+            return (int) $row->balance;
+        };
+
+        $arBalance = $family($arCode);
+        $apBalance = $family($apCode);
 
         return [$arBalance < 0, $apBalance > 0, $arBalance, $apBalance];
     }

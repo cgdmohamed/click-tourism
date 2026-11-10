@@ -99,7 +99,7 @@ class ExpenseTest extends TestCase
         $row = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.status', 'posted')
-            ->where('jl.account_id', $this->account($code)->id)
+            ->whereIn('jl.account_id', $this->accountFamily($code))
             ->selectRaw('COALESCE(SUM(jl.base_debit_minor),0) as d, COALESCE(SUM(jl.base_credit_minor),0) as c')
             ->first();
 
@@ -185,7 +185,7 @@ class ExpenseTest extends TestCase
         $this->approveAsChecker($id)->assertOk();
 
         $this->assertSame(-115000, $this->balance('2100'));
-        $line = DB::table('journal_lines')->where('account_id', $this->account('2100')->id)->first();
+        $line = DB::table('journal_lines')->whereIn('account_id', $this->accountFamily('2100'))->first();
         $this->assertSame('supplier', $line->party_type);
         $this->assertSame($supplier->id, (int) $line->party_id);
     }

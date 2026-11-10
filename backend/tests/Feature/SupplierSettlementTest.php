@@ -88,7 +88,7 @@ class SupplierSettlementTest extends TestCase
 
         $this->assertSame(
             100000,
-            (int) $entry->lines()->whereHas('account', fn ($query) => $query->where('code', '2100'))->sum('debit_minor'),
+            (int) $entry->lines()->whereHas('account', fn ($query) => $query->where('code', 'like', '2100%'))->sum('debit_minor'),
         );
         $this->assertSame(
             100000,
@@ -150,7 +150,7 @@ class SupplierSettlementTest extends TestCase
 
         $this->assertSame(
             50000,
-            (int) $entry->lines()->whereHas('account', fn ($query) => $query->where('code', '2100'))->sum('debit_minor'),
+            (int) $entry->lines()->whereHas('account', fn ($query) => $query->where('code', 'like', '2100%'))->sum('debit_minor'),
         );
         $this->assertSame(
             50000,

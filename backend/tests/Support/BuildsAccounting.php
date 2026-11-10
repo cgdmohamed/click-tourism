@@ -119,4 +119,18 @@ trait BuildsAccounting
             'is_active' => true,
         ]);
     }
+
+    /** Ids of an account and all of its descendants (party subaccounts roll up to their control account). */
+    protected function accountFamily(string $code): array
+    {
+        $root = Account::query()->where('code', $code)->firstOrFail();
+        $ids = [$root->id];
+        $frontier = [$root->id];
+        while ($frontier !== []) {
+            $frontier = Account::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $ids = array_merge($ids, $frontier);
+        }
+
+        return $ids;
+    }
 }

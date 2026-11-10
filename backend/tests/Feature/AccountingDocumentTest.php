@@ -118,7 +118,7 @@ class AccountingDocumentTest extends TestCase
         $row = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.status', 'posted')
-            ->where('jl.account_id', $this->account($code)->id)
+            ->whereIn('jl.account_id', $this->accountFamily($code))
             ->selectRaw('COALESCE(SUM(jl.base_debit_minor),0) as d, COALESCE(SUM(jl.base_credit_minor),0) as c')
             ->first();
 

@@ -15,6 +15,7 @@ use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\PaymentAllocation;
 use App\Modules\Payments\Models\PaymentMethod;
@@ -36,6 +37,7 @@ class PaymentService
         private readonly FxService $fx,
         private readonly PostingService $posting,
         private readonly AuditService $audit,
+        private readonly PartyLedgerService $ledger,
     ) {}
 
     public function record(array $data, ?int $actorId = null, ?string $idempotencyKey = null): Payment
@@ -275,7 +277,7 @@ class PaymentService
         bool $release,
         ?int $actorId,
     ): void {
-        $ar = $this->posting->account((string) $this->settings->get('accounting', 'ar_account_code', '1100'));
+        $ar = $this->ledger->receivable($payment->customer_id);
         $advance = $this->posting->account((string) $this->settings->get('accounting', 'advance_account_code', '2300'));
         $label = ($release ? 'Unallocate ' : 'Allocate ').'receipt '.$payment->number;
         $lines = $release
@@ -372,7 +374,7 @@ class PaymentService
             $payment = Payment::query()->findOrFail($refund->payment_id);
             $cashAccount = Account::query()->findOrFail($payment->cash_account_id);
 
-            $ar = $this->posting->account((string) $this->settings->get('accounting', 'ar_account_code', '1100'));
+            $ar = $this->ledger->receivable($payment->customer_id);
             $advance = $this->posting->account((string) $this->settings->get('accounting', 'advance_account_code', '2300'));
 
             $allocatedPortion = $refund->booking_id !== null
@@ -391,6 +393,21 @@ class PaymentService
                 $lines[] = PostingLine::debit($advance, $advancePortion, 'customer', $payment->customer_id, 'Refund '.$refund->number);
             }
             $lines[] = PostingLine::credit($cashAccount, $refund->amount_minor, null, null, 'Refund '.$refund->number);
+
+            // The refunded money leaves the receipt: shrink the booking
+            // allocation first, then the unallocated advance.
+            if ($advancePortion > (int) $payment->unallocated_minor) {
+                throw new DomainException('The refund exceeds the unallocated advance of this receipt; unallocate or release invoice applications first.');
+            }
+            if ($allocatedPortion > 0) {
+                $allocation = PaymentAllocation::query()
+                    ->where('payment_id', $payment->id)
+                    ->where('booking_id', $refund->booking_id)
+                    ->lockForUpdate()->first();
+                $remaining = (int) $allocation->amount_minor - $allocatedPortion;
+                $remaining > 0 ? $allocation->update(['amount_minor' => $remaining]) : $allocation->delete();
+            }
+            $payment->update(['unallocated_minor' => (int) $payment->unallocated_minor - $advancePortion]);
 
             $refund->update([
                 'status' => 'approved',
@@ -472,7 +489,7 @@ class PaymentService
 
     private function postReceipt(Payment $payment, Account $cashAccount, ?int $actorId): void
     {
-        $ar = $this->posting->account((string) $this->settings->get('accounting', 'ar_account_code', '1100'));
+        $ar = $this->ledger->receivable($payment->customer_id);
         $advance = $this->posting->account((string) $this->settings->get('accounting', 'advance_account_code', '2300'));
 
         $allocated = $payment->amount_minor - $payment->unallocated_minor;

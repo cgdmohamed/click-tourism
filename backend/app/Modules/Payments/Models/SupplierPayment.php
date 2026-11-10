@@ -4,6 +4,7 @@ namespace App\Modules\Payments\Models;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Parties\Models\Supplier;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
@@ -64,7 +65,8 @@ class SupplierPayment extends Model
 
     public function appliedMinor(): int
     {
-        return (int) $this->applications()->sum('amount_minor');
+        return (int) $this->applications()->sum('amount_minor')
+            + (int) InvoiceApplication::query()->where('supplier_payment_id', $this->id)->sum('amount_minor');
     }
 
     /**
