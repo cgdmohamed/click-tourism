@@ -296,6 +296,14 @@ class DecisionRegistry
             'blocks' => 'TE-021, PARTIES, RPT',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-036',
+            'type' => 'ACC',
+            'title_en' => 'Voucher tax treatment and correction policy',
+            'title_ar' => 'معالجة الضريبة والتصحيح في السندات',
+            'blocks' => 'TE-022, TAX, FIN',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */

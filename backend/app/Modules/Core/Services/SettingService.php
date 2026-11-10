@@ -80,6 +80,11 @@ class SettingService
             'credit_note_prefix' => 'CN',
             'employee_advance_prefix' => 'EA',
             'employee_custody_prefix' => 'EC',
+            'receipt_voucher_prefix' => 'RCV',
+            'payment_voucher_prefix' => 'PAY',
+            'transfer_voucher_prefix' => 'TV',
+            'adjustment_voucher_prefix' => 'ADJ',
+            'refund_voucher_prefix' => 'RF',
         ],
     ];
 

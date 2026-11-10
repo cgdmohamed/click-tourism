@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
@@ -129,6 +130,17 @@ Route::prefix('v1')->group(function () {
         Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->middleware('permission:journal.view');
         Route::post('journal-entries/{journalEntry}/post', [JournalEntryController::class, 'post'])->middleware('permission:journal.create');
         Route::post('journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->middleware('permission:journal.reverse');
+
+        Route::get('accounting-documents', [AccountingDocumentController::class, 'index'])->middleware('permission:documents.view');
+        Route::post('accounting-documents', [AccountingDocumentController::class, 'store'])->middleware(['permission:documents.create', 'idempotent']);
+        Route::get('accounting-documents/{document}', [AccountingDocumentController::class, 'show'])->middleware('permission:documents.view');
+        Route::patch('accounting-documents/{document}', [AccountingDocumentController::class, 'update'])->middleware('permission:documents.create');
+        Route::post('accounting-documents/{document}/submit', [AccountingDocumentController::class, 'submit'])->middleware('permission:documents.create');
+        Route::post('accounting-documents/{document}/approve', [AccountingDocumentController::class, 'approve'])->middleware(['permission:documents.approve', 'idempotent']);
+        Route::post('accounting-documents/{document}/post', [AccountingDocumentController::class, 'post'])->middleware(['permission:documents.approve', 'idempotent']);
+        Route::post('accounting-documents/{document}/cancel', [AccountingDocumentController::class, 'cancel'])->middleware('permission:documents.create');
+        Route::post('accounting-documents/{document}/reject', [AccountingDocumentController::class, 'reject'])->middleware('permission:documents.approve');
+        Route::post('accounting-documents/{document}/correct', [AccountingDocumentController::class, 'correct'])->middleware(['permission:documents.approve', 'idempotent']);
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');
