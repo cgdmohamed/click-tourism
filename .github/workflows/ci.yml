@@ -130,3 +130,26 @@ jobs:
       - name: Run financial integration tests on PostgreSQL
         run: |
           php artisan test --filter="(PostingServiceTest|PaymentServiceTest|InvoiceTest|FinancialReportsReconciliationTest|SupplierSettlementTest|BookingServiceTest)"
+
+  coolify-compose-validate:
+    name: Coolify Compose validation and API image build
+    runs-on: ubuntu-latest
+    env:
+      APP_KEY: "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      APP_URL: "https://erp.example.invalid"
+      POSTGRES_PASSWORD: "ci-only-production-password"
+      DEMO_APP_KEY: "base64:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="
+      DEMO_DB_PASSWORD: "ci-only-demo-password"
+      DEMO_URL: "https://demo.example.invalid"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate standalone Docker Compose definitions
+        run: |
+          docker compose -f docker-compose.coolify.yml config --quiet
+          docker compose -f docker-compose.demo.coolify.yml config --quiet
+      - name: Validate demo and application entrypoint scripts
+        run: |
+          sh -n backend/docker/entrypoint.sh
+          sh -n backend/docker/demo-reset-loop.sh
+      - name: Build Laravel nginx API image
+        run: docker build -f deploy/Dockerfile.api -t click-tourism-api:ci .
