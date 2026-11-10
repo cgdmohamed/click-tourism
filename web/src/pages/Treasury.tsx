@@ -42,6 +42,7 @@ type CashAccount = {
   registered: boolean
   balance_minor?: number | null
   balance_currency?: string | null
+  native_balance_minor?: number | null
 }
 
 type Transfer = {
@@ -264,7 +265,16 @@ export default function Treasury() {
                     <Td>{account.currency}</Td>
                     <Td className="text-end">
                       {account.balance_minor !== null && account.balance_minor !== undefined ? (
-                        <Money amountMinor={account.balance_minor} currency={account.balance_currency ?? account.currency} />
+                        account.balance_currency && account.currency !== account.balance_currency && account.native_balance_minor != null ? (
+                          <>
+                            <Money amountMinor={account.native_balance_minor} currency={account.currency} />
+                            <span className="block text-small text-text-subtle">
+                              ≈ <Money amountMinor={account.balance_minor} currency={account.balance_currency} />
+                            </span>
+                          </>
+                        ) : (
+                          <Money amountMinor={account.balance_minor} currency={account.balance_currency ?? account.currency} />
+                        )
                       ) : (
                         '—'
                       )}

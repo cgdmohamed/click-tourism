@@ -735,11 +735,12 @@ class ReportService
                 'name_en' => $ca->name_en,
                 'kind' => $ca->kind,
                 'currency' => $ca->currency_code,
-                'balance_minor' => $this->treasury->balance($ca, $branch),
+                'balance_minor' => $this->treasury->nativeBalance($ca, $branch),
+                'base_balance_minor' => $this->treasury->balance($ca, $branch),
             ]);
 
         $hasForeignCash = $cashAccounts->contains(fn ($ca) => strtoupper($ca['currency']) !== $currency);
-        $cashBalanceMinor = $hasForeignCash ? null : (int) $cashAccounts->sum('balance_minor');
+        $cashBalanceMinor = $hasForeignCash ? null : (int) $cashAccounts->sum('base_balance_minor');
 
         $invoiceScope = fn ($type) => Invoice::query()
             ->where('type', $type)

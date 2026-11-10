@@ -115,6 +115,24 @@ class TreasuryService
     }
 
     /**
+     * Balance in the account's own currency (debit minus credit of the lines
+     * posted in that currency), for display next to the account.
+     */
+    public function nativeBalance(CashAccount $cashAccount, ?Branch $branch = null): int
+    {
+        $row = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->where('jl.account_id', $cashAccount->account_id)
+            ->where('jl.currency_code', strtoupper($cashAccount->currency_code))
+            ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
+            ->selectRaw('COALESCE(SUM(jl.debit_minor), 0) as debit, COALESCE(SUM(jl.credit_minor), 0) as credit')
+            ->first();
+
+        return (int) $row->debit - (int) $row->credit;
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function transfer(array $data, Branch $branch, ?int $actorId = null): Transfer
@@ -182,22 +200,23 @@ class TreasuryService
                     $lines[] = PostingLine::debit($feeAccount, $fee, null, null, 'Transfer fee');
                 }
             } else {
+                // Each side keeps its own currency, so the USD account is debited or
+                // credited in USD and its per-currency balance stays correct. The
+                // entry balances in the base currency; the difference is FX gain/loss.
                 $entryCurrency = $base;
                 $entryRate = '1';
                 $baseFrom = $this->toBase($amount, $fromCurrency, $base, $fromRate);
                 $baseTo = $this->toBase($toAmount, $toCurrency, $base, $toRate);
                 $baseFee = $this->toBase($fee, $fromCurrency, $base, $fromRate);
                 $outgoingBase = $baseFrom + $baseFee;
-
                 $lines = [
-                    PostingLine::debit($to->account, $baseTo, null, null, "Transfer in {$toAmount} {$toCurrency}"),
-                    PostingLine::credit($from->account, $baseFrom + $baseFee, null, null, "Transfer out {$amount} {$fromCurrency}"),
+                    PostingLine::debit($to->account, $toAmount, null, null, "Transfer in {$toAmount} {$toCurrency}")->in($toCurrency, $toRate),
+                    PostingLine::credit($from->account, $amount + $fee, null, null, "Transfer out {$amount} {$fromCurrency}")->in($fromCurrency, $fromRate),
                 ];
-                if ($feeAccount && $baseFee > 0) {
-                    $lines[] = PostingLine::debit($feeAccount, $baseFee, null, null, 'Transfer fee');
+                if ($feeAccount && $fee > 0) {
+                    $lines[] = PostingLine::debit($feeAccount, $fee, null, null, 'Transfer fee')->in($fromCurrency, $fromRate);
                 }
-
-                $difference = ($baseTo + $baseFee) - ($baseFrom + $baseFee);
+                $difference = $baseTo - $baseFrom;
                 if ($difference > 0) {
                     $lines[] = PostingLine::credit($this->posting->account((string) $this->settings->get('accounting', 'fx_gain_account_code', '7900')), $difference, null, null, 'FX gain on transfer');
                 } elseif ($difference < 0) {

@@ -89,7 +89,13 @@ class JournalEntry extends Model
 
     public function totalMinor(): int
     {
-        return (int) $this->lines->sum('debit_minor');
+        // Lines of different currencies cannot be added up; such an entry
+        // (a cross-currency transfer) is totalled in the base currency.
+        $mixed = $this->lines
+            ->filter(fn ($line) => (int) $line->debit_minor + (int) $line->credit_minor > 0)
+            ->pluck('currency_code')->unique()->count() > 1;
+
+        return (int) $this->lines->sum($mixed ? 'base_debit_minor' : 'debit_minor');
     }
 
     public function toApiArray(bool $withLines = false): array
