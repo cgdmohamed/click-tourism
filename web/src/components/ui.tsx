@@ -508,7 +508,7 @@ export function InlineNotice({
   return (
     <div className={cx('text-medium flex items-start gap-2 rounded-12 border px-3 py-2', styles[tone])}>
       <Icon name={icons[tone]} className="mt-0.5 h-4 w-4" />
-      <span className="min-w-0">{children}</span>
+      <div className="min-w-0">{children}</div>
     </div>
   )
 }
@@ -545,7 +545,7 @@ export function StatCard({
           </span>
         ) : null}
       </div>
-      <p className={cx('heading-large mt-2 tabular', tone === 'positive' && 'text-positive', tone === 'negative' && 'text-negative')}>
+      <p className={cx('heading-large mt-2 tabular', tone === 'positive' && 'text-success-text', tone === 'negative' && 'text-danger-text')}>
         {value}
       </p>
       {hint ? <p className="text-small mt-1 text-text-subtle">{hint}</p> : null}

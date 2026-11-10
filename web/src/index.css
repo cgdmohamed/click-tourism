@@ -338,13 +338,93 @@
 
 /* ------------------------------------------------------------------------- */
 /* Light / dark activation                                                    */
+/*                                                                            */
+/* `data-theme` on <html> is the explicit user choice. The media-query block   */
+/* is only a pre-boot fallback so the first paint follows the OS until         */
+/* theme.tsx applies the stored preference. Keep both dark mappings in sync.   */
 /* ------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
 }
 
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-surface-canvas: var(--color-surface-canvas-dark);
+  --color-surface-default: var(--color-surface-default-dark);
+  --color-surface-subtle: var(--color-surface-subtle-dark);
+  --color-surface-subtlest: var(--color-surface-subtlest-dark);
+  --color-surface-hovered: var(--color-surface-hovered-dark);
+  --color-surface-pressed: var(--color-surface-pressed-dark);
+  --color-surface-selected: var(--color-surface-selected-dark);
+  --color-surface-disabled: var(--color-surface-disabled-dark);
+  --color-surface-inverted: var(--color-surface-inverted-dark);
+
+  --color-text-default: var(--color-text-default-dark);
+  --color-text-subtle: var(--color-text-subtle-dark);
+  --color-text-subtlest: var(--color-text-subtlest-dark);
+  --color-text-disabled: var(--color-text-disabled-dark);
+  --color-text-placeholder: var(--color-text-placeholder-dark);
+  --color-text-inverted: var(--color-text-inverted-dark);
+
+  --color-border-default: var(--color-border-default-dark);
+  --color-border-subtle: var(--color-border-subtle-dark);
+  --color-border-selected: var(--color-border-selected-dark);
+  --color-border-focus: var(--color-border-focus-dark);
+
+  --color-action-primary-background: var(--color-action-primary-background-dark);
+  --color-action-primary-hovered: var(--color-action-primary-hovered-dark);
+  --color-action-primary-pressed: var(--color-action-primary-pressed-dark);
+  --color-action-primary-text: var(--color-action-primary-text-dark);
+
+  --color-action-secondary-background: var(--color-action-secondary-background-dark);
+  --color-action-secondary-hovered: var(--color-action-secondary-hovered-dark);
+  --color-action-secondary-pressed: var(--color-action-secondary-pressed-dark);
+  --color-action-secondary-border: var(--color-action-secondary-border-dark);
+  --color-action-secondary-text: var(--color-action-secondary-text-dark);
+
+  --color-success-background: var(--color-success-background-dark);
+  --color-success-border: var(--color-success-border-dark);
+  --color-success-text: var(--color-success-text-dark);
+
+  --color-warning-background: var(--color-warning-background-dark);
+  --color-warning-border: var(--color-warning-border-dark);
+  --color-warning-text: var(--color-warning-text-dark);
+
+  --color-danger-background: var(--color-danger-background-dark);
+  --color-danger-border: var(--color-danger-border-dark);
+  --color-danger-text: var(--color-danger-text-dark);
+
+  --color-info-background: var(--color-info-background-dark);
+  --color-info-border: var(--color-info-border-dark);
+  --color-info-text: var(--color-info-text-dark);
+
+  --color-chart-1: var(--color-chart-1-dark);
+  --color-chart-2: var(--color-chart-2-dark);
+  --color-chart-3: var(--color-chart-3-dark);
+
+  --color-brand-1-background: var(--color-brand-1-background-dark);
+  --color-brand-1-border: var(--color-brand-1-border-dark);
+  --color-brand-1-text: var(--color-brand-1-text-dark);
+  --color-brand-1-accent: var(--color-brand-1-accent-dark);
+
+  --color-brand-2-background: var(--color-brand-2-background-dark);
+  --color-brand-2-border: var(--color-brand-2-border-dark);
+  --color-brand-2-text: var(--color-brand-2-text-dark);
+  --color-brand-2-accent: var(--color-brand-2-accent-dark);
+
+  --color-brand-3-background: var(--color-brand-3-background-dark);
+  --color-brand-3-border: var(--color-brand-3-border-dark);
+  --color-brand-3-text: var(--color-brand-3-text-dark);
+  --color-brand-3-accent: var(--color-brand-3-accent-dark);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: dark;
 
     --color-surface-canvas: var(--color-surface-canvas-dark);

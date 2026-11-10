@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -327,7 +328,11 @@ export default function Invoices() {
                 {data.data.map((invoice) => (
                   <tr key={invoice.id}>
                     <Td className="tabular">{formatDate(invoice.issue_date, locale)}</Td>
-                    <Td className="tabular">{invoice.number}</Td>
+                    <Td className="tabular">
+                      <Link to={`/invoices/${invoice.id}`} className="font-medium text-brand-1-accent hover:underline">
+                        {invoice.number}
+                      </Link>
+                    </Td>
                     <Td>
                       <Badge tone="brand">
                         {invoice.type === 'credit_note' ? L('إشعار دائن', 'Credit note') : invoice.type === 'customer_invoice' ? L('عميل', 'Customer') : L('مورد', 'Supplier')}

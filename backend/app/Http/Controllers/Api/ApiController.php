@@ -9,6 +9,7 @@ use App\Modules\Core\Services\SettingService;
 use App\Support\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 abstract class ApiController extends Controller
@@ -55,6 +56,24 @@ abstract class ApiController extends Controller
     protected function settings(): SettingService
     {
         return app(SettingService::class);
+    }
+
+    /**
+     * Statement window for profile endpoints. Defaults to the current year.
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function profileRange(Request $request): array
+    {
+        $data = $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+        ]);
+
+        return [
+            $data['from'] ?? now()->startOfYear()->toDateString(),
+            $data['to'] ?? now()->toDateString(),
+        ];
     }
 
     protected function ok(mixed $data, int $status = 200): JsonResponse

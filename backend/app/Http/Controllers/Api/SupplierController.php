@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,6 +30,15 @@ class SupplierController extends ApiController
         $suppliers->getCollection()->transform(fn (Supplier $supplier) => $supplier->toApiArray());
 
         return $this->paginated($suppliers);
+    }
+
+    public function show(Request $request, Supplier $supplier, PartyProfileService $profiles): JsonResponse
+    {
+        $this->authorizeBranchId($supplier->branch_id);
+
+        [$from, $to] = $this->profileRange($request);
+
+        return $this->ok($profiles->supplier($supplier, $this->branch(), $from, $to));
     }
 
     public function store(Request $request, AuditService $audit): JsonResponse

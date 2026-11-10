@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -7,6 +7,7 @@ import { api, errorMessage } from '../lib/api'
 import { toMinor } from '../lib/format'
 import type { Customer, Paginated } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
+import { Icon } from '../components/icons'
 
 export default function Customers() {
   const { t, locale } = useI18n()
@@ -97,13 +98,16 @@ export default function Customers() {
                 <Th>{t('email')}</Th>
                 <Th>{t('type')}</Th>
                 <Th>{t('status')}</Th>
+                <Th className="text-end">{t('actions')}</Th>
               </tr>
             </thead>
             <tbody>
               {customers.map((customer) => (
                 <tr key={customer.id}>
                   <Td>
-                    <p className="font-medium">{locale === 'ar' ? customer.name_ar : customer.name_en}</p>
+                    <Link to={`/customers/${customer.id}`} className="font-medium text-brand-1-accent hover:underline">
+                      {locale === 'ar' ? customer.name_ar : customer.name_en}
+                    </Link>
                     <p className="text-xs text-text-subtle">{locale === 'ar' ? customer.name_en : customer.name_ar}</p>
                   </Td>
                   <Td dir="ltr">{customer.phone ?? '—'}</Td>
@@ -113,6 +117,12 @@ export default function Customers() {
                     <Badge tone={customer.is_active ? 'positive' : 'neutral'}>
                       {customer.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
                     </Badge>
+                  </Td>
+                  <Td className="text-end">
+                    <Link to={`/customers/${customer.id}`} className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
+                      {t('viewProfile')}
+                      <Icon name="chevronRight" className="h-3.5 w-3.5" directional />
+                    </Link>
                   </Td>
                 </tr>
               ))}

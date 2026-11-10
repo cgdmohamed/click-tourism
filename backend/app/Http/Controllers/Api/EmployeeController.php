@@ -7,6 +7,7 @@ use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\EmployeeAdvance;
 use App\Modules\Parties\Models\EmployeeCustody;
 use App\Modules\Parties\Services\EmployeeFinanceService;
+use App\Modules\Parties\Services\PartyProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -53,11 +54,13 @@ class EmployeeController extends ApiController
         return $this->created($employee->toApiArray());
     }
 
-    public function show(Employee $employee): JsonResponse
+    public function show(Request $request, Employee $employee, PartyProfileService $profiles): JsonResponse
     {
         $this->authorizeBranchId($employee->branch_id);
 
-        return $this->ok($employee->load('branch')->toApiArray(true));
+        [$from, $to] = $this->profileRange($request);
+
+        return $this->ok($profiles->employee($employee, $this->branch(), $from, $to));
     }
 
     public function update(Request $request, Employee $employee, EmployeeFinanceService $service): JsonResponse
