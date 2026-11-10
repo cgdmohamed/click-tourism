@@ -212,6 +212,85 @@ export type AssignmentRule = {
   is_active: boolean
 }
 
+export type CashAccountRow = {
+  id: string
+  name_ar: string
+  name_en: string
+  kind: string
+  currency: string
+  balance_minor: number
+}
+
+export type AgingBucket = {
+  key: string
+  label_en: string
+  label_ar: string
+  amount_minor: number
+}
+
+export type MonthlyCashFlow = {
+  month: string
+  inflow_minor: number
+  outflow_minor: number
+  net_minor: number
+}
+
+export type AttentionItem = {
+  type: string
+  severity: 'high' | 'medium' | 'low'
+  amount_minor?: number
+  currency?: string | null
+  due_date?: string | null
+  date?: string | null
+  days_overdue?: number
+  title: string
+  party_name?: string | null
+  url: string
+  action_url: string
+  action_label: string
+}
+
+export type WorkQueueItem = {
+  id: string
+  type: string
+  document_type: string
+  document_id: string
+  document_number: string
+  amount_minor: number
+  currency: string
+  due_date: string
+  priority: 'high' | 'medium' | 'low'
+  action_url: string
+  action_label: string
+}
+
+export type DashboardSummary = {
+  customers_count: number
+  bookings_count: number
+  invoices_count: number
+  tickets_count: number
+  open_bookings: number
+  confirmed_bookings: number
+  collected_minor: number
+  overdue_minor: number
+  currency: string
+  recent_bookings: Booking[]
+  recent_payments: Payment[]
+  cash_balance_minor: number
+  cash_accounts: CashAccountRow[]
+  ar_outstanding_minor: number
+  ap_outstanding_minor: number
+  overdue_ar_minor: number
+  overdue_ap_minor: number
+  customer_advances_minor: number
+  unreconciled_bank_count: number
+  net_profit_minor: number
+  aging_buckets: AgingBucket[]
+  monthly_cash_flow: MonthlyCashFlow[]
+  attention_items: AttentionItem[]
+  as_of: string
+}
+
 export type Paginated<T> = {
   data: T[]
   meta: { current_page: number; last_page: number; total: number; per_page: number }

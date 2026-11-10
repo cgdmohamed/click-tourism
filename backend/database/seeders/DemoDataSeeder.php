@@ -70,7 +70,7 @@ class DemoDataSeeder extends Seeder
 
         $this->seedFxRates();
 
-        $owner = User::query()->where('email', 'sales@example.com')->first();
+        $owner = User::query()->where('email', 'accountant@example.com')->first();
         $taxProfile = TaxProfile::query()->where('name', 'VAT 14% (Egypt)')->first();
         $customers = $this->seedCustomers($branch);
         $suppliers = $this->seedSuppliers($branch);
