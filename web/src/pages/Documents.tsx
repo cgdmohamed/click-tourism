@@ -132,7 +132,7 @@ export default function Documents() {
   const [statusFilter, setStatusFilter] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState({ ...emptyForm, party_type: 'customer' as '' | PartyType })
   const [detailId, setDetailId] = useState<string | null>(null)
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [correctId, setCorrectId] = useState<string | null>(null)
@@ -302,7 +302,7 @@ export default function Documents() {
     },
     onSuccess: async () => {
       setOpen(false)
-      setForm(emptyForm)
+      setForm({ ...emptyForm, party_type: 'customer' })
       setError('')
       await refresh()
     },
@@ -446,7 +446,7 @@ export default function Documents() {
             <Button variant="secondary" onClick={() => create.mutate(false)} disabled={create.isPending || !canSave}>
               {L('حفظ كمسودة', 'Save draft')}
             </Button>
-            <Button onClick={() => create.mutate(true)} disabled={create.isPending || !balanced}>
+            <Button onClick={() => create.mutate(true)} disabled={create.isPending || !canSave}>
               {L('حفظ وإرسال', 'Save & submit')}
             </Button>
           </>
@@ -488,7 +488,7 @@ export default function Documents() {
             <SearchableSelect
               value={form.party_id}
               onChange={(value) => setForm({ ...form, party_type: expectedParty, party_id: value })}
-              options={(expectedParty === 'customer' ? partiesQuery.data?.customers : partiesQuery.data?.suppliers ?? []).map((party) => ({ value: party.id, label: partyLabel(party.name_ar, party.name_en) }))}
+              options={((expectedParty === 'customer' ? partiesQuery.data?.customers : partiesQuery.data?.suppliers) ?? []).map((party) => ({ value: party.id, label: partyLabel(party.name_ar, party.name_en) }))}
               placeholder={L('اختر', 'Select')}
             />
           </Field> : null}
