@@ -15,6 +15,7 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
@@ -275,14 +276,7 @@ class BookingService
 
     public function postRevenue(Booking $booking, ?int $actorId = null): void
     {
-        $alreadyPosted = $booking->status !== 'cancelled' && JournalEntry::query()
-            ->where('source_type', 'booking')
-            ->where('source_id', $booking->id)
-            ->where('event', 'revenue')
-            ->where('reversal_of_id', null)
-            ->exists();
-
-        if ($alreadyPosted) {
+        if ($this->revenueAlreadyRecognizedForBooking($booking)) {
             return;
         }
 
@@ -314,6 +308,43 @@ class BookingService
             fxRateSource: $booking->fx_rate_source,
             actorId: $actorId,
         ));
+    }
+
+    /**
+     * Returns true if revenue has already been recognized for this booking,
+     * either through a booking-sourced revenue entry or through an issued
+     * invoice linked to this booking. Prevents double revenue recognition
+     * when both a booking confirmation and an invoice are posted for the
+     * same economic event (DEC-001, DEC-028).
+     */
+    private function revenueAlreadyRecognizedForBooking(Booking $booking): bool
+    {
+        // Booking-sourced revenue entry already posted.
+        $bookingRevenue = JournalEntry::query()
+            ->where('source_type', 'booking')
+            ->where('source_id', $booking->id)
+            ->where('event', 'revenue')
+            ->where('reversal_of_id', null)
+            ->exists();
+
+        if ($bookingRevenue) {
+            return true;
+        }
+
+        // Invoice-sourced entry already posted for an invoice linked to this booking.
+        $invoiceRevenue = JournalEntry::query()
+            ->where('source_type', 'invoice')
+            ->where('event', 'issued')
+            ->where('reversal_of_id', null)
+            ->whereExists(function ($query) use ($booking) {
+                $query->select('id')
+                    ->from('invoices')
+                    ->whereColumn('invoices.id', 'journal_entries.source_id')
+                    ->where('invoices.booking_id', $booking->id);
+            })
+            ->exists();
+
+        return $invoiceRevenue;
     }
 
     public function postCost(Booking $booking, ?int $actorId = null): void

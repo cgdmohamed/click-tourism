@@ -4,9 +4,11 @@ namespace App\Modules\Invoices\Services;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\FiscalPeriod;
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
+use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
@@ -240,6 +242,26 @@ class InvoiceService
 
             if ($invoice->journal_entry_id !== null) {
                 throw new DomainException("Invoice {$invoice->number} has already been issued.");
+            }
+
+            // Prevent double revenue recognition: if a linked booking already
+            // recognized revenue (booking-sourced entry), do not post revenue
+            // again through this invoice. The invoice should only record the
+            // balance-sheet movement (AR/AP), not the P&L impact.
+            if ($invoice->booking_id !== null) {
+                $bookingRevenue = JournalEntry::query()
+                    ->where('source_type', 'booking')
+                    ->where('source_id', $invoice->booking_id)
+                    ->where('event', 'revenue')
+                    ->where('reversal_of_id', null)
+                    ->exists();
+
+                if ($bookingRevenue) {
+                    throw new DomainException(
+                        "Revenue was already recognized for booking {$invoice->booking_id}. "
+                        .'Issue the invoice without revenue posting or reverse the booking revenue first.'
+                    );
+                }
             }
 
             $this->assertOpenPeriod($invoice->issue_date, $invoice->branch_id, $actorId);
