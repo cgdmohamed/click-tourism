@@ -24,16 +24,15 @@ while :; do
         continue
     fi
 
-    until php artisan migrate:fresh --seed --force; do
-        echo "ERROR: demo reset/seed failed; staying in maintenance and retrying in 30s" >&2
+    until php artisan migrate:fresh --seed --force &&
+          find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + &&
+          mkdir -p storage/app/public &&
+          php artisan cache:clear &&
+          php artisan demo:window --seconds=600 &&
+          php artisan up; do
+        echo "ERROR: demo reset failed; staying in maintenance and retrying in 30s" >&2
         sleep 30
     done
 
-    # Reset uploads only after successful database recreation and seeding.
-    find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} \\;
-    mkdir -p storage/app/public
-    php artisan cache:clear
-    php artisan demo:window --seconds=600
-    php artisan up
     echo "Demo: fresh seeded dataset available"
 done
