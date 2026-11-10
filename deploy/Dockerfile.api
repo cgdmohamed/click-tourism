@@ -1,0 +1,5 @@
+FROM nginx:1.27-alpine
+COPY deploy/nginx/backend.conf /etc/nginx/conf.d/default.conf
+COPY backend/public/ /var/www/html/public/
+RUN mkdir -p /var/www/html/storage/app/public && ln -s /var/www/html/storage/app/public /var/www/html/public/storage
+EXPOSE 8000
