@@ -115,6 +115,8 @@ const emptyForm = {
   fx_rate: '',
   cash_account_id: '',
   memo: '',
+  amount: '',
+  simpleMode: true,
   lines: [{ ...emptyLine }],
 }
 
@@ -261,6 +263,13 @@ export default function Documents() {
     { debit: 0, credit: 0, tax: 0 },
   )
   const balanced = formTotals.debit === formTotals.credit && formTotals.debit > 0
+  const supportsSimple = form.type === 'receipt_voucher' || form.type === 'payment_voucher'
+  const simple = supportsSimple && form.simpleMode
+  const expectedParty = form.type === 'receipt_voucher' ? 'customer' : 'supplier'
+  const selectedCash = (cashQuery.data ?? []).find((account) => (account.cash_account_id ?? account.id) === form.cash_account_id)
+  const canSaveSimple = Boolean(form.party_type === expectedParty && form.party_id && form.cash_account_id
+    && selectedCash?.currency === form.currency && toMinor(form.amount || '0', form.currency) > 0)
+  const canSave = simple ? canSaveSimple : balanced
 
   const create = useMutation({
     mutationFn: async (submit: boolean) => {
@@ -275,7 +284,9 @@ export default function Documents() {
           fx_rate: form.fx_rate || undefined,
           cash_account_id: form.cash_account_id || undefined,
           memo: form.memo || undefined,
-          lines: form.lines
+          simple_mode: simple,
+          ...(simple ? { amount_minor: toMinor(form.amount, form.currency) } : {}),
+          ...(!simple ? { lines: form.lines
             .filter((line) => line.account_id)
             .map((line) => ({
               account_id: line.account_id,
@@ -283,7 +294,7 @@ export default function Documents() {
               debit_minor: toMinor(line.debit || '0', form.currency),
               credit_minor: toMinor(line.credit || '0', form.currency),
               tax_minor: toMinor(line.tax || '0', form.currency),
-            })),
+            })) } : {}),
           submit,
         },
         { headers: { 'Idempotency-Key': idempotencyKey() } },
@@ -428,11 +439,11 @@ export default function Documents() {
         onClose={() => setOpen(false)}
         footer={
           <>
-            <span className={balanced ? 'me-auto text-sm text-success-text' : 'me-auto text-sm text-danger-text'}>
-              {t('debit')}: {formTotals.debit / 100} · {t('credit')}: {formTotals.credit / 100}
+            <span className={canSave ? 'me-auto text-sm text-success-text' : 'me-auto text-sm text-danger-text'}>
+              {simple ? L('تسوية رصيد قائم', 'Settle existing balance') : `${t('debit')}: ${formTotals.debit / 100} · ${t('credit')}: ${formTotals.credit / 100}`}
             </span>
             <Button variant="secondary" onClick={() => setOpen(false)}>{t('cancel')}</Button>
-            <Button variant="secondary" onClick={() => create.mutate(false)} disabled={create.isPending || !balanced}>
+            <Button variant="secondary" onClick={() => create.mutate(false)} disabled={create.isPending || !canSave}>
               {L('حفظ كمسودة', 'Save draft')}
             </Button>
             <Button onClick={() => create.mutate(true)} disabled={create.isPending || !balanced}>
@@ -444,13 +455,25 @@ export default function Documents() {
         {error ? <p className="mb-3 text-medium text-danger-text">{error}</p> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={L('النوع', 'Type')} required>
-            <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as DocType })}>
+            <Select value={form.type} onChange={(event) => {
+              const type = event.target.value as DocType
+              setForm({ ...form, type, party_type: type === 'receipt_voucher' ? 'customer' : type === 'payment_voucher' ? 'supplier' : '', party_id: '', cash_account_id: '', amount: '' })
+            }}>
               {DOC_TYPES.map((value) => (
                 <option key={value} value={value}>{L(typeLabels[value].ar, typeLabels[value].en)}</option>
               ))}
             </Select>
           </Field>
-          <Field label={L('نوع الطرف', 'Party type')}>
+          {supportsSimple ? (
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-2 text-small">
+                <input type="checkbox" checked={!simple} onChange={(event) => setForm({ ...form, simpleMode: !event.target.checked })} />
+                {L('وضع محاسبي متقدم (مدين / دائن)', 'Advanced accounting mode (debit / credit)')}
+              </label>
+              {simple ? <p className="mt-2 text-small text-text-subtle">{L('لتسوية ذمم عميل أو مورد قائمة فقط. للدفعات المقدمة والاستردادات استخدم العملية المخصصة أو الوضع المتقدم.', 'Only for settling existing customer/supplier balances. Use the dedicated flow or advanced mode for advances and refunds.')}</p> : null}
+            </div>
+          ) : null}
+          {simple ? null : <Field label={L('نوع الطرف', 'Party type')}>
             <Select
               value={form.party_type}
               onChange={(event) => setForm({ ...form, party_type: event.target.value as '' | PartyType, party_id: '' })}
@@ -460,8 +483,16 @@ export default function Documents() {
                 <option key={value} value={value}>{L(partyLabels[value].ar, partyLabels[value].en)}</option>
               ))}
             </Select>
-          </Field>
-          {form.party_type ? (
+          </Field>}
+          {simple ? <Field label={form.type === 'receipt_voucher' ? L('العميل', 'Customer') : L('المورد', 'Supplier')} required>
+            <SearchableSelect
+              value={form.party_id}
+              onChange={(value) => setForm({ ...form, party_type: expectedParty, party_id: value })}
+              options={(expectedParty === 'customer' ? partiesQuery.data?.customers : partiesQuery.data?.suppliers ?? []).map((party) => ({ value: party.id, label: partyLabel(party.name_ar, party.name_en) }))}
+              placeholder={L('اختر', 'Select')}
+            />
+          </Field> : null}
+          {!simple && form.party_type ? (
             <Field label={L('الطرف', 'Party')}>
               <SearchableSelect
                 value={form.party_id}
@@ -486,12 +517,12 @@ export default function Documents() {
           <Field label={L('سعر الصرف (للعملات الأجنبية)', 'Exchange rate (foreign currency)')}>
             <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
-          <Field label={L('حساب النقدية (اختياري)', 'Cash account (optional)')}>
+          <Field label={simple ? L('الخزينة أو البنك', 'Cash or bank') : L('حساب النقدية (اختياري)', 'Cash account (optional)')}>
             <SearchableSelect
               value={form.cash_account_id}
               onChange={(value) => setForm({ ...form, cash_account_id: value })}
               placeholder={L('اختر', 'Select')}
-              options={cashOptions}
+              options={simple ? cashOptions.filter((option) => (cashQuery.data ?? []).some((account) => (account.cash_account_id ?? account.id) === option.value && account.currency === form.currency)) : cashOptions}
             />
           </Field>
           <Field label={t('memo')}>
@@ -499,6 +530,13 @@ export default function Documents() {
           </Field>
         </div>
 
+        {simple ? (
+          <div className="mt-4">
+            <Field label={L('مبلغ التسوية', 'Settlement amount')} required>
+              <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
+            </Field>
+          </div>
+        ) : (
         <div className="mt-4 border-t border-border-subtle pt-4">
           <h3 className="text-medium mb-3">{L('بنود السند', 'Voucher lines')}</h3>
           <div className="space-y-2">
@@ -546,7 +584,7 @@ export default function Documents() {
           <div className="mt-2 flex justify-end">
             <Button variant="secondary" onClick={addLine}>{L('إضافة بند', 'Add line')}</Button>
           </div>
-        </div>
+        </div>)}
       </Modal>
 
       <Modal
