@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
+use App\Modules\Invoices\Services\InvoiceSettlementService;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
@@ -184,6 +185,18 @@ class SupplierSettlementTest extends TestCase
             'amount_minor' => (int) $obligation->amount_minor,
             'invoice_id' => $obligation->invoice->public_id,
         ], $this->user->id);
+    }
+
+    public function test_linked_supplier_invoice_cannot_be_settled_through_invoice_and_obligation_twice(): void
+    {
+        $obligation = $this->obligation();
+        $advance = $this->pay(['amount_minor' => 50000]);
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('linked to an operational supplier obligation');
+        app(InvoiceSettlementService::class)->applySupplierPayment(
+            $advance, $obligation->invoice, 50000, $this->user->id
+        );
     }
 
     public function test_a_partial_payment_leaves_the_obligation_partially_paid(): void
