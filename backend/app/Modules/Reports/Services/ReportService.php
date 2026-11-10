@@ -6,7 +6,9 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
+use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Support\Money;
@@ -636,6 +638,24 @@ class ReportService
 
         $bookingScope = fn () => Booking::query()->when($branch, fn ($query) => $query->where('branch_id', $branch->id));
 
+        $customers = Customer::query()
+            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->where('is_active', true)
+            ->count();
+        $bookings = $bookingScope()->count();
+        $invoices = Invoice::query()
+            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->where('status', '!=', Invoice::STATUS_VOIDED)
+            ->count();
+        // A ticket is one sold flight unit. Cancelled/no-show bookings do not
+        // contribute to the operational count shown on the dashboard.
+        $tickets = (int) DB::table('booking_items as bi')
+            ->join('bookings as b', 'b.id', '=', 'bi.booking_id')
+            ->where('bi.service_type', 'flight')
+            ->whereNotIn('b.status', ['cancelled', 'no_show'])
+            ->when($branch, fn ($query) => $query->where('b.branch_id', $branch->id))
+            ->sum('bi.quantity');
+
         $open = $bookingScope()->whereIn('status', ['draft', 'quoted', 'confirmed', 'in_progress'])->count();
         $confirmed = $bookingScope()->whereIn('status', ['confirmed', 'in_progress'])->count();
 
@@ -680,6 +700,10 @@ class ReportService
             ->all();
 
         return [
+            'customers_count' => $customers,
+            'bookings_count' => $bookings,
+            'invoices_count' => $invoices,
+            'tickets_count' => $tickets,
             'open_bookings' => $open,
             'confirmed_bookings' => $confirmed,
             'collected_minor' => $collected,

@@ -38,6 +38,15 @@ class SequenceService
                 'gap_policy' => 'allow',
             ]);
             $sequence = Sequence::query()->lockForUpdate()->find($sequence->id);
+        } elseif (str_starts_with($documentType, 'invoice.')) {
+            // Older invoice sequences fell through to the generic `IN`
+            // prefix. Preserve their next value but heal the prefix so future
+            // documents use their configured series (INV, BIL, CN, ...).
+            $expectedPrefix = $this->prefixFor($documentType);
+            if ($sequence->prefix === 'IN' && $expectedPrefix !== 'IN') {
+                $sequence->prefix = $expectedPrefix;
+                $sequence->save();
+            }
         }
 
         $value = (int) $sequence->next_value;
@@ -49,6 +58,12 @@ class SequenceService
 
     private function prefixFor(string $documentType): string
     {
+        if (str_starts_with($documentType, 'invoice.')) {
+            $series = strtoupper(trim(substr($documentType, strlen('invoice.'))));
+
+            return $series !== '' ? $series : 'INV';
+        }
+
         $key = match ($documentType) {
             'journal' => 'journal_prefix',
             'booking' => 'booking_prefix',

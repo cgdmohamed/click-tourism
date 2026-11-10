@@ -9,6 +9,10 @@ import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, IconButton, Lo
 import { Icon } from '../components/icons'
 
 type Summary = {
+  customers_count: number
+  bookings_count: number
+  invoices_count: number
+  tickets_count: number
   open_bookings: number
   confirmed_bookings: number
   collected_minor: number
@@ -75,6 +79,13 @@ export default function Dashboard() {
               </p>
             </div>
             {query.isFetching ? <p className="text-small text-text-subtle">{t('loading')}</p> : null}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label={t('customers')} value={query.data.customers_count} icon="users" />
+            <StatCard label={t('bookings')} value={query.data.bookings_count} icon="calendar" />
+            <StatCard label={t('invoices')} value={query.data.invoices_count} icon="fileText" />
+            <StatCard label={t('tickets')} value={query.data.tickets_count} icon="plane" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

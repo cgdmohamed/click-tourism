@@ -114,6 +114,10 @@ class ApiAccessTest extends TestCase
             ->assertOk()
             ->assertJsonStructure([
                 'data' => [
+                    'customers_count',
+                    'bookings_count',
+                    'invoices_count',
+                    'tickets_count',
                     'open_bookings',
                     'confirmed_bookings',
                     'collected_minor',
