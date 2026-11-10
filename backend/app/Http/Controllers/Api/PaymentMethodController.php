@@ -66,7 +66,12 @@ class PaymentMethodController extends ApiController
             'name_ar' => ['sometimes', 'string', 'max:255'],
             'name_en' => ['sometimes', 'string', 'max:255'],
             'type' => ['sometimes', Rule::in(['cash', 'bank_transfer', 'card', 'wallet', 'other'])],
-            'default_cash_account_id' => ['nullable', 'string'],
+            'default_cash_account_id' => ['nullable', 'string', Rule::exists('accounts', 'public_id')],
+            'provider_name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'account_name' => ['sometimes', 'nullable', 'string', 'max:160'],
+            'account_reference' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'iban' => ['sometimes', 'nullable', 'string', 'max:34'],
+            'instructions' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 

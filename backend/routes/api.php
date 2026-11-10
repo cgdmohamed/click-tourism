@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SearchController;
