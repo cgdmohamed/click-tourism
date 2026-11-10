@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CashAccountController;
@@ -141,6 +142,19 @@ Route::prefix('v1')->group(function () {
         Route::post('accounting-documents/{document}/cancel', [AccountingDocumentController::class, 'cancel'])->middleware('permission:documents.create');
         Route::post('accounting-documents/{document}/reject', [AccountingDocumentController::class, 'reject'])->middleware('permission:documents.approve');
         Route::post('accounting-documents/{document}/correct', [AccountingDocumentController::class, 'correct'])->middleware(['permission:documents.approve', 'idempotent']);
+
+        Route::get('bank-statements', [BankReconciliationController::class, 'statements'])->middleware('permission:reconciliation.view');
+        Route::post('bank-statements/import', [BankReconciliationController::class, 'import'])->middleware('permission:reconciliation.manage');
+        Route::get('bank-statements/{statement}', [BankReconciliationController::class, 'showStatement'])->middleware('permission:reconciliation.view');
+
+        Route::get('reconciliations', [BankReconciliationController::class, 'index'])->middleware('permission:reconciliation.view');
+        Route::post('reconciliations', [BankReconciliationController::class, 'store'])->middleware('permission:reconciliation.manage');
+        Route::get('reconciliations/{reconciliation}', [BankReconciliationController::class, 'show'])->middleware('permission:reconciliation.view');
+        Route::post('reconciliations/{reconciliation}/auto-match', [BankReconciliationController::class, 'autoMatch'])->middleware('permission:reconciliation.manage');
+        Route::post('reconciliations/{reconciliation}/matches', [BankReconciliationController::class, 'match'])->middleware('permission:reconciliation.manage');
+        Route::delete('reconciliations/{reconciliation}/matches/{group}', [BankReconciliationController::class, 'unmatch'])->middleware('permission:reconciliation.manage');
+        Route::post('reconciliations/{reconciliation}/adjustment-voucher', [BankReconciliationController::class, 'adjustmentVoucher'])->middleware('permission:reconciliation.manage');
+        Route::post('reconciliations/{reconciliation}/approve', [BankReconciliationController::class, 'approve'])->middleware(['permission:reconciliation.approve', 'idempotent']);
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');

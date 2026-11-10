@@ -21,6 +21,7 @@ import OpeningBalances from './pages/OpeningBalances'
 import Periods from './pages/Periods'
 import Invoices from './pages/Invoices'
 import Documents from './pages/Documents'
+import Reconciliation from './pages/Reconciliation'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +47,7 @@ export default function App() {
                 <Route path="periods" element={<Periods />} />
                 <Route path="invoices" element={<Invoices />} />
                 <Route path="documents" element={<Documents />} />
+                <Route path="reconciliation" element={<Reconciliation />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="suppliers" element={<Suppliers />} />
                 <Route path="bookings" element={<Bookings />} />

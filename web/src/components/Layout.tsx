@@ -57,6 +57,7 @@ export function Layout() {
     { to: '/periods', label: t('fiscalPeriods'), icon: icons.bookings, permission: 'periods.view' },
 { to: '/invoices', label: t('invoices'), icon: icons.payments, permission: 'invoices.view' },
     { to: '/documents', label: t('vouchers'), icon: icons.journal, permission: 'documents.view' },
+    { to: '/reconciliation', label: t('reconciliation'), icon: icons.settlements, permission: 'reconciliation.view' },
     { to: '/customers', label: t('customers'), icon: icons.customers },
     { to: '/suppliers', label: t('suppliers'), icon: icons.suppliers },
     { to: '/bookings', label: t('bookings'), icon: icons.bookings },
