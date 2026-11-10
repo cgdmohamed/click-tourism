@@ -47,6 +47,25 @@ No decision may be silently assumed in code. When implementation starts, unresol
 | DEC-039 | ACC | **Fixed-asset depreciation and disposal policy** | Which depreciation convention applies in the first month (full month, next month, or day prorating); what capitalization threshold and default useful life/residual apply; which GL accounts carry cost, accumulated depreciation, depreciation expense, impairment and disposal gain/loss; should depreciation runs post automatically or only after manual approval; are operational branch/cost-center transfers allowed without rewriting the GL? | Straight-line only; convention `assets.depreciation_convention` (month_of_purchase), threshold `assets.capitalization_threshold_minor` (0), defaults `assets.default_useful_life_months` (60) / `assets.default_residual_value_minor` (0); accounts 1300/1210/6800/6910/6915/7910 with per-category overrides; runs post only on approval (`assets.auto_post_depreciation` false), with final-period correction and closed periods refused; transfers rewrite register attribution only, never posted GL — **provisional, awaiting accountant sign-off** | TE-025, FIN, RPT |
 | DEC-040 | HUM/ARC | **Report export formats** | Is a native PDF/Excel (XLSX) export required for statutory statements and statements of account, or is browser print-to-PDF plus CSV sufficient? Which reports need a fixed signed layout, and who approves the templates? | Browser print-to-PDF plus CSV (Excel-compatible, UTF-8 BOM) for all reports; add a native PDF/XLSX library only if the accountant requires signed/controlled layouts — **provisional, awaiting product/accountant sign-off** | TE-028, RPT |
 
+## Decision records — 2026-11-10
+
+These records preserve the original options above while recording the product-owner selections in `decisions.md`. No accountant identity or approval is implied.
+
+| ID | Recorded selection | Status | Remaining constraint |
+|---|---|---|---|
+| **DEC-004** | Configurable commission triggers; default fully collected | `PENDING_ACCOUNTANT_APPROVAL` | No commission accrual/posting until treatment, accounts, reversals, and precedence are approved |
+| **DEC-008** | FX revaluation infrastructure with next-period reversal | `PENDING_ACCOUNTANT_APPROVAL` | Posting disabled until eligible balances, rates, accounts, and reversal policy are approved |
+| **DEC-014** | One ledger with branch dimension and controlled clearing | `PENDING_ACCOUNTANT_APPROVAL` | Existing branch separation remains; inter-branch posting is not activated |
+| **DEC-015** | Configurable business-hour inactivity, meaningful activities, bounded retries, queue escalation | `DECIDED` | None for the operational policy |
+| **DEC-016** | Prioritized branch/source/service rules, availability, workload, manual owner, fallback queue | `DECIDED` | Application management UI remains a follow-up |
+| **DEC-018** | Atomic sequence by branch, fiscal year, and document type; gaps allowed and preserved | `DECIDED` | Statutory country-specific numbering remains subject to legal review |
+| **DEC-020** | One legal entity per independently deployed installation | `DECIDED` | None |
+| **DEC-022** | No external customer/supplier portals in MVP | `DECIDED` | None |
+| **DEC-025** | Negative margin requires segregated manager approval; zero margin configurable | `PENDING_ACCOUNTANT_APPROVAL` | Operational approval guard active; accounting/commission interpretation remains blocked |
+| **DEC-028** | Unified booking/invoice only where legally permitted | `PENDING_ACCOUNTANT_APPROVAL` | Separate identity is the guarded default; unified tax posting remains disabled |
+| **DEC-029** | Arabic, English, or bilingual document output | `DECIDED` | Statutory template wording/layout requires approval where applicable |
+| **DEC-040** | Native PDF, real XLSX, and browser print | `DECIDED` | Statutory signed layouts still require accountant/legal approval |
+
 ## Decision workflow
 
 1. Owner reviews options and records the decision + rationale + date in this file (status → `DECIDED`).

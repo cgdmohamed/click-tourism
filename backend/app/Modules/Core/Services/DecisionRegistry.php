@@ -46,7 +46,7 @@ class DecisionRegistry
             'title_en' => 'Commission accrual trigger',
             'title_ar' => 'مُحفّز استحقاق العمولة',
             'blocks' => 'COMM',
-            'status' => 'open',
+            'status' => 'pending_accountant_approval',
         ],
         [
             'id' => 'DEC-005',
@@ -78,7 +78,7 @@ class DecisionRegistry
             'title_en' => 'Period-end FX revaluation of open AR/AP',
             'title_ar' => 'إعادة تقييم العملات آخر الفترة',
             'blocks' => 'FIN-010, RPT',
-            'status' => 'open',
+            'status' => 'pending_accountant_approval',
         ],
         [
             'id' => 'DEC-009',
@@ -126,7 +126,7 @@ class DecisionRegistry
             'title_en' => 'Branch accounting model',
             'title_ar' => 'نموذج محاسبة الفروع',
             'blocks' => 'FIN, RPT, AUTH',
-            'status' => 'open',
+            'status' => 'pending_accountant_approval',
         ],
         [
             'id' => 'DEC-015',
@@ -134,7 +134,7 @@ class DecisionRegistry
             'title_en' => '24h reassignment definition',
             'title_ar' => 'تعريف إعادة التوزيع خلال 24 ساعة',
             'blocks' => 'CRM-005',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-016',
@@ -142,7 +142,7 @@ class DecisionRegistry
             'title_en' => 'Lead assignment strategy',
             'title_ar' => 'استراتيجية توزيع العملاء المحتملين',
             'blocks' => 'CRM-004',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-017',
@@ -158,7 +158,7 @@ class DecisionRegistry
             'title_en' => 'Document numbering',
             'title_ar' => 'ترقيم المستندات',
             'blocks' => 'CORE-007',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-019',
@@ -174,7 +174,7 @@ class DecisionRegistry
             'title_en' => 'Multi-company support',
             'title_ar' => 'دعم تعدد الشركات',
             'blocks' => 'architecture',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-021',
@@ -190,7 +190,7 @@ class DecisionRegistry
             'title_en' => 'Customer/supplier portal',
             'title_ar' => 'بوابة العملاء والموردين',
             'blocks' => 'scope',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-023',
@@ -214,7 +214,7 @@ class DecisionRegistry
             'title_en' => 'Negative-margin and zero-value bookings',
             'title_ar' => 'الحجوزات بالسالب أو بدون قيمة',
             'blocks' => 'BOOK, COMM',
-            'status' => 'open',
+            'status' => 'pending_accountant_approval',
         ],
         [
             'id' => 'DEC-026',
@@ -238,7 +238,7 @@ class DecisionRegistry
             'title_en' => 'Booking invoice document',
             'title_ar' => 'مستند فاتورة الحجز',
             'blocks' => 'BOOK, RPT, TAX',
-            'status' => 'open',
+            'status' => 'pending_accountant_approval',
         ],
         [
             'id' => 'DEC-029',
@@ -246,7 +246,7 @@ class DecisionRegistry
             'title_en' => 'Language of legal documents',
             'title_ar' => 'لغة المستندات القانونية',
             'blocks' => 'RPT, UI',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-030',
@@ -334,7 +334,7 @@ class DecisionRegistry
             'title_en' => 'Report export formats',
             'title_ar' => 'تنسيقات تصدير التقارير',
             'blocks' => 'TE-028, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
     ];
 
