@@ -222,6 +222,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('supplier-obligations', [SupplierSettlementController::class, 'obligations'])->middleware('permission:supplier_obligations.view');
         Route::post('supplier-obligations', [SupplierSettlementController::class, 'storeObligation'])->middleware('permission:supplier_obligations.create');
+        Route::post('supplier-obligations/{supplierObligation}/recognize', [SupplierSettlementController::class, 'recognizeObligation'])->middleware('permission:supplier_obligations.create');
         Route::get('supplier-obligations/{supplierObligation}', [SupplierSettlementController::class, 'showObligation'])->middleware('permission:supplier_obligations.view');
 
         Route::get('supplier-payments', [SupplierSettlementController::class, 'payments'])->middleware('permission:supplier_payments.view');
