@@ -8,7 +8,10 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Services\InvoiceService;
+use App\Modules\Invoices\Services\InvoiceSettlementService;
 use App\Modules\Parties\Models\PartyAccount;
+use App\Modules\Payments\Services\PaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -163,6 +166,46 @@ class InvoiceTest extends TestCase
         $this->assertSame(-115000, $this->balance($subaccount->code));
         $this->assertSame(100000, $this->balance('5100'));
         $this->assertSame(15000, $this->balance('1160'));
+    }
+
+    public function test_customer_invoice_partial_settlement_posts_realized_fx_gain(): void
+    {
+        $customer = $this->customer();
+        $customer->update(['currency_code' => 'USD']);
+        $service = app(InvoiceService::class);
+        $invoice = $service->create([
+            'type' => 'customer_invoice',
+            'party_type' => 'customer',
+            'party_id' => $customer->public_id,
+            'issue_date' => now()->toDateString(),
+            'currency' => 'USD',
+            'fx_rate' => '50',
+            'lines' => [[
+                'account_id' => $this->account('4100')->public_id,
+                'credit_minor' => 100000,
+            ]],
+        ], $this->branch, $this->user->id);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+        $service->issue($invoice, $this->user->id);
+
+        $receipt = app(PaymentService::class)->record([
+            'branch_id' => $this->branch->public_id,
+            'customer_id' => $customer->public_id,
+            'cash_account_id' => $this->account('1110')->public_id,
+            'amount_minor' => 40000,
+            'currency' => 'USD',
+            'fx_rate' => '52',
+            'paid_at' => now()->toIso8601String(),
+            'method' => 'cash',
+        ], $this->user->id);
+
+        app(InvoiceSettlementService::class)->applyReceipt($receipt, $invoice, 40000, $this->user->id);
+        $entry = JournalEntry::query()->where('source_type', 'invoice_application')->firstOrFail();
+        $this->assertSame(80000, (int) $entry->lines()->whereHas('account', fn ($q) => $q->where('code', '7900'))->sum('base_credit_minor'));
+        $this->assertSame(2080000, (int) $entry->lines()->sum('base_debit_minor'));
+        $this->assertSame(2080000, (int) $entry->lines()->sum('base_credit_minor'));
+        $this->assertSame(60000, (int) $invoice->fresh()->outstanding_minor);
     }
 
     public function test_only_approved_invoices_can_be_issued_and_once(): void
