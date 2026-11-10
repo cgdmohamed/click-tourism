@@ -94,6 +94,8 @@ class SupplierObligation extends Model
             'currency' => $this->currency_code,
             'invoice_reference' => $this->invoice_reference,
             'status' => $this->status,
+            // Explicitly distinguish operational obligations from recognized GL payables.
+            'accounting_status' => 'unposted',
         ];
     }
 }
