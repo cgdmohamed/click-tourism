@@ -40,6 +40,7 @@ class RolePermissionSeeder extends Seeder
             'cost_centers.view', 'cost_centers.manage',
             'documents.view', 'documents.create', 'documents.approve',
             'reconciliation.view', 'reconciliation.manage', 'reconciliation.approve',
+            'schedules.view', 'schedules.manage', 'schedules.approve',
         ],
         'sales' => [
             'expenses.view', 'expenses.create',
@@ -68,6 +69,7 @@ class RolePermissionSeeder extends Seeder
             'leads.view',
             'transfers.view', 'expenses.view', 'opening_balances.view',
             'reconciliation.view',
+            'schedules.view',
         ],
     ];
 
@@ -95,6 +97,7 @@ class RolePermissionSeeder extends Seeder
         'employees.view', 'employees.manage',
         'documents.view', 'documents.create', 'documents.approve',
         'reconciliation.view', 'reconciliation.manage', 'reconciliation.approve',
+        'schedules.view', 'schedules.manage', 'schedules.approve',
     ];
 
     public function run(): void

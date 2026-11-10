@@ -14,3 +14,10 @@ Artisan::command('inspire', function () {
 Schedule::call(fn () => Cache::put(HealthController::HEARTBEAT_KEY, now()->toIso8601String(), 600))
     ->name('scheduler-heartbeat')
     ->everyMinute();
+
+// Posts due accrual/prepayment/deferred-revenue events. Reruns are safe and
+// closed periods go to the exception queue instead of being bypassed.
+Schedule::command('schedules:post-due')
+    ->name('schedules-post-due')
+    ->dailyAt('00:15')
+    ->withoutOverlapping();

@@ -52,6 +52,16 @@ class SettingService
             // PENDING ACCOUNTANT APPROVAL (DEC-035): employee advances/custody accounts.
             'employee_advance_account_code' => '1150',
             'employee_custody_account_code' => '1150',
+            // PENDING ACCOUNTANT APPROVAL (DEC-038): accrual and prepayment policy.
+            // Auto-post due recognition events from the daily scheduler; the
+            // period-end checklist reports anything that could not post.
+            'schedule_auto_post' => 'true',
+            // Days after a recognition date that an accrual reversal is dated.
+            'accrual_reversal_offset_days' => '1',
+            'prepaid_expense_account_code' => '1150',
+            'deferred_revenue_account_code' => '2400',
+            'accrued_liability_account_code' => '2100',
+            'accrued_revenue_account_code' => '1100',
         ],
         'treasury' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.
@@ -91,6 +101,7 @@ class SettingService
             'transfer_voucher_prefix' => 'TV',
             'adjustment_voucher_prefix' => 'ADJ',
             'refund_voucher_prefix' => 'RF',
+            'schedule_prefix' => 'SCH',
         ],
     ];
 
