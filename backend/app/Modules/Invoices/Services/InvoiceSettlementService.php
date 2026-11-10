@@ -4,6 +4,7 @@ namespace App\Modules\Invoices\Services;
 
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
+use App\Modules\Accounting\Services\RealizedFxService;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Core\Models\Branch;
@@ -34,6 +35,7 @@ class InvoiceSettlementService
         private readonly SettingService $settings,
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
+        private readonly RealizedFxService $realizedFx,
     ) {}
 
     public function applyReceipt(Payment $payment, Invoice $invoice, int $amount, ?int $actorId): InvoiceApplication
@@ -74,10 +76,12 @@ class InvoiceSettlementService
                 entryDate: now()->toDateString(),
                 branch: $branch,
                 currency: $payment->currency_code,
-                lines: [
-                    PostingLine::debit($advance, $amount, 'customer', $payment->customer_id, $label),
-                    PostingLine::credit($receivable, $amount, 'customer', $payment->customer_id, $label),
-                ],
+                lines: $this->realizedFx->balance([
+                    PostingLine::debit($advance, $amount, 'customer', $payment->customer_id, $label)
+                        ->in($payment->currency_code, (string) $payment->fx_rate),
+                    PostingLine::credit($receivable, $amount, 'customer', $payment->customer_id, $label)
+                        ->in($invoice->currency_code, (string) $invoice->fx_rate),
+                ], $payment->currency_code),
                 memo: $label,
                 sourceType: 'invoice_application',
                 sourceId: $application->id,
@@ -139,10 +143,12 @@ class InvoiceSettlementService
                 entryDate: now()->toDateString(),
                 branch: $branch,
                 currency: $payment->currency_code,
-                lines: [
-                    PostingLine::debit($payable, $amount, 'supplier', $payment->supplier_id, $label),
-                    PostingLine::credit($advance, $amount, 'supplier', $payment->supplier_id, $label),
-                ],
+                lines: $this->realizedFx->balance([
+                    PostingLine::debit($payable, $amount, 'supplier', $payment->supplier_id, $label)
+                        ->in($invoice->currency_code, (string) $invoice->fx_rate),
+                    PostingLine::credit($advance, $amount, 'supplier', $payment->supplier_id, $label)
+                        ->in($payment->currency_code, (string) $payment->fx_rate),
+                ], $payment->currency_code),
                 memo: $label,
                 sourceType: 'invoice_application',
                 sourceId: $application->id,
