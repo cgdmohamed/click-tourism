@@ -16,6 +16,7 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -118,6 +119,9 @@ class InvoiceSettlementService
             }
             if ($invoice->type !== Invoice::TYPE_SUPPLIER_INVOICE || $invoice->party_type !== 'supplier') {
                 throw new DomainException('A supplier payment can only settle a supplier invoice.');
+            }
+            if (SupplierObligation::query()->where('invoice_id', $invoice->id)->exists()) {
+                throw new DomainException('Invoice is linked to an operational supplier obligation; settle or apply the advance through that obligation to prevent duplicate applications.');
             }
             $this->assertApplicable($invoice, $amount, $payment->branch_id, $payment->currency_code);
             if ((int) $invoice->party_id !== (int) $payment->supplier_id) {
