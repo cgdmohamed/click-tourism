@@ -42,8 +42,7 @@ jobs:
           php artisan key:generate
 
       - name: Check code style
-        run: |
-          vendor/bin/pint --test || { vendor/bin/pint; git diff -- app/Modules/Reports/Services/ReportService.php; exit 1; }
+        run: vendor/bin/pint --test
 
       - name: Run tests
         run: php artisan test
