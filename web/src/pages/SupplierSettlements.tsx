@@ -36,6 +36,7 @@ const emptyObligationForm = {
   amount: '',
   currency: 'EGP',
   invoice_reference: '',
+  invoice_id: '',
 }
 
 const emptyPaymentForm = {
@@ -55,6 +56,8 @@ export default function SupplierSettlements() {
   const [tab, setTab] = useState<Tab>('obligations')
   const [error, setError] = useState('')
   const [invoiceTarget, setInvoiceTarget] = useState<ApplyTarget | null>(null)
+  const [recognizeTarget, setRecognizeTarget] = useState<SupplierObligation | null>(null)
+  const [recognizeInvoiceId, setRecognizeInvoiceId] = useState('')
 
   const [obligationOpen, setObligationOpen] = useState(false)
   const [obligationForm, setObligationForm] = useState(emptyObligationForm)
@@ -77,6 +80,23 @@ export default function SupplierSettlements() {
       return data
     },
   })
+
+  const issuedInvoicesQuery = useQuery({
+    queryKey: ['issued-supplier-invoices', activeBranch?.id],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: Array<{ id: string; number: string; party?: { id: string }; currency: string; total_minor: number; outstanding_minor: number }> }>('/invoices', {
+        params: { type: 'supplier_invoice', status: 'issued', per_page: 100 },
+      })
+      return data.data
+    },
+    enabled: obligationOpen || recognizeTarget !== null,
+  })
+
+  const invoiceOptions = (supplierId: string, currency: string, amountMinor: number) =>
+    (issuedInvoicesQuery.data ?? [])
+      .filter((invoice) => invoice.party?.id === supplierId && invoice.currency === currency
+        && invoice.total_minor === amountMinor && invoice.outstanding_minor === amountMinor)
+      .map((invoice) => ({ value: invoice.id, label: invoice.number }))
 
   const paymentsQuery = useQuery({
     queryKey: ['supplier-payments', 'list', paymentPage, activeBranch?.id],
@@ -142,14 +162,14 @@ export default function SupplierSettlements() {
     () =>
       (applyObligationsQuery.data ?? []).filter(
         (obligation) =>
-          obligation.status !== 'paid' &&
+          obligation.status !== 'paid' && obligation.accounting_status === 'recognized' &&
           (!applyPayment || obligation.currency === applyPayment.currency),
       ),
     [applyObligationsQuery.data, applyPayment],
   )
 
   const paymentObligations = useMemo(
-    () => (paymentObligationsQuery.data ?? []).filter((obligation) => obligation.status !== 'paid'),
+    () => (paymentObligationsQuery.data ?? []).filter((obligation) => obligation.status !== 'paid' && obligation.accounting_status === 'recognized'),
     [paymentObligationsQuery.data],
   )
 
@@ -167,6 +187,7 @@ export default function SupplierSettlements() {
         amount_minor: toMinor(obligationForm.amount, obligationForm.currency),
         currency: obligationForm.currency,
         invoice_reference: obligationForm.invoice_reference || null,
+        invoice_id: obligationForm.invoice_id || null,
       }
       const { data } = await api.post<{ data: SupplierObligation }>('/supplier-obligations', payload)
       return data.data
@@ -175,6 +196,20 @@ export default function SupplierSettlements() {
       setObligationOpen(false)
       setError('')
       setObligationForm(emptyObligationForm)
+      await invalidate()
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+
+  const recognizeObligation = useMutation({
+    mutationFn: async () => {
+      if (!recognizeTarget || !recognizeInvoiceId) throw new Error('Select an issued invoice')
+      await api.post(`/supplier-obligations/${recognizeTarget.id}/recognize`, { invoice_id: recognizeInvoiceId })
+    },
+    onSuccess: async () => {
+      setRecognizeTarget(null)
+      setRecognizeInvoiceId('')
+      setError('')
       await invalidate()
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -314,7 +349,7 @@ export default function SupplierSettlements() {
       {tab === 'obligations' ? (
         <Card>
           <div className="border-b border-border-subtle px-5 py-3 text-small text-text-subtle">
-            {L('تنبيه محاسبي: هذه التزامات تشغيلية غير مُرحّلة للأستاذ العام. لا تعتبرها أرصدة موردين محاسبية معتمدة حتى يتم ربطها بمستند استحقاق مُرحّل.', 'Accounting notice: these are operational obligations not posted to the general ledger. Do not treat them as recognized payables without a posted accrual document.')}
+            {L('الالتزام يبدأ كسجل تشغيلي. يُعترف بالدين فقط عند ربطه بفاتورة مورد صادرة ومُرحّلة؛ لن ينشئ الربط قيدًا محاسبيًا ثانيًا.', 'Obligations start operational. AP is recognized only after linking an issued, posted supplier invoice; linking never posts a second journal.')}
           </div>
           {obligationsQuery.isLoading ? <Loading /> : null}
           {obligationsQuery.isError ? (
@@ -341,6 +376,7 @@ export default function SupplierSettlements() {
                     <Td dir="ltr">{obligation.invoice_reference ?? '—'}</Td>
                     <Td>
                       <Badge tone={statusTone(obligation.status)}>{statusLabel(obligation.status)}</Badge>
+                      <div className="mt-1 text-small text-text-subtle">{obligation.accounting_status === 'recognized' ? L('مُعترف به محاسبيًا', 'Recognized in GL') : L('غير مُرحّل', 'Not posted')}</div>
                     </Td>
                     <Td className="text-end tabular">
                       {toDecimal(obligation.amount_minor, obligation.currency)} {obligation.currency}
@@ -352,7 +388,12 @@ export default function SupplierSettlements() {
                       {toDecimal(obligation.balance_minor, obligation.currency)} {obligation.currency}
                     </Td>
                     <Td>
-                      {obligation.balance_minor > 0 && can('supplier_payments.create') ? (
+                      {obligation.accounting_status !== 'recognized' && obligation.paid_minor === 0 && can('supplier_obligations.create') ? (
+                        <Button variant="secondary" onClick={() => { setError(''); setRecognizeTarget(obligation); setRecognizeInvoiceId('') }}>
+                          {L('ربط فاتورة مُرحّلة', 'Link posted invoice')}
+                        </Button>
+                      ) : null}
+                      {obligation.accounting_status === 'recognized' && obligation.balance_minor > 0 && can('supplier_payments.create') ? (
                         <Button variant="secondary" onClick={() => startPayment(obligation)}>
                           {t('pay')}
                         </Button>
@@ -491,8 +532,40 @@ export default function SupplierSettlements() {
               dir="ltr"
             />
           </Field>
+          <Field label={L('فاتورة مورد صادرة (اختياري)', 'Posted supplier invoice (optional)')}>
+            <SearchableSelect
+              value={obligationForm.invoice_id}
+              onChange={(invoice_id) => setObligationForm({ ...obligationForm, invoice_id })}
+              options={invoiceOptions(obligationForm.supplier_id, obligationForm.currency, toMinor(obligationForm.amount || '0', obligationForm.currency))}
+              placeholder={L('بدون ربط — التزام تشغيلي فقط', 'Unlinked — operational only')}
+            />
+          </Field>
         </div>
         {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+      </Modal>
+
+      <Modal
+        open={recognizeTarget !== null}
+        title={L('ربط التزام بفاتورة مُرحّلة', 'Link obligation to posted invoice')}
+        onClose={() => setRecognizeTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRecognizeTarget(null)}>{t('cancel')}</Button>
+            <Button disabled={!recognizeInvoiceId || recognizeObligation.isPending} onClick={() => recognizeObligation.mutate()}>
+              {L('ربط دون إنشاء قيد جديد', 'Link without new posting')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={L('فاتورة المورد المعتمدة والمُصدرة', 'Issued supplier invoice')} required>
+          <SearchableSelect
+            value={recognizeInvoiceId}
+            onChange={setRecognizeInvoiceId}
+            options={recognizeTarget ? invoiceOptions(recognizeTarget.supplier_id ?? '', recognizeTarget.currency, recognizeTarget.amount_minor) : []}
+            placeholder={L('اختر فاتورة مطابقة', 'Choose matching invoice')}
+          />
+        </Field>
+        {error ? <p className="mt-3 text-small text-danger-text">{error}</p> : null}
       </Modal>
 
       <Modal
