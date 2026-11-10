@@ -4,6 +4,7 @@ namespace App\Modules\Payments\Models;
 
 use App\Modules\Bookings\Models\BookingItem;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Supplier;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,7 @@ class SupplierObligation extends Model
         'supplier_id',
         'booking_item_id',
         'branch_id',
+        'invoice_id',
         'amount_minor',
         'currency_code',
         'invoice_reference',
@@ -27,6 +29,11 @@ class SupplierObligation extends Model
         return [
             'amount_minor' => 'integer',
         ];
+    }
+
+    public function invoice()
+    {
+        return $this->belongsTo(Invoice::class);
     }
 
     public function supplier()
@@ -95,7 +102,9 @@ class SupplierObligation extends Model
             'invoice_reference' => $this->invoice_reference,
             'status' => $this->status,
             // Explicitly distinguish operational obligations from recognized GL payables.
-            'accounting_status' => 'unposted',
+            'accounting_status' => $this->invoice_id !== null && $this->invoice?->status === Invoice::STATUS_ISSUED
+                ? 'recognized' : 'unposted',
+            'invoice_id' => $this->invoice?->public_id,
         ];
     }
 }
