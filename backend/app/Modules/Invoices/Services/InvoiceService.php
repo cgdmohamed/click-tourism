@@ -168,6 +168,8 @@ class InvoiceService
                     'invoice_id' => $invoice->id,
                     'account_id' => $line['account_id'],
                     'description' => $line['description'],
+                    'quantity' => $line['quantity'],
+                    'unit_price_minor' => $line['unit_price_minor'],
                     'debit_minor' => $line['debit_minor'],
                     'credit_minor' => $line['credit_minor'],
                     'tax_minor' => $line['tax_minor'],
@@ -412,6 +414,13 @@ class InvoiceService
                 throw new DomainException("Line {$position}: enter exactly one of debit or credit, greater than zero.");
             }
 
+            $quantity = (int) ($raw['quantity'] ?? 1);
+            $unitPrice = array_key_exists('unit_price_minor', $raw)
+                ? (int) $raw['unit_price_minor'] : null;
+            if ($quantity < 1 || ($unitPrice !== null && ($unitPrice <= 0 || $quantity * $unitPrice !== $debit + $credit))) {
+                throw new DomainException("Line {$position}: quantity and unit price must match the line amount.");
+            }
+
             $tax = (int) ($raw['tax_minor'] ?? 0);
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
@@ -430,6 +439,8 @@ class InvoiceService
             $lines[] = [
                 'account_id' => $account->id,
                 'description' => $raw['description'] ?? null,
+                'quantity' => $quantity,
+                'unit_price_minor' => $unitPrice,
                 'debit_minor' => $debit,
                 'credit_minor' => $credit,
                 'tax_minor' => $tax,

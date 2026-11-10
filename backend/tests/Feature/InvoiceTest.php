@@ -216,6 +216,34 @@ class InvoiceTest extends TestCase
         $this->assertSame(0, $this->balance('4100'));
     }
 
+    public function test_simple_invoice_line_preserves_quantity_and_unit_price(): void
+    {
+        $payload = $this->customerInvoicePayload();
+        $payload['lines'][0]['quantity'] = 2;
+        $payload['lines'][0]['unit_price_minor'] = 50000;
+
+        $id = $this->create($payload)->assertCreated()
+            ->assertJsonPath('data.total_minor', 100000)
+            ->assertJsonPath('data.lines.0.quantity', 2)
+            ->assertJsonPath('data.lines.0.unit_price_minor', 50000)
+            ->json('data.id');
+
+        $this->postJson("/api/v1/invoices/{$id}/submit")->assertOk();
+        $this->postJson("/api/v1/invoices/{$id}/approve")->assertOk();
+        $this->postJson("/api/v1/invoices/{$id}/issue")->assertOk();
+        $this->assertSame(-100000, $this->balance('4100'));
+    }
+
+    public function test_invoice_rejects_quantity_price_amount_mismatch(): void
+    {
+        $payload = $this->customerInvoicePayload();
+        $payload['lines'][0]['quantity'] = 2;
+        $payload['lines'][0]['unit_price_minor'] = 40000;
+
+        $this->create($payload)->assertStatus(422);
+        $this->assertSame(0, Invoice::query()->count());
+    }
+
     public function test_validation_and_business_rules(): void
     {
         $this->create([])->assertStatus(422);

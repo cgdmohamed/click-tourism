@@ -31,6 +31,8 @@ type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
   account: { code: string; name_ar: string; name_en: string } | null
   description: string | null
+  quantity?: number
+  unit_price_minor?: number | null
   debit_minor: number
   credit_minor: number
   tax_minor: number
@@ -59,6 +61,8 @@ type CurrencyRow = { code: string; is_active: boolean }
 const emptyLine = {
   account_id: '',
   description: '',
+  quantity: '1',
+  unit_price: '',
   debit: '',
   credit: '',
   tax: '',
@@ -88,6 +92,7 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  const [simpleMode, setSimpleMode] = useState(true)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [creditId, setCreditId] = useState<string | null>(null)
@@ -167,6 +172,13 @@ export default function Invoices() {
   const accountOptions = (accountsQuery.data ?? [])
     .filter((a) => a.is_postable && a.is_active)
     .map((a) => ({ value: a.id, label: `${a.code} — ${locale === 'ar' ? a.name_ar : a.name_en}` }))
+  const defaultRevenueAccount = (accountsQuery.data ?? [])
+    .find((a) => a.code === '4100' && a.is_active && a.is_postable)
+    ?? (accountsQuery.data ?? []).find((a) => a.type === 'revenue' && a.is_active && a.is_postable)
+  const defaultCostAccount = (accountsQuery.data ?? [])
+    .find((a) => a.code === '5100' && a.is_active && a.is_postable)
+    ?? (accountsQuery.data ?? []).find((a) => a.type === 'expense' && a.is_active && a.is_postable)
+  const defaultLineAccount = form.type === 'customer_invoice' ? defaultRevenueAccount : defaultCostAccount
 
   const data = invoicesQuery.data
   const isCustomer = form.type === 'customer_invoice'
@@ -188,7 +200,9 @@ export default function Invoices() {
     })
 
   const lineSubtotal = (line: typeof emptyLine) =>
-    toMinor(line.debit || '0', form.currency) + toMinor(line.credit || '0', form.currency)
+    simpleMode
+      ? (Number(line.quantity) || 0) * toMinor(line.unit_price || '0', form.currency)
+      : toMinor(line.debit || '0', form.currency) + toMinor(line.credit || '0', form.currency)
 
   const formSubtotal = form.lines.reduce((sum, line) => sum + lineSubtotal(line), 0)
   const formTax = form.lines.reduce((sum, line) => sum + toMinor(line.tax || '0', form.currency), 0)
@@ -196,6 +210,39 @@ export default function Invoices() {
 
   const create = useMutation({
     mutationFn: async (submit: boolean) => {
+      if (!form.party_id) throw new Error(L('اختر العميل أو المورد أولاً', 'Select a customer or supplier'))
+      if (simpleMode && !defaultLineAccount) {
+        throw new Error(L('لا يوجد حساب إيراد أو تكلفة مفعل. راجع إعدادات دليل الحسابات.', 'No active revenue or cost account is configured.'))
+      }
+      const lines = form.lines.map((line) => {
+        if (simpleMode) {
+          const quantity = Number(line.quantity)
+          const unitPrice = toMinor(line.unit_price || '0', form.currency)
+          if (!line.description.trim() || !Number.isSafeInteger(quantity) || quantity < 1 || unitPrice <= 0) {
+            throw new Error(L('أدخل وصف وكمية وسعر صحيح لكل بند.', 'Enter a valid description, quantity and price for each line.'))
+          }
+          const amount = quantity * unitPrice
+          if (!Number.isSafeInteger(amount)) throw new Error(L('المبلغ كبير جدًا', 'Amount is too large'))
+          return {
+            account_id: defaultLineAccount!.id,
+            description: line.description,
+            quantity,
+            unit_price_minor: unitPrice,
+            debit_minor: form.type === 'supplier_invoice' ? amount : 0,
+            credit_minor: form.type === 'customer_invoice' ? amount : 0,
+            tax_minor: toMinor(line.tax || '0', form.currency),
+          }
+        }
+        if (!line.account_id) throw new Error(L('اختر حساب كل بند', 'Select an account for every line'))
+        return {
+          account_id: line.account_id,
+          description: line.description || undefined,
+          debit_minor: toMinor(line.debit || '0', form.currency),
+          credit_minor: toMinor(line.credit || '0', form.currency),
+          tax_minor: toMinor(line.tax || '0', form.currency),
+          tax_account_id: line.tax_account_id || undefined,
+        }
+      })
       await api.post(
         '/invoices',
         {
@@ -206,16 +253,7 @@ export default function Invoices() {
           due_date: form.due_date || undefined,
           currency: form.currency,
           memo: form.memo || undefined,
-          lines: form.lines
-            .filter((line) => line.account_id)
-            .map((line) => ({
-              account_id: line.account_id,
-              description: line.description || undefined,
-              debit_minor: toMinor(line.debit || '0', form.currency),
-              credit_minor: toMinor(line.credit || '0', form.currency),
-              tax_minor: toMinor(line.tax || '0', form.currency),
-              tax_account_id: line.tax_account_id || undefined,
-            })),
+          lines,
           submit,
         },
         { headers: { 'Idempotency-Key': idempotencyKey() } },
@@ -375,7 +413,12 @@ export default function Invoices() {
             <Select
               value={form.type}
               onChange={(event) =>
-                setForm({ ...form, type: event.target.value as 'customer_invoice' | 'supplier_invoice', party_id: '' })
+                setForm({
+                  ...form,
+                  type: event.target.value as 'customer_invoice' | 'supplier_invoice',
+                  party_type: event.target.value === 'customer_invoice' ? 'customer' : 'supplier',
+                  party_id: '',
+                })
               }
             >
               <option value="customer_invoice">{L('فاتورة عميل', 'Customer invoice')}</option>
@@ -423,53 +466,112 @@ export default function Invoices() {
         </div>
 
         <div className="mt-4 border-t border-border-subtle pt-4">
-          <h3 className="text-medium mb-3">{L('بنود الفاتورة', 'Line items')}</h3>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-medium font-semibold">{L('بنود الفاتورة', 'Line items')}</h3>
+            <label className="flex items-center gap-2 text-small text-text-subtle">
+              <input type="checkbox" checked={!simpleMode} onChange={(event) => {
+                setSimpleMode(!event.target.checked)
+                setForm((current) => ({ ...current, lines: [{ ...emptyLine }] }))
+              }} />
+              {L('وضع محاسبي متقدم (مدين / دائن)', 'Advanced accounting mode (debit / credit)')}
+            </label>
+          </div>
+          {simpleMode ? (
+            <p className="mb-3 text-small text-text-subtle">
+              {L('أدخل الخدمة والكمية والسعر. سيتم اختيار حساب الإيراد أو التكلفة المناسب تلقائيًا.', 'Enter the service, quantity, and price. The configured revenue or cost account will be selected automatically.')}
+            </p>
+          ) : null}
           <div className="space-y-2">
             {form.lines.map((line, index) => (
               <div key={index} className="grid gap-2 rounded-12 border border-border-default p-3 sm:grid-cols-12">
-                <div className="sm:col-span-4">
-                  <SearchableSelect
-                    value={line.account_id}
-                    onChange={(value) => updateLine(index, { account_id: value })}
-                    options={accountOptions}
-                    placeholder={t('selectAccount')}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Input
-                    placeholder={t('description')}
-                    value={line.description}
-                    onChange={(event) => updateLine(index, { description: event.target.value })}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Input
-                    placeholder={t('debit')}
-                    value={line.debit}
-                    onChange={(event) => updateLine(index, { debit: event.target.value, credit: '' })}
-                    inputMode="decimal"
-                    dir="ltr"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Input
-                    placeholder={t('credit')}
-                    value={line.credit}
-                    onChange={(event) => updateLine(index, { credit: event.target.value, debit: '' })}
-                    inputMode="decimal"
-                    dir="ltr"
-                  />
-                </div>
-                <div className="sm:col-span-1">
-                  <Input
-                    placeholder={t('tax')}
-                    value={line.tax}
-                    onChange={(event) => updateLine(index, { tax: event.target.value })}
-                    inputMode="decimal"
-                    dir="ltr"
-                  />
-                </div>
-                <div className="flex justify-end sm:col-span-1">
+                {simpleMode ? (
+                  <>
+                    <div className="sm:col-span-5">
+                      <Field label={L('الخدمة أو الوصف', 'Service / description')} required>
+                        <Input
+                          value={line.description}
+                          onChange={(event) => updateLine(index, { description: event.target.value })}
+                          placeholder={L('مثال: حجز فندق', 'e.g. Hotel booking')}
+                        />
+                      </Field>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Field label={L('الكمية', 'Quantity')} required>
+                        <Input
+                          value={line.quantity}
+                          onChange={(event) => updateLine(index, { quantity: event.target.value })}
+                          type="number"
+                          min="1"
+                          step="1"
+                          dir="ltr"
+                        />
+                      </Field>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Field label={L('سعر الوحدة', 'Unit price')} required>
+                        <Input
+                          value={line.unit_price}
+                          onChange={(event) => updateLine(index, { unit_price: event.target.value })}
+                          inputMode="decimal"
+                          dir="ltr"
+                        />
+                      </Field>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Field label={L('الضريبة (مبلغ)', 'Tax amount')}>
+                        <Input
+                          value={line.tax}
+                          onChange={(event) => updateLine(index, { tax: event.target.value })}
+                          inputMode="decimal"
+                          dir="ltr"
+                        />
+                      </Field>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="sm:col-span-4">
+                      <SearchableSelect
+                        value={line.account_id}
+                        onChange={(value) => updateLine(index, { account_id: value })}
+                        options={accountOptions}
+                        placeholder={t('selectAccount')}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Input
+                        placeholder={t('description')}
+                        value={line.description}
+                        onChange={(event) => updateLine(index, { description: event.target.value })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Input
+                        placeholder={t('debit')}
+                        value={line.debit}
+                        onChange={(event) => updateLine(index, { debit: event.target.value, credit: '' })}
+                        inputMode="decimal" dir="ltr"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Input
+                        placeholder={t('credit')}
+                        value={line.credit}
+                        onChange={(event) => updateLine(index, { credit: event.target.value, debit: '' })}
+                        inputMode="decimal" dir="ltr"
+                      />
+                    </div>
+                    <div className="sm:col-span-1">
+                      <Input
+                        placeholder={t('tax')}
+                        value={line.tax}
+                        onChange={(event) => updateLine(index, { tax: event.target.value })}
+                        inputMode="decimal" dir="ltr"
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="flex items-end justify-end sm:col-span-1">
                   <IconButton icon="x" label={t('removeLine')} onClick={() => removeLine(index)} />
                 </div>
               </div>

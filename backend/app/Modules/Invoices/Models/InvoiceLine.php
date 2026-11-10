@@ -12,6 +12,8 @@ class InvoiceLine extends Model
         'invoice_id',
         'account_id',
         'description',
+        'quantity',
+        'unit_price_minor',
         'debit_minor',
         'credit_minor',
         'tax_minor',
@@ -23,6 +25,8 @@ class InvoiceLine extends Model
     protected function casts(): array
     {
         return [
+            'quantity' => 'integer',
+            'unit_price_minor' => 'integer',
             'debit_minor' => 'integer',
             'credit_minor' => 'integer',
             'tax_minor' => 'integer',
@@ -44,6 +48,8 @@ class InvoiceLine extends Model
         return [
             'account' => $this->account?->toApiArray(),
             'description' => $this->description,
+            'quantity' => $this->quantity,
+            'unit_price_minor' => $this->unit_price_minor,
             'debit_minor' => $this->debit_minor,
             'credit_minor' => $this->credit_minor,
             'tax_minor' => $this->tax_minor,
