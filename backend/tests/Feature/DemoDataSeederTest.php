@@ -20,6 +20,7 @@ use App\Modules\Reports\Services\ReportService;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -31,12 +32,19 @@ class DemoDataSeederTest extends TestCase
     {
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
+        Permission::query()->firstOrCreate(
+            ['name' => 'accounts.post', 'guard_name' => 'web']
+        );
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $owner = User::query()->where('email', 'sales@example.com')->first();
         if ($owner) {
             $owner->givePermissionTo('accounts.post');
         }
+        // Demo data creates both bookings and invoices. Disable booking
+        // auto-posting so revenue is recognized only through invoices,
+        // avoiding double revenue recognition.
         app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'false');
         (new DemoDataSeeder(force: true))->run();
     }
 
