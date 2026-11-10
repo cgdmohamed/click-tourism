@@ -353,6 +353,28 @@ class SupplierSettlementTest extends TestCase
 
         $obligationId = $created->json('data.id');
 
+        // An operational obligation must first reference a genuinely posted
+        // supplier invoice; recognition adds NO second GL accrual.
+        $invoiceService = app(InvoiceService::class);
+        $invoice = $invoiceService->create([
+            'type' => 'supplier_invoice',
+            'party_type' => 'supplier',
+            'party_id' => $this->testSupplier->public_id,
+            'issue_date' => now()->toDateString(),
+            'currency' => 'EGP',
+            'lines' => [[
+                'account_id' => $this->account('5100')->public_id,
+                'debit_minor' => 25000,
+            ]],
+        ], $this->branch, $this->user->id);
+        $invoiceService->submit($invoice, $this->user->id);
+        $invoiceService->approve($invoice, $this->user->id);
+        $invoiceService->issue($invoice, $this->user->id);
+
+        $this->postJson('/api/v1/supplier-obligations/'.$obligationId.'/recognize', [
+            'invoice_id' => $invoice->public_id,
+        ])->assertOk()->assertJsonPath('data.accounting_status', 'recognized');
+
         $this->withHeader('Idempotency-Key', 'api-supplier-payment-1')
             ->postJson('/api/v1/supplier-payments', [
                 'supplier_id' => $this->testSupplier->public_id,
