@@ -45,7 +45,8 @@ tar -czf "backups/storage-$(date +%Y%m%d-%H%M%S).tar.gz" -C backend storage/app
 
 ### Configuration
 
-Back up `.env` and any custom nginx/supervisor configs:
+Back up `.env` and any custom nginx/supervisor configs, but **encrypt these
+copies before sending them offsite** because they contain credentials:
 
 ```bash
 cp .env "backups/env-$(date +%Y%m%d).bak"
@@ -61,11 +62,12 @@ cp deploy/nginx/backend.conf "backups/nginx-$(date +%Y%m%d).bak"
 
 ## 2. Restore Procedure
 
-### 1. Stop the application
+### 1. Prepare an isolated restore environment
 
-```bash
-docker compose stop backend api web
-```
+Run this drill on a separate staging Docker Compose installation using a copy
+of the production backup. **Do not stop the live production application** for
+routine restore testing. The commands below assume the staging database service
+is running, with no live application pointed at the restore target.
 
 ### 2. Restore into a separate database for verification
 
