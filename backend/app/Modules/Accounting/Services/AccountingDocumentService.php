@@ -455,6 +455,11 @@ class AccountingDocumentService
      */
     private function simpleSettlementLines(array $data, Branch $branch, string $currency, ?string $partyType, ?int $partyId): array
     {
+        // Without an issued invoice we cannot determine the carrying value
+        // of foreign AR/AP. Never silently settle it at today's FX rate.
+        if (strtoupper($currency) !== $this->settings->baseCurrency()) {
+            throw new DomainException('Foreign-currency settlements must use the issued-invoice payment workflow to calculate realized FX gains and losses.');
+        }
         $type = $data['type'] ?? null;
         $expectedParty = match ($type) {
             AccountingDocument::TYPE_RECEIPT_VOUCHER => 'customer',
