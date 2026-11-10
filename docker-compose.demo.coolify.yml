@@ -37,7 +37,7 @@ services:
       FRONTEND_URL: ${DEMO_URL:?Set the demo URL}
       APP_TIMEZONE: Africa/Cairo
       APP_LOCALE: ar
-      LOG_CHANNEL: stderr
+      LOG_CHANNEL: "null"
       LOG_LEVEL: error
       DB_CONNECTION: pgsql
       DB_HOST: demo-db
@@ -63,8 +63,9 @@ services:
       META_APP_SECRET: ""
       WHATSAPP_ACCESS_TOKEN: ""
       WHATSAPP_APP_SECRET: ""
+    volumes:
+      - demo_uploads:/var/www/html/storage/app
     tmpfs:
-      - /var/www/html/storage/app:rw,size=128m,uid=82,gid=82
       - /var/www/html/storage/logs:rw,size=16m,uid=82,gid=82
     depends_on:
       demo-db: { condition: service_healthy }
@@ -74,6 +75,8 @@ services:
     build: { context: ., dockerfile: deploy/Dockerfile.api }
     restart: unless-stopped
     depends_on: [backend]
+    volumes:
+      - demo_uploads:/var/www/html/storage/app:ro
     expose: ["8000"]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/ready"]
@@ -87,3 +90,12 @@ services:
     depends_on:
       api: { condition: service_healthy }
     expose: ["80"]
+
+volumes:
+  # Shared backend/API upload storage, mounted as RAM-only tmpfs by Docker.
+  demo_uploads:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=128m,uid=82,gid=82"
