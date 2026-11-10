@@ -19,6 +19,7 @@ class Payment extends Model
         'booking_id',
         'branch_id',
         'method',
+        'payment_method_id',
         'cash_account_id',
         'amount_minor',
         'currency_code',
@@ -62,6 +63,11 @@ class Payment extends Model
         return $this->belongsTo(Account::class, 'cash_account_id');
     }
 
+    public function paymentMethod()
+    {
+        return $this->belongsTo(PaymentMethod::class);
+    }
+
     public function branch()
     {
         return $this->belongsTo(Branch::class);
@@ -77,6 +83,8 @@ class Payment extends Model
             'booking_id' => $this->booking?->public_id,
             'branch_id' => $this->branch?->public_id,
             'method' => $this->method,
+            'payment_method_id' => $this->payment_method_id,
+            'payment_method' => $this->paymentMethod?->toApiArray(),
             'amount_minor' => (int) $this->amount_minor,
             'unallocated_minor' => (int) $this->unallocated_minor,
             'currency' => $this->currency_code,

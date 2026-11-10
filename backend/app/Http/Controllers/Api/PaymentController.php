@@ -52,6 +52,7 @@ class PaymentController extends ApiController
             'branch_id' => ['required', 'string'],
             'cash_account_id' => ['required', 'string'],
             'method' => ['nullable', 'in:cash,bank_transfer,card,wallet'],
+            'payment_method_id' => ['nullable', 'string'],
             'amount_minor' => ['required', 'integer', 'min:1'],
             'currency' => ['required', 'string', 'size:3'],
             'fx_rate' => ['nullable', 'string'],

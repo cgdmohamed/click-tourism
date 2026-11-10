@@ -202,6 +202,12 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/fixed-assets/reconciliation', [FixedAssetReportController::class, 'reconciliation'])->middleware('permission:assets.view');
         Route::get('reports/fixed-assets/schedule', [FixedAssetReportController::class, 'schedule'])->middleware('permission:assets.view');
 
+        Route::get('accounts', [AccountController::class, 'index'])->middleware('permission:accounts.view');
+        Route::post('accounts', [AccountController::class, 'store'])->middleware('permission:accounts.create');
+        Route::patch('accounts/{account}', [AccountController::class, 'update'])->middleware('permission:accounts.update');
+        Route::get('accounts/export', [AccountController::class, 'export'])->middleware('permission:accounts.view');
+        Route::post('accounts/import', [AccountController::class, 'import'])->middleware('permission:accounts.update');
+
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');
         Route::get('customers/{customer}', [CustomerController::class, 'show'])->middleware('permission:customers.view');
@@ -232,6 +238,10 @@ Route::prefix('v1')->group(function () {
         Route::get('payments', [PaymentController::class, 'index'])->middleware('permission:payments.view');
         Route::post('payments', [PaymentController::class, 'store'])->middleware(['permission:payments.create', 'idempotent']);
         Route::get('payments/{payment}', [PaymentController::class, 'show'])->middleware('permission:payments.view');
+
+        Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:payments.view');
+        Route::post('payment-methods', [PaymentMethodController::class, 'store'])->middleware(['permission:payments.create']);
+        Route::patch('payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])->middleware(['permission:payments.create']);
 
         Route::get('refunds', [RefundController::class, 'index'])->middleware('permission:payments.view');
         Route::post('refunds', [RefundController::class, 'store'])->middleware(['permission:refunds.create', 'idempotent']);

@@ -84,6 +84,17 @@ export type Supplier = {
   is_active: boolean
 }
 
+export type PaymentMethod = {
+  id: string
+  code: string
+  name_ar: string
+  name_en: string
+  type: string
+  default_cash_account_id: string | null
+  default_cash_account: any | null
+  is_active: boolean
+}
+
 export type BookingItem = {
   id?: string
   service_type: 'flight' | 'hotel' | 'transport' | 'visa' | 'program' | 'other'
@@ -130,6 +141,9 @@ export type Payment = {
   booking_id?: string | null
   branch_id: string
   method: 'cash' | 'bank_transfer' | 'card' | 'wallet'
+  payment_method_id: string | null
+  payment_method?: PaymentMethod
+  cash_account_id: string
   amount_minor: number
   unallocated_minor: number
   currency: string

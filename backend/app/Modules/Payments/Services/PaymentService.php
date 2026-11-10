@@ -17,6 +17,7 @@ use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\PaymentAllocation;
+use App\Modules\Payments\Models\PaymentMethod;
 use App\Modules\Payments\Models\Refund;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -85,12 +86,26 @@ class PaymentService
                 throw new DomainException('Allocated amount exceeds the payment amount.');
             }
 
+            $paymentMethodId = $data['payment_method_id'] ?? null;
+            if ($paymentMethodId) {
+                $methodRecord = PaymentMethod::query()->where('public_id', $paymentMethodId)->first();
+                if ($methodRecord) {
+                    $method = $methodRecord->code;
+                    if ($data['cash_account_id'] ?? null) {
+                        // keep explicit cash account
+                    } elseif ($methodRecord->default_cash_account_id) {
+                        $cashAccount = Account::query()->find($methodRecord->default_cash_account_id);
+                    }
+                }
+            }
+
             $payment = Payment::query()->create([
                 'number' => $this->sequences->next('payment', $branch),
                 'customer_id' => $customer->id,
                 'booking_id' => $booking?->id,
                 'branch_id' => $branch->id,
                 'method' => $data['method'] ?? 'cash',
+                'payment_method_id' => $paymentMethodId,
                 'cash_account_id' => $cashAccount->id,
                 'amount_minor' => $amount,
                 'currency_code' => $currency,

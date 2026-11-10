@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import type { Booking, Customer, Paginated, Payment } from '../lib/types'
+import type { PaymentMethod } from '../lib/types'
 import {
   Badge,
   Button,
@@ -42,6 +43,7 @@ export default function Payments() {
     customer_id: '',
     booking_id: '',
     cash_account_id: '',
+    payment_method_id: '',
     method: 'cash',
     amount: '',
     currency: 'EGP',
@@ -90,6 +92,14 @@ export default function Payments() {
     },
   })
 
+  const methodsQuery = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PaymentMethod[] }>('/payment-methods')
+      return data.data
+    },
+  })
+
   const customerBookings = useMemo(
     () => (bookingsQuery.data ?? []).filter((booking) => !form.customer_id || booking.customer_id === form.customer_id),
     [bookingsQuery.data, form.customer_id],
@@ -104,6 +114,7 @@ export default function Payments() {
         booking_id: form.booking_id || null,
         branch_id: activeBranch.id,
         cash_account_id: form.cash_account_id,
+        payment_method_id: form.payment_method_id || null,
         method: form.method,
         amount_minor: amountMinor,
         currency: form.currency,
@@ -119,12 +130,34 @@ export default function Payments() {
     onSuccess: async () => {
       setOpen(false)
       setError('')
-      setForm({ customer_id: '', booking_id: '', cash_account_id: '', method: 'cash', amount: '', currency: 'EGP', paid_at: todayISO(), fx_rate: '1' })
+      setForm({
+        customer_id: '',
+        booking_id: '',
+        cash_account_id: '',
+        payment_method_id: '',
+        method: 'cash',
+        amount: '',
+        currency: 'EGP',
+        paid_at: todayISO(),
+        fx_rate: '1',
+      })
       await queryClient.invalidateQueries({ queryKey: ['payments'] })
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
     },
     onError: (cause) => setError(errorMessage(cause)),
   })
+
+  const handleMethodChange = (method: string) => {
+    setForm({ ...form, method })
+    // Auto-select default cash account from the selected payment method
+    const selectedMethod = (methodsQuery.data ?? []).find((m) => m.code === method || m.name_en === method)
+    if (selectedMethod?.default_cash_account_id) {
+      const account = (cashQuery.data ?? []).find((a) => a.id === selectedMethod.default_cash_account_id)
+      if (account) {
+        setForm({ ...form, cash_account_id: account.id })
+      }
+    }
+  }
 
   return (
     <div>
@@ -171,7 +204,7 @@ export default function Payments() {
                   <Td className="font-medium">{payment.number}</Td>
                   <Td>{formatDate(payment.paid_at, locale)}</Td>
                   <Td>{payment.customer ? (locale === 'ar' ? payment.customer.name_ar : payment.customer.name_en) : payment.customer_id}</Td>
-                  <Td>{payment.method}</Td>
+                  <Td>{payment.payment_method?.name_ar || payment.method}</Td>
                   <Td>
                     <Badge tone={statusTone(payment.status)}>{payment.status}</Badge>
                   </Td>
@@ -245,7 +278,7 @@ export default function Payments() {
             />
           </Field>
           <Field label={t('paymentMethod')}>
-            <Select value={form.method} onChange={(event) => setForm({ ...form, method: event.target.value })}>
+            <Select value={form.method} onChange={(event) => handleMethodChange(event.target.value)}>
               <option value="cash">{t('cash')}</option>
               <option value="bank_transfer">{t('bankTransfer')}</option>
               <option value="card">{t('card')}</option>
