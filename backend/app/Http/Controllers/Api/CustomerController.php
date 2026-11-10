@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Services\PartyProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -31,6 +32,15 @@ class CustomerController extends ApiController
         $customers->getCollection()->transform(fn (Customer $customer) => $customer->toApiArray());
 
         return $this->paginated($customers);
+    }
+
+    public function show(Request $request, Customer $customer, PartyProfileService $profiles): JsonResponse
+    {
+        $this->authorizeBranchId($customer->branch_id);
+
+        [$from, $to] = $this->profileRange($request);
+
+        return $this->ok($profiles->customer($customer, $this->branch(), $from, $to));
     }
 
     public function store(Request $request, AuditService $audit): JsonResponse

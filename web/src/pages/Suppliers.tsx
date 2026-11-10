@@ -1,21 +1,15 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { supplierCategories, supplierCategoryLabel } from '../lib/labels'
 import type { Paginated, Supplier } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
+import { Icon } from '../components/icons'
 
-const categories = [
-  { value: 'airline', ar: 'شركة طيران', en: 'Airline' },
-  { value: 'hotel_eg', ar: 'فندق داخل مصر', en: 'Hotel (Egypt)' },
-  { value: 'hotel_sa', ar: 'فندق داخل السعودية', en: 'Hotel (Saudi)' },
-  { value: 'transport', ar: 'شركة نقل', en: 'Transport' },
-  { value: 'visa', ar: 'شركة تأشيرات', en: 'Visa' },
-  { value: 'agent', ar: 'وكيل', en: 'Agent' },
-  { value: 'other', ar: 'أخرى', en: 'Other' },
-]
+const categories = supplierCategories
 
 export default function Suppliers() {
   const { t, locale } = useI18n()
@@ -68,10 +62,7 @@ export default function Suppliers() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
-  const categoryLabel = (value: string) => {
-    const found = categories.find((category) => category.value === value)
-    return found ? (locale === 'ar' ? found.ar : found.en) : value
-  }
+  const categoryLabel = (value: string) => supplierCategoryLabel(value, locale)
 
   return (
     <div>
@@ -106,13 +97,16 @@ export default function Suppliers() {
                 <Th>{t('phone')}</Th>
                 <Th>{t('currency')}</Th>
                 <Th>{t('status')}</Th>
+                <Th className="text-end">{t('actions')}</Th>
               </tr>
             </thead>
             <tbody>
               {suppliers.map((supplier) => (
                 <tr key={supplier.id}>
                   <Td>
-                    <p className="font-medium">{locale === 'ar' ? supplier.name_ar : supplier.name_en}</p>
+                    <Link to={`/suppliers/${supplier.id}`} className="font-medium text-brand-1-accent hover:underline">
+                      {locale === 'ar' ? supplier.name_ar : supplier.name_en}
+                    </Link>
                     <p className="text-xs text-text-subtle">{locale === 'ar' ? supplier.name_en : supplier.name_ar}</p>
                   </Td>
                   <Td>{categoryLabel(supplier.category)}</Td>
@@ -122,6 +116,12 @@ export default function Suppliers() {
                     <Badge tone={supplier.is_active ? 'positive' : 'neutral'}>
                       {supplier.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
                     </Badge>
+                  </Td>
+                  <Td className="text-end">
+                    <Link to={`/suppliers/${supplier.id}`} className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
+                      {t('viewProfile')}
+                      <Icon name="chevronRight" className="h-3.5 w-3.5" directional />
+                    </Link>
                   </Td>
                 </tr>
               ))}

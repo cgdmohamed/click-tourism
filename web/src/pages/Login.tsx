@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
+import { useTheme } from '../theme'
 import { Button, Field, IconButton, InlineNotice, Input } from '../components/ui'
 import { Icon } from '../components/icons'
 import { errorMessage } from '../lib/api'
@@ -9,6 +10,7 @@ import { errorMessage } from '../lib/api'
 export default function Login() {
   const { user, loading, login } = useAuth()
   const { t, locale, toggleLocale } = useI18n()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -47,14 +49,22 @@ export default function Login() {
               <p className="text-medium mt-1 text-text-subtle">{t('appTagline')}</p>
             </div>
           </div>
-          <button
-            className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle bg-surface-default px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered"
-            onClick={toggleLocale}
-            aria-label={t('language')}
-          >
-            <Icon name="globe" className="h-4 w-4" />
-            {locale === 'ar' ? 'EN' : 'عربي'}
-          </button>
+          <div className="flex items-center gap-2">
+            <IconButton
+              icon={theme === 'dark' ? 'sun' : 'moon'}
+              label={theme === 'dark' ? t('switchToLight') : t('switchToDark')}
+              variant="secondary"
+              onClick={toggleTheme}
+            />
+            <button
+              className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle bg-surface-default px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered"
+              onClick={toggleLocale}
+              aria-label={t('language')}
+            >
+              <Icon name="globe" className="h-4 w-4" />
+              {locale === 'ar' ? 'EN' : 'عربي'}
+            </button>
+          </div>
         </div>
 
         <form onSubmit={onSubmit} className="rounded-16 border border-border-subtle bg-surface-default p-6 shadow-2">

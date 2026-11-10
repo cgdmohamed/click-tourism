@@ -204,10 +204,12 @@ Route::prefix('v1')->group(function () {
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');
+        Route::get('customers/{customer}', [CustomerController::class, 'show'])->middleware('permission:customers.view');
         Route::patch('customers/{customer}', [CustomerController::class, 'update'])->middleware('permission:customers.update');
 
         Route::get('suppliers', [SupplierController::class, 'index'])->middleware('permission:suppliers.view');
         Route::post('suppliers', [SupplierController::class, 'store'])->middleware('permission:suppliers.create');
+        Route::get('suppliers/{supplier}', [SupplierController::class, 'show'])->middleware('permission:suppliers.view');
         Route::patch('suppliers/{supplier}', [SupplierController::class, 'update'])->middleware('permission:suppliers.update');
 
         Route::get('supplier-obligations', [SupplierSettlementController::class, 'obligations'])->middleware('permission:supplier_obligations.view');

@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate } from '../lib/format'
+import { formatDate, formatDateTime } from '../lib/format'
 import type { Booking, Payment } from '../lib/types'
-import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Loading, Money, PageHeader, StatCard, Table, Td, Th, statusTone } from '../components/ui'
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, IconButton, Loading, Money, PageHeader, StatCard, Table, Td, Th, cx, statusTone } from '../components/ui'
 import { Icon } from '../components/icons'
 
 type Summary = {
@@ -32,11 +32,18 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader
-        title={`${t('welcome')}${user ? `، ${user.name}` : ''}`}
+        title={`${t('welcome')}${user ? `${locale === 'ar' ? '،' : ','} ${user.name}` : ''}`}
         subtitle={activeBranch ? (locale === 'ar' ? activeBranch.name_ar : activeBranch.name_en) : undefined}
         icon="dashboard"
         actions={
           <>
+            <IconButton
+              icon="refresh"
+              label={t('refresh')}
+              variant="secondary"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
+            />
             <Link to="/bookings">
               <Button icon="plus">{t('newBooking')}</Button>
             </Link>
@@ -54,6 +61,22 @@ export default function Dashboard() {
 
       {query.data ? (
         <div className="flex flex-col gap-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={cx(
+                  'h-2 w-2 rounded-full',
+                  query.isFetching ? 'animate-pulse bg-warning-text' : 'bg-success-text',
+                )}
+                aria-hidden="true"
+              />
+              <p className="text-small text-text-subtle">
+                {t('lastUpdated')}: {formatDateTime(new Date(query.dataUpdatedAt).toISOString(), locale)}
+              </p>
+            </div>
+            {query.isFetching ? <p className="text-small text-text-subtle">{t('loading')}</p> : null}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label={t('openBookings')} value={query.data.open_bookings} icon="calendar" />
             <StatCard label={t('confirmed')} value={query.data.confirmed_bookings} icon="checkCircle" />

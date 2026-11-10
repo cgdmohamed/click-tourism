@@ -207,3 +207,214 @@ export type ApiError = {
   errors?: Record<string, string[]>
   requestId?: string
 }
+
+export type Employee = {
+  id: string
+  internal_code: string
+  name_ar: string
+  name_en: string
+  category: 'staff' | 'executive' | 'driver' | 'other'
+  branch_id?: string | null
+  user_id?: string | number | null
+  phone?: string | null
+  email?: string | null
+  is_active: boolean
+  balance_minor?: number
+}
+
+export type EmployeeAdvance = {
+  id: string
+  employee_id: string
+  branch_id?: string | null
+  amount_minor: number
+  outstanding_minor: number
+  status: 'requested' | 'approved' | 'disbursed' | 'settled' | 'cancelled'
+  cash_account_id?: string | null
+  request_date: string
+  disbursed_date?: string | null
+  settled_date?: string | null
+  memo?: string | null
+}
+
+export type EmployeeCustody = {
+  id: string
+  employee_id: string
+  branch_id?: string | null
+  amount_minor: number
+  outstanding_minor: number
+  status: 'issued' | 'cleared' | 'returned' | 'closed'
+  cash_account_id?: string | null
+  item_description?: string | null
+  issue_date: string
+  returned_date?: string | null
+  memo?: string | null
+}
+
+export type EmployeeTransaction = {
+  id: string
+  employee_id: string
+  branch_id?: string | null
+  type: string
+  reference?: string | null
+  journal_entry_id?: string | null
+  source_type?: string | null
+  source_id?: number | null
+  transaction_date: string
+  currency: string
+  fx_rate: string
+  amount_minor: number
+  balance_minor: number
+  memo?: string | null
+  created_by?: string | number | null
+}
+
+export type InvoiceLineRecord = {
+  id?: string
+  account_id?: string
+  account?: Account | null
+  description?: string | null
+  debit_minor: number
+  credit_minor: number
+  tax_minor: number
+}
+
+export type InvoiceRecord = {
+  id: string
+  type: 'customer_invoice' | 'supplier_invoice' | 'credit_note'
+  series: string
+  number: string
+  party_type: 'customer' | 'supplier'
+  party_id: number
+  party?: Customer | Supplier | null
+  branch_id?: string | null
+  booking_id?: string | number | null
+  issue_date?: string | null
+  due_date?: string | null
+  currency: string
+  fx_rate: string
+  status: 'draft' | 'submitted' | 'approved' | 'issued' | 'voided'
+  subtotal_minor: number
+  tax_minor: number
+  total_minor: number
+  outstanding_minor: number
+  journal_entry_id?: string | null
+  credit_note_of_id?: string | null
+  memo?: string | null
+  approved_at?: string | null
+  issued_at?: string | null
+  lines?: InvoiceLineRecord[]
+  credit_notes?: InvoiceRecord[]
+}
+
+export type StatementLine = {
+  entry_id: string
+  number: string
+  entry_date: string
+  memo?: string | null
+  description?: string | null
+  account_code?: string
+  source_type?: string | null
+  source_id?: number | null
+  source_reference?: string | null
+  source_public_id?: string | null
+  event?: string | null
+  party_type?: string | null
+  party_id?: number | null
+  party?: { name_en?: string | null; name_ar?: string | null; public_id?: string | null } | null
+  currency?: string
+  debit_minor: number
+  credit_minor: number
+  base_debit_minor: number
+  base_credit_minor: number
+  balance_minor: number
+}
+
+export type StatementDifference = {
+  code: string
+  label_en: string
+  label_ar: string
+  amount_minor: number
+}
+
+export type PartyStatement = {
+  party_type: 'customer' | 'supplier' | 'employee'
+  party: { id: string; name_ar: string; name_en: string }
+  currency: string
+  basis: 'original' | 'base'
+  from: string
+  to: string
+  control_account: Account
+  subaccounts: Array<{ id: string; party_type: string; party_id: number; role: string; account?: Account }>
+  opening_minor: number
+  total_debit_minor: number
+  total_credit_minor: number
+  closing_minor: number
+  subaccount_closing_minor: number
+  tagged_control_closing_minor: number
+  reconciliation: {
+    ledger_closing_minor: number
+    normalized_ledger_minor: number
+    operational_open_invoices_minor: number
+    unapplied_credits_minor: number
+    difference_minor: number
+    reconciled: boolean
+    differences: StatementDifference[]
+  }
+  lines: StatementLine[]
+  total: number
+}
+
+export type CustomerProfile = {
+  party_type: 'customer'
+  party: Customer
+  metrics: {
+    bookings_count: number
+    open_bookings_count: number
+    invoices_count: number
+    open_invoices_count: number
+    payments_count: number
+    last_activity_on?: string | null
+  }
+  bookings: Booking[]
+  invoices: InvoiceRecord[]
+  payments: Payment[]
+  statement: PartyStatement
+}
+
+export type SupplierProfile = {
+  party_type: 'supplier'
+  party: Supplier
+  metrics: {
+    invoices_count: number
+    open_invoices_count: number
+    obligations_count: number
+    open_obligations_count: number
+    payments_count: number
+    last_activity_on?: string | null
+  }
+  invoices: InvoiceRecord[]
+  obligations: SupplierObligation[]
+  payments: SupplierPayment[]
+  statement: PartyStatement
+}
+
+export type EmployeeProfile = {
+  party_type: 'employee'
+  party: Employee
+  employee: Employee
+  user: { id: string; name: string; email: string } | null
+  metrics: {
+    advances_count: number
+    open_advances_count: number
+    custodies_count: number
+    open_custodies_count: number
+    transactions_count: number
+    advances_outstanding_minor: number
+    custody_outstanding_minor: number
+    last_activity_on?: string | null
+  }
+  advances: EmployeeAdvance[]
+  custodies: EmployeeCustody[]
+  transactions: EmployeeTransaction[]
+  statement: PartyStatement
+}

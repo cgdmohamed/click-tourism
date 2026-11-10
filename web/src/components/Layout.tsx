@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
+import { useTheme } from '../theme'
 import { GlobalSearch } from './GlobalSearch'
 import { Icon } from './icons'
 import type { IconName } from './icons'
@@ -13,6 +14,7 @@ type NavGroup = { label?: string; items: NavItem[] }
 export function Layout() {
   const { user, loading, logout, branches, activeBranch, setActiveBranch, can } = useAuth()
   const { t, locale, toggleLocale } = useI18n()
+  const { theme, toggleTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 
@@ -61,6 +63,7 @@ export function Layout() {
       items: [
         { to: '/customers', label: t('customers'), icon: 'users' },
         { to: '/suppliers', label: t('suppliers'), icon: 'truck' },
+        { to: '/employees', label: t('employees'), icon: 'userCheck', permission: 'employees.view' },
         { to: '/bookings', label: t('bookings'), icon: 'plane' },
         { to: '/leads', label: t('crm'), icon: 'target' },
       ],
@@ -196,6 +199,11 @@ export function Layout() {
                 </select>
               </label>
             ) : null}
+            <IconButton
+              icon={theme === 'dark' ? 'sun' : 'moon'}
+              label={theme === 'dark' ? t('switchToLight') : t('switchToDark')}
+              onClick={toggleTheme}
+            />
             <button
               className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered hover:text-text-default"
               onClick={toggleLocale}
