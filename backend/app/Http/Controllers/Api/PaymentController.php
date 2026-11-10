@@ -44,6 +44,30 @@ class PaymentController extends ApiController
         return $this->ok($payment->toApiArray());
     }
 
+    public function allocate(Request $request, Payment $payment, PaymentService $payments): JsonResponse
+    {
+        $this->authorizeBranchId($payment->branch_id);
+
+        $data = $request->validate([
+            'allocations' => ['required', 'array', 'min:1'],
+            'allocations.*.booking_id' => ['required', 'string'],
+            'allocations.*.amount_minor' => ['required', 'integer', 'min:1'],
+        ]);
+
+        return $this->ok($payments->allocate($payment, $data['allocations'], $this->actorId()));
+    }
+
+    public function unallocate(Request $request, Payment $payment, PaymentService $payments): JsonResponse
+    {
+        $this->authorizeBranchId($payment->branch_id);
+
+        $data = $request->validate([
+            'booking_id' => ['required', 'string'],
+        ]);
+
+        return $this->ok($payments->unallocate($payment, $data['booking_id'], $this->actorId()));
+    }
+
     public function store(Request $request, PaymentService $payments): JsonResponse
     {
         $data = $request->validate([

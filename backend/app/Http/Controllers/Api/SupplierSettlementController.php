@@ -118,6 +118,19 @@ class SupplierSettlementController extends ApiController
         return $this->ok($payment->toApiArray());
     }
 
+    public function unapply(Request $request, SupplierPayment $supplierPayment, SupplierSettlementService $settlements): JsonResponse
+    {
+        $this->assertBranch($supplierPayment->branch_id);
+
+        $data = $request->validate([
+            'application_id' => ['required', 'string'],
+        ]);
+
+        $payment = $settlements->unapply($supplierPayment, $data['application_id'], $this->actorId());
+
+        return $this->ok($payment->toApiArray());
+    }
+
     private function assertBranch(int $branchId): void
     {
         $branch = $this->branchOrFail();
