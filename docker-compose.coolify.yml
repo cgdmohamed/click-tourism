@@ -1,0 +1,106 @@
+# Coolify: deploy as Docker Compose; expose ONLY web:80 through the Coolify proxy.
+# Production database, Redis and uploads are persistent. Do not enable demo mode.
+x-env: &app_env
+  APP_NAME: "Tourism ERP"
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_KEY: ${APP_KEY:?Provide APP_KEY in Coolify}
+  APP_URL: ${APP_URL:?Provide APP_URL in Coolify}
+  FRONTEND_URL: ${APP_URL:?Provide APP_URL in Coolify}
+  APP_TIMEZONE: Africa/Cairo
+  APP_LOCALE: ar
+  LOG_CHANNEL: stderr
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: ${POSTGRES_DB:-tourism_erp}
+  DB_USERNAME: ${POSTGRES_USER:-tourism}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?Provide POSTGRES_PASSWORD in Coolify}
+  CACHE_STORE: redis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: database
+  RUN_MIGRATIONS: "true"
+  SEED_DEMO: "false"
+  DEMO_MODE: "false"
+  APP_OPTIMIZE: "true"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tourism_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-tourism}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Provide POSTGRES_PASSWORD}
+    volumes: [production_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [production_redis:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: { context: ./backend }
+    restart: unless-stopped
+    environment: *app_env
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes: [production_uploads:/var/www/html/storage/app]
+    expose: ["9000"]
+  api:
+    build: { context: ., dockerfile: deploy/Dockerfile.api }
+    restart: unless-stopped
+    volumes: [production_uploads:/var/www/html/storage/app:ro]
+    depends_on: [backend]
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+  web:
+    build: { context: ./web, args: { VITE_API_URL: /api/v1 } }
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    expose: ["80"]
+  worker:
+    build: { context: ./backend }
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=120"]
+    environment:
+      <<: *app_env
+      RUN_MIGRATIONS: "false"
+      APP_OPTIMIZE: "false"
+    volumes: [production_uploads:/var/www/html/storage/app]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  scheduler:
+    build: { context: ./backend }
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      <<: *app_env
+      RUN_MIGRATIONS: "false"
+      APP_OPTIMIZE: "false"
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+volumes:
+  production_pgdata:
+  production_redis:
+  production_uploads:
