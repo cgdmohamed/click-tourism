@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\User;
+use App\Modules\Core\Services\SettingService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -20,6 +21,7 @@ class BookingServiceTest extends TestCase
     {
         parent::setUp();
         $this->buildAccounting();
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'true');
     }
 
     private function createBooking(array $overrides = [])

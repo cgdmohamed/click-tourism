@@ -40,17 +40,17 @@ class ExpenseTest extends TestCase
         $this->buildAccounting();
         $this->seed(TreasurySeeder::class);
 
-        foreach (['expenses.view', 'expenses.create', 'expenses.approve', 'expense_categories.manage'] as $permission) {
+        foreach (['expenses.view', 'expenses.create', 'expenses.approve', 'expense_categories.manage', 'accounts.post'] as $permission) {
             Permission::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->maker = $this->user;
-        $this->maker->givePermissionTo(['expenses.view', 'expenses.create']);
+        $this->maker->givePermissionTo(['expenses.view', 'expenses.create', 'accounts.post']);
 
         $this->checker = User::factory()->create();
         $this->checker->branches()->attach($this->branch->id);
-        $this->checker->givePermissionTo(['expenses.view', 'expenses.approve']);
+        $this->checker->givePermissionTo(['expenses.view', 'expenses.approve', 'accounts.post']);
 
         $this->cash = CashAccount::query()->whereHas('account', fn ($q) => $q->where('code', '1110'))->firstOrFail();
         $this->rent = ExpenseCategory::query()->where('code', 'RENT')->firstOrFail();

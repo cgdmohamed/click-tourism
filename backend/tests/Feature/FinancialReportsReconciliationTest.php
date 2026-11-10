@@ -38,6 +38,7 @@ class FinancialReportsReconciliationTest extends TestCase
         'reports.view', 'journal.view', 'journal.create',
         'invoices.view', 'invoices.create', 'invoices.approve',
         'payments.view', 'payments.create', 'cost_centers.view', 'cost_centers.manage',
+        'accounts.post',
     ];
 
     private string $previousDate;
@@ -71,6 +72,7 @@ class FinancialReportsReconciliationTest extends TestCase
 
         $this->approver = User::factory()->create();
         $this->approver->branches()->attach($this->branch->id);
+        $this->approver->givePermissionTo('accounts.post');
 
         Sanctum::actingAs($this->user);
     }

@@ -304,13 +304,30 @@ class PostingService
 
     private function assertActorMayPost(PostingRequest $request): void
     {
+        // Accounting auto-posting remains disabled until the accountant
+        // explicitly approves the accounting policy. This guards every
+        // posting path (bookings, schedules, FX revaluation, documents).
+        if ($this->settings->bool('accounting', 'accounting_policy_approved', false) === false) {
+            throw new DomainException(
+                'Accounting auto-posting is disabled until the accounting policy is approved by an accountant.'
+            );
+        }
+
         if ($request->actorId === null) {
+            // System jobs may post only when policy is approved (checked above);
+            // no per-user permission exists for machine identity.
             return;
         }
 
         $user = User::query()->find($request->actorId);
-        if ($user) {
-            $this->branchScope->assertBranch($user, $request->branch);
+        if (! $user) {
+            throw new DomainException('Actor not found.');
+        }
+
+        $this->branchScope->assertBranch($user, $request->branch);
+
+        if (! $user->can('accounts.post')) {
+            throw new DomainException('Actor does not have the accounts.post permission.');
         }
     }
 
