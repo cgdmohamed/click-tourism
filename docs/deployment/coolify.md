@@ -19,8 +19,12 @@ Neither PostgreSQL, Redis, backend nor API should have public ports.
 4. Deploy and verify `https://erp.example.com/api/v1/ready`.
 5. Production has persistent `production_pgdata`, `production_redis` and
    `production_uploads` volumes. Back up and test restores before onboarding.
-6. Configure the initial admin account securely through an approved bootstrap
-   procedure (do NOT enable `SEED_DEMO` or the stock demo accounts on production).
+6. Open the Coolify terminal for service `backend` and run
+   `php artisan setup:admin admin@your-domain.example --name="System Administrator"`.
+   Enter a unique administrator password of 12+ characters at the masked prompt.
+   This initializes reference data, roles and the first admin but **never**
+   installs sample customer records or demo login accounts. Do NOT enable
+   `SEED_DEMO` on production.
 7. Review the unresolved accountant sign-offs before live financial posting.
 
 ## 2. Disposable public demo (separate project!)
@@ -45,7 +49,9 @@ Neither PostgreSQL, Redis, backend nor API should have public ports.
    and refreshes after resets; users must log in again because demo sessions
    and Sanctum tokens are reset.
 7. Demo PostgreSQL runs on tmpfs, Redis has snapshots and AOF disabled, and
-   Laravel upload/log directories are on tmpfs. The demo cannot persist its
+   Laravel upload storage is a shared memory-only tmpfs volume (backend + API)
+   and application logs are disabled in the demo. Runtime web/proxy access
+   logs may still exist on the server and must have separate retention rules. The demo cannot persist its
    application database or uploads through container restarts.
 
 **Safety constraints:** The reset script refuses execution unless
