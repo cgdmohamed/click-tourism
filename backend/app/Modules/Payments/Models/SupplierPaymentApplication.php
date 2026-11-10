@@ -2,6 +2,7 @@
 
 namespace App\Modules\Payments\Models;
 
+use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class SupplierPaymentApplication extends Model
 {
+    use HasPublicId;
+
     protected $fillable = [
         'supplier_payment_id',
         'supplier_obligation_id',
