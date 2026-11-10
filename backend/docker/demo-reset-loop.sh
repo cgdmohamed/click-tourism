@@ -12,17 +12,25 @@ if [ "${DEMO_RESET_SECONDS:-600}" != "600" ]; then
     exit 1
 fi
 cd /var/www/html
+# Always fail closed while data is incomplete, but keep retrying the reset
+# automatically rather than abandoning the worker forever on the first error.
+# The protected target is the demo-db/demo_erp installation only.
 while :; do
     sleep 600
     echo "Demo: starting scheduled ephemeral data reset"
-    php artisan down --retry=30 || exit 1
-    # Fail closed: if reset or seeding fails, maintenance mode stays active.
-    php artisan migrate:fresh --seed --force
-    find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} \;
-    # Guard against circular symlinks copied into the shared demo tmpfs.
-    if [ -L storage/app/public ]; then
-        rm storage/app/public
+    if ! php artisan down --retry=30; then
+        echo "ERROR: unable to enter demo maintenance mode; retrying in 30s" >&2
+        sleep 30
+        continue
     fi
+
+    until php artisan migrate:fresh --seed --force; do
+        echo "ERROR: demo reset/seed failed; staying in maintenance and retrying in 30s" >&2
+        sleep 30
+    done
+
+    # Reset uploads only after successful database recreation and seeding.
+    find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} \\;
     mkdir -p storage/app/public
     php artisan cache:clear
     php artisan demo:window --seconds=600
