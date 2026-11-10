@@ -15,7 +15,7 @@ class RealizedFxService
     public function __construct(private readonly PostingService $posting, private readonly SettingService $settings) {}
 
     /**
-     * @param array<int, PostingLine> $lines Each monetary line has its own currency/rate.
+     * @param  array<int, PostingLine>  $lines  Each monetary line has its own currency/rate.
      * @return array<int, PostingLine>
      */
     public function balance(array $lines, string $transactionCurrency): array
