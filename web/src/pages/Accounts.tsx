@@ -43,6 +43,7 @@ export default function Accounts() {
     is_postable: true,
     is_active: true,
   })
+  const [importFile, setImportFile] = useState<File | null>(null)
 
   const query = useQuery({
     queryKey: ['accounts'],
@@ -301,20 +302,22 @@ export default function Accounts() {
             <Button
               variant="secondary"
               onClick={() => {
+                if (!importFile) return
                 const fd = new FormData()
-                fd.append('file', (document.getElementById('import-file') as HTMLInputElement).files![0])
+                fd.append('file', importFile)
                 fd.append('preview_only', 'true')
                 importAccounts.mutate(fd)
               }}
-              disabled={importAccounts.isPending || !(document.getElementById('import-file') as HTMLInputElement).files?.length}
+              disabled={importAccounts.isPending || !importFile}
             >
               {t('previewOnly')}
             </Button>
             <Button
               disabled={importAccounts.isPending || importPreview.length === 0}
               onClick={() => {
+                if (!importFile) return
                 const fd = new FormData()
-                fd.append('file', (document.getElementById('import-file') as HTMLInputElement).files![0])
+                fd.append('file', importFile)
                 importAccounts.mutate(fd)
               }}
             >
@@ -325,7 +328,7 @@ export default function Accounts() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('file')} required>
-            <Input type="file" id="import-file" accept=".csv" />
+            <Input type="file" accept=".csv" onChange={(event) => setImportFile(event.target.files?.[0] ?? null)} />
           </Field>
           <Field label={t('previewOnly')}>
             <label className="flex items-center gap-2 py-2 text-sm">
