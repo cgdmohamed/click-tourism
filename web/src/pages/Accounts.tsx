@@ -32,7 +32,7 @@ export default function Accounts() {
   const [editId, setEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [importError, setImportError] = useState('')
-  const [importPreview, setImportPreview] = useState<any[]>([])
+  const [importPreview, setImportPreview] = useState<Array<{ row: number; code: string; name_ar: string; name_en: string; type: string; action: string }>>([])
   const [showImport, setShowImport] = useState(false)
   const [form, setForm] = useState({
     code: '',
@@ -86,7 +86,7 @@ export default function Accounts() {
 
   const importAccounts = useMutation({
     mutationFn: async (body: FormData) => {
-      const { data } = await api.post<{ imported: number; preview: any[] }>('/accounts/import', body, {
+      const { data } = await api.post<{ imported: number; preview: Array<{ row: number; code: string; name_ar: string; name_en: string; type: string; action: string }> }>('/accounts/import', body, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       return data
