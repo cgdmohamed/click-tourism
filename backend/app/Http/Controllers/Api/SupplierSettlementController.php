@@ -51,11 +51,20 @@ class SupplierSettlementController extends ApiController
             'currency' => ['required', 'string', 'size:3'],
             'invoice_reference' => ['nullable', 'string', 'max:100'],
             'booking_item_id' => ['nullable', 'string', 'max:40'],
+            'invoice_id' => ['nullable', 'string'],
         ]);
 
         $obligation = $settlements->createObligation($data, $this->actorId());
 
         return $this->created($obligation->toApiArray());
+    }
+
+    public function recognizeObligation(Request $request, SupplierObligation $supplierObligation, SupplierSettlementService $settlements): JsonResponse
+    {
+        $this->assertBranch($supplierObligation->branch_id);
+        $data = $request->validate(['invoice_id' => ['required', 'string']]);
+
+        return $this->ok($settlements->recognizeObligation($supplierObligation, $data['invoice_id'], $this->actorId())->toApiArray());
     }
 
     public function payments(Request $request): JsonResponse
