@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
-use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
@@ -48,7 +48,7 @@ class SupplierSettlementTest extends TestCase
         // A recognized AP fixture has a real issued/posted supplier invoice.
         // Individual tests can pass invoice_id=null to exercise the
         // operational-only obligation workflow.
-        if (! array_key_exists('invoice_id', $data)) {
+        if (array_key_exists('invoice_id', $data) === false) {
             $invoiceService = app(InvoiceService::class);
             $invoice = $invoiceService->create([
                 'type' => 'supplier_invoice',
