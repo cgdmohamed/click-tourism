@@ -25,7 +25,10 @@ class SettingService
         'accounting' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-001): when revenue is recognized.
             'booking_posting_trigger' => 'confirm',
-            'auto_post_bookings' => 'true',
+            // PENDING ACCOUNTANT APPROVAL: auto-posting is disabled by default
+            // until the accountant approves the accounting policy. New
+            // installations must not post financial entries automatically.
+            'auto_post_bookings' => 'false',
             'fiscal_year_start' => '01-01',
             'rounding_policy' => 'half_up',
             'rounding_account_code' => '6999',
@@ -54,8 +57,13 @@ class SettingService
             'employee_custody_account_code' => '1150',
             // PENDING ACCOUNTANT APPROVAL (DEC-038): accrual and prepayment policy.
             // Auto-post due recognition events from the daily scheduler; the
-            // period-end checklist reports anything that could not post.
-            'schedule_auto_post' => 'true',
+            // period-end checklist reports anything that could not post. Disabled
+            // by default until the accountant approves the accounting policy.
+            'schedule_auto_post' => 'false',
+            // PENDING ACCOUNTANT APPROVAL: global accounting policy approval.
+            // Auto-posting (bookings, schedules, FX revaluation) remains
+            // disabled until an accountant explicitly approves the policy.
+            'accounting_policy_approved' => 'false',
             // Days after a recognition date that an accrual reversal is dated.
             'accrual_reversal_offset_days' => '1',
             'prepaid_expense_account_code' => '1150',
