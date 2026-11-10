@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate, todayISO } from '../lib/format'
+import { formatDate, todayISO, toDecimal, toMinor } from '../lib/format'
 import { customerTypeLabel, paymentMethodLabel, statusLabel } from '../lib/labels'
 import type { CustomerProfile as CustomerProfilePayload } from '../lib/types'
-import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, Money, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat, ProfileTabs, StatementView } from '../components/profile'
 
 function nameOf(party: { name_ar: string; name_en: string }, locale: 'ar' | 'en') {
@@ -27,8 +28,16 @@ function initialsOf(name: string) {
 export default function CustomerProfile() {
   const { id = '' } = useParams()
   const { t, locale } = useI18n()
+  const { can } = useAuth()
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState('overview')
   const [range, setRange] = useState({ from: `${new Date().getFullYear()}-01-01`, to: todayISO() })
+  const [editing, setEditing] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [form, setForm] = useState({
+    type: 'individual' as 'individual' | 'company', name_ar: '', name_en: '', phone: '', email: '', tax_id: '',
+    credit_limit: '0.00', is_active: true, currency: 'EGP',
+  })
 
   const query = useQuery({
     queryKey: ['customer-profile', id, range.from, range.to],
@@ -40,6 +49,28 @@ export default function CustomerProfile() {
     },
   })
 
+  const update = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.patch(`/customers/${id}`, {
+        type: form.type,
+        name_ar: form.name_ar.trim(),
+        name_en: form.name_en.trim(),
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+        tax_id: form.tax_id.trim() || null,
+        credit_limit_minor: toMinor(form.credit_limit || '0', form.currency),
+        is_active: form.is_active,
+      })
+      return data
+    },
+    onSuccess: async () => {
+      setEditing(false)
+      setEditError('')
+      await Promise.all([query.refetch(), queryClient.invalidateQueries({ queryKey: ['customers'] })])
+    },
+    onError: (cause) => setEditError(errorMessage(cause)),
+  })
+
   if (query.isLoading) return <Loading />
   if (query.isError) return <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} />
   if (!query.data) return <ErrorState message={t('noData')} onRetry={() => void query.refetch()} />
@@ -47,6 +78,21 @@ export default function CustomerProfile() {
   const profile = query.data
   const party = profile.party
   const name = nameOf(party, locale)
+  const openEditor = () => {
+    setForm({
+      type: party.type,
+      name_ar: party.name_ar,
+      name_en: party.name_en,
+      phone: party.phone ?? '',
+      email: party.email ?? '',
+      tax_id: party.tax_id ?? '',
+      credit_limit: toDecimal(party.credit_limit_minor ?? 0, party.currency ?? 'EGP'),
+      is_active: party.is_active,
+      currency: party.currency ?? 'EGP',
+    })
+    setEditError('')
+    setEditing(true)
+  }
 
   const tabs = [
     { id: 'overview', label: t('overview'), icon: 'dashboard' as const },
@@ -64,9 +110,10 @@ export default function CustomerProfile() {
         backLabel={t('customers')}
         badge={<Badge tone={party.is_active ? 'positive' : 'neutral'}>{party.is_active ? t('active') : t('inactive')}</Badge>}
         actions={
-          <Button variant="secondary" icon="printer" onClick={() => window.print()}>
-            {t('print')}
-          </Button>
+          <>
+            {can('customers.update') ? <Button variant="secondary" icon="edit" onClick={openEditor}>{t('edit')}</Button> : null}
+            <Button variant="secondary" icon="printer" onClick={() => window.print()}>{t('print')}</Button>
+          </>
         }
         meta={
           <>
@@ -77,6 +124,32 @@ export default function CustomerProfile() {
           </>
         }
       />
+
+      <Modal
+        open={editing}
+        title={t('editCustomer')}
+        onClose={() => setEditing(false)}
+        footer={<>
+          <Button variant="secondary" onClick={() => setEditing(false)}>{t('cancel')}</Button>
+          <Button disabled={update.isPending || !form.name_ar.trim() || !form.name_en.trim()} onClick={() => update.mutate()}>
+            {update.isPending ? t('saving') : t('save')}
+          </Button>
+        </>}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t('type')}><Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as 'individual' | 'company' })}>
+            <option value="individual">{locale === 'ar' ? 'فرد' : 'Individual'}</option><option value="company">{locale === 'ar' ? 'شركة' : 'Company'}</option>
+          </Select></Field>
+          <Field label={t('phone')}><Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} dir="ltr" /></Field>
+          <Field label={t('nameAr')} required><Input value={form.name_ar} onChange={(event) => setForm({ ...form, name_ar: event.target.value })} /></Field>
+          <Field label={t('nameEn')} required><Input value={form.name_en} onChange={(event) => setForm({ ...form, name_en: event.target.value })} dir="ltr" /></Field>
+          <Field label={t('email')}><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} dir="ltr" /></Field>
+          <Field label={t('taxId')}><Input value={form.tax_id} onChange={(event) => setForm({ ...form, tax_id: event.target.value })} dir="ltr" /></Field>
+          <Field label={t('creditLimit')}><Input value={form.credit_limit} onChange={(event) => setForm({ ...form, credit_limit: event.target.value })} inputMode="decimal" dir="ltr" /></Field>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-text-subtle"><input type="checkbox" checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} />{t('active')}</label>
+        </div>
+        {editError ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{editError}</p> : null}
+      </Modal>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <ProfileStat label={t('bookings')} value={profile.metrics.bookings_count} hint={`${profile.metrics.open_bookings_count} ${t('openBookings')}`} icon="plane" />

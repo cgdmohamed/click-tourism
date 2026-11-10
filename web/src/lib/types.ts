@@ -64,6 +64,8 @@ export type Customer = {
   phone?: string
   email?: string
   tax_id?: string
+  credit_limit_minor: number
+  currency: string
   branch_id: string
   balance_minor?: number
   is_active: boolean
