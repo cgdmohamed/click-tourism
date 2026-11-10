@@ -373,14 +373,18 @@ export default function Reports() {
     can('reports.export') &&
     (isLedger ? ledgerAccount !== '' : isStatement ? partyId !== '' : true)
 
-  const downloadCsv = async () => {
+  const download = async (format: 'csv' | 'xlsx' | 'pdf') => {
     setExporting(true)
     setExportError(null)
     try {
       const url = isLedger ? '/reports/general-ledger/export' : `/reports/${report}/export`
-      const response = await api.get<Blob>(url, { params: isLedger ? ledgerParams : params, responseType: 'blob' })
+      const reportParams = isLedger ? ledgerParams : params
+      const response = await api.get<Blob>(url, {
+        params: { ...reportParams, format, language: locale },
+        responseType: 'blob',
+      })
       const disposition = String(response.headers['content-disposition'] ?? '')
-      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${report}.csv`
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${report}.${format}`
       const href = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = href
@@ -699,8 +703,18 @@ export default function Reports() {
             {t('print')}
           </Button>
           {canExport ? (
-            <Button variant="secondary" icon="download" onClick={() => void downloadCsv()} disabled={exporting}>
+            <Button variant="secondary" icon="download" onClick={() => void download('csv')} disabled={exporting}>
               {exporting ? <Spinner className="h-4 w-4" /> : t('exportCsv')}
+            </Button>
+          ) : null}
+          {canExport ? (
+            <Button variant="secondary" icon="download" onClick={() => void download('xlsx')} disabled={exporting}>
+              {t('exportXlsx')}
+            </Button>
+          ) : null}
+          {canExport ? (
+            <Button variant="secondary" icon="download" onClick={() => void download('pdf')} disabled={exporting}>
+              {t('exportPdf')}
             </Button>
           ) : null}
         </div>

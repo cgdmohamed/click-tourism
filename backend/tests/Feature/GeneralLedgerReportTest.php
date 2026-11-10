@@ -363,6 +363,27 @@ class GeneralLedgerReportTest extends TestCase
         $this->assertDatabaseHas('audit_events', ['action' => 'report.exported']);
     }
 
+    public function test_the_trial_balance_exports_real_xlsx_and_bilingual_pdf(): void
+    {
+        $this->grantExport();
+        $this->entry($this->currentDate, '1110', '4100', 123456);
+        $query = [
+            'from' => now()->startOfMonth()->toDateString(),
+            'to' => now()->endOfMonth()->toDateString(),
+        ];
+
+        $xlsx = $this->get('/api/v1/reports/trial-balance/export?'.http_build_query($query + ['format' => 'xlsx']));
+        $xlsx->assertOk()->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringStartsWith('PK', $xlsx->getContent());
+
+        $pdf = $this->get('/api/v1/reports/trial-balance/export?'.http_build_query($query + [
+            'format' => 'pdf', 'language' => 'bilingual',
+        ]));
+        $pdf->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+        $this->assertGreaterThan(1000, strlen($pdf->getContent()));
+    }
+
     public function test_exports_are_branch_scoped(): void
     {
         $this->grantExport();
