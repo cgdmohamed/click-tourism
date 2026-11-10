@@ -11,6 +11,7 @@ use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\SupplierObligation;
+use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Treasury\Models\CashAccount;
 use App\Modules\Treasury\Services\TreasuryService;
 use App\Support\Money;
@@ -815,7 +816,7 @@ class ReportService
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
                 ->get()->sum(fn (Payment $p) => (new Money($p->amount_minor, $p->currency_code))
                     ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
-            $outflow = \App\Modules\Payments\Models\SupplierPayment::query()
+            $outflow = SupplierPayment::query()
                 ->where('status', 'posted')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
