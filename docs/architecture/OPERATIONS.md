@@ -7,18 +7,31 @@ backup, restore, and the release/upgrade process for production installations.
 
 ### Database (PostgreSQL)
 
-Take encrypted logical backups daily:
+Take encrypted logical backups daily from the Docker Compose project directory. Keep
+the GPG passphrase file outside the repository with 0600 permissions. Use
+separate offsite storage. These instructions still require a real restore drill.
 
 ```bash
-# Full schema + data dump
-docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  | gzip -c \
-  | gpg --batch --yes --symmetric --cipher-algo AES256 \
-  > "backups/tourism_erp-$(date +%Y%m%d-%H%M%S).sql.gz.gpg"
+set -euo pipefail
+umask 077
+: "${BACKUP_PASSPHRASE_FILE:?Set a protected passphrase file path}"
+test -r "$BACKUP_PASSPHRASE_FILE"
+mkdir -p backups
+BACKUP="backups/tourism_erp-$(date +%Y%m%d-%H%M%S).sql.gz.gpg"
 
-# Compression integrity check only; it is NOT a substitute for a restore drill.
-gpg --decrypt "backups/latest.sql.gz.gpg" | gzip -t
-# Use the isolated restore procedure below to verify the actual database.
+# Read POSTGRES_USER/POSTGRES_DB inside the container (host .env is not
+# guaranteed to be exported into the current shell).
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  | gzip -c \
+  | gpg --batch --yes --pinentry-mode loopback \
+      --passphrase-file "$BACKUP_PASSPHRASE_FILE" \
+      --symmetric --cipher-algo AES256 \
+  > "$BACKUP"
+
+# Archive integrity only; NOT a database restore test.
+gpg --batch --pinentry-mode loopback \
+    --passphrase-file "$BACKUP_PASSPHRASE_FILE" --decrypt "$BACKUP" | gzip -t
+echo "Backup archive verified: $BACKUP"
 ```
 
 ### Attachments and Uploads
@@ -54,22 +67,30 @@ cp deploy/nginx/backend.conf "backups/nginx-$(date +%Y%m%d).bak"
 docker compose stop backend api web
 ```
 
-### 2. Restore the database
+### 2. Restore into a separate database for verification
 
 ```bash
-# Create a NEW, EMPTY database for a restore drill; never overwrite production.
-RESTORE_DB=tourism_erp_restore_drill
-docker compose exec -T db createdb -U "$POSTGRES_USER" "$RESTORE_DB"
-set -o pipefail
-gpg --decrypt "backups/tourism_erp-YYYYMMDD-HHMMSS.sql.gz.gpg" \
-  | gunzip \
-  | docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$RESTORE_DB"
+set -euo pipefail
+: "${BACKUP_PASSPHRASE_FILE:?Set a protected passphrase file path}"
+BACKUP="backups/tourism_erp-YYYYMMDD-HHMMSS.sql.gz.gpg"
 
-# Verify schema and representative balances; only an approved DBA-led recovery
-# procedure may promote the restored database to production.
-docker compose exec -T db psql -U "$POSTGRES_USER" -d "$RESTORE_DB" \
-  -c 'SELECT COUNT(*) FROM journal_entries;'
+# Deliberately fails if this test database already exists.
+docker compose exec -T db sh -c \
+  'createdb -U "$POSTGRES_USER" tourism_erp_restore_drill'
+
+gpg --batch --pinentry-mode loopback \
+    --passphrase-file "$BACKUP_PASSPHRASE_FILE" --decrypt "$BACKUP" \
+  | gunzip \
+  | docker compose exec -T db sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d tourism_erp_restore_drill'
+
+docker compose exec -T db sh -c \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d tourism_erp_restore_drill -c "SELECT COUNT(*) FROM journal_entries;"'
 ```
+
+This is a **restore drill only**; never overwrite production. Validate trial balance,
+AR/AP reconciliations, file attachments and critical user flows on a separate
+application instance before any DBA-approved production recovery.
 
 ### 3. Restore uploads (if applicable)
 
@@ -82,7 +103,7 @@ tar -xzf "backups/storage-YYYYMMDD-HHMMSS.tar.gz" -C backend
 ```bash
 docker compose start backend api web
 docker compose logs -f backend
-curl -f http://localhost:8000/api/v1/ready
+curl -f http://localhost:8080/api/v1/ready
 ```
 
 ## 3. Release/Upgrade Gate
@@ -117,10 +138,10 @@ docker compose exec backend php artisan view:cache
 docker compose up -d --build backend api web
 
 # 6. Health check
-curl -f http://localhost:8000/api/v1/ready
+curl -f http://localhost:8080/api/v1/ready
 
 # 7. Smoke test: login, create a booking, post a journal entry
-curl -f http://localhost:8000/api/v1/health
+curl -f http://localhost:8080/api/v1/health
 
 # 8. Disable maintenance mode
 docker compose exec backend php artisan up
