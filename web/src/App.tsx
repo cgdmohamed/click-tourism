@@ -4,6 +4,7 @@ import { I18nProvider } from './i18n'
 import { ThemeProvider } from './theme'
 import { AuthProvider } from './auth/AuthProvider'
 import { Layout } from './components/Layout'
+import { DemoBanner } from './components/DemoBanner'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Accounts from './pages/Accounts'
@@ -46,6 +47,7 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <BrowserRouter>
+              <DemoBanner />
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route element={<Layout />}>

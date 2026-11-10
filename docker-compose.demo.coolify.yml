@@ -1,0 +1,101 @@
+# PUBLIC DEMO only: standalone Coolify project, separate URL and credentials.
+# DB and uploads use tmpfs; Redis has no persistence. Data resets every 600s.
+# Do not attach any production volume or production network.
+services:
+  demo-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: demo_erp
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: ${DEMO_DB_PASSWORD:?Set a unique demo DB password}
+    tmpfs:
+      - /var/lib/postgresql/data:rw,size=256m,mode=0700
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  demo-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: { context: ./backend }
+    restart: unless-stopped
+    environment:
+      APP_NAME: "Tourism ERP Demo"
+      APP_ENV: demo
+      APP_DEBUG: "false"
+      APP_KEY: ${DEMO_APP_KEY:?Set separate demo APP_KEY}
+      APP_URL: ${DEMO_URL:?Set the public demo HTTPS URL}
+      FRONTEND_URL: ${DEMO_URL:?Set the demo URL}
+      APP_TIMEZONE: Africa/Cairo
+      APP_LOCALE: ar
+      LOG_CHANNEL: "null"
+      LOG_LEVEL: error
+      DB_CONNECTION: pgsql
+      DB_HOST: demo-db
+      DB_PORT: "5432"
+      DB_DATABASE: demo_erp
+      DB_USERNAME: demo
+      DB_PASSWORD: ${DEMO_DB_PASSWORD:?Set DEMO_DB_PASSWORD}
+      CACHE_STORE: redis
+      REDIS_HOST: demo-redis
+      REDIS_PORT: "6379"
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: database
+      FILESYSTEM_DISK: local
+      MAIL_MAILER: array
+      RUN_MIGRATIONS: "true"
+      SEED_DEMO: "true"
+      DEMO_SEED: "true"
+      DEMO_MODE: "true"
+      DEMO_RESET_SECONDS: "600"
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-password}
+      APP_OPTIMIZE: "true"
+      META_APP_ID: ""
+      META_APP_SECRET: ""
+      WHATSAPP_ACCESS_TOKEN: ""
+      WHATSAPP_APP_SECRET: ""
+    volumes:
+      - demo_uploads:/var/www/html/storage/app
+    tmpfs:
+      - /var/www/html/storage/logs:rw,size=16m,uid=82,gid=82
+    depends_on:
+      demo-db: { condition: service_healthy }
+      demo-redis: { condition: service_healthy }
+    expose: ["9000"]
+  api:
+    build: { context: ., dockerfile: deploy/Dockerfile.api }
+    restart: unless-stopped
+    depends_on: [backend]
+    volumes:
+      - demo_uploads:/var/www/html/storage/app:ro
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/v1/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+  web:
+    build: { context: ./web, args: { VITE_API_URL: /api/v1 } }
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    expose: ["80"]
+
+volumes:
+  # Shared backend/API upload storage, mounted as RAM-only tmpfs by Docker.
+  demo_uploads:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=128m,uid=82,gid=82"
