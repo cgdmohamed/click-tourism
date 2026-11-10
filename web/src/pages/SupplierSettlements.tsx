@@ -24,6 +24,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { statusLabel as statusLabelOf } from '../lib/labels'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
@@ -389,7 +390,7 @@ export default function SupplierSettlements() {
                     <Td>{supplierName(payment.supplier)}</Td>
                     <Td>{formatDate(payment.paid_at, locale)}</Td>
                     <Td>
-                      <Badge tone={statusTone(payment.status)}>{payment.status}</Badge>
+                      <Badge tone={statusTone(payment.status)}>{statusLabelOf(payment.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end tabular">
                       {toDecimal(payment.amount_minor, payment.currency)} {payment.currency}

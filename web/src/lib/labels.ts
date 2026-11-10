@@ -70,6 +70,12 @@ const statuses: Record<string, Label> = {
   settled: { ar: 'مُسدد', en: 'Settled' },
   cleared: { ar: 'مُسوّى', en: 'Cleared' },
   returned: { ar: 'مُعاد', en: 'Returned' },
+  rejected: { ar: 'مرفوض', en: 'Rejected' },
+  reversed: { ar: 'معكوس', en: 'Reversed' },
+  soft_closed: { ar: 'إغلاق مبدئي', en: 'Soft closed' },
+  pending: { ar: 'قيد الانتظار', en: 'Pending' },
+  active: { ar: 'نشط', en: 'Active' },
+  new: { ar: 'جديد', en: 'New' },
 }
 
 export function statusLabel(value: string | null | undefined, locale: Locale): string {
@@ -82,6 +88,8 @@ const paymentMethods: Record<string, Label> = {
   bank_transfer: { ar: 'تحويل بنكي', en: 'Bank transfer' },
   card: { ar: 'بطاقة', en: 'Card' },
   wallet: { ar: 'محفظة', en: 'Wallet' },
+  bank: { ar: 'بنك', en: 'Bank' },
+  cheque: { ar: 'شيك', en: 'Cheque' },
 }
 
 export function paymentMethodLabel(value: string | null | undefined, locale: Locale): string {

@@ -105,6 +105,7 @@ class JournalEntry extends Model
             'total_minor' => $this->totalMinor(),
             'reversal_of_id' => $this->reversalOf?->public_id,
             'reversal_reason' => $this->reversal_reason,
+            'reversed_by_id' => $this->relationLoaded('reversal') ? $this->reversal?->public_id : null,
             'source_type' => $this->source_type,
             'event' => $this->event,
             'posted_at' => $this->posted_at?->toIso8601String(),

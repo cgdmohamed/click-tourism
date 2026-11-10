@@ -6,6 +6,7 @@ import { api, errorMessage } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { Icon } from '../components/icons'
+import { statusLabel } from '../lib/labels'
 
 type Period = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'soft_closed' | 'closed' }
 type Year = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'closed'; closed_at: string | null; periods: Period[] }
@@ -136,7 +137,7 @@ export default function Periods() {
               subtitle={year.closed_at ? `${L('أُقفلت في', 'Closed on')} ${formatDate(year.closed_at, locale)}` : undefined}
               actions={
                 <div className="flex items-center gap-2">
-                  <Badge tone={statusTone(year.status)}>{year.status}</Badge>
+                  <Badge tone={statusTone(year.status)}>{statusLabel(year.status, locale)}</Badge>
                   {year.status === 'open' && can('periods.close') ? (
                     <Button variant="secondary" onClick={() => { setError(''); setCheckYear(year) }}>{L('إقفال السنة', 'Close year')}</Button>
                   ) : null}
@@ -163,7 +164,7 @@ export default function Periods() {
                     <Td className="tabular">{formatDate(period.starts_on, locale)}</Td>
                     <Td className="tabular">{formatDate(period.ends_on, locale)}</Td>
                     <Td>
-                      <Badge tone={period.status === 'open' ? 'positive' : period.status === 'soft_closed' ? 'warning' : 'neutral'}>{period.status}</Badge>
+                      <Badge tone={period.status === 'open' ? 'positive' : period.status === 'soft_closed' ? 'warning' : 'neutral'}>{statusLabel(period.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end">
                       {year.status === 'open' && can('periods.manage') ? (

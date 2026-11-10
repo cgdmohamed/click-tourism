@@ -25,6 +25,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { statusLabel } from '../lib/labels'
 
 type DraftItem = {
   service_type: string
@@ -69,7 +70,7 @@ export default function Bookings() {
     pax_children: '0',
     pax_infants: '0',
     currency: 'EGP',
-    fx_rate: '1',
+    fx_rate: '',
     notes: '',
   })
   const [items, setItems] = useState<DraftItem[]>([emptyItem('EGP')])
@@ -131,9 +132,7 @@ export default function Bookings() {
         pax_children: Number(form.pax_children),
         pax_infants: Number(form.pax_infants),
         currency: form.currency,
-        fx_rate: form.fx_rate,
-        fx_rate_date: form.start_date,
-        fx_rate_source: 'manual',
+        ...(form.fx_rate.trim() ? { fx_rate: form.fx_rate.trim(), fx_rate_date: form.start_date, fx_rate_source: 'manual' } : {}),
         notes: form.notes,
         items: items.map((item) => ({
           service_type: item.service_type,
@@ -221,7 +220,7 @@ export default function Bookings() {
             <option value="">{locale === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
             {['draft', 'quoted', 'confirmed', 'in_progress', 'completed', 'closed', 'cancelled', 'no_show'].map((status) => (
               <option key={status} value={status}>
-                {status}
+                {statusLabel(status, locale)}
               </option>
             ))}
           </Select>
@@ -254,7 +253,7 @@ export default function Bookings() {
                   <Td>{formatDate(booking.start_date, locale)}</Td>
                   <Td className="tabular">{booking.pax_adults + booking.pax_children + booking.pax_infants}</Td>
                   <Td>
-                    <Badge tone={statusTone(booking.status)}>{booking.status}</Badge>
+                    <Badge tone={statusTone(booking.status)}>{statusLabel(booking.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end tabular">
                     {toDecimal(booking.total_sell_minor, booking.currency)} {booking.currency}
@@ -339,8 +338,8 @@ export default function Bookings() {
               <option value="USD">USD</option>
             </Select>
           </Field>
-          <Field label={locale === 'ar' ? 'سعر الصرف' : 'FX rate'}>
-            <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} dir="ltr" />
+          <Field label={locale === 'ar' ? 'سعر الصرف (اتركه فارغاً للسعر المسجّل)' : 'FX rate (leave empty for the stored rate)'}>
+            <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={locale === 'ar' ? 'ملاحظات' : 'Notes'}>
             <Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />

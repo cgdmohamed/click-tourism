@@ -25,6 +25,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { statusLabel } from '../lib/labels'
 
 type Category = { id: string; code: string; name_ar: string; name_en: string; account_code: string }
 type CashAccount = { id: string; cash_account_id?: string; name_ar: string; name_en: string; currency: string; registered: boolean; is_active?: boolean }
@@ -254,7 +255,7 @@ export default function Expenses() {
                       ) : null}
                     </Td>
                     <Td>
-                      <Badge tone={statusTone(expense.status)}>{expense.status}</Badge>
+                      <Badge tone={statusTone(expense.status)}>{statusLabel(expense.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end">
                       <div className="flex flex-wrap justify-end gap-1">
