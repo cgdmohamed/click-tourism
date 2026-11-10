@@ -19,6 +19,10 @@ while :; do
     # Fail closed: if reset or seeding fails, maintenance mode stays active.
     php artisan migrate:fresh --seed --force
     find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} \;
+    # Guard against circular symlinks copied into the shared demo tmpfs.
+    if [ -L storage/app/public ]; then
+        rm storage/app/public
+    fi
     mkdir -p storage/app/public
     php artisan cache:clear
     php artisan demo:window --seconds=600
