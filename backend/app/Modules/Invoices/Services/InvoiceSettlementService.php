@@ -2,6 +2,7 @@
 
 namespace App\Modules\Invoices\Services;
 
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
@@ -161,6 +162,55 @@ class InvoiceSettlementService
             ], $actorId);
 
             return $application->load('invoice', 'supplierPayment');
+        });
+    }
+
+    /**
+     * Undo an application: the entry is reversed (never deleted), the amount
+     * returns to the receipt/advance and the invoice's outstanding grows back.
+     */
+    public function unapply(InvoiceApplication $application, string $reason, ?int $actorId): InvoiceApplication
+    {
+        return DB::transaction(function () use ($application, $reason, $actorId) {
+            $application = InvoiceApplication::query()->lockForUpdate()->findOrFail($application->id);
+            $branch = Branch::query()->findOrFail($application->branch_id);
+            $this->assertActor($actorId, $branch);
+
+            if ($application->reversed_at !== null) {
+                throw new DomainException('This application has already been undone.');
+            }
+            if (trim($reason) === '') {
+                throw new DomainException('A reason is required.');
+            }
+
+            $entry = JournalEntry::query()
+                ->where('source_type', 'invoice_application')
+                ->where('source_id', $application->id)
+                ->where('event', 'applied')
+                ->whereNull('reversal_of_id')
+                ->firstOrFail();
+            $this->posting->reverse($entry, $reason, $actorId);
+
+            $invoice = Invoice::query()->lockForUpdate()->findOrFail($application->invoice_id);
+            $invoice->update(['outstanding_minor' => (int) $invoice->outstanding_minor + (int) $application->amount_minor]);
+
+            if ($application->payment_id !== null) {
+                $payment = Payment::query()->lockForUpdate()->findOrFail($application->payment_id);
+                $payment->update(['unallocated_minor' => (int) $payment->unallocated_minor + (int) $application->amount_minor]);
+            }
+
+            $application->update([
+                'reversed_at' => now(),
+                'reversal_reason' => $reason,
+                'reversed_by' => $actorId,
+            ]);
+
+            $this->audit->log('invoice.unsettled', $invoice, null, [
+                'amount_minor' => (int) $application->amount_minor,
+                'reason' => $reason,
+            ], $actorId);
+
+            return $application->load('invoice');
         });
     }
 

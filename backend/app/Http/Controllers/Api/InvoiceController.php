@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
+use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,7 +21,19 @@ class InvoiceController extends ApiController
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('party_type'), fn ($query, $partyType) => $query->where('party_type', $partyType))
-            ->when($request->query('party_id'), fn ($query, $partyId) => $query->where('party_id', $partyId))
+            ->when($request->query('party_id'), function ($query, $partyId) use ($request) {
+                // Accept the public id as well as the internal one.
+                if (! ctype_digit((string) $partyId)) {
+                    $model = match ($request->query('party_type')) {
+                        'supplier' => Supplier::class,
+                        default => Customer::class,
+                    };
+                    $partyId = $model::query()->where('public_id', $partyId)->value('id') ?? 0;
+                }
+
+                return $query->where('party_id', $partyId);
+            })
+            ->when($request->boolean('open'), fn ($query) => $query->where('status', 'issued')->where('outstanding_minor', '>', 0))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('issue_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('issue_date', '<=', $to))
             ->when($request->query('search'), function ($query, $search) {

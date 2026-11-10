@@ -1,8 +1,9 @@
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate } from '../lib/format'
+import { formatDate, formatDateTime } from '../lib/format'
 import { statusLabel } from '../lib/labels'
 import type { InvoiceRecord } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
@@ -27,12 +28,25 @@ function accountTypeLabel(value: string, locale: 'ar' | 'en') {
 export default function InvoiceProfile() {
   const { id = '' } = useParams()
   const { t, locale } = useI18n()
+  const { can } = useAuth()
+  const queryClient = useQueryClient()
 
   const query = useQuery({
     queryKey: ['invoice-profile', id],
     queryFn: async () => {
       const { data } = await api.get<{ data: InvoiceRecord }>(`/invoices/${id}`)
       return data.data
+    },
+  })
+
+  const undo = useMutation({
+    mutationFn: async (applicationId: string) => {
+      const reason = window.prompt(locale === 'ar' ? 'سبب إلغاء التطبيق' : 'Reason for undoing this application')
+      if (!reason) return
+      await api.delete(`/invoice-applications/${applicationId}`, { data: { reason } })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['invoice-profile', id] })
     },
   })
 
@@ -151,6 +165,48 @@ export default function InvoiceProfile() {
             </Table>
           )}
         </Card>
+
+        {invoice.applications && invoice.applications.length > 0 ? (
+          <Card>
+            <CardHeader
+              title={locale === 'ar' ? 'السداد المطبّق' : 'Applied payments'}
+              icon="creditCard"
+              actions={<Badge tone="neutral">{invoice.applications.length}</Badge>}
+            />
+            <Table>
+              <thead>
+                <tr>
+                  <Th>{locale === 'ar' ? 'السند' : 'Payment'}</Th>
+                  <Th>{t('date')}</Th>
+                  <Th>{t('status')}</Th>
+                  <Th className="text-end">{t('amount')}</Th>
+                  <Th />
+                </tr>
+              </thead>
+              <tbody>
+                {invoice.applications.map((application) => (
+                  <tr key={application.id}>
+                    <Td className="font-medium">{application.payment_number ?? (locale === 'ar' ? 'دفعة مورد' : 'Supplier payment')}</Td>
+                    <Td>{formatDateTime(application.created_at, locale)}</Td>
+                    <Td>
+                      <Badge tone={application.reversed_at ? 'neutral' : 'positive'}>
+                        {application.reversed_at ? (locale === 'ar' ? 'مُلغى' : 'Undone') : locale === 'ar' ? 'مطبّق' : 'Applied'}
+                      </Badge>
+                    </Td>
+                    <Td className="text-end"><Money amountMinor={application.amount_minor} currency={invoice.currency} /></Td>
+                    <Td className="text-end">
+                      {!application.reversed_at && can('payments.create') ? (
+                        <Button variant="ghost" disabled={undo.isPending} onClick={() => undo.mutate(application.id)}>
+                          {locale === 'ar' ? 'إلغاء التطبيق' : 'Undo'}
+                        </Button>
+                      ) : null}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        ) : null}
 
         {invoice.credit_notes && invoice.credit_notes.length > 0 ? (
           <Card>

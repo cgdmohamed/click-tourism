@@ -116,6 +116,24 @@ class PartyLedgerSubaccountTest extends TestCase
         $settlement->applyReceipt($payment, $invoice, 1, $this->user->id);
     }
 
+    public function test_an_invoice_application_can_be_undone(): void
+    {
+        $invoice = $this->issuedCustomerInvoice(100000);
+        $payment = $this->receipt(40000);
+        $settlement = app(InvoiceSettlementService::class);
+        $application = $settlement->applyReceipt($payment, $invoice, 40000, $this->user->id);
+
+        $settlement->unapply($application, 'wrong invoice', $this->user->id);
+
+        $this->assertSame(100000, (int) $invoice->refresh()->outstanding_minor);
+        $this->assertSame(40000, (int) $payment->refresh()->unallocated_minor);
+        $this->assertSame(100000, $this->net($this->subaccount('customer', $this->customer()->id, 'receivable')));
+        $this->assertSame(-40000, $this->net($this->account('2300')), 'the money is an advance again');
+
+        $this->expectException(DomainException::class);
+        $settlement->unapply($application, 'again', $this->user->id);
+    }
+
     public function test_a_credit_note_reduces_the_original_invoice_outstanding(): void
     {
         $invoice = $this->issuedCustomerInvoice(100000);

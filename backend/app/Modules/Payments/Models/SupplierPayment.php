@@ -66,7 +66,7 @@ class SupplierPayment extends Model
     public function appliedMinor(): int
     {
         return (int) $this->applications()->sum('amount_minor')
-            + (int) InvoiceApplication::query()->where('supplier_payment_id', $this->id)->sum('amount_minor');
+            + (int) InvoiceApplication::query()->active()->where('supplier_payment_id', $this->id)->sum('amount_minor');
     }
 
     /**
