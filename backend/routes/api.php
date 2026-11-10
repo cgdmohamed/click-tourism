@@ -243,7 +243,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:payments.view');
         Route::post('payment-methods', [PaymentMethodController::class, 'store'])->middleware(['permission:payments.create']);
-        Route::patch('payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])->middleware(['permission:payments.create']);
+        Route::patch('payment-methods/{method}', [PaymentMethodController::class, 'update'])->middleware(['permission:payments.create']);
 
         Route::get('refunds', [RefundController::class, 'index'])->middleware('permission:payments.view');
         Route::post('refunds', [RefundController::class, 'store'])->middleware(['permission:refunds.create', 'idempotent']);
