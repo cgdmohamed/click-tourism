@@ -65,6 +65,12 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     fi
 fi
 
+# Demo credentials are independently reconciled and verified after seeding.
+# A partially seeded database must never be reported ready.
+if [ "${DEMO_MODE:-false}" = "true" ]; then
+    php artisan demo:ensure-users
+fi
+
 if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
     echo "Caching configuration, routes, events and views..."
     php artisan optimize
