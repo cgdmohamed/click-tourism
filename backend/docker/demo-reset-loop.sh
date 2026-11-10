@@ -21,14 +21,14 @@ pg_restore --list "${SNAPSHOT}" >/dev/null || exit 1
 
 restore_baseline() {
     # Restore never mutates the saved archive. Fail closed until all stages pass.
-    psql -X -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
-    pg_restore --exit-on-error --no-owner --no-acl --dbname="${PGDATABASE}" "${SNAPSHOT}"
-    php artisan demo:ensure-users --verify-only
-    find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-    mkdir -p storage/app/public
-    php artisan cache:clear
-    php artisan demo:window --seconds=600
-    php artisan up
+    psql -X -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' || return 1
+    pg_restore --exit-on-error --no-owner --no-acl --dbname="${PGDATABASE}" "${SNAPSHOT}" || return 1
+    php artisan demo:ensure-users --verify-only || return 1
+    find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
+    mkdir -p storage/app/public || return 1
+    php artisan cache:clear || return 1
+    php artisan demo:window --seconds=600 || return 1
+    php artisan up || return 1
 }
 
 while :; do
