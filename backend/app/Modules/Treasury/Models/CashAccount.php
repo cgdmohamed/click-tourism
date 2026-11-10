@@ -38,7 +38,7 @@ class CashAccount extends Model
         return $this->belongsTo(Branch::class);
     }
 
-    public function toApiArray(?int $balanceMinor = null, ?string $balanceCurrency = null): array
+    public function toApiArray(?int $balanceMinor = null, ?string $balanceCurrency = null, ?int $nativeBalanceMinor = null): array
     {
         return [
             // `id` stays the GL account public id so existing payment screens keep working.
@@ -57,6 +57,7 @@ class CashAccount extends Model
             'registered' => true,
             'balance_minor' => $balanceMinor,
             'balance_currency' => $balanceCurrency,
+            'native_balance_minor' => $nativeBalanceMinor,
         ];
     }
 }

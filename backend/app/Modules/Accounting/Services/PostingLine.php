@@ -18,7 +18,18 @@ final class PostingLine
         public readonly ?string $partyType = null,
         public readonly ?int $partyId = null,
         public readonly ?string $description = null,
+        public readonly ?string $currency = null,
+        public readonly ?string $fxRate = null,
     ) {}
+
+    /** The same line expressed in its own currency (multi-currency entries). */
+    public function in(string $currency, string $fxRate): self
+    {
+        return new self(
+            $this->account, $this->debitMinor, $this->creditMinor, $this->partyType,
+            $this->partyId, $this->description, strtoupper($currency), $fxRate,
+        );
+    }
 
     public static function debit(Account $account, int $amountMinor, ?string $partyType = null, ?int $partyId = null, ?string $description = null): self
     {

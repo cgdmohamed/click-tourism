@@ -177,6 +177,59 @@ class TreasuryTest extends TestCase
         $this->assertSame($entry->lines->sum('base_debit_minor'), $entry->lines->sum('base_credit_minor'));
     }
 
+    public function test_a_cross_currency_transfer_keeps_each_account_in_its_own_currency(): void
+    {
+        $usd = $this->register('1130', 'USD');
+        $bank = $this->register('1120', 'EGP', 'bank');
+        $this->fund('1130', 100000, 'USD', '50'); // 1,000.00 USD at 50
+
+        $id = $this->transfer($usd, $bank, [
+            'amount_minor' => 10000,          // 100.00 USD out
+            'fee_minor' => 500,               // 5.00 USD bank fee
+            'to_amount_minor' => 520000,      // 5,200.00 EGP in
+            'from_fx_rate' => '50',
+        ])->assertCreated()->json('data.id');
+
+        $entry = JournalEntry::query()->where('source_type', 'transfer')->firstOrFail();
+        $usdLine = $entry->lines->firstWhere('account_id', $this->account('1130')->id);
+        $egpLine = $entry->lines->firstWhere('account_id', $this->account('1120')->id);
+
+        $this->assertSame('USD', $usdLine->currency_code);
+        $this->assertSame(10500, (int) $usdLine->credit_minor);
+        $this->assertSame('EGP', $egpLine->currency_code);
+        $this->assertSame(520000, (int) $egpLine->debit_minor);
+
+        // The USD account now holds 1,000 - 105 = 895 USD, and the base value follows the rate.
+        $native = fn (string $code) => (int) DB::table('journal_lines')
+            ->whereIn('account_id', $this->accountFamily($code))->where('currency_code', $code === '1130' ? 'USD' : 'EGP')
+            ->selectRaw('COALESCE(SUM(debit_minor - credit_minor), 0) as n')->value('n');
+        $this->assertSame(89500, $native('1130'));
+        $this->assertSame(520000, $native('1120'));
+
+        $this->assertSame($entry->lines->sum('base_debit_minor'), $entry->lines->sum('base_credit_minor'));
+        $this->assertSame('EGP', $entry->currency_code);
+
+        // Reversal restores both currencies exactly.
+        $this->withHeaders($this->headers())->postJson("/api/v1/transfers/{$id}/reverse", ['reason' => 'test'])->assertOk();
+        $this->assertSame(100000, $native('1130'));
+        $this->assertSame(0, $native('1120'));
+    }
+
+    public function test_cash_accounts_report_their_balance_in_their_own_currency(): void
+    {
+        $usd = $this->register('1130', 'USD');
+        $bank = $this->register('1120', 'EGP', 'bank');
+        $this->fund('1130', 100000, 'USD', '50');
+        $this->transfer($usd, $bank, ['amount_minor' => 10000, 'to_amount_minor' => 500000, 'from_fx_rate' => '50'])->assertCreated();
+
+        $rows = collect($this->withHeaders($this->headers())->getJson('/api/v1/cash-accounts')->assertOk()->json('data'));
+        $row = $rows->firstWhere('code', '1130');
+
+        $this->assertSame(90000, $row['native_balance_minor']);
+        $this->assertSame(4500000, $row['balance_minor']);
+        $this->assertSame('EGP', $row['balance_currency']);
+    }
+
     public function test_a_cross_currency_transfer_with_a_shortfall_books_an_fx_loss(): void
     {
         $usd = $this->register('1130', 'USD');

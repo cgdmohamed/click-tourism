@@ -129,7 +129,7 @@ class PostingService
                     'credit_minor' => $line['credit_minor'],
                     'base_debit_minor' => $line['base_debit_minor'],
                     'base_credit_minor' => $line['base_credit_minor'],
-                    'currency_code' => $request->currency,
+                    'currency_code' => $line['currency'],
                     'party_type' => $line['party_type'],
                     'party_id' => $line['party_id'],
                     'description' => $line['description'],
@@ -257,6 +257,7 @@ class PostingService
 
         $debit = 0;
         $credit = 0;
+        $mixed = false;
 
         foreach ($request->lines as $line) {
             if (! $line instanceof PostingLine) {
@@ -279,15 +280,22 @@ class PostingService
                 throw new DomainException("Account {$account->code} is not active and postable.");
             }
 
-            if ($account->currency_code !== null && strtoupper($account->currency_code) !== $request->currency) {
+            $lineCurrency = $line->currency ?? $request->currency;
+            if ($account->currency_code !== null && strtoupper($account->currency_code) !== $lineCurrency) {
                 throw new DomainException("Account {$account->code} only accepts {$account->currency_code}.");
+            }
+
+            if ($lineCurrency !== $request->currency) {
+                $mixed = true;
             }
 
             $debit += $line->debitMinor;
             $credit += $line->creditMinor;
         }
 
-        if ($debit !== $credit) {
+        // Entries whose lines are in different currencies balance in the base
+        // currency (checked in prepareLines); transaction amounts are not comparable.
+        if (! $mixed && $debit !== $credit) {
             throw new DomainException("Journal entry is not balanced: debits {$debit} vs credits {$credit}.");
         }
     }
@@ -379,7 +387,7 @@ class PostingService
      * Convert every line to base currency and append the FX rounding residual
      * to the configured rounding account so the base entry balances exactly.
      *
-     * @return array<int, array{account: Account, debit_minor: int, credit_minor: int, base_debit_minor: int, base_credit_minor: int, party_type: ?string, party_id: ?int, description: ?string}>
+     * @return array<int, array{account: Account, debit_minor: int, credit_minor: int, base_debit_minor: int, base_credit_minor: int, currency: string, party_type: ?string, party_id: ?int, description: ?string}>
      */
     private function prepareLines(PostingRequest $request, string $baseCurrency): array
     {
@@ -388,10 +396,12 @@ class PostingService
         $baseCredit = 0;
 
         foreach ($request->lines as $line) {
-            $baseDebitMinor = (new Money($line->debitMinor, $request->currency))
-                ->convertTo($baseCurrency, $request->fxRate)->amountMinor;
-            $baseCreditMinor = (new Money($line->creditMinor, $request->currency))
-                ->convertTo($baseCurrency, $request->fxRate)->amountMinor;
+            $lineCurrency = $line->currency ?? $request->currency;
+            $lineRate = $line->fxRate ?? $request->fxRate;
+            $baseDebitMinor = (new Money($line->debitMinor, $lineCurrency))
+                ->convertTo($baseCurrency, $lineRate)->amountMinor;
+            $baseCreditMinor = (new Money($line->creditMinor, $lineCurrency))
+                ->convertTo($baseCurrency, $lineRate)->amountMinor;
 
             $baseDebit += $baseDebitMinor;
             $baseCredit += $baseCreditMinor;
@@ -400,6 +410,7 @@ class PostingService
                 'account' => $line->account,
                 'debit_minor' => $line->debitMinor,
                 'credit_minor' => $line->creditMinor,
+                'currency' => $lineCurrency,
                 'base_debit_minor' => $baseDebitMinor,
                 'base_credit_minor' => $baseCreditMinor,
                 'party_type' => $line->partyType,
@@ -410,12 +421,17 @@ class PostingService
 
         if ($baseDebit !== $baseCredit) {
             $difference = $baseDebit - $baseCredit;
+            // Rounding can only ever be a few minor units; anything larger is a real imbalance.
+            if (abs($difference) > count($prepared)) {
+                throw new DomainException("Journal entry is not balanced in {$baseCurrency}: debits {$baseDebit} vs credits {$baseCredit}.");
+            }
             $rounding = $this->account((string) $this->settings->get('accounting', 'rounding_account_code', '6999'));
 
             $prepared[] = [
                 'account' => $rounding,
                 'debit_minor' => 0,
                 'credit_minor' => 0,
+                'currency' => $baseCurrency,
                 'base_debit_minor' => $difference < 0 ? abs($difference) : 0,
                 'base_credit_minor' => $difference > 0 ? $difference : 0,
                 'party_type' => null,
