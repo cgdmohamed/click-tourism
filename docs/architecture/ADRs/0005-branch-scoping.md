@@ -1,6 +1,6 @@
 # ADR-0005 — Branch scoping and branch accounting
 
-- Status: Proposed
+- Status: Accepted (accounting activation pending accountant approval)
 - Date: 2026-11-09
 - Deciders: Architect + accountant (DEC-014)
 

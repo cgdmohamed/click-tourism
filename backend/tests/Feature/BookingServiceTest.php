@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Core\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -125,5 +126,49 @@ class BookingServiceTest extends TestCase
         $this->expectExceptionMessage('Cannot move a booking');
 
         app(BookingService::class)->transition($booking, 'closed', null, $this->user->id);
+    }
+
+    public function test_negative_margin_requires_segregated_manager_approval_before_confirmation(): void
+    {
+        $service = app(BookingService::class);
+        $booking = $this->createBooking(['items' => [[
+            'service_type' => 'hotel',
+            'description' => 'Loss-making hotel package',
+            'quantity' => 1,
+            'unit_cost_minor' => 120000,
+            'unit_sell_minor' => 100000,
+        ]]]);
+
+        try {
+            $service->transition($booking, 'confirmed', null, $this->user->id);
+            $this->fail('Confirmation should have required approval.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('manager approval', $exception->getMessage());
+        }
+
+        $service->requestMarginApproval($booking, 'Strategic customer recovery', $this->user->id);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('requester cannot approve');
+        $service->approveMargin($booking->refresh(), $this->user->id);
+    }
+
+    public function test_a_different_manager_can_approve_negative_margin_and_the_approval_is_audited(): void
+    {
+        $service = app(BookingService::class);
+        $booking = $this->createBooking(['items' => [[
+            'service_type' => 'hotel', 'description' => 'Approved loss', 'quantity' => 1,
+            'unit_cost_minor' => 120000, 'unit_sell_minor' => 100000,
+        ]]]);
+        $manager = User::factory()->create();
+        $manager->branches()->attach($this->branch->id);
+
+        $service->requestMarginApproval($booking, 'Documented exception', $this->user->id);
+        $approved = $service->approveMargin($booking->refresh(), $manager->id);
+        $confirmed = $service->transition($approved, 'confirmed', 'Approved exception', $this->user->id);
+
+        $this->assertSame('confirmed', $confirmed->status);
+        $this->assertSame('approved', $confirmed->margin_approval_status);
+        $this->assertSame($manager->id, $confirmed->margin_approved_by);
+        $this->assertDatabaseHas('audit_events', ['action' => 'booking.margin_approved', 'actor_id' => $manager->id]);
     }
 }

@@ -7,12 +7,14 @@ use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\CRM\Models\AssignmentRule;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\CRM\Models\LeadActivity;
 use App\Modules\CRM\Models\LeadSource;
 use App\Modules\CRM\Models\LeadStage;
 use App\Modules\Parties\Models\Customer;
 use DomainException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -53,12 +55,13 @@ class LeadService
 
             $owner = ! empty($data['owner_user_id'])
                 ? User::query()->where('public_id', $data['owner_user_id'])->first()
-                : $this->pickOwner($branch, $source?->id);
+                : $this->pickOwner($branch, $source?->id, $data['service_category'] ?? null);
 
             $lead = Lead::query()->create([
                 'source_id' => $source?->id,
                 'stage_id' => $stage->id,
                 'external_id' => $data['external_id'] ?? null,
+                'service_category' => $data['service_category'] ?? null,
                 'name' => $data['name'],
                 'phone' => $data['phone'] ?? null,
                 'email' => $data['email'] ?? null,
@@ -93,7 +96,7 @@ class LeadService
                 $attributes['status'] = $stage->is_won ? 'won' : ($stage->is_lost ? 'lost' : 'open');
             }
 
-            foreach (['name', 'phone', 'email', 'notes'] as $field) {
+            foreach (['name', 'phone', 'email', 'notes', 'service_category'] as $field) {
                 if (array_key_exists($field, $data)) {
                     $attributes[$field] = $data[$field];
                 }
@@ -108,19 +111,35 @@ class LeadService
                 if (! $owner) {
                     throw new DomainException('Owner not found.');
                 }
+                if (! $owner->branches()->where('branches.id', $lead->branch_id)->exists()) {
+                    throw new DomainException('Owner is not assigned to the lead branch.');
+                }
                 $attributes['owner_user_id'] = $owner->id;
             }
 
+            $meaningful = false;
             if (! empty($data['note'])) {
                 $this->activity($lead, 'note', (string) $data['note'], $actorId);
+                $meaningful = $this->isMeaningfulActivity('note');
             }
-
-            $attributes['last_activity_at'] = now();
-            $lead->update($attributes);
 
             if (isset($data['stage'])) {
                 $this->activity($lead, 'stage_changed', 'Stage: '.$data['stage'], $actorId);
+                $meaningful = $meaningful || $this->isMeaningfulActivity('stage_changed');
             }
+
+            if (isset($attributes['owner_user_id']) && $attributes['owner_user_id'] !== $lead->owner_user_id) {
+                $this->activity($lead, 'assigned', 'Manual owner override', $actorId);
+                $meaningful = true;
+                $attributes['reassignment_attempts'] = 0;
+                $attributes['escalated_at'] = null;
+            }
+
+            if ($meaningful) {
+                $attributes['last_activity_at'] = now();
+            }
+
+            $lead->update($attributes);
 
             $this->audit->log('lead.updated', $lead, null, $attributes, $actorId);
 
@@ -135,33 +154,65 @@ class LeadService
     public function reassignStale(): int
     {
         $hours = max(1, $this->settings->int('crm', 'reassign_after_hours', 24));
-        $cutoff = now()->subHours($hours);
+        $maxAttempts = max(1, $this->settings->int('crm', 'reassignment_max_attempts', 3));
 
         $leads = Lead::query()
             ->where('status', 'open')
-            ->where(function ($query) use ($cutoff) {
-                $query->where('last_activity_at', '<', $cutoff)
-                    ->orWhere(function ($query) use ($cutoff) {
-                        $query->whereNull('last_activity_at')->where('created_at', '<', $cutoff);
-                    });
-            })
+            ->whereNull('escalated_at')
             ->get();
 
         $count = 0;
         foreach ($leads as $lead) {
-            $branch = Branch::query()->find($lead->branch_id);
-            if (! $branch) {
+            $lastActivity = $lead->last_activity_at ?? $lead->created_at;
+            if (! $lastActivity || $this->businessHoursBetween($lastActivity, now()) < $hours) {
                 continue;
             }
 
-            $newOwner = $this->pickOwner($branch, $lead->source_id, $lead->owner_user_id);
-            if ($newOwner && $newOwner->id !== $lead->owner_user_id) {
-                $previous = $lead->owner_user_id;
-                $lead->update(['owner_user_id' => $newOwner->id, 'last_activity_at' => now()]);
-                $this->activity($lead, 'reassigned', 'Reassigned after '.$hours.'h of inactivity', null);
-                $this->audit->log('lead.reassigned', $lead, ['owner_user_id' => $previous], ['owner_user_id' => $newOwner->id]);
-                $count++;
-            }
+            DB::transaction(function () use ($lead, $hours, $maxAttempts, &$count) {
+                $locked = Lead::query()->lockForUpdate()->findOrFail($lead->id);
+                $lastActivity = $locked->last_activity_at ?? $locked->created_at;
+                if ($locked->status !== 'open' || $locked->escalated_at || ! $lastActivity || $this->businessHoursBetween($lastActivity, now()) < $hours) {
+                    return;
+                }
+
+                $branch = Branch::query()->find($locked->branch_id);
+                if (! $branch) {
+                    return;
+                }
+
+                $attempts = (int) $locked->reassignment_attempts + 1;
+                $newOwner = $this->pickOwner($branch, $locked->source_id, $locked->service_category, $locked->owner_user_id);
+                if ($newOwner && $newOwner->id !== $locked->owner_user_id) {
+                    $previous = $locked->owner_user_id;
+                    $locked->update([
+                        'owner_user_id' => $newOwner->id,
+                        'last_activity_at' => now(),
+                        'reassignment_attempts' => $attempts,
+                    ]);
+                    $this->activity($locked, 'reassigned', 'Reassigned after '.$hours.' business hours of inactivity', null);
+                    $this->audit->log('lead.reassigned', $locked, ['owner_user_id' => $previous], [
+                        'owner_user_id' => $newOwner->id,
+                        'attempt' => $attempts,
+                    ]);
+                    $count++;
+
+                    return;
+                }
+
+                if ($attempts >= $maxAttempts) {
+                    $previous = $locked->owner_user_id;
+                    $locked->update([
+                        'owner_user_id' => null,
+                        'reassignment_attempts' => $attempts,
+                        'escalated_at' => now(),
+                    ]);
+                    $this->activity($locked, 'escalated', 'Escalated to unassigned queue after '.$attempts.' attempts', null);
+                    $this->audit->log('lead.escalated', $locked, ['owner_user_id' => $previous], ['attempts' => $attempts]);
+                    $count++;
+                } else {
+                    $locked->update(['reassignment_attempts' => $attempts, 'last_activity_at' => now()]);
+                }
+            });
         }
 
         return $count;
@@ -204,10 +255,39 @@ class LeadService
         });
     }
 
-    private function pickOwner(Branch $branch, ?int $sourceId = null, ?int $excludeUserId = null): ?User
+    private function pickOwner(Branch $branch, ?int $sourceId = null, ?string $serviceCategory = null, ?int $excludeUserId = null): ?User
     {
+        $rules = AssignmentRule::query()
+            ->where('is_active', true)
+            ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $branch->id))
+            ->where(fn ($query) => $query->whereNull('source_id')->orWhere('source_id', $sourceId))
+            ->where(fn ($query) => $query->whereNull('service_category')->orWhere('service_category', $serviceCategory))
+            ->orderBy('priority')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($rules->where('strategy', 'manual') as $manualRule) {
+            if (! $manualRule->target_user_id) {
+                continue;
+            }
+            $manualOwner = User::query()
+                ->whereKey($manualRule->target_user_id)
+                ->where('is_active', true)
+                ->where('is_available_for_leads', true)
+                ->whereHas('branches', fn ($query) => $query->where('branches.id', $branch->id))
+                ->when($excludeUserId, fn ($query) => $query->where('users.id', '!=', $excludeUserId))
+                ->first();
+            if ($manualOwner) {
+                return $manualOwner;
+            }
+        }
+
+        $rule = $rules->first(fn (AssignmentRule $candidate) => $candidate->strategy !== 'manual');
+
         $candidates = User::query()
             ->where('is_active', true)
+            ->where('is_available_for_leads', true)
             ->whereHas('branches', fn ($query) => $query->where('branches.id', $branch->id))
             ->when($excludeUserId, fn ($query) => $query->where('users.id', '!=', $excludeUserId))
             ->get();
@@ -223,7 +303,60 @@ class LeadService
             ->selectRaw('owner_user_id, COUNT(*) as total')
             ->pluck('total', 'owner_user_id');
 
-        return $candidates->sortBy(fn (User $user) => (int) ($loads[$user->id] ?? 0))->first();
+        if ($rule?->max_leads_per_user) {
+            $candidates = $candidates->filter(fn (User $user) => (int) ($loads[$user->id] ?? 0) < $rule->max_leads_per_user);
+        }
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        $strategy = $rule?->strategy ?? $this->settings->get('crm', 'assignment_strategy', 'least_loaded');
+        if ($strategy === 'round_robin' && $rule) {
+            $ordered = $candidates->sortBy('id')->values();
+            $selected = $ordered->first(fn (User $user) => $user->id > (int) $rule->last_assigned_user_id) ?? $ordered->first();
+            $rule->update(['last_assigned_user_id' => $selected?->id]);
+
+            return $selected;
+        }
+
+        return $candidates->sortBy(fn (User $user) => sprintf('%010d-%010d', (int) ($loads[$user->id] ?? 0), $user->id))->first();
+    }
+
+    private function isMeaningfulActivity(string $type): bool
+    {
+        $configured = explode(',', (string) $this->settings->get('crm', 'meaningful_activity_types', 'note,call,email,whatsapp,stage_changed'));
+
+        return in_array($type, array_map('trim', $configured), true);
+    }
+
+    private function businessHoursBetween(Carbon $from, Carbon $to): float
+    {
+        $timezone = (string) $this->settings->get('crm', 'business_timezone', 'Africa/Cairo');
+        $days = array_map('intval', explode(',', (string) $this->settings->get('crm', 'business_days', '1,2,3,4,5')));
+        $startTime = (string) $this->settings->get('crm', 'business_day_start', '09:00');
+        $endTime = (string) $this->settings->get('crm', 'business_day_end', '17:00');
+        $from = $from->copy()->timezone($timezone);
+        $to = $to->copy()->timezone($timezone);
+        if ($to->lessThanOrEqualTo($from)) {
+            return 0;
+        }
+
+        $seconds = 0;
+        $day = $from->copy()->startOfDay();
+        while ($day->lessThanOrEqualTo($to)) {
+            if (in_array($day->isoWeekday(), $days, true)) {
+                $businessStart = Carbon::parse($day->toDateString().' '.$startTime, $timezone);
+                $businessEnd = Carbon::parse($day->toDateString().' '.$endTime, $timezone);
+                $overlapStart = $from->greaterThan($businessStart) ? $from : $businessStart;
+                $overlapEnd = $to->lessThan($businessEnd) ? $to : $businessEnd;
+                if ($overlapEnd->greaterThan($overlapStart)) {
+                    $seconds += $overlapStart->diffInSeconds($overlapEnd);
+                }
+            }
+            $day->addDay();
+        }
+
+        return $seconds / 3600;
     }
 
     private function activity(Lead $lead, string $type, ?string $body, ?int $actorId): void

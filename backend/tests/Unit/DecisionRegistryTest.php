@@ -54,7 +54,7 @@ class DecisionRegistryTest extends TestCase
         }
     }
 
-    public function test_every_decision_has_an_arabic_title_and_is_unresolved_by_default(): void
+    public function test_every_decision_has_an_arabic_title_and_approved_statuses_are_recorded(): void
     {
         $registry = new DecisionRegistry;
 
@@ -62,6 +62,13 @@ class DecisionRegistryTest extends TestCase
             $this->assertNotSame('', trim($decision['title_ar']), "{$decision['id']} needs an Arabic title");
         }
 
-        $this->assertCount(count($registry->all()), $registry->unresolved());
+        $byId = array_column($registry->all(), null, 'id');
+        foreach (['DEC-015', 'DEC-016', 'DEC-018', 'DEC-020', 'DEC-022', 'DEC-029', 'DEC-040'] as $id) {
+            $this->assertSame('decided', $byId[$id]['status']);
+        }
+        foreach (['DEC-004', 'DEC-008', 'DEC-014', 'DEC-025', 'DEC-028'] as $id) {
+            $this->assertSame('pending_accountant_approval', $byId[$id]['status']);
+        }
+        $this->assertCount(count($registry->all()) - 7, $registry->unresolved());
     }
 }

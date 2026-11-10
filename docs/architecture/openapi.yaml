@@ -836,6 +836,35 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: Cancelled with fee/refund preview }
+  /bookings/{id}/margin-approval:
+    post:
+      tags: [Bookings]
+      summary: Request approval for a negative-margin booking
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 1000 }
+      responses:
+        '200': { description: Approval requested and audited }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /bookings/{id}/margin-approval/approve:
+    post:
+      tags: [Bookings]
+      summary: Approve a pending negative-margin exception (requester cannot approve)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approval granted and audited }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /payments:
     get:
@@ -1029,7 +1058,7 @@ paths:
   /reports/trial-balance/export:
     get:
       tags: [Reports]
-      summary: Trial balance as CSV (requires reports.export; audited)
+      summary: Trial balance export (requires reports.export; audited)
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
@@ -1037,6 +1066,8 @@ paths:
         - { name: max_level, in: query, schema: { type: integer, minimum: 1, maximum: 20 } }
         - { name: cost_center_id, in: query, schema: { type: string } }
         - { name: adjustments, in: query, schema: { type: string, enum: [include, exclude, only] } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200':
           description: UTF-8 CSV with BOM; formula-like cells are neutralised
@@ -1069,7 +1100,7 @@ paths:
   /reports/general-ledger/export:
     get:
       tags: [Reports]
-      summary: General ledger as CSV (requires reports.export; audited; max 50,000 rows)
+      summary: General ledger export (requires reports.export; audited; max 50,000 rows)
       parameters:
         - { name: account_id, in: query, required: true, schema: { type: string } }
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
@@ -1077,6 +1108,8 @@ paths:
         - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
         - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier, employee] } }
         - { name: party_id, in: query, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200':
           description: UTF-8 CSV with BOM
@@ -1099,10 +1132,12 @@ paths:
   /reports/income-statement/export:
     get:
       tags: [Reports]
-      summary: Income statement as CSV (requires reports.export; audited)
+      summary: Income statement export (requires reports.export; audited)
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200': { description: UTF-8 CSV with BOM }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1118,9 +1153,11 @@ paths:
   /reports/balance-sheet/export:
     get:
       tags: [Reports]
-      summary: Balance sheet as CSV (requires reports.export; audited)
+      summary: Balance sheet export (requires reports.export; audited)
       parameters:
         - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200': { description: UTF-8 CSV with BOM }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1136,10 +1173,12 @@ paths:
   /reports/aging/export:
     get:
       tags: [Reports]
-      summary: Operational AR/AP aging as CSV (requires reports.export; audited)
+      summary: Operational AR/AP aging export (requires reports.export; audited)
       parameters:
         - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
         - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200': { description: UTF-8 CSV with BOM }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1158,10 +1197,12 @@ paths:
   /reports/aging-reconciliation/export:
     get:
       tags: [Reports]
-      summary: AR/AP aging reconciliation as CSV (requires reports.export; audited)
+      summary: AR/AP aging reconciliation export (requires reports.export; audited)
       parameters:
         - { name: type, in: query, required: true, schema: { type: string, enum: [ar, ap] } }
         - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200': { description: UTF-8 CSV with BOM }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1186,13 +1227,15 @@ paths:
   /reports/party-statement/export:
     get:
       tags: [Reports]
-      summary: Party statement as CSV (requires reports.export; audited; max 50,000 rows)
+      summary: Party statement export (requires reports.export; audited; max 50,000 rows)
       parameters:
         - { name: party_type, in: query, required: true, schema: { type: string, enum: [customer, supplier, employee] } }
         - { name: party_id, in: query, required: true, schema: { type: string } }
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
       responses:
         '200': { description: UTF-8 CSV with BOM }
         '403': { $ref: '#/components/responses/Forbidden' }

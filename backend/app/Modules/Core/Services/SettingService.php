@@ -62,6 +62,18 @@ class SettingService
             'deferred_revenue_account_code' => '2400',
             'accrued_liability_account_code' => '2100',
             'accrued_revenue_account_code' => '1100',
+            // PENDING ACCOUNTANT APPROVAL (DEC-004): infrastructure only;
+            // no commission journal is posted while auto-post remains false.
+            'commission_trigger' => 'fully_collected',
+            'commission_auto_post' => 'false',
+            // PENDING ACCOUNTANT APPROVAL (DEC-008): revaluation posting is
+            // disabled until accounts, eligibility and reversal policy sign-off.
+            'fx_revaluation_enabled' => 'false',
+            'fx_revaluation_auto_reverse' => 'true',
+            // PENDING ACCOUNTANT APPROVAL (DEC-025): manager approval is the
+            // guarded product policy; zero margin warns but does not auto-post.
+            'negative_margin_requires_approval' => 'true',
+            'zero_margin_policy' => 'warn',
         ],
         'treasury' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.
@@ -106,8 +118,19 @@ class SettingService
         'crm' => [
             'reassign_after_hours' => '24',
             'assignment_strategy' => 'least_loaded',
+            'business_timezone' => 'Africa/Cairo',
+            'business_days' => '1,2,3,4,5',
+            'business_day_start' => '09:00',
+            'business_day_end' => '17:00',
+            'reassignment_max_attempts' => '3',
+            'meaningful_activity_types' => 'note,call,email,whatsapp,stage_changed',
         ],
         'documents' => [
+            'default_language' => 'bilingual',
+            // PENDING ACCOUNTANT APPROVAL (DEC-028): unified legal identity is
+            // opt-in only after jurisdiction/template approval.
+            'booking_invoice_mode' => 'separate',
+            'unified_booking_invoice_enabled' => 'false',
             'journal_prefix' => 'JV',
             'booking_prefix' => 'BK',
             'payment_prefix' => 'RV',

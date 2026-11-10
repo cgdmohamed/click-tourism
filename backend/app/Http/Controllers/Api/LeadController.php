@@ -46,6 +46,7 @@ class LeadController extends ApiController
             'consent' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'external_id' => ['nullable', 'string', 'max:120'],
+            'service_category' => ['nullable', 'string', 'max:40'],
         ]);
 
         $lead = $leads->create($data, $this->actorId());
@@ -66,6 +67,7 @@ class LeadController extends ApiController
             'consent' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'note' => ['nullable', 'string', 'max:2000'],
+            'service_category' => ['nullable', 'string', 'max:40'],
         ]);
 
         return $this->ok($leads->update($lead, $data, $this->actorId())->toApiArray());

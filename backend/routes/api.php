@@ -226,6 +226,8 @@ Route::prefix('v1')->group(function () {
         Route::get('bookings/{booking}', [BookingController::class, 'show'])->middleware('permission:bookings.view');
         Route::post('bookings/{booking}/transition', [BookingController::class, 'transition'])->middleware('permission:bookings.transition');
         Route::post('bookings/{booking}/cancel', [BookingController::class, 'cancel'])->middleware('permission:bookings.cancel');
+        Route::post('bookings/{booking}/margin-approval', [BookingController::class, 'requestMarginApproval'])->middleware('permission:bookings.transition');
+        Route::post('bookings/{booking}/margin-approval/approve', [BookingController::class, 'approveMargin'])->middleware('permission:bookings.approve_margin');
 
         Route::get('payments', [PaymentController::class, 'index'])->middleware('permission:payments.view');
         Route::post('payments', [PaymentController::class, 'store'])->middleware(['permission:payments.create', 'idempotent']);

@@ -103,4 +103,19 @@ class BookingController extends ApiController
 
         return $this->ok($booking->toApiArray(true));
     }
+
+    public function requestMarginApproval(Request $request, Booking $booking, BookingService $bookings): JsonResponse
+    {
+        $this->authorizeBranchId($booking->branch_id);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
+
+        return $this->ok($bookings->requestMarginApproval($booking, $data['reason'], $this->actorId())->toApiArray(true));
+    }
+
+    public function approveMargin(Booking $booking, BookingService $bookings): JsonResponse
+    {
+        $this->authorizeBranchId($booking->branch_id);
+
+        return $this->ok($bookings->approveMargin($booking, $this->actorId())->toApiArray(true));
+    }
 }

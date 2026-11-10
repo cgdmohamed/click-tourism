@@ -21,6 +21,7 @@ Status: Draft. Forward-only in production. Each step must be tested with a rollb
 | 13 | Data transfer | `import_batches`, `import_row_errors`, `export_jobs` | Depends on target modules. |
 | 14 | Reliability | `idempotency_keys`, `outbox_events`, `event_consumptions` | Cross-cutting. |
 | 15 | Reporting | `saved_reports` (later), indexes | Add reporting indexes after data model stabilizes. |
+| 16 | Decision support (2026-11-10) | Additive fields/indexes on `users`, `leads`, `assignment_rules`, and `bookings` | CRM routing and negative-margin approval metadata only; tested up/down/up, no historical financial rows rewritten. |
 
 ## Rollback rules
 

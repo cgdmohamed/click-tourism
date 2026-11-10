@@ -138,6 +138,13 @@ class BookingService
                 $this->branchScope->assertBranch($user, $booking->branch);
             }
 
+            if ($toStatus === 'confirmed'
+                && $booking->marginMinor() < 0
+                && $this->settings->bool('accounting', 'negative_margin_requires_approval', true)
+                && $booking->margin_approval_status !== 'approved') {
+                throw new DomainException('Negative-margin booking requires manager approval before confirmation.');
+            }
+
             $attributes = ['status' => $toStatus];
 
             match ($toStatus) {
@@ -171,6 +178,63 @@ class BookingService
             }
 
             $this->audit->log('booking.transitioned', $booking, ['status' => $from], ['status' => $toStatus, 'reason' => $reason], $actorId);
+
+            return $booking->refresh()->load('items', 'customer');
+        });
+    }
+
+    public function requestMarginApproval(Booking $booking, string $reason, ?int $actorId = null): Booking
+    {
+        return DB::transaction(function () use ($booking, $reason, $actorId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            if ($booking->marginMinor() >= 0) {
+                throw new DomainException('Margin approval is only required for a negative-margin booking.');
+            }
+            if (! in_array($booking->status, ['draft', 'quoted'], true)) {
+                throw new DomainException('Only draft or quoted bookings can request margin approval.');
+            }
+            if (trim($reason) === '') {
+                throw new DomainException('A margin approval reason is required.');
+            }
+
+            $before = $booking->only(['margin_approval_status', 'margin_approval_reason']);
+            $booking->update([
+                'margin_approval_status' => 'pending',
+                'margin_approval_reason' => trim($reason),
+                'margin_requested_by' => $actorId,
+                'margin_requested_at' => now(),
+                'margin_approved_by' => null,
+                'margin_approved_at' => null,
+            ]);
+            $this->audit->log('booking.margin_approval_requested', $booking, $before, [
+                'margin_minor' => $booking->marginMinor(),
+                'reason' => trim($reason),
+            ], $actorId);
+
+            return $booking->refresh()->load('items', 'customer');
+        });
+    }
+
+    public function approveMargin(Booking $booking, ?int $actorId = null): Booking
+    {
+        return DB::transaction(function () use ($booking, $actorId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            if ($booking->margin_approval_status !== 'pending') {
+                throw new DomainException('The booking has no pending margin approval request.');
+            }
+            if ($actorId !== null && $booking->margin_requested_by === $actorId) {
+                throw new DomainException('The requester cannot approve their own negative-margin booking.');
+            }
+
+            $booking->update([
+                'margin_approval_status' => 'approved',
+                'margin_approved_by' => $actorId,
+                'margin_approved_at' => now(),
+            ]);
+            $this->audit->log('booking.margin_approved', $booking, ['margin_approval_status' => 'pending'], [
+                'margin_approval_status' => 'approved',
+                'margin_minor' => $booking->marginMinor(),
+            ], $actorId);
 
             return $booking->refresh()->load('items', 'customer');
         });

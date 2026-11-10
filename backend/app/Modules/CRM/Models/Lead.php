@@ -17,6 +17,7 @@ class Lead extends Model
         'source_id',
         'stage_id',
         'external_id',
+        'service_category',
         'name',
         'phone',
         'email',
@@ -27,6 +28,8 @@ class Lead extends Model
         'notes',
         'first_response_at',
         'last_activity_at',
+        'reassignment_attempts',
+        'escalated_at',
         'converted_customer_id',
         'converted_booking_id',
     ];
@@ -37,6 +40,8 @@ class Lead extends Model
             'consent' => 'boolean',
             'first_response_at' => 'datetime',
             'last_activity_at' => 'datetime',
+            'reassignment_attempts' => 'integer',
+            'escalated_at' => 'datetime',
         ];
     }
 
@@ -73,6 +78,7 @@ class Lead extends Model
             'phone' => $this->phone,
             'email' => $this->email,
             'source' => $this->source?->code ?? 'other',
+            'service_category' => $this->service_category,
             'stage' => $this->stage?->code ?? 'new',
             'owner_user_id' => $this->owner?->public_id,
             'branch_id' => $this->branch?->public_id,
@@ -81,6 +87,8 @@ class Lead extends Model
             'notes' => $this->notes,
             'created_at' => $this->created_at?->toIso8601String(),
             'last_activity_at' => $this->last_activity_at?->toIso8601String(),
+            'reassignment_attempts' => (int) $this->reassignment_attempts,
+            'escalated_at' => $this->escalated_at?->toIso8601String(),
             'converted_customer_id' => $this->convertedCustomer?->public_id,
             'converted_booking_id' => $this->convertedBooking?->public_id,
         ];

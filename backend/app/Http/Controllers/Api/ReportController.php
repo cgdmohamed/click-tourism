@@ -11,6 +11,7 @@ use App\Modules\Parties\Models\Supplier;
 use App\Modules\Reports\Services\AgingReconciliationService;
 use App\Modules\Reports\Services\PartyStatementService;
 use App\Modules\Reports\Services\ReportCsv;
+use App\Modules\Reports\Services\ReportDocument;
 use App\Modules\Reports\Services\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +21,7 @@ use Illuminate\Validation\ValidationException;
 
 class ReportController extends ApiController
 {
-    /** Hard cap for one CSV export; narrow the filters when exceeded. */
+    /** Hard cap for one synchronous export; narrow the filters when exceeded. */
     private const EXPORT_MAX_ROWS = 50000;
 
     public function trialBalance(Request $request, ReportService $reports): JsonResponse
@@ -55,9 +56,10 @@ class ReportController extends ApiController
 
         $audit->log('report.exported', null, null, ['report' => 'trial-balance'] + $data, $this->actorId());
 
-        return $this->csvResponse(
+        return $this->exportResponse($request,
             $csv->trialBalance($report),
-            "trial-balance_{$data['from']}_{$data['to']}.csv",
+            "trial-balance_{$data['from']}_{$data['to']}",
+            'Trial Balance / ميزان المراجعة',
         );
     }
 
@@ -105,9 +107,10 @@ class ReportController extends ApiController
             'rows' => $result['total'],
         ], $this->actorId());
 
-        return $this->csvResponse(
+        return $this->exportResponse($request,
             $csv->generalLedger($result),
-            "general-ledger_{$data['account']->code}_{$data['from']}_{$data['to']}.csv",
+            "general-ledger_{$data['account']->code}_{$data['from']}_{$data['to']}",
+            'General Ledger / دفتر الأستاذ',
         );
     }
 
@@ -139,7 +142,7 @@ class ReportController extends ApiController
         $report = $reports->incomeStatement($data['from'], $data['to'], $this->branch());
         $audit->log('report.exported', null, null, ['report' => 'income-statement'] + $data, $this->actorId());
 
-        return $this->csvResponse($csv->incomeStatement($report), "income-statement_{$data['from']}_{$data['to']}.csv");
+        return $this->exportResponse($request, $csv->incomeStatement($report), "income-statement_{$data['from']}_{$data['to']}", 'Income Statement / قائمة الدخل');
     }
 
     public function balanceSheet(Request $request, ReportService $reports): JsonResponse
@@ -161,7 +164,7 @@ class ReportController extends ApiController
         $report = $reports->balanceSheet($data['as_of'], $this->branch());
         $audit->log('report.exported', null, null, ['report' => 'balance-sheet'] + $data, $this->actorId());
 
-        return $this->csvResponse($csv->balanceSheet($report), "balance-sheet_{$data['as_of']}.csv");
+        return $this->exportResponse($request, $csv->balanceSheet($report), "balance-sheet_{$data['as_of']}", 'Balance Sheet / المركز المالي');
     }
 
     public function aging(Request $request, ReportService $reports): JsonResponse
@@ -184,7 +187,7 @@ class ReportController extends ApiController
         $report = $reports->aging($data['type'], $data['as_of'], $this->branch());
         $audit->log('report.exported', null, null, ['report' => 'aging'] + $data, $this->actorId());
 
-        return $this->csvResponse($csv->aging($report), "aging-{$data['type']}_{$data['as_of']}.csv");
+        return $this->exportResponse($request, $csv->aging($report), "aging-{$data['type']}_{$data['as_of']}", 'Aging / أعمار الديون');
     }
 
     public function agingReconciliation(Request $request, AgingReconciliationService $reconciliation): JsonResponse
@@ -207,7 +210,7 @@ class ReportController extends ApiController
         $report = $reconciliation->reconcile($data['type'], $data['as_of'], $this->branch());
         $audit->log('report.exported', null, null, ['report' => 'aging-reconciliation'] + $data, $this->actorId());
 
-        return $this->csvResponse($csv->agingReconciliation($report), "aging-reconciliation-{$data['type']}_{$data['as_of']}.csv");
+        return $this->exportResponse($request, $csv->agingReconciliation($report), "aging-reconciliation-{$data['type']}_{$data['as_of']}", 'Aging Reconciliation / مطابقة الأعمار');
     }
 
     public function partyStatement(Request $request, PartyStatementService $statements): JsonResponse
@@ -268,9 +271,10 @@ class ReportController extends ApiController
             'rows' => $report['total'],
         ], $this->actorId());
 
-        return $this->csvResponse(
+        return $this->exportResponse($request,
             $csv->partyStatement($report),
-            "party-statement-{$data['party_type']}-{$data['party_id']}_{$data['from']}_{$data['to']}.csv",
+            "party-statement-{$data['party_type']}-{$data['party_id']}_{$data['from']}_{$data['to']}",
+            'Party Statement / كشف حساب طرف',
         );
     }
 
@@ -409,12 +413,27 @@ class ReportController extends ApiController
         }
     }
 
-    private function csvResponse(string $content, string $filename): Response
+    private function exportResponse(Request $request, string $csv, string $basename, string $title): Response
     {
+        $options = $request->validate([
+            'format' => ['nullable', 'in:csv,xlsx,pdf'],
+            'language' => ['nullable', 'in:ar,en,bilingual'],
+        ]);
+        $format = $options['format'] ?? 'csv';
+        $language = $options['language'] ?? 'bilingual';
+        $documents = app(ReportDocument::class);
+        [$content, $contentType] = match ($format) {
+            'xlsx' => [$documents->xlsx($csv), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+            'pdf' => [$documents->pdf($csv, $title, $language), 'application/pdf'],
+            default => [$csv, 'text/csv; charset=UTF-8'],
+        };
+        $filename = preg_replace('/[^A-Za-z0-9._-]/', '_', $basename).'.'.$format;
+
         return response($content, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="'.preg_replace('/[^A-Za-z0-9._-]/', '_', $filename).'"',
+            'Content-Type' => $contentType,
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'Cache-Control' => 'no-store',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 }

@@ -1,6 +1,6 @@
 # ADR-0011 — Deployment, versioning, and rollback
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-09
 - Deciders: Architect + human release approver
 

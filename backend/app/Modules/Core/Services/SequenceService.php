@@ -2,6 +2,7 @@
 
 namespace App\Modules\Core\Services;
 
+use App\Modules\Accounting\Models\FiscalYear;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\Sequence;
 use Illuminate\Support\Carbon;
@@ -18,7 +19,7 @@ class SequenceService
     public function next(string $documentType, Branch $branch, ?Carbon $date = null): string
     {
         $date ??= Carbon::now();
-        $year = (int) $date->year;
+        $year = $this->fiscalYearNumber($date);
 
         $sequence = Sequence::query()
             ->where('document_type', $documentType)
@@ -79,6 +80,17 @@ class SequenceService
         };
 
         return $key ? (string) $this->settings->get('documents', $key, strtoupper(substr($documentType, 0, 2))) : strtoupper(substr($documentType, 0, 2));
+    }
+
+    private function fiscalYearNumber(Carbon $date): int
+    {
+        $fiscalYear = FiscalYear::query()
+            ->whereDate('starts_on', '<=', $date->toDateString())
+            ->whereDate('ends_on', '>=', $date->toDateString())
+            ->orderByDesc('starts_on')
+            ->first();
+
+        return (int) ($fiscalYear?->starts_on?->year ?? $date->year);
     }
 
     public function ensure(string $documentType, Branch $branch, int $year, string $prefix): Sequence
