@@ -40,8 +40,8 @@ function FinancialMetric({
   href?: string
 }) {
   const isMoney = !!currency
-  const original = isMoney ? formatMoney(value, currency, locale) : value === null || value === undefined ? '—' : new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US').format(value)
-  const whole = value === null || value === undefined ? null : value / 10 ** (isMoney ? exponent(currency) : 0)
+  const original = isMoney ? formatMoney(value, currency ?? 'EGP', locale) : value === null || value === undefined ? '—' : new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US').format(value)
+  const whole = value === null || value === undefined ? null : value / 10 ** (isMoney ? exponent(currency ?? 'EGP') : 0)
   const compact = whole === null ? '—' : new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
     notation: Math.abs(whole) >= 100000 ? 'compact' : 'standard',
     maximumFractionDigits: Math.abs(whole) >= 100000 ? 2 : isMoney ? 2 : 0,
