@@ -25,7 +25,7 @@ RUN apk add --no-cache --virtual .build-deps \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del .build-deps \
-    && apk add --no-cache icu-libs libzip libpq oniguruma
+    && apk add --no-cache icu-libs libzip libpq oniguruma postgresql-client
 
 COPY docker/php.ini /usr/local/etc/php/conf.d/99-app.ini
 
