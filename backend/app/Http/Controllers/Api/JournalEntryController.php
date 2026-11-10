@@ -18,7 +18,7 @@ class JournalEntryController extends ApiController
         $branch = $this->branch();
 
         $entries = JournalEntry::query()
-            ->with(['lines.account', 'reversalOf'])
+            ->with(['lines.account', 'reversalOf', 'reversal'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('entry_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('entry_date', '<=', $to))
@@ -40,7 +40,7 @@ class JournalEntryController extends ApiController
     public function show(JournalEntry $journalEntry): JsonResponse
     {
         $this->authorizeBranch($journalEntry);
-        $journalEntry->load('lines.account', 'reversalOf');
+        $journalEntry->load('lines.account', 'reversalOf', 'reversal');
 
         return $this->ok($journalEntry->toApiArray(true));
     }

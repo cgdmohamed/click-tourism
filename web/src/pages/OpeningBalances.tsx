@@ -27,6 +27,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { Icon } from '../components/icons'
+import { statusLabel } from '../lib/labels'
 
 type Batch = {
   id: string
@@ -267,7 +268,7 @@ export default function OpeningBalances() {
                       {batch.reversal_reason ? <div className="text-small text-text-subtle">{batch.reversal_reason}</div> : null}
                     </Td>
                     <Td>
-                      <Badge tone={statusTone(batch.status)}>{batch.status}</Badge>
+                      <Badge tone={statusTone(batch.status)}>{statusLabel(batch.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end">
                       <div className="flex flex-wrap justify-end gap-1">

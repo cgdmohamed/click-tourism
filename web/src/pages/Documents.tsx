@@ -26,6 +26,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { statusLabel } from '../lib/labels'
 
 type DocType = 'receipt_voucher' | 'payment_voucher' | 'transfer_voucher' | 'adjustment_voucher' | 'refund_voucher'
 type PartyType = 'customer' | 'supplier' | 'employee'
@@ -420,7 +421,7 @@ export default function Documents() {
                       {document.reversal_reason ? <div className="text-small text-text-subtle">{document.reversal_reason}</div> : null}
                     </Td>
                     <Td className="text-end"><Money amountMinor={document.total_minor} currency={document.currency} /></Td>
-                    <Td><Badge tone={statusTone(document.status)}>{document.status}</Badge></Td>
+                    <Td><Badge tone={statusTone(document.status)}>{statusLabel(document.status, locale)}</Badge></Td>
                     <Td className="text-end">
                       <Button variant="ghost" onClick={() => setDetailId(document.id)}>{L('تفاصيل', 'Details')}</Button>
                     </Td>
@@ -611,7 +612,7 @@ export default function Documents() {
                 </p>
               </div>
               <div className="ms-auto flex flex-wrap items-center gap-2">
-                <Badge tone={statusTone(detail.status)}>{detail.status}</Badge>
+                <Badge tone={statusTone(detail.status)}>{statusLabel(detail.status, locale)}</Badge>
                 {detail.status === 'draft' && can('documents.create') ? (
                   <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
                 ) : null}

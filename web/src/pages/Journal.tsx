@@ -24,6 +24,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { statusLabel } from '../lib/labels'
 
 type DraftLine = { account_id: string; debit: string; credit: string; description: string }
 
@@ -38,9 +39,10 @@ export default function Journal() {
   const [memo, setMemo] = useState('')
   const [entryDate, setEntryDate] = useState(todayISO())
   const [currency, setCurrency] = useState('EGP')
-  const [fxRate, setFxRate] = useState('1')
+  const [fxRate, setFxRate] = useState('')
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()])
   const [page, setPage] = useState(1)
+  const [detail, setDetail] = useState<JournalEntry | null>(null)
 
   const accountsQuery = useQuery({
     queryKey: ['accounts'],
@@ -80,9 +82,7 @@ export default function Journal() {
         entry_date: entryDate,
         branch_id: activeBranch.id,
         currency,
-        fx_rate: fxRate,
-        fx_rate_date: entryDate,
-        fx_rate_source: 'manual',
+        ...(fxRate.trim() ? { fx_rate: fxRate.trim(), fx_rate_date: entryDate, fx_rate_source: 'manual' } : {}),
         memo,
         post,
         lines: lines.map((line) => ({
@@ -172,21 +172,32 @@ export default function Journal() {
                   <Td>{entry.memo ?? '—'}</Td>
                   <Td>{entry.currency}</Td>
                   <Td>
-                    <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                    <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end tabular">
                     {toDecimal(entry.total_minor, entry.currency)} {entry.currency}
                   </Td>
                   <Td className="text-end">
+                    <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" onClick={() => setDetail(entry)}>
+                      {locale === 'ar' ? 'عرض' : 'View'}
+                    </Button>
                     {entry.status === 'posted' ? (
-                      <Button variant="ghost" onClick={() => reverse.mutate(entry)}>
-                        {locale === 'ar' ? 'عكس' : 'Reverse'}
-                      </Button>
+                      entry.reversal_of_id ? (
+                        <Badge tone="neutral">{locale === 'ar' ? 'قيد عكس' : 'Reversal'}</Badge>
+                      ) : entry.reversed_by_id ? (
+                        <Badge tone="neutral">{locale === 'ar' ? 'معكوس' : 'Reversed'}</Badge>
+                      ) : (
+                        <Button variant="ghost" onClick={() => reverse.mutate(entry)}>
+                          {locale === 'ar' ? 'عكس' : 'Reverse'}
+                        </Button>
+                      )
                     ) : (
                       <Button variant="ghost" disabled={postDraft.isPending} onClick={() => postDraft.mutate(entry)}>
                         {t('post')}
                       </Button>
                     )}
+                    </div>
                   </Td>
                 </tr>
               ))}
@@ -236,8 +247,8 @@ export default function Journal() {
               <option value="USD">USD</option>
             </Select>
           </Field>
-          <Field label={locale === 'ar' ? 'سعر الصرف' : 'FX rate'} required>
-            <Input value={fxRate} onChange={(event) => setFxRate(event.target.value)} dir="ltr" />
+          <Field label={locale === 'ar' ? 'سعر الصرف (اتركه فارغاً للسعر المسجّل)' : 'FX rate (leave empty for the stored rate)'}>
+            <Input value={fxRate} onChange={(event) => setFxRate(event.target.value)} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
           </Field>
         </div>
 
@@ -304,6 +315,44 @@ export default function Journal() {
         </div>
 
         {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+      </Modal>
+
+      <Modal
+        open={detail !== null}
+        title={detail ? `${detail.number} — ${formatDate(detail.entry_date, locale)}` : ''}
+        onClose={() => setDetail(null)}
+        footer={<Button variant="secondary" onClick={() => setDetail(null)}>{t('cancel')}</Button>}
+      >
+        {detail ? (
+          <>
+            <p className="mb-3 text-medium text-text-subtle">
+              {statusLabel(detail.status, locale)} · {detail.currency}
+              {detail.memo ? ` · ${detail.memo}` : ''}
+            </p>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>{locale === 'ar' ? 'الحساب' : 'Account'}</Th>
+                  <Th>{t('description')}</Th>
+                  <Th className="text-end">{t('debit')}</Th>
+                  <Th className="text-end">{t('credit')}</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {(detail.lines ?? []).map((line) => (
+                  <tr key={line.id}>
+                    <Td className="tabular">
+                      {line.account ? `${line.account.code} — ${locale === 'ar' ? line.account.name_ar : line.account.name_en}` : '—'}
+                    </Td>
+                    <Td>{line.description ?? '—'}</Td>
+                    <Td className="text-end tabular">{line.debit_minor ? toDecimal(line.debit_minor, detail.currency) : '—'}</Td>
+                    <Td className="text-end tabular">{line.credit_minor ? toDecimal(line.credit_minor, detail.currency) : '—'}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </>
+        ) : null}
       </Modal>
     </div>
   )

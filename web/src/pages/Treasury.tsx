@@ -25,6 +25,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { paymentMethodLabel, statusLabel } from '../lib/labels'
 
 type CashAccount = {
   id: string
@@ -259,7 +260,7 @@ export default function Treasury() {
                       {name(account)}
                       {account.account_last4 ? <span className="tabular text-text-subtle"> ····{account.account_last4}</span> : null}
                     </Td>
-                    <Td>{account.kind ?? account.type ?? '—'}</Td>
+                    <Td>{paymentMethodLabel(account.kind ?? account.type, locale)}</Td>
                     <Td>{account.currency}</Td>
                     <Td className="text-end">
                       {account.balance_minor !== null && account.balance_minor !== undefined ? (
@@ -329,7 +330,7 @@ export default function Treasury() {
                         {transfer.fee_minor > 0 ? <Money amountMinor={transfer.fee_minor} currency={transfer.from_currency} /> : '—'}
                       </Td>
                       <Td>
-                        <Badge tone={statusTone(transfer.status)}>{transfer.status}</Badge>
+                        <Badge tone={statusTone(transfer.status)}>{statusLabel(transfer.status, locale)}</Badge>
                       </Td>
                       <Td className="text-end">
                         {transfer.status === 'posted' && can('transfers.reverse') ? (

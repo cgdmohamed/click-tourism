@@ -26,6 +26,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { paymentMethodLabel, statusLabel } from '../lib/labels'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
@@ -202,9 +203,9 @@ export default function Payments() {
                   <Td className="font-medium">{payment.number}</Td>
                   <Td>{formatDate(payment.paid_at, locale)}</Td>
                   <Td>{payment.customer ? (locale === 'ar' ? payment.customer.name_ar : payment.customer.name_en) : payment.customer_id}</Td>
-                  <Td>{payment.payment_method?.name_ar || payment.method}</Td>
+                  <Td>{payment.payment_method ? (locale === 'ar' ? payment.payment_method.name_ar : payment.payment_method.name_en || payment.payment_method.name_ar) : paymentMethodLabel(payment.method, locale)}</Td>
                   <Td>
-                    <Badge tone={statusTone(payment.status)}>{payment.status}</Badge>
+                    <Badge tone={statusTone(payment.status)}>{statusLabel(payment.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end tabular">
                     {toDecimal(payment.amount_minor, payment.currency)} {payment.currency}

@@ -26,6 +26,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { statusLabel } from '../lib/labels'
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -378,7 +379,7 @@ export default function Invoices() {
                     </Td>
                     <Td>{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '')}</Td>
                     <Td className="text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
-                    <Td><Badge tone={statusTone(invoice.status)}>{invoice.status}</Badge></Td>
+                    <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
                     <Td className="text-end">
                       <Button variant="ghost" onClick={() => setDetailId(invoice.id)}>{L('تفاصيل', 'Details')}</Button>
                     </Td>
@@ -617,7 +618,7 @@ export default function Invoices() {
                 </p>
               </div>
               <div className="ml-auto flex items-center gap-2">
-                <Badge tone={statusTone(detailQuery.data.status)}>{detailQuery.data.status}</Badge>
+                <Badge tone={statusTone(detailQuery.data.status)}>{statusLabel(detailQuery.data.status, locale)}</Badge>
                 {detailQuery.data.status === 'draft' && can('invoices.create') ? (
                   <Button variant="ghost" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'submit' })}>
                     {L('إرسال', 'Submit')}

@@ -7,6 +7,7 @@ import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
 import type { Lead, Paginated } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th, statusTone } from '../components/ui'
+import { statusLabel } from '../lib/labels'
 
 const stages = ['new', 'contacted', 'qualified', 'proposal', 'won', 'lost']
 const sources = ['whatsapp', 'facebook', 'instagram', 'website', 'referral', 'walk_in', 'other']
@@ -160,7 +161,7 @@ export default function Leads() {
                   <Td>{stageLabel(lead.stage)}</Td>
                   <Td>{formatDateTime(lead.last_activity_at ?? lead.created_at, locale)}</Td>
                   <Td>
-                    <Badge tone={statusTone(lead.status)}>{lead.status}</Badge>
+                    <Badge tone={statusTone(lead.status)}>{statusLabel(lead.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end">
                     {lead.status === 'open' ? (
