@@ -157,6 +157,32 @@ class SupplierSettlementTest extends TestCase
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
     }
 
+    public function test_foreign_currency_supplier_advance_application_realizes_and_unapplies_fx(): void
+    {
+        $this->testSupplier->update(['settlement_currency' => 'USD']);
+        $obligation = $this->obligation([
+            'amount_minor' => 100000, 'currency' => 'USD', 'invoice_fx_rate' => '50',
+        ]);
+        $advance = $this->pay([
+            'amount_minor' => 40000, 'currency' => 'USD', 'fx_rate' => '52',
+        ]);
+
+        $applied = app(SupplierSettlementService::class)->applyAdvance($advance, [
+            'supplier_obligation_id' => $obligation->public_id,
+            'amount_minor' => 40000,
+        ], $this->user->id);
+        $application = $applied->applications()->firstOrFail();
+        $entry = $this->entry('supplier_payment_application', $application->id, 'apply');
+        $this->assertSame(80000, (int) $entry->lines()->whereHas('account', fn ($q) => $q->where('code', '6900'))->sum('base_debit_minor'));
+        $this->assertSame(60000, (int) $obligation->invoice->fresh()->outstanding_minor);
+
+        app(SupplierSettlementService::class)->unapply($advance, $application->public_id, $this->user->id);
+        $reversal = $this->entry('supplier_payment_application', $application->id, 'unapply');
+        $this->assertSame(80000, (int) $reversal->lines()->whereHas('account', fn ($q) => $q->where('code', '7900'))->sum('base_credit_minor'));
+        $this->assertSame(100000, (int) $obligation->invoice->fresh()->outstanding_minor);
+        $this->assertSame(100000, $obligation->refresh()->balanceMinor());
+    }
+
     public function test_realized_fx_gain_on_partial_foreign_currency_supplier_settlement(): void
     {
         $this->testSupplier->update(['settlement_currency' => 'USD']);
