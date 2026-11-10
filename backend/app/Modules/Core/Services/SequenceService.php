@@ -57,6 +57,7 @@ class SequenceService
             'supplier_payment' => 'supplier_payment_prefix',
             'transfer' => 'transfer_prefix',
             'expense' => 'expense_prefix',
+            'schedule' => 'schedule_prefix',
             default => null,
         };
 

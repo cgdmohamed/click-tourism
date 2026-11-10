@@ -312,6 +312,14 @@ class DecisionRegistry
             'blocks' => 'TE-023, RPT, FIN',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-038',
+            'type' => 'ACC',
+            'title_en' => 'Accrual, prepayment and deferred revenue recognition policy',
+            'title_ar' => 'سياسة الاعتراف بالمستحقات والمصروفات المدفوعة مقدماً والإيرادات المؤجلة',
+            'blocks' => 'TE-024, FIN, RPT',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */

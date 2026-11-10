@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountingDocumentController;
+use App\Http\Controllers\Api\AccountingScheduleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
@@ -120,6 +121,7 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/cost-center-unallocated', [CostCenterController::class, 'unallocated'])->middleware('permission:cost_centers.view');
 
         Route::get('fiscal-periods', [FiscalPeriodController::class, 'index'])->middleware('permission:periods.view');
+        Route::get('fiscal-periods/{period}/checklist', [FiscalPeriodController::class, 'checklist'])->middleware('permission:periods.view');
         Route::post('fiscal-periods', [FiscalPeriodController::class, 'store'])->middleware('permission:periods.manage');
         Route::get('fiscal-years/{fiscalYear}/close-checks', [FiscalPeriodController::class, 'closeChecks'])->middleware('permission:periods.view');
         Route::post('fiscal-years/{fiscalYear}/close', [FiscalPeriodController::class, 'close'])->middleware('permission:periods.close');
@@ -155,6 +157,16 @@ Route::prefix('v1')->group(function () {
         Route::delete('reconciliations/{reconciliation}/matches/{group}', [BankReconciliationController::class, 'unmatch'])->middleware('permission:reconciliation.manage');
         Route::post('reconciliations/{reconciliation}/adjustment-voucher', [BankReconciliationController::class, 'adjustmentVoucher'])->middleware('permission:reconciliation.manage');
         Route::post('reconciliations/{reconciliation}/approve', [BankReconciliationController::class, 'approve'])->middleware(['permission:reconciliation.approve', 'idempotent']);
+
+        Route::get('accounting-schedules', [AccountingScheduleController::class, 'index'])->middleware('permission:schedules.view');
+        Route::get('accounting-schedules/upcoming', [AccountingScheduleController::class, 'upcoming'])->middleware('permission:schedules.view');
+        Route::get('accounting-schedules/exceptions', [AccountingScheduleController::class, 'exceptions'])->middleware('permission:schedules.view');
+        Route::post('accounting-schedules', [AccountingScheduleController::class, 'store'])->middleware('permission:schedules.manage');
+        Route::get('accounting-schedules/{schedule}', [AccountingScheduleController::class, 'show'])->middleware('permission:schedules.view');
+        Route::patch('accounting-schedules/{schedule}', [AccountingScheduleController::class, 'update'])->middleware('permission:schedules.manage');
+        Route::post('accounting-schedules/{schedule}/activate', [AccountingScheduleController::class, 'activate'])->middleware('permission:schedules.approve');
+        Route::post('accounting-schedules/{schedule}/cancel', [AccountingScheduleController::class, 'cancel'])->middleware('permission:schedules.approve');
+        Route::post('accounting-schedules/{schedule}/events/{event}/post', [AccountingScheduleController::class, 'postEvent'])->middleware('permission:schedules.manage');
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');

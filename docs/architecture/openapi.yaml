@@ -16,6 +16,7 @@ tags:
   - name: Auth
   - name: Platform
   - name: Accounting
+  - name: Schedules
   - name: Treasury
   - name: Parties
   - name: Bookings
@@ -1655,6 +1656,164 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
         '422': { $ref: '#/components/responses/Validation' }
+  /accounting-schedules:
+    get:
+      tags: [Schedules]
+      summary: List accrual, prepayment and deferred revenue schedules
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [prepaid_expense, deferred_revenue, accrued_expense, accrued_revenue] } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, active, completed, cancelled] } }
+      responses:
+        '200': { description: Schedules with their recognition and reversal events }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Schedules]
+      summary: Create a draft schedule with its recognition events
+      description: >-
+        Events are generated on creation and split the total exactly; the
+        rounding residual is added to the final period. Nothing is posted until
+        the schedule is activated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountingScheduleInput' }
+      responses:
+        '201': { description: Draft schedule }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-schedules/upcoming:
+    get:
+      tags: [Schedules]
+      summary: Recognition and reversal events due in the next N days
+      parameters:
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+      responses:
+        '200':
+          description: Upcoming event rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AccountingScheduleEventRow' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /accounting-schedules/exceptions:
+    get:
+      tags: [Schedules]
+      summary: Exception queue of failed schedule events awaiting retry
+      responses:
+        '200':
+          description: Failed event rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AccountingScheduleEventRow' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /accounting-schedules/{schedule}:
+    get:
+      tags: [Schedules]
+      summary: Get a schedule with its events and journal links
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Schedule detail }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Schedules]
+      summary: Edit a draft schedule and regenerate its events
+      description: Refused once the schedule is active; posted history is immutable.
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountingScheduleInput' }
+      responses:
+        '200': { description: Updated draft schedule }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-schedules/{schedule}/activate:
+    post:
+      tags: [Schedules]
+      summary: Approve a draft schedule and post events that are already due
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Active schedule }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-schedules/{schedule}/cancel:
+    post:
+      tags: [Schedules]
+      summary: Cancel a schedule without altering posted history
+      description: >-
+        Open recognitions are cancelled; a reversal of an already posted accrual
+        still runs. An unamortized prepayment/deferred-revenue balance can be
+        written off through a draft adjustment voucher that needs normal
+        approval before it reaches the ledger.
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountingScheduleCancelInput' }
+      responses:
+        '200':
+          description: Cancelled schedule and optional draft adjustment voucher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      schedule: { $ref: '#/components/schemas/AccountingSchedule' }
+                      adjustment_document: { $ref: '#/components/schemas/AccountingDocument' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-schedules/{schedule}/events/{event}/post:
+    post:
+      tags: [Schedules]
+      summary: Retry one pending or failed event (for example after reopening a period)
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+        - { name: event, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Schedule with the posted event }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { description: The event still cannot be posted; the failure reason is kept in the exception queue }
+  /fiscal-periods/{period}/checklist:
+    get:
+      tags: [Accounting]
+      summary: Period-end checklist (unposted documents, open reconciliations, schedules, balances, trial balance)
+      parameters:
+        - { name: period, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Checklist with per-check pass/fail and whether the period may be closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PeriodEndChecklist' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
 
 components:
   securitySchemes:
@@ -2620,4 +2779,126 @@ components:
             carry_forward for a posted book line still outstanding at period
             end (unpresented payment or deposit in transit) that rolls into the
             next session.
+    AccountingSchedule:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        branch_id: { type: string, nullable: true }
+        kind: { type: string, enum: [prepaid_expense, deferred_revenue, accrued_expense, accrued_revenue] }
+        status: { type: string, enum: [draft, active, completed, cancelled] }
+        description: { type: string }
+        reference: { type: string, nullable: true }
+        currency: { type: string }
+        fx_rate: { type: string }
+        fx_rate_date: { type: string, format: date }
+        fx_rate_source: { type: string }
+        total_minor: { type: integer }
+        periods: { type: integer }
+        frequency: { type: string, enum: [monthly] }
+        starts_on: { type: string, format: date }
+        ends_on: { type: string, format: date }
+        reversal_policy: { type: string, enum: [none, next_period] }
+        source_account: { type: object, nullable: true }
+        target_account: { type: object, nullable: true }
+        recognized_minor: { type: integer, description: Posted recognition events }
+        reversed_minor: { type: integer, description: Posted reversal events }
+        remaining_minor: { type: integer, description: Total less posted recognitions }
+        outstanding_minor: { type: integer, description: Posted recognitions less posted reversals }
+        next_due_date: { type: string, format: date, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        approved_by: { type: integer, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        cancelled_by: { type: integer, nullable: true }
+        cancel_reason: { type: string, nullable: true }
+        adjustment_document_ids:
+          type: array
+          items: { type: string }
+          description: Draft adjustment vouchers proposed for write-off/reclassification
+        created_by: { type: integer, nullable: true }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/AccountingScheduleEvent' }
+    AccountingScheduleEvent:
+      type: object
+      properties:
+        id: { type: string }
+        sequence: { type: integer }
+        kind: { type: string, enum: [recognition, reversal] }
+        status: { type: string, enum: [pending, posted, failed, cancelled] }
+        due_date: { type: string, format: date }
+        amount_minor: { type: integer }
+        journal_entry_id: { type: string, nullable: true }
+        reverses_event_id: { type: string, nullable: true }
+        failure_reason: { type: string, nullable: true }
+        posted_at: { type: string, format: date-time, nullable: true }
+        posted_by: { type: integer, nullable: true }
+    AccountingScheduleEventRow:
+      type: object
+      properties:
+        id: { type: string }
+        schedule_id: { type: string }
+        schedule_number: { type: string }
+        description: { type: string, nullable: true }
+        branch_id: { type: string, nullable: true }
+        kind: { type: string, enum: [recognition, reversal] }
+        status: { type: string, enum: [pending, posted, failed, cancelled] }
+        due_date: { type: string, format: date }
+        amount_minor: { type: integer }
+        currency: { type: string, nullable: true }
+        failure_reason: { type: string, nullable: true }
+        journal_entry_id: { type: string, nullable: true }
+    AccountingScheduleInput:
+      type: object
+      required: [kind, description, total_minor, periods, starts_on]
+      properties:
+        kind: { type: string, enum: [prepaid_expense, deferred_revenue, accrued_expense, accrued_revenue] }
+        description: { type: string, maxLength: 255 }
+        reference: { type: string, maxLength: 100 }
+        total_minor: { type: integer, minimum: 1 }
+        periods: { type: integer, minimum: 1, maximum: 120 }
+        frequency: { type: string, enum: [monthly], default: monthly }
+        starts_on: { type: string, format: date }
+        ends_on: { type: string, format: date, description: Defaults to the last recognition period end }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        source_account_code: { type: string, maxLength: 20, description: Prepaid/deferred/accrual control account; defaults from settings }
+        target_account_code: { type: string, maxLength: 20, description: Expense or revenue account recognized into }
+        reversal_policy: { type: string, enum: [none, next_period], description: Only accruals may reverse automatically }
+    AccountingScheduleCancelInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, maxLength: 255 }
+        write_off: { type: boolean, default: false, description: Propose a draft adjustment voucher for the unamortized prepayment/deferred revenue balance }
+        write_off_date: { type: string, format: date }
+        write_off_memo: { type: string, maxLength: 255 }
+        submit_write_off: { type: boolean, default: false }
+    PeriodEndChecklist:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            starts_on: { type: string, format: date }
+            ends_on: { type: string, format: date }
+            status: { type: string, enum: [open, soft_closed, closed] }
+        can_close: { type: boolean }
+        as_of: { type: string, format: date }
+        checks:
+          type: array
+          items: { $ref: '#/components/schemas/PeriodEndChecklistCheck' }
+    PeriodEndChecklistCheck:
+      type: object
+      properties:
+        key: { type: string }
+        label_ar: { type: string }
+        label_en: { type: string }
+        passed: { type: boolean }
+        blocking: { type: boolean }
+        count: { type: integer }
+        message: { type: string, nullable: true }
+        details: { type: object, nullable: true }
 

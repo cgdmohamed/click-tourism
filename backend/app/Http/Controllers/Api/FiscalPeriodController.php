@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Accounting\Models\FiscalYear;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\FiscalCloseService;
+use App\Modules\Accounting\Services\PeriodEndChecklistService;
 use App\Modules\Core\Services\AuditService;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -43,6 +44,11 @@ class FiscalPeriodController extends ApiController
     public function closeChecks(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
     {
         return $this->ok($closing->checks($fiscalYear));
+    }
+
+    public function checklist(FiscalPeriod $period, PeriodEndChecklistService $checklist): JsonResponse
+    {
+        return $this->ok($checklist->forPeriod($period, $this->branch()));
     }
 
     public function close(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
