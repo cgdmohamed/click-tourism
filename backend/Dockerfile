@@ -57,7 +57,8 @@ RUN mkdir -p \
 RUN php artisan storage:link >/dev/null 2>&1 || true
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint
-RUN chmod 755 /usr/local/bin/entrypoint
+COPY docker/demo-reset-loop.sh /usr/local/bin/demo-reset-loop
+RUN chmod 755 /usr/local/bin/entrypoint /usr/local/bin/demo-reset-loop
 
 USER www-data
 
