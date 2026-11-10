@@ -320,6 +320,14 @@ class DecisionRegistry
             'blocks' => 'TE-024, FIN, RPT',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-039',
+            'type' => 'ACC',
+            'title_en' => 'Fixed-asset depreciation and disposal policy',
+            'title_ar' => 'سياسة إهلاك واستبعاد الأصول الثابتة',
+            'blocks' => 'TE-025, FIN, RPT',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */

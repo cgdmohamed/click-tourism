@@ -58,6 +58,8 @@ class SequenceService
             'transfer' => 'transfer_prefix',
             'expense' => 'expense_prefix',
             'schedule' => 'schedule_prefix',
+            'asset' => 'asset_prefix',
+            'depreciation_run' => 'depreciation_run_prefix',
             default => null,
         };
 
