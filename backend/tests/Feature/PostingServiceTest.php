@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\FiscalPeriod;
+use App\Modules\Accounting\Models\FiscalYear;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
@@ -151,7 +152,7 @@ class PostingServiceTest extends TestCase
         try {
             // This test uses its own fiscal periods to cover the October close.
             FiscalPeriod::query()->delete();
-            $year = \App\Modules\Accounting\Models\FiscalYear::query()->firstOrFail();
+            $year = FiscalYear::query()->firstOrFail();
             FiscalPeriod::query()->create([
                 'fiscal_year_id' => $year->id,
                 'name' => '2026-10',
