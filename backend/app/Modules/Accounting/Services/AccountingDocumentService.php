@@ -17,6 +17,8 @@ use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Models\PartyAccount;
+use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -77,7 +79,10 @@ class AccountingDocumentService
                 ? '1'
                 : (string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $date));
 
-            $lines = $this->prepareLines($data['lines'] ?? [], $currency);
+            $rawLines = ! empty($data['simple_mode'])
+                ? $this->simpleSettlementLines($data, $branch, $currency, $partyType, $partyId)
+                : ($data['lines'] ?? []);
+            $lines = $this->prepareLines($rawLines, $currency);
             $this->assertBalanced($lines);
 
             $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
@@ -435,6 +440,72 @@ class AccountingDocumentService
         }
 
         return $lines;
+    }
+
+    /**
+     * Simplified vouchers only settle an EXISTING customer receivable or
+     * supplier payable. Advances, refunds, expense payouts and transfers
+     * have distinct accounting semantics and must use their dedicated flows.
+     * GL lines are derived server-side and remain subject to normal approval.
+     */
+    private function simpleSettlementLines(array $data, Branch $branch, string $currency, ?string $partyType, ?int $partyId): array
+    {
+        $type = $data['type'] ?? null;
+        $expectedParty = match ($type) {
+            AccountingDocument::TYPE_RECEIPT_VOUCHER => 'customer',
+            AccountingDocument::TYPE_PAYMENT_VOUCHER => 'supplier',
+            default => throw new DomainException('Simplified entry is supported only for customer receipt and supplier payment vouchers.'),
+        };
+
+        if ($partyType !== $expectedParty || $partyId === null) {
+            throw new DomainException('Select the required customer or supplier for this voucher.');
+        }
+        if (! empty($data['booking_id']) || ! empty($data['lines']) || ! empty($data['tax_minor'])) {
+            throw new DomainException('Simplified vouchers cannot carry bookings, manual posting lines or tax overrides.');
+        }
+        $amount = $data['amount_minor'] ?? null;
+        if (! is_int($amount) || $amount <= 0) {
+            throw new DomainException('Voucher amount must be a positive integer in minor currency units.');
+        }
+        if (empty($data['cash_account_id'])) {
+            throw new DomainException('Select a cash or bank account.');
+        }
+        $cash = CashAccount::query()->with('account')
+            ->where('public_id', $data['cash_account_id'])
+            ->where('branch_id', $branch->id)
+            ->where('is_active', true)->first();
+        if (! $cash || ! $cash->account || ! $cash->account->is_active || ! $cash->account->is_postable
+            || strtoupper($cash->currency_code) !== $currency) {
+            throw new DomainException('Cash/bank account must be active, postable, in this branch and use the voucher currency.');
+        }
+        $party = $expectedParty === 'customer'
+            ? Customer::query()->find($partyId)
+            : Supplier::query()->find($partyId);
+        if (! $party || $party->branch_id !== $branch->id) {
+            throw new DomainException('The selected party does not belong to this branch.');
+        }
+        $role = $expectedParty === 'customer' ? PartyAccount::ROLE_RECEIVABLE : PartyAccount::ROLE_PAYABLE;
+        $partyAccount = PartyAccount::query()->with('account')
+            ->where('party_type', $partyType)->where('party_id', $partyId)
+            ->where('role', $role)->first();
+        if (! $partyAccount || ! $partyAccount->account || ! $partyAccount->account->is_active
+            || ! $partyAccount->account->is_postable
+            || ($partyAccount->account->currency_code !== null && strtoupper($partyAccount->account->currency_code) !== $currency)) {
+            throw new DomainException('No matching active party ledger account exists. Use the accounting workflow to configure it.');
+        }
+        if ($partyAccount->account_id === $cash->account_id) {
+            throw new DomainException('Cash and settlement accounts must be different.');
+        }
+        $description = $data['memo'] ?? null;
+        $cashLine = ['account_id' => $cash->account_id, 'description' => $description,
+            'debit_minor' => $type === AccountingDocument::TYPE_RECEIPT_VOUCHER ? $amount : 0,
+            'credit_minor' => $type === AccountingDocument::TYPE_PAYMENT_VOUCHER ? $amount : 0];
+        $partyLine = ['account_id' => $partyAccount->account_id, 'description' => $description,
+            'debit_minor' => $type === AccountingDocument::TYPE_PAYMENT_VOUCHER ? $amount : 0,
+            'credit_minor' => $type === AccountingDocument::TYPE_RECEIPT_VOUCHER ? $amount : 0,
+            'party_type' => $partyType, 'party_id' => $partyId];
+
+        return [$cashLine, $partyLine];
     }
 
     /**
