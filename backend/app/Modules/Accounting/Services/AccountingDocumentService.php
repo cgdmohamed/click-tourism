@@ -477,7 +477,9 @@ class AccountingDocumentService
         }
         $cash = CashAccount::query()->with('account')
             ->where('public_id', $data['cash_account_id'])
-            ->where('branch_id', $branch->id)
+            ->where(function ($query) use ($branch) {
+                $query->whereNull('branch_id')->orWhere('branch_id', $branch->id);
+            })
             ->where('is_active', true)->first();
         if ($cash === null || $cash->account === null || $cash->account->is_active === false || $cash->account->is_postable === false
             || strtoupper($cash->currency_code) !== $currency) {
