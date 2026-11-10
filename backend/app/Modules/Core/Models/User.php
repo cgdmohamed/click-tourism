@@ -24,6 +24,7 @@ class User extends Authenticatable
         'password',
         'locale',
         'is_active',
+        'is_available_for_leads',
         'last_login_at',
     ];
 
@@ -39,6 +40,7 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'is_available_for_leads' => 'boolean',
         ];
     }
 

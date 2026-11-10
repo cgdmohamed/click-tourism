@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\CRM\Models\AssignmentRule;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\CRM\Services\LeadService;
 use App\Modules\Parties\Models\Customer;
@@ -112,5 +113,53 @@ class LeadServiceTest extends TestCase
 
         $this->assertSame(0, $this->leads()->reassignStale());
         $this->assertSame($this->user->id, $lead->refresh()->owner_user_id);
+    }
+
+    public function test_assignment_rules_respect_priority_category_and_employee_availability(): void
+    {
+        $unavailable = User::factory()->create(['is_available_for_leads' => false]);
+        $unavailable->branches()->attach($this->branch->id);
+        $available = User::factory()->create();
+        $available->branches()->attach($this->branch->id);
+        AssignmentRule::query()->create([
+            'priority' => 1,
+            'branch_id' => $this->branch->id,
+            'service_category' => 'flight',
+            'strategy' => 'manual',
+            'target_user_id' => $unavailable->id,
+            'is_active' => true,
+        ]);
+        AssignmentRule::query()->create([
+            'priority' => 2,
+            'branch_id' => $this->branch->id,
+            'service_category' => 'flight',
+            'strategy' => 'manual',
+            'target_user_id' => $available->id,
+            'is_active' => true,
+        ]);
+
+        $lead = $this->lead(['service_category' => 'flight']);
+
+        $this->assertSame($available->id, $lead->owner_user_id);
+    }
+
+    public function test_inactivity_counts_configured_business_hours_not_weekend_clock_hours(): void
+    {
+        app(SettingService::class)->set('crm', 'reassign_after_hours', '8');
+        app(SettingService::class)->set('crm', 'business_days', '1,2,3,4,5');
+        app(SettingService::class)->set('crm', 'business_day_start', '09:00');
+        app(SettingService::class)->set('crm', 'business_day_end', '17:00');
+        $other = User::factory()->create();
+        $other->branches()->attach($this->branch->id);
+        Carbon::setTestNow(Carbon::parse('2026-11-09 16:00:00', 'Africa/Cairo'));
+        $lead = $this->lead();
+        $lead->update(['last_activity_at' => Carbon::parse('2026-11-06 16:00:00', 'Africa/Cairo')]);
+
+        $this->assertSame(0, $this->leads()->reassignStale());
+
+        Carbon::setTestNow(Carbon::parse('2026-11-10 16:00:00', 'Africa/Cairo'));
+        $this->assertSame(1, $this->leads()->reassignStale());
+        $this->assertSame($other->id, $lead->refresh()->owner_user_id);
+        Carbon::setTestNow();
     }
 }
