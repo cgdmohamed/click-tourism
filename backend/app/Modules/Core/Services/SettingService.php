@@ -75,6 +75,30 @@ class SettingService
             // PENDING ACCOUNTANT APPROVAL (DEC-032): the creator may not approve their own expense.
             'segregation' => 'true',
         ],
+        'assets' => [
+            // PENDING ACCOUNTANT APPROVAL (DEC-039): fixed-asset policy.
+            // Straight-line is the only method implemented. The convention
+            // decides whether the purchase month is fully depreciated
+            // (month_of_purchase), starts the following month, or is prorated
+            // by days in service (prorate_days). All are settings, not code.
+            'depreciation_method' => 'straight_line',
+            'depreciation_convention' => 'month_of_purchase',
+            'capitalization_threshold_minor' => '0',
+            'default_useful_life_months' => '60',
+            'default_residual_value_minor' => '0',
+            // Manual approval by default: depreciation runs are posted only
+            // after the run is reviewed and approved by an authorised user.
+            'auto_post_depreciation' => 'false',
+            // PENDING ACCOUNTANT APPROVAL (DEC-039): provisional GL mappings.
+            'asset_account_code' => '1300',
+            'accumulated_depreciation_account_code' => '1210',
+            'depreciation_expense_account_code' => '6800',
+            'disposal_gain_account_code' => '7910',
+            'disposal_loss_account_code' => '6915',
+            'impairment_loss_account_code' => '6910',
+            'acquisition_offset_account_code' => '2100',
+            'disposal_proceeds_account_code' => '1120',
+        ],
         'tax' => [
             'enabled' => 'false',
             'default_rate' => '0',
@@ -102,6 +126,8 @@ class SettingService
             'adjustment_voucher_prefix' => 'ADJ',
             'refund_voucher_prefix' => 'RF',
             'schedule_prefix' => 'SCH',
+            'asset_prefix' => 'FA',
+            'depreciation_run_prefix' => 'DEP',
         ],
     ];
 

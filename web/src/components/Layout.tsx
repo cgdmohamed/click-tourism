@@ -59,6 +59,7 @@ export function Layout() {
     { to: '/documents', label: t('vouchers'), icon: icons.journal, permission: 'documents.view' },
     { to: '/reconciliation', label: t('reconciliation'), icon: icons.settlements, permission: 'reconciliation.view' },
     { to: '/schedules', label: t('schedules'), icon: icons.bookings, permission: 'schedules.view' },
+    { to: '/fixed-assets', label: t('fixedAssets'), icon: icons.accounts, permission: 'assets.view' },
     { to: '/customers', label: t('customers'), icon: icons.customers },
     { to: '/suppliers', label: t('suppliers'), icon: icons.suppliers },
     { to: '/bookings', label: t('bookings'), icon: icons.bookings },

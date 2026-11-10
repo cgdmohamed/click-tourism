@@ -11,9 +11,13 @@ use App\Http\Controllers\Api\CashAccountController;
 use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DepreciationRunController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FiscalPeriodController;
+use App\Http\Controllers\Api\FixedAssetCategoryController;
+use App\Http\Controllers\Api\FixedAssetController;
+use App\Http\Controllers\Api\FixedAssetReportController;
 use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\InvoiceController;
@@ -167,6 +171,36 @@ Route::prefix('v1')->group(function () {
         Route::post('accounting-schedules/{schedule}/activate', [AccountingScheduleController::class, 'activate'])->middleware('permission:schedules.approve');
         Route::post('accounting-schedules/{schedule}/cancel', [AccountingScheduleController::class, 'cancel'])->middleware('permission:schedules.approve');
         Route::post('accounting-schedules/{schedule}/events/{event}/post', [AccountingScheduleController::class, 'postEvent'])->middleware('permission:schedules.manage');
+
+        Route::get('fixed-asset-categories', [FixedAssetCategoryController::class, 'index'])->middleware('permission:assets.view');
+        Route::post('fixed-asset-categories', [FixedAssetCategoryController::class, 'store'])->middleware('permission:assets.manage');
+        Route::get('fixed-asset-categories/{category}', [FixedAssetCategoryController::class, 'show'])->middleware('permission:assets.view');
+        Route::patch('fixed-asset-categories/{category}', [FixedAssetCategoryController::class, 'update'])->middleware('permission:assets.manage');
+
+        Route::get('fixed-assets', [FixedAssetController::class, 'index'])->middleware('permission:assets.view');
+        Route::post('fixed-assets', [FixedAssetController::class, 'store'])->middleware('permission:assets.manage');
+        Route::get('fixed-assets/{asset}', [FixedAssetController::class, 'show'])->middleware('permission:assets.view');
+        Route::patch('fixed-assets/{asset}', [FixedAssetController::class, 'update'])->middleware('permission:assets.manage');
+        Route::post('fixed-assets/{asset}/capitalize', [FixedAssetController::class, 'capitalize'])->middleware('permission:assets.approve');
+        Route::post('fixed-assets/{asset}/transfer', [FixedAssetController::class, 'transfer'])->middleware('permission:assets.manage');
+        Route::post('fixed-assets/{asset}/dispose', [FixedAssetController::class, 'dispose'])->middleware('permission:assets.approve');
+        Route::post('fixed-assets/{asset}/impairments', [FixedAssetController::class, 'impairment'])->middleware('permission:assets.manage');
+        Route::post('fixed-assets/{asset}/impairments/{document}/apply', [FixedAssetController::class, 'applyImpairment'])->middleware('permission:assets.approve');
+        Route::get('fixed-assets/{asset}/schedule', [FixedAssetController::class, 'schedule'])->middleware('permission:assets.view');
+        Route::get('fixed-assets/{asset}/audit-trail', [FixedAssetController::class, 'auditTrail'])->middleware('permission:assets.view');
+
+        Route::get('depreciation-runs', [DepreciationRunController::class, 'index'])->middleware('permission:assets.view');
+        Route::get('depreciation-runs/preview', [DepreciationRunController::class, 'preview'])->middleware('permission:assets.view');
+        Route::post('depreciation-runs', [DepreciationRunController::class, 'store'])->middleware('permission:assets.manage');
+        Route::get('depreciation-runs/{run}', [DepreciationRunController::class, 'show'])->middleware('permission:assets.view');
+        Route::post('depreciation-runs/{run}/post', [DepreciationRunController::class, 'post'])->middleware('permission:assets.approve');
+        Route::delete('depreciation-runs/{run}', [DepreciationRunController::class, 'destroy'])->middleware('permission:assets.manage');
+
+        Route::get('reports/fixed-assets/roll-forward', [FixedAssetReportController::class, 'rollForward'])->middleware('permission:assets.view');
+        Route::get('reports/fixed-assets/carrying-values', [FixedAssetReportController::class, 'carryingValues'])->middleware('permission:assets.view');
+        Route::get('reports/fixed-assets/movements', [FixedAssetReportController::class, 'movements'])->middleware('permission:assets.view');
+        Route::get('reports/fixed-assets/reconciliation', [FixedAssetReportController::class, 'reconciliation'])->middleware('permission:assets.view');
+        Route::get('reports/fixed-assets/schedule', [FixedAssetReportController::class, 'schedule'])->middleware('permission:assets.view');
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');

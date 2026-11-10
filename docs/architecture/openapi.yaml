@@ -17,6 +17,7 @@ tags:
   - name: Platform
   - name: Accounting
   - name: Schedules
+  - name: Fixed Assets
   - name: Treasury
   - name: Parties
   - name: Bookings
@@ -1815,6 +1816,308 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
 
+  /fixed-asset-categories:
+    get:
+      tags: [Fixed Assets]
+      summary: List fixed-asset categories and their GL mappings
+      responses:
+        '200': { description: Categories }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Fixed Assets]
+      summary: Create a fixed-asset category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FixedAssetCategoryInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-asset-categories/{category}:
+    get:
+      tags: [Fixed Assets]
+      summary: Read a fixed-asset category
+      parameters:
+        - { name: category, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Category }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Fixed Assets]
+      summary: Update a fixed-asset category
+      parameters:
+        - { name: category, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FixedAssetCategoryInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-assets:
+    get:
+      tags: [Fixed Assets]
+      summary: List the fixed-asset register
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, active, fully_depreciated, disposed] } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Assets }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Fixed Assets]
+      summary: Register a draft asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FixedAssetInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-assets/{asset}:
+    get:
+      tags: [Fixed Assets]
+      summary: Read an asset with mappings, calculations and lifecycle links
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Asset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/FixedAsset' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Fixed Assets]
+      summary: Update a draft asset
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FixedAssetInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-assets/{asset}/capitalize:
+    post:
+      tags: [Fixed Assets]
+      summary: Approve capitalization and post the asset cost through the ledger
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Capitalized asset }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { description: Below threshold, duplicate posting, or closed period }
+  /fixed-assets/{asset}/transfer:
+    post:
+      tags: [Fixed Assets]
+      summary: Transfer an asset between branches, cost centers or custodians without rewriting the GL
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FixedAssetTransferInput' }
+      responses:
+        '201': { description: Transfer recorded and asset attribution updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-assets/{asset}/dispose:
+    post:
+      tags: [Fixed Assets]
+      summary: Dispose, sell or retire an asset and post the linked journal entry
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FixedAssetDisposalInput' }
+      responses:
+        '200': { description: Disposed asset with gain/loss and journal reference }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-assets/{asset}/impairments:
+    post:
+      tags: [Fixed Assets]
+      summary: Create an impairment adjustment voucher (applied only after it is posted)
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Draft or submitted adjustment voucher }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-assets/{asset}/impairments/{document}/apply:
+    post:
+      tags: [Fixed Assets]
+      summary: Apply a posted impairment voucher to the register
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+        - { name: document, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Register updated with the impairment }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { description: Voucher not linked, not posted, or already applied }
+  /fixed-assets/{asset}/schedule:
+    get:
+      tags: [Fixed Assets]
+      summary: Straight-line depreciation schedule for one asset
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Period rows with amount, accumulated and carrying value }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /fixed-assets/{asset}/audit-trail:
+    get:
+      tags: [Fixed Assets]
+      summary: Audit events and transfer history for one asset
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Asset, events and transfers }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /depreciation-runs:
+    get:
+      tags: [Fixed Assets]
+      summary: List depreciation runs
+      parameters:
+        - { name: period, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, posted, failed] } }
+      responses:
+        '200': { description: Runs with items }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Fixed Assets]
+      summary: Create a draft depreciation run for one branch and period
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepreciationRunInput' }
+      responses:
+        '201': { description: Draft run; a second run for the same period skips already-claimed assets }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /depreciation-runs/preview:
+    get:
+      tags: [Fixed Assets]
+      summary: Preview depreciation due for a branch and period without storing anything
+      parameters:
+        - { name: period, in: query, required: true, schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+      responses:
+        '200': { description: Preview rows and total }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /depreciation-runs/{run}:
+    get:
+      tags: [Fixed Assets]
+      summary: Read a depreciation run and its items
+      parameters:
+        - { name: run, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Run }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    delete:
+      tags: [Fixed Assets]
+      summary: Delete a draft or failed run (posted runs are immutable)
+      parameters:
+        - { name: run, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { description: A posted run cannot be deleted }
+  /depreciation-runs/{run}/post:
+    post:
+      tags: [Fixed Assets]
+      summary: Approve and post a run; idempotent and refused in closed periods
+      parameters:
+        - { name: run, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Posted run with its single journal entry }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { description: Closed period, no assets due, or missing account mapping }
+  /reports/fixed-assets/roll-forward:
+    get:
+      tags: [Fixed Assets]
+      summary: Cost, accumulated depreciation and carrying-value roll-forward
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+        - { name: global, in: query, schema: { type: boolean, description: Installation-wide totals for users who may view all branches } }
+      responses:
+        '200': { description: Roll-forward }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/fixed-assets/carrying-values:
+    get:
+      tags: [Fixed Assets]
+      summary: Register carrying values at a point in time
+      parameters:
+        - { name: as_of, in: query, schema: { type: string, format: date } }
+        - { name: include_disposed, in: query, schema: { type: boolean } }
+      responses:
+        '200': { description: Carrying values }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/fixed-assets/movements:
+    get:
+      tags: [Fixed Assets]
+      summary: Additions and disposals in a month range
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string } }
+        - { name: to, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Movements }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/fixed-assets/reconciliation:
+    get:
+      tags: [Fixed Assets]
+      summary: Reconcile register totals to posted GL control accounts
+      parameters:
+        - { name: as_of, in: query, schema: { type: string, format: date } }
+        - { name: global, in: query, schema: { type: boolean, description: Required for installation-wide agreement after branch transfers } }
+      responses:
+        '200': { description: Reconciliation with per-category differences }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/fixed-assets/schedule:
+    get:
+      tags: [Fixed Assets]
+      summary: Depreciation schedule for one asset or the whole register
+      parameters:
+        - { name: asset, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Schedule }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2901,4 +3204,184 @@ components:
         count: { type: integer }
         message: { type: string, nullable: true }
         details: { type: object, nullable: true }
+    FixedAssetCategory:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        asset_account: { $ref: '#/components/schemas/Account' }
+        accumulated_depreciation_account: { $ref: '#/components/schemas/Account' }
+        depreciation_expense_account: { $ref: '#/components/schemas/Account' }
+        disposal_gain_account: { $ref: '#/components/schemas/Account' }
+        disposal_loss_account: { $ref: '#/components/schemas/Account' }
+        default_useful_life_months: { type: integer, nullable: true }
+        default_residual_value_minor: { type: integer }
+        is_active: { type: boolean }
+        assets_count: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+    FixedAssetCategoryInput:
+      type: object
+      required: [code, name_ar, name_en]
+      properties:
+        code: { type: string, maxLength: 40 }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        asset_account_code: { type: string, maxLength: 20, description: Defaults from assets.asset_account_code }
+        accumulated_depreciation_account_code: { type: string, maxLength: 20, description: Defaults from assets.accumulated_depreciation_account_code }
+        depreciation_expense_account_code: { type: string, maxLength: 20, description: Defaults from assets.depreciation_expense_account_code }
+        disposal_gain_account_code: { type: string, maxLength: 20 }
+        disposal_loss_account_code: { type: string, maxLength: 20 }
+        default_useful_life_months: { type: integer, minimum: 1, maximum: 600 }
+        default_residual_value_minor: { type: integer, minimum: 0 }
+        is_active: { type: boolean }
+    FixedAsset:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        description: { type: string }
+        branch_id: { type: string, nullable: true }
+        branch: { $ref: '#/components/schemas/Branch' }
+        category: { $ref: '#/components/schemas/FixedAssetCategory' }
+        location: { type: string, nullable: true }
+        supplier: { type: object, nullable: true }
+        cost_center: { type: object, nullable: true }
+        employee: { type: object, nullable: true }
+        purchase_date: { type: string, format: date, nullable: true }
+        capitalization_date: { type: string, format: date }
+        in_service_date: { type: string, format: date }
+        currency: { type: string }
+        fx_rate: { type: string }
+        fx_rate_date: { type: string, format: date }
+        fx_rate_source: { type: string }
+        acquisition_value_minor: { type: integer }
+        acquisition_value_base_minor: { type: integer }
+        residual_value_minor: { type: integer }
+        useful_life_months: { type: integer }
+        depreciation_method: { type: string, enum: [straight_line] }
+        depreciation_convention: { type: string, enum: [month_of_purchase, next_month, prorate_days] }
+        depreciation_start_on: { type: string, format: date }
+        first_depreciation_period: { type: string, description: 'YYYY-MM' }
+        monthly_depreciation_minor: { type: integer }
+        status: { type: string, enum: [draft, active, fully_depreciated, disposed] }
+        accumulated_depreciation_minor: { type: integer }
+        impairment_minor: { type: integer }
+        total_accumulated_minor: { type: integer }
+        depreciable_minor: { type: integer }
+        remaining_depreciable_minor: { type: integer }
+        carrying_value_minor: { type: integer }
+        last_depreciated_period: { type: string, nullable: true }
+        disposed_on: { type: string, format: date, nullable: true }
+        disposal_type: { type: string, enum: [sale, retirement, scrap], nullable: true }
+        disposal_proceeds_minor: { type: integer }
+        disposal_gain_loss_minor: { type: integer }
+        capitalization_journal_entry_id: { type: string, nullable: true }
+        disposal_journal_entry_id: { type: string, nullable: true }
+        attachments:
+          type: array
+          items: { type: object }
+        impairment_document_ids:
+          type: array
+          items: { type: string }
+        applied_impairment_document_ids:
+          type: array
+          items: { type: string }
+        notes: { type: string, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        approved_by: { type: integer, nullable: true }
+        created_by: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+    FixedAssetInput:
+      type: object
+      required: [category_id, description, capitalization_date, acquisition_value_minor]
+      properties:
+        code: { type: string, maxLength: 60, description: Generated from the asset sequence when omitted }
+        category_id: { type: string }
+        description: { type: string, maxLength: 255 }
+        location: { type: string, maxLength: 255 }
+        supplier_id: { type: string }
+        cost_center_id: { type: string }
+        employee_id: { type: string }
+        purchase_date: { type: string, format: date }
+        capitalization_date: { type: string, format: date }
+        in_service_date: { type: string, format: date, description: Defaults to the capitalization date }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        acquisition_value_minor: { type: integer, minimum: 1 }
+        residual_value_minor: { type: integer, minimum: 0 }
+        useful_life_months: { type: integer, minimum: 1, maximum: 600 }
+        depreciation_convention: { type: string, enum: [month_of_purchase, next_month, prorate_days] }
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url: { type: string, nullable: true }
+              uploaded_at: { type: string, nullable: true }
+        notes: { type: string, maxLength: 2000 }
+    FixedAssetTransferInput:
+      type: object
+      properties:
+        to_branch_id: { type: string }
+        to_cost_center_id: { type: string }
+        to_employee_id: { type: string }
+        transfer_date: { type: string, format: date }
+        reason: { type: string, maxLength: 255 }
+    FixedAssetDisposalInput:
+      type: object
+      properties:
+        disposal_date: { type: string, format: date }
+        disposal_type: { type: string, enum: [sale, retirement, scrap] }
+        proceeds_minor: { type: integer, minimum: 0 }
+        proceeds_account_code: { type: string, maxLength: 20, description: Defaults from assets.disposal_proceeds_account_code }
+        notes: { type: string, maxLength: 255 }
+    DepreciationRunInput:
+      type: object
+      required: [period]
+      properties:
+        period: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' }
+        notes: { type: string, maxLength: 255 }
+    DepreciationRun:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        branch_id: { type: string, nullable: true }
+        branch: { $ref: '#/components/schemas/Branch' }
+        period: { type: string }
+        run_date: { type: string, format: date }
+        status: { type: string, enum: [draft, posted, failed] }
+        assets_count: { type: integer }
+        total_amount_minor: { type: integer }
+        journal_entry_id: { type: string, nullable: true }
+        failure_reason: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        approved_by: { type: integer, nullable: true }
+        posted_at: { type: string, format: date-time, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DepreciationItem' }
+    DepreciationItem:
+      type: object
+      properties:
+        id: { type: string }
+        run_id: { type: string, nullable: true }
+        asset_id: { type: string, nullable: true }
+        asset_code: { type: string, nullable: true }
+        asset_description: { type: string, nullable: true }
+        branch_id: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        period: { type: string }
+        amount_minor: { type: integer }
+        accumulated_before_minor: { type: integer }
+        accumulated_after_minor: { type: integer }
+        carrying_before_minor: { type: integer }
+        carrying_after_minor: { type: integer }
+        status: { type: string, enum: [pending, posted, failed] }
+        failure_reason: { type: string, nullable: true }
+
 
