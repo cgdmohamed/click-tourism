@@ -12,13 +12,13 @@ Take encrypted logical backups daily:
 ```bash
 # Full schema + data dump
 docker compose exec -T db pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  | gpg --symmetric --cipher-algo AES256 \
+  | gzip -c \
+  | gpg --batch --yes --symmetric --cipher-algo AES256 \
   > "backups/tourism_erp-$(date +%Y%m%d-%H%M%S).sql.gz.gpg"
 
-# Verify the backup can be restored
-gpg --decrypt "backups/latest.sql.gz.gpg" \
-  | gunzip \
-  | docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" --dry-run
+# Compression integrity check only; it is NOT a substitute for a restore drill.
+gpg --decrypt "backups/latest.sql.gz.gpg" | gzip -t
+# Use the isolated restore procedure below to verify the actual database.
 ```
 
 ### Attachments and Uploads
@@ -57,11 +57,18 @@ docker compose stop backend api web
 ### 2. Restore the database
 
 ```bash
-# Decompress and decrypt
+# Create a NEW, EMPTY database for a restore drill; never overwrite production.
+RESTORE_DB=tourism_erp_restore_drill
+docker compose exec -T db createdb -U "$POSTGRES_USER" "$RESTORE_DB"
+set -o pipefail
 gpg --decrypt "backups/tourism_erp-YYYYMMDD-HHMMSS.sql.gz.gpg" \
   | gunzip \
-  | docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-    --clean --if-exists --create
+  | docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$RESTORE_DB"
+
+# Verify schema and representative balances; only an approved DBA-led recovery
+# procedure may promote the restored database to production.
+docker compose exec -T db psql -U "$POSTGRES_USER" -d "$RESTORE_DB" \
+  -c 'SELECT COUNT(*) FROM journal_entries;'
 ```
 
 ### 3. Restore uploads (if applicable)

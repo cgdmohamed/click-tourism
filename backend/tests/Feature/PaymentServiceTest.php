@@ -173,4 +173,91 @@ class PaymentServiceTest extends TestCase
             'reason' => 'Too much',
         ], $this->user->id);
     }
+    public function test_later_allocation_posts_transfer_without_duplicate_on_retry(): void
+    {
+        $booking = $this->confirmedBooking();
+        $payment = $this->record(['amount_minor' => 100000]);
+        $service = app(PaymentService::class);
+        $request = [['booking_id' => $booking->public_id, 'amount_minor' => 60000]];
+
+        $payment = $service->allocate($payment, $request, $this->user->id);
+        $this->assertSame(40000, $payment->unallocated_minor);
+        $this->assertSame(60000, $booking->fresh()->paidMinor());
+
+        $entry = JournalEntry::query()->where('source_type', 'payment_allocation')
+            ->where('event', 'allocated:60000')->firstOrFail();
+        $this->assertSame(60000, (int) $entry->lines()->whereHas('account',
+            fn ($q) => $q->where('code', '2300'))->sum('debit_minor'));
+        $this->assertSame(60000, (int) $entry->lines()->whereHas('account',
+            fn ($q) => $q->where('code', '1100'))->sum('credit_minor'));
+
+        $service->allocate($payment, $request, $this->user->id);
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment_allocation')->count());
+
+        $payment = $service->allocate($payment, [
+            ['booking_id' => $booking->public_id, 'amount_minor' => 80000],
+        ], $this->user->id);
+        $this->assertSame(20000, $payment->unallocated_minor);
+        $this->assertSame(80000, $booking->fresh()->paidMinor());
+        $this->assertSame(20000, (int) JournalEntry::query()
+            ->where('source_type', 'payment_allocation')->where('event', 'allocated:80000')
+            ->firstOrFail()->lines()->whereHas('account', fn ($q) => $q->where('code', '2300'))
+            ->sum('debit_minor'));
+    }
+
+    public function test_unallocation_posts_opposite_transfer_and_keeps_receipt(): void
+    {
+        $booking = $this->confirmedBooking();
+        $payment = $this->record(['amount_minor' => 100000]);
+        $service = app(PaymentService::class);
+        $service->allocate($payment, [
+            ['booking_id' => $booking->public_id, 'amount_minor' => 70000],
+        ], $this->user->id);
+
+        $payment = $service->unallocate($payment, $booking->public_id, $this->user->id);
+        $this->assertSame(100000, $payment->unallocated_minor);
+        $this->assertSame(0, $booking->fresh()->paidMinor());
+        $entry = JournalEntry::query()->where('source_type', 'payment_allocation')
+            ->where('event', 'released')->firstOrFail();
+        $this->assertSame(70000, (int) $entry->lines()->whereHas('account',
+            fn ($q) => $q->where('code', '1100'))->sum('debit_minor'));
+        $this->assertSame(70000, (int) $entry->lines()->whereHas('account',
+            fn ($q) => $q->where('code', '2300'))->sum('credit_minor'));
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment')
+            ->where('source_id', $payment->id)->count());
+
+        $this->expectException(DomainException::class);
+        $service->unallocate($payment, $booking->public_id, $this->user->id);
+    }
+
+    public function test_allocation_cannot_exceed_booking_balance_or_reduce_target(): void
+    {
+        $booking = $this->confirmedBooking(80000);
+        $payment = $this->record(['amount_minor' => 100000]);
+        $service = app(PaymentService::class);
+        $service->allocate($payment, [
+            ['booking_id' => $booking->public_id, 'amount_minor' => 60000],
+        ], $this->user->id);
+
+        try {
+            $service->allocate($payment, [
+                ['booking_id' => $booking->public_id, 'amount_minor' => 90000],
+            ], $this->user->id);
+            $this->fail('Over-allocation should be rejected.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('outstanding balance', $e->getMessage());
+        }
+
+        try {
+            $service->allocate($payment, [
+                ['booking_id' => $booking->public_id, 'amount_minor' => 20000],
+            ], $this->user->id);
+            $this->fail('Reducing an allocation should be rejected.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('unallocate it first', $e->getMessage());
+        }
+        $this->assertSame(60000, $booking->fresh()->paidMinor());
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment_allocation')->count());
+    }
+
 }

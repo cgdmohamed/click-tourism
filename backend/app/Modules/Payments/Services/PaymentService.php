@@ -135,149 +135,169 @@ class PaymentService
     }
 
     /**
-     * Allocate additional amounts of an existing posted payment to bookings.
-     * Validates remaining balances and updates unallocated_minor. Idempotent
-     * per allocation booking+amount pair.
+     * Apply TARGET booking amounts (not increments) to a posted receipt.
+     * The original receipt stays immutable; only the advance->AR delta is
+     * posted as a new balanced journal entry. An exact retry is a no-op.
      */
     public function allocate(Payment $payment, array $allocations, ?int $actorId = null): Payment
     {
         return DB::transaction(function () use ($payment, $allocations, $actorId) {
             $payment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
-
             if ($payment->status !== 'posted') {
                 throw new DomainException('Only posted payments can be allocated.');
             }
-
             $branch = Branch::query()->findOrFail($payment->branch_id);
             if ($actorId !== null) {
                 $this->branchScope->assertBranch(User::query()->findOrFail($actorId), $branch);
             }
 
-            $customer = Customer::query()->findOrFail($payment->customer_id);
-            $currency = $payment->currency_code;
+            $available = $payment->amount_minor - (int) PaymentAllocation::query()
+                ->where('payment_id', $payment->id)->sum('amount_minor');
+            $seen = [];
+            $changes = [];
 
-            $alreadyAllocated = (int) PaymentAllocation::query()
-                ->where('payment_id', $payment->id)
-                ->sum('amount_minor');
-            $available = $payment->amount_minor - $alreadyAllocated;
-
-            $newAllocations = [];
             foreach ($allocations as $allocation) {
-                $bookingId = $allocation['booking_id'] ?? null;
-                $amount = (int) ($allocation['amount_minor'] ?? 0);
-
-                if ($amount <= 0) {
+                $bookingId = (string) ($allocation['booking_id'] ?? '');
+                $target = (int) ($allocation['amount_minor'] ?? 0);
+                if ($target <= 0) {
                     throw new DomainException('Allocation amount must be greater than zero.');
                 }
+                if (isset($seen[$bookingId])) {
+                    throw new DomainException('Duplicate booking within allocation request.');
+                }
+                $seen[$bookingId] = true;
 
-                $booking = Booking::query()->where('public_id', $bookingId)->first();
+                $booking = Booking::query()->where('public_id', $bookingId)->lockForUpdate()->first();
                 if (! $booking) {
                     throw new DomainException('Booking not found.');
                 }
                 if ($booking->branch_id !== $branch->id) {
                     throw new DomainException('Cannot allocate to a booking in another branch.');
                 }
-                if ($booking->customer_id !== $customer->id) {
-                    throw new DomainException('Cannot allocate to another customer\'s booking.');
+                if ($booking->customer_id !== $payment->customer_id) {
+                    throw new DomainException("Cannot allocate to another customer's booking.");
                 }
-                if (strtoupper($booking->currency_code) !== $currency) {
+                if (strtoupper($booking->currency_code) !== strtoupper($payment->currency_code)) {
                     throw new DomainException('Payment currency must match the booking currency.');
                 }
 
                 $existing = PaymentAllocation::query()
                     ->where('payment_id', $payment->id)
-                    ->where('booking_id', $booking->id)
-                    ->first();
-                $alreadyForBooking = $existing ? (int) $existing->amount_minor : 0;
-                $outstanding = $booking->balanceMinor() - $alreadyForBooking;
-
-                if ($amount > $outstanding) {
+                    ->where('booking_id', $booking->id)->lockForUpdate()->first();
+                $previous = $existing ? (int) $existing->amount_minor : 0;
+                $delta = $target - $previous;
+                if ($delta < 0) {
+                    throw new DomainException('To decrease an allocation, unallocate it first.');
+                }
+                if ($delta === 0) {
+                    continue;
+                }
+                if ($delta > $booking->balanceMinor()) {
                     throw new DomainException("Allocation exceeds the outstanding balance of booking {$booking->number}.");
                 }
-
-                $available -= $amount;
-                if ($available < 0) {
+                if ($delta > $available) {
                     throw new DomainException('Total allocation exceeds the unallocated payment amount.');
                 }
 
                 if ($existing) {
-                    $existing->update(['amount_minor' => $amount]);
+                    $existing->update(['amount_minor' => $target]);
                 } else {
-                    PaymentAllocation::query()->create([
+                    $existing = PaymentAllocation::query()->create([
                         'payment_id' => $payment->id,
                         'booking_id' => $booking->id,
-                        'amount_minor' => $amount,
+                        'amount_minor' => $target,
                     ]);
                 }
 
-                $newAllocations[] = ['booking' => $booking, 'amount_minor' => $amount];
+                $this->transferAdvance($payment, $branch, $existing, $delta, false, $actorId);
+                $available -= $delta;
+                $changes[] = ['booking_id' => $booking->public_id, 'delta_minor' => $delta, 'total_minor' => $target];
             }
 
-            $payment->update([
-                'unallocated_minor' => $payment->amount_minor - (int) PaymentAllocation::query()
-                    ->where('payment_id', $payment->id)
-                    ->sum('amount_minor'),
-            ]);
-
-            $this->audit->log('payment.allocated', $payment, null, [
-                'allocations' => array_map(fn ($a) => [
-                    'booking_id' => $a['booking']->public_id,
-                    'amount_minor' => $a['amount_minor'],
-                ], $newAllocations),
-            ], $actorId);
-
+            $payment->update(['unallocated_minor' => $available]);
+            if ($changes !== []) {
+                $this->audit->log('payment.allocated', $payment, null, ['allocations' => $changes], $actorId);
+            }
             return $payment->refresh()->load('allocations');
         });
     }
 
-    /**
-     * Unallocate a booking from a payment, returning the amount to the
-     * unallocated balance. Does not reverse any posted journal entries;
-     * only the allocation record is removed.
-     */
     public function unallocate(Payment $payment, string $bookingPublicId, ?int $actorId = null): Payment
     {
         return DB::transaction(function () use ($payment, $bookingPublicId, $actorId) {
             $payment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
-
             if ($payment->status !== 'posted') {
                 throw new DomainException('Only posted payments can be unallocated.');
             }
-
             $branch = Branch::query()->findOrFail($payment->branch_id);
             if ($actorId !== null) {
                 $this->branchScope->assertBranch(User::query()->findOrFail($actorId), $branch);
             }
 
-            $allocation = PaymentAllocation::query()
-                ->where('payment_id', $payment->id)
-                ->first();
-
-            if (! $allocation) {
-                throw new DomainException('No allocation found for this payment.');
-            }
-
             $booking = Booking::query()->where('public_id', $bookingPublicId)->first();
-            if (! $booking) {
-                throw new DomainException('Booking not found.');
+            if (! $booking || $booking->branch_id !== $branch->id || $booking->customer_id !== $payment->customer_id) {
+                throw new DomainException('Booking not found for this payment.');
             }
 
-            $allocation->where('payment_id', $payment->id)
-                ->where('booking_id', $booking->id)
-                ->delete();
+            $allocation = PaymentAllocation::query()->where('payment_id', $payment->id)
+                ->where('booking_id', $booking->id)->lockForUpdate()->first();
+            if (! $allocation) {
+                throw new DomainException('No allocation found for this payment and booking.');
+            }
 
+            $released = (int) $allocation->amount_minor;
+            $this->transferAdvance($payment, $branch, $allocation, $released, true, $actorId);
+            $allocation->delete();
             $payment->update([
                 'unallocated_minor' => $payment->amount_minor - (int) PaymentAllocation::query()
-                    ->where('payment_id', $payment->id)
-                    ->sum('amount_minor'),
+                    ->where('payment_id', $payment->id)->sum('amount_minor'),
             ]);
-
             $this->audit->log('payment.unallocated', $payment, null, [
-                'booking_id' => $bookingPublicId,
+                'booking_id' => $bookingPublicId, 'amount_minor' => $released,
             ], $actorId);
-
             return $payment->refresh()->load('allocations');
         });
+    }
+
+    /**
+     * The source/event combination identifies each economic allocation step.
+     * A deleted allocation is never reused; its release entry remains posted.
+     */
+    private function transferAdvance(
+        Payment $payment,
+        Branch $branch,
+        PaymentAllocation $allocation,
+        int $amountMinor,
+        bool $release,
+        ?int $actorId,
+    ): void {
+        $ar = $this->posting->account((string) $this->settings->get('accounting', 'ar_account_code', '1100'));
+        $advance = $this->posting->account((string) $this->settings->get('accounting', 'advance_account_code', '2300'));
+        $label = ($release ? 'Unallocate ' : 'Allocate ').'receipt '.$payment->number;
+        $lines = $release
+            ? [
+                PostingLine::debit($ar, $amountMinor, 'customer', $payment->customer_id, $label),
+                PostingLine::credit($advance, $amountMinor, 'customer', $payment->customer_id, $label),
+            ]
+            : [
+                PostingLine::debit($advance, $amountMinor, 'customer', $payment->customer_id, $label),
+                PostingLine::credit($ar, $amountMinor, 'customer', $payment->customer_id, $label),
+            ];
+
+        $this->posting->post(PostingRequest::make(
+            entryDate: now()->toDateString(),
+            branch: $branch,
+            currency: $payment->currency_code,
+            lines: $lines,
+            memo: $label,
+            sourceType: 'payment_allocation',
+            sourceId: $allocation->id,
+            event: $release ? 'released' : 'allocated:'.$allocation->amount_minor,
+            fxRate: (string) $payment->fx_rate,
+            fxRateDate: $payment->fx_rate_date,
+            fxRateSource: $payment->fx_rate_source,
+            actorId: $actorId,
+        ));
     }
 
     public function requestRefund(array $data, ?int $actorId = null): Refund
