@@ -288,6 +288,14 @@ class DecisionRegistry
             'blocks' => 'TE-021, FIN, RPT',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-035',
+            'type' => 'ACC',
+            'title_en' => 'Employee advances & custody control accounts',
+            'title_ar' => 'حسابات الضبط للسلف والعهدة للموظفين',
+            'blocks' => 'TE-021, PARTIES, RPT',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */

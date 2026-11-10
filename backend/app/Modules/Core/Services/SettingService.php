@@ -47,6 +47,9 @@ class SettingService
             // PENDING ACCOUNTANT APPROVAL: output tax collected on customer sales.
             'output_tax_account_code' => '2200',
             'retained_earnings_account_code' => '3100',
+            // PENDING ACCOUNTANT APPROVAL (DEC-035): employee advances/custody accounts.
+            'employee_advance_account_code' => '1150',
+            'employee_custody_account_code' => '1150',
         ],
         'treasury' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.
@@ -75,6 +78,8 @@ class SettingService
             'customer_invoice_prefix' => 'INV',
             'supplier_invoice_prefix' => 'BIL',
             'credit_note_prefix' => 'CN',
+            'employee_advance_prefix' => 'EA',
+            'employee_custody_prefix' => 'EC',
         ],
     ];
 

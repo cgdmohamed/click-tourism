@@ -1153,6 +1153,189 @@ paths:
         '200': { description: Accepted or duplicate }
         '403': { description: Invalid signature }
 
+  /employees:
+    get:
+      tags: [Parties]
+      summary: List employees for the branch
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: include_inactive, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: Employees }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Parties]
+      summary: Create an employee master record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}:
+    get:
+      tags: [Parties]
+      summary: Get an employee with balances
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Employee }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Parties]
+      summary: Update an employee
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/deactivate:
+    post:
+      tags: [Parties]
+      summary: Deactivate an employee (blocked while balances are open)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deactivated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/statement:
+    get:
+      tags: [Parties]
+      summary: Employee subledger statement for a date range
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Statement }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances:
+    post:
+      tags: [Parties]
+      summary: Request an advance for an employee (no posting until disbursed)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeAdvanceInput' }
+      responses:
+        '201': { description: Requested }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/approve:
+    post:
+      tags: [Parties]
+      summary: Approve a requested advance (no posting)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/disburse:
+    post:
+      tags: [Parties]
+      summary: Disburse an approved advance (posts Dr employee advance / Cr cash)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeAdvanceDisburseInput' }
+      responses:
+        '200': { description: Disbursed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/settle:
+    post:
+      tags: [Parties]
+      summary: Settle an advance against expenses (posts Dr expense / Cr employee advance)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeAdvanceSettleInput' }
+      responses:
+        '200': { description: Settled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/advances/{advance}/cancel:
+    post:
+      tags: [Parties]
+      summary: Cancel a requested or approved advance (no posting)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: advance, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cancelled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/custody:
+    post:
+      tags: [Parties]
+      summary: Issue a custody item to an employee (posts Dr custody / Cr cash when monetary)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeCustodyInput' }
+      responses:
+        '201': { description: Issued }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/custody/{custody}/clear:
+    post:
+      tags: [Parties]
+      summary: Clear a custody item (employee returned/accounted for it)
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: custody, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cleared }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /employees/{employee}/custody/{custody}/return:
+    post:
+      tags: [Parties]
+      summary: Return a custody item to the company
+      parameters:
+        - { name: employee, in: path, required: true, schema: { type: string } }
+        - { name: custody, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Returned }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1705,3 +1888,104 @@ components:
               allocation_type: { type: string, enum: [exact, percent] }
               amount_minor: { type: integer, minimum: 0 }
               percent: { type: number, minimum: 0, maximum: 100 }
+    Employee:
+      type: object
+      properties:
+        id: { type: string }
+        internal_code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        category: { type: string, enum: [staff, executive, driver, other] }
+        branch_id: { type: string }
+        user_id: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        is_active: { type: boolean }
+        advance_balance_minor: { type: integer }
+        custody_balance_minor: { type: integer }
+    EmployeeInput:
+      type: object
+      required: [internal_code, name_ar, name_en]
+      properties:
+        internal_code: { type: string, maxLength: 40 }
+        name_ar: { type: string }
+        name_en: { type: string }
+        category: { type: string, enum: [staff, executive, driver, other] }
+        branch_id: { type: string }
+        user_id: { type: string, nullable: true }
+        phone: { type: string, maxLength: 30, nullable: true }
+        email: { type: string, nullable: true }
+        is_active: { type: boolean }
+    EmployeeAdvance:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        employee_id: { type: string }
+        amount_minor: { type: integer }
+        settled_minor: { type: integer }
+        status: { type: string, enum: [requested, approved, disbursed, partially_settled, settled, cancelled] }
+        request_date: { type: string, format: date }
+        disbursement: { $ref: '#/components/schemas/Money' }
+        journal_entry_id: { type: string, nullable: true }
+        memo: { type: string, nullable: true }
+    EmployeeAdvanceInput:
+      type: object
+      required: [amount_minor]
+      properties:
+        amount_minor: { type: integer, minimum: 1 }
+        request_date: { type: string, format: date }
+        memo: { type: string, maxLength: 255 }
+    EmployeeAdvanceDisburseInput:
+      type: object
+      required: [disbursement_date, currency, cash_account_id]
+      properties:
+        disbursement_date: { type: string, format: date }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        cash_account_id: { type: string }
+        memo: { type: string, maxLength: 255 }
+    EmployeeAdvanceSettleInput:
+      type: object
+      required: [lines]
+      properties:
+        settlement_date: { type: string, format: date }
+        memo: { type: string, maxLength: 255 }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [expense_account_id, amount_minor]
+            properties:
+              expense_account_id: { type: string }
+              amount_minor: { type: integer, minimum: 1 }
+              description: { type: string, maxLength: 255 }
+    EmployeeCustody:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        employee_id: { type: string }
+        item_name_ar: { type: string }
+        item_name_en: { type: string }
+        value_minor: { type: integer }
+        currency: { type: string }
+        status: { type: string, enum: [issued, cleared, returned] }
+        issue_date: { type: string, format: date }
+        clear_date: { type: string, format: date, nullable: true }
+        return_date: { type: string, format: date, nullable: true }
+        journal_entry_id: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+    EmployeeCustodyInput:
+      type: object
+      required: [item_name_ar, item_name_en, issue_date, currency]
+      properties:
+        item_name_ar: { type: string }
+        item_name_en: { type: string }
+        value_minor: { type: integer, minimum: 0, default: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        issue_date: { type: string, format: date }
+        cash_account_id: { type: string }
+        notes: { type: string, maxLength: 1000 }
