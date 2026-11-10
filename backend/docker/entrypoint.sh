@@ -21,6 +21,25 @@ if [ -z "${APP_KEY:-}" ]; then
     exit 1
 fi
 
+# The demo upload volume is mounted at storage/app. A stale
+# storage/app/public -> /var/www/html/storage/app/public symlink loops back
+# into itself. Repair that link BEFORE invoking Artisan or starting PHP-FPM.
+# Only touch the isolated demo mount; never alter production storage.
+if [ "${DEMO_MODE:-false}" = "true" ]; then
+    if [ -L storage/app/public ]; then
+        echo "Repairing invalid demo upload symlink..."
+        rm -- storage/app/public
+    elif [ -e storage/app/public ] && [ ! -d storage/app/public ]; then
+        echo "FATAL: demo upload path is not a directory." >&2
+        exit 1
+    fi
+    mkdir -p storage/app/public
+    if [ ! -d storage/app/public ] || [ -L storage/app/public ]; then
+        echo "FATAL: demo upload directory is invalid." >&2
+        exit 1
+    fi
+fi
+
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     echo "Waiting for the database to accept connections..."
     attempt=0
@@ -44,17 +63,6 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
         echo "Seeding isolated demo dataset..."
         php artisan db:seed --force
     fi
-fi
-
-# public/storage is created in the Docker image. Re-creating it on
-# every boot can introduce broken/cyclic links with the demo upload mount.
-# In demo mode, repair only a symlink occupying the expected upload directory.
-if [ "${DEMO_MODE:-false}" = "true" ]; then
-    if [ -L storage/app/public ]; then
-        echo "Repairing invalid demo upload symlink..."
-        rm storage/app/public
-    fi
-    mkdir -p storage/app/public
 fi
 
 if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
