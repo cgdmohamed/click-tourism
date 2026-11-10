@@ -66,6 +66,7 @@ export function Layout() {
         { to: '/employees', label: t('employees'), icon: 'userCheck', permission: 'employees.view' },
         { to: '/bookings', label: t('bookings'), icon: 'plane' },
         { to: '/leads', label: t('crm'), icon: 'target' },
+        { to: '/assignment-rules', label: t('assignmentRules'), icon: 'target', permission: 'leads.manage_rules' },
       ],
     },
     {
