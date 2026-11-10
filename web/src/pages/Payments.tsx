@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -147,16 +147,14 @@ export default function Payments() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
-  const handleMethodChange = (method: string) => {
-    setForm({ ...form, method })
-    // Auto-select default cash account from the selected payment method
-    const selectedMethod = (methodsQuery.data ?? []).find((m) => m.code === method || m.name_en === method)
-    if (selectedMethod?.default_cash_account_id) {
-      const account = (cashQuery.data ?? []).find((a) => a.id === selectedMethod.default_cash_account_id)
-      if (account) {
-        setForm({ ...form, cash_account_id: account.id })
-      }
-    }
+  const handleMethodChange = (methodId: string) => {
+    const selectedMethod = (methodsQuery.data ?? []).find((m) => m.id === methodId)
+    setForm((current) => ({
+      ...current,
+      payment_method_id: methodId,
+      method: selectedMethod?.type ?? 'cash',
+      cash_account_id: selectedMethod?.default_cash_account_id ?? current.cash_account_id,
+    }))
   }
 
   return (
@@ -278,12 +276,17 @@ export default function Payments() {
             />
           </Field>
           <Field label={t('paymentMethod')}>
-            <Select value={form.method} onChange={(event) => handleMethodChange(event.target.value)}>
-              <option value="cash">{t('cash')}</option>
-              <option value="bank_transfer">{t('bankTransfer')}</option>
-              <option value="card">{t('card')}</option>
-              <option value="wallet">{t('wallet')}</option>
+            <Select value={form.payment_method_id} onChange={(event) => handleMethodChange(event.target.value)}>
+              <option value="">{locale === 'ar' ? 'بدون طريقة محددة' : 'Unspecified method'}</option>
+              {(methodsQuery.data ?? []).map((method) => (
+                <option key={method.id} value={method.id}>
+                  {locale === 'ar' ? method.name_ar : method.name_en}
+                </option>
+              ))}
             </Select>
+            <Link to="/payment-methods" className="mt-2 inline-block text-small text-brand-1-accent hover:underline">
+              {locale === 'ar' ? 'إدارة طرق الدفع' : 'Manage payment methods'}
+            </Link>
           </Field>
           <Field label={t('amount')} required>
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />

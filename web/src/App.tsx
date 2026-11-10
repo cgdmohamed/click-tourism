@@ -16,6 +16,7 @@ import Employees from './pages/Employees'
 import EmployeeProfile from './pages/EmployeeProfile'
 import Bookings from './pages/Bookings'
 import Payments from './pages/Payments'
+import PaymentMethods from './pages/PaymentMethods'
 import SupplierSettlements from './pages/SupplierSettlements'
 import Reports from './pages/Reports'
 import Leads from './pages/Leads'
@@ -69,6 +70,7 @@ export default function App() {
                   <Route path="employees/:id" element={<EmployeeProfile />} />
                   <Route path="bookings" element={<Bookings />} />
                   <Route path="payments" element={<Payments />} />
+                  <Route path="payment-methods" element={<PaymentMethods />} />
                   <Route path="supplier-settlements" element={<SupplierSettlements />} />
                   <Route path="reports" element={<Reports />} />
                   <Route path="leads" element={<Leads />} />

@@ -86,16 +86,18 @@ class PaymentService
                 throw new DomainException('Allocated amount exceeds the payment amount.');
             }
 
-            $paymentMethodId = $data['payment_method_id'] ?? null;
-            if ($paymentMethodId) {
-                $methodRecord = PaymentMethod::query()->where('public_id', $paymentMethodId)->first();
-                if ($methodRecord) {
-                    $method = $methodRecord->code;
-                    if ($data['cash_account_id'] ?? null) {
-                        // keep explicit cash account
-                    } elseif ($methodRecord->default_cash_account_id) {
-                        $cashAccount = Account::query()->find($methodRecord->default_cash_account_id);
-                    }
+            $methodRecord = null;
+            if (! empty($data['payment_method_id'])) {
+                $methodRecord = PaymentMethod::query()
+                    ->where('public_id', $data['payment_method_id'])
+                    ->where('is_active', true)
+                    ->first();
+                if (! $methodRecord) {
+                    throw new DomainException('Payment method not found or inactive.');
+                }
+                if ($methodRecord->default_cash_account_id !== null
+                    && $methodRecord->default_cash_account_id !== $cashAccount->id) {
+                    throw new DomainException('Payment account does not match the selected payment method.');
                 }
             }
 
@@ -104,8 +106,8 @@ class PaymentService
                 'customer_id' => $customer->id,
                 'booking_id' => $booking?->id,
                 'branch_id' => $branch->id,
-                'method' => $data['method'] ?? 'cash',
-                'payment_method_id' => $paymentMethodId,
+                'method' => $methodRecord?->type ?? ($data['method'] ?? 'cash'),
+                'payment_method_id' => $methodRecord?->id,
                 'cash_account_id' => $cashAccount->id,
                 'amount_minor' => $amount,
                 'currency_code' => $currency,

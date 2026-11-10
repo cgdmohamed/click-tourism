@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Payments\Models\PaymentMethod;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +29,12 @@ class PaymentMethodController extends ApiController
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'wallet', 'other'])],
-            'default_cash_account_id' => ['nullable', 'string'],
+            'default_cash_account_id' => ['nullable', 'string', Rule::exists('accounts', 'public_id')],
+            'provider_name' => ['nullable', 'string', 'max:120'],
+            'account_name' => ['nullable', 'string', 'max:160'],
+            'account_reference' => ['nullable', 'string', 'max:80'],
+            'iban' => ['nullable', 'string', 'max:34'],
+            'instructions' => ['nullable', 'string', 'max:1000'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
@@ -37,7 +43,14 @@ class PaymentMethodController extends ApiController
             'name_ar' => $data['name_ar'],
             'name_en' => $data['name_en'],
             'type' => $data['type'],
-            'default_cash_account_id' => $data['default_cash_account_id'] ?? null,
+            'default_cash_account_id' => ! empty($data['default_cash_account_id'])
+                ? Account::query()->where('public_id', $data['default_cash_account_id'])->firstOrFail()->id
+                : null,
+            'provider_name' => $data['provider_name'] ?? null,
+            'account_name' => $data['account_name'] ?? null,
+            'account_reference' => $data['account_reference'] ?? null,
+            'iban' => $data['iban'] ?? null,
+            'instructions' => $data['instructions'] ?? null,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
 
@@ -58,6 +71,11 @@ class PaymentMethodController extends ApiController
         ]);
 
         $before = $method->only(array_keys($data));
+        if (array_key_exists('default_cash_account_id', $data)) {
+            $data['default_cash_account_id'] = $data['default_cash_account_id']
+                ? Account::query()->where('public_id', $data['default_cash_account_id'])->firstOrFail()->id
+                : null;
+        }
         $method->update($data);
         $audit->log('payment_method.updated', $method, $before, $method->toApiArray(), $this->actorId());
 

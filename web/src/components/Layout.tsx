@@ -53,6 +53,7 @@ export function Layout() {
         { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
         { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
         { to: '/payments', label: t('payments'), icon: 'creditCard' },
+        { to: '/payment-methods', label: locale === 'ar' ? 'طرق الدفع' : 'Payment methods', icon: 'wallet', permission: 'payments.view' },
         { to: '/supplier-settlements', label: t('supplierSettlements'), icon: 'handshake' },
         { to: '/reconciliation', label: t('reconciliation'), icon: 'listChecks', permission: 'reconciliation.view' },
         { to: '/schedules', label: t('schedules'), icon: 'calendarClock', permission: 'schedules.view' },
