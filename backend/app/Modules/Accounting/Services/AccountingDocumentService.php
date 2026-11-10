@@ -87,7 +87,12 @@ class AccountingDocumentService
 
             $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
             $tax = (int) array_sum(array_column($lines, 'tax_minor'));
-            $total = $subtotal + $tax;
+            // In simplified settlement mode the document amount is the single
+            // cash movement; summing debit + credit would double-count it.
+            $total = ! empty($data['simple_mode']) ? (int) $data['amount_minor'] : $subtotal + $tax;
+            if (! empty($data['simple_mode'])) {
+                $subtotal = $total;
+            }
 
             $series = (string) ($data['series'] ?? $this->documentSeries($data['type']));
             $number = $this->sequences->next($series, $branch);
