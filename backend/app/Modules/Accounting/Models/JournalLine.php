@@ -2,11 +2,15 @@
 
 namespace App\Modules\Accounting\Models;
 
+use App\Modules\Core\Models\Branch;
+use App\Support\HasPublicId;
 use DomainException;
 use Illuminate\Database\Eloquent\Model;
 
 class JournalLine extends Model
 {
+    use HasPublicId;
+
     protected $fillable = [
         'journal_entry_id',
         'account_id',
@@ -50,5 +54,19 @@ class JournalLine extends Model
     public function account()
     {
         return $this->belongsTo(Account::class);
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * Journal lines keep internal ids in existing routes (cost allocations);
+     * the ULID `public_id` is only used by reconciliation matches.
+     */
+    public function getRouteKeyName(): string
+    {
+        return 'id';
     }
 }

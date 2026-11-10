@@ -16,6 +16,7 @@ tags:
   - name: Auth
   - name: Platform
   - name: Accounting
+  - name: Treasury
   - name: Parties
   - name: Bookings
   - name: Payments
@@ -1490,6 +1491,171 @@ paths:
         '404': { description: Not found }
         '422': { $ref: '#/components/responses/Validation' }
 
+  /bank-statements:
+    get:
+      tags: [Treasury]
+      summary: List imported bank statements
+      parameters:
+        - { name: cash_account_id, in: query, schema: { type: string }, description: Registered cash account public id }
+      responses:
+        '200': { description: Statements }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /bank-statements/import:
+    post:
+      tags: [Treasury]
+      summary: Import a CSV or XLSX bank statement for a registered bank account
+      description: >-
+        Amounts use bank convention: money in the bank is positive (the book
+        debits the bank account), money out is negative. Duplicate lines from
+        overlapping statements are skipped and reported. Re-uploading the exact
+        same file is rejected. Only base-currency bank accounts are supported
+        until DEC-037 is decided.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/BankStatementImportInput' }
+      responses:
+        '201': { description: Statement imported with imported_lines and skipped_duplicates }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /bank-statements/{statement}:
+    get:
+      tags: [Treasury]
+      summary: Get an imported statement with its lines
+      parameters:
+        - { name: statement, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Statement }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /reconciliations:
+    get:
+      tags: [Treasury]
+      summary: List reconciliation sessions
+      parameters:
+        - { name: cash_account_id, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [open, approved] } }
+        - { name: period_from, in: query, schema: { type: string, format: date } }
+        - { name: period_to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Sessions }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Treasury]
+      summary: Open a reconciliation session for a bank account and period
+      description: >-
+        The opening book balance is derived from posted journal lines dated
+        before the period start, so the session always reconciles against the
+        general ledger rather than a manual figure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankReconciliationInput' }
+      responses:
+        '201': { description: Session with computed summary, lines, candidates and differences }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reconciliations/{reconciliation}:
+    get:
+      tags: [Treasury]
+      summary: Get a reconciliation with bank lines, book lines, matches and differences
+      parameters:
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Reconciliation detail }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /reconciliations/{reconciliation}/auto-match:
+    post:
+      tags: [Treasury]
+      summary: Match unambiguous one-to-one candidates (never posts)
+      description: >-
+        Only candidates with a single bank line and a single book line of the
+        same amount and direction inside tolerance and the date window are
+        matched. Ambiguous pairs are counted and left for human review.
+      parameters:
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Result with created, ambiguous, remaining and refreshed reconciliation }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reconciliations/{reconciliation}/matches:
+    post:
+      tags: [Treasury]
+      summary: Match bank lines to journal lines as one group (split matches allowed)
+      description: >-
+        All items in one request form a single match group. Every bank line and
+        journal line in the group must be fully consumed within tolerance;
+        partial matches are rejected in v1. A journal line can only be consumed
+        by one session.
+      parameters:
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankReconciliationMatchInput' }
+      responses:
+        '200': { description: Updated reconciliation detail }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reconciliations/{reconciliation}/matches/{group}:
+    delete:
+      tags: [Treasury]
+      summary: Remove a match group and release its lines
+      parameters:
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+        - { name: group, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Updated reconciliation detail }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reconciliations/{reconciliation}/adjustment-voucher:
+    post:
+      tags: [Treasury]
+      summary: Propose a draft adjustment voucher for unrecorded bank items
+      description: >-
+        Creates a draft adjustment_voucher through the normal document workflow
+        (bank charges to accounting.bank_charges_account_code, interest to
+        accounting.bank_interest_account_code). Nothing is posted until the
+        voucher is submitted, approved and posted; the voucher is dated on the
+        oldest selected bank line so it can be matched within the date window.
+      parameters:
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BankAdjustmentVoucherInput' }
+      responses:
+        '201': { description: Draft adjustment voucher and updated reconciliation }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reconciliations/{reconciliation}/approve:
+    post:
+      tags: [Treasury]
+      summary: Approve and lock a reconciled session (idempotent)
+      description: >-
+        Refused while unrecorded bank items remain or the adjusted balances do
+        not agree within tolerance. Approved sessions store a JSON snapshot and
+        cannot be reopened; corrections require a new session.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved session with snapshot }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2216,4 +2382,242 @@ components:
         tax_account_id: { type: string, description: Tax account public id or code }
         party_type: { type: string, enum: [customer, supplier, employee] }
         party_id: { type: string, description: Party public id }
+    BankStatement:
+      type: object
+      properties:
+        id: { type: string }
+        cash_account_id: { type: string }
+        branch_id: { type: string, nullable: true }
+        filename: { type: string }
+        format: { type: string, enum: [csv, xlsx] }
+        period_from: { type: string, format: date, nullable: true }
+        period_to: { type: string, format: date, nullable: true }
+        opening_balance_minor: { type: integer, nullable: true }
+        closing_balance_minor: { type: integer, nullable: true }
+        currency: { type: string }
+        line_count: { type: integer }
+        mapping: { type: object, nullable: true }
+        imported_at: { type: string, format: date-time }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/BankStatementLine' }
+    BankStatementLine:
+      type: object
+      properties:
+        id: { type: string }
+        line_date: { type: string, format: date }
+        value_date: { type: string, format: date, nullable: true }
+        amount_minor: { type: integer, description: 'Signed: positive is money in the bank, negative is money out' }
+        balance_after_minor: { type: integer, nullable: true }
+        bank_reference: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        party_name: { type: string, nullable: true }
+    BankStatementImportInput:
+      type: object
+      required: [file, cash_account_id]
+      properties:
+        file: { type: string, format: binary }
+        cash_account_id: { type: string, description: Registered cash account public id (kind bank) }
+        delimiter: { type: string, maxLength: 1, default: ',' }
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        opening_balance_minor: { type: integer }
+        closing_balance_minor: { type: integer }
+        mapping:
+          type: object
+          properties:
+            date: { type: string, description: Column header for the transaction date (or 0-based index) }
+            value_date: { type: string }
+            reference: { type: string }
+            description: { type: string }
+            party: { type: string }
+            currency: { type: string }
+            amount: { type: string, description: 'Signed amount column; use money_in/money_out or debit/credit instead if the file has separate columns. Accepts dot or comma decimal separators and thousands separators.' }
+            money_in: { type: string }
+            money_out: { type: string }
+            debit: { type: string }
+            credit: { type: string }
+            balance: { type: string }
+            date_format: { type: string, maxLength: 20, description: 'PHP date format, e.g. Y-m-d or d/m/Y' }
+    BankReconciliationInput:
+      type: object
+      required: [cash_account_id]
+      properties:
+        cash_account_id: { type: string }
+        statement_id: { type: string, description: Optional imported statement to reconcile }
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        opening_bank_balance_minor: { type: integer, description: Defaults to the statement opening balance }
+        closing_bank_balance_minor: { type: integer, description: Defaults to the statement closing balance }
+        notes: { type: string, maxLength: 255 }
+    BankReconciliationMatchInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [bank_line_id, journal_line_id, amount_minor]
+            properties:
+              bank_line_id: { type: string, description: Bank statement line public id }
+              journal_line_id: { type: string, description: Journal line public id }
+              amount_minor: { type: integer, minimum: 1 }
+    BankAdjustmentVoucherInput:
+      type: object
+      properties:
+        bank_line_ids:
+          type: array
+          items: { type: string }
+          description: Unrecorded bank line public ids; all unmatched lines when omitted
+        charges_account_code: { type: string, maxLength: 20 }
+        interest_account_code: { type: string, maxLength: 20 }
+        document_date: { type: string, format: date, description: Defaults to the oldest selected bank line date }
+        memo: { type: string, maxLength: 255 }
+        submit: { type: boolean, default: false }
+    BankReconciliation:
+      type: object
+      properties:
+        id: { type: string }
+        cash_account_id: { type: string }
+        cash_account: { type: object, nullable: true }
+        branch_id: { type: string, nullable: true }
+        statement_id: { type: string, nullable: true }
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        currency: { type: string }
+        status: { type: string, enum: [open, approved] }
+        notes: { type: string, nullable: true }
+        adjustment_document_ids:
+          type: array
+          items: { type: string }
+        snapshot: { type: object, nullable: true, description: Frozen detail stored at approval }
+        opening_book_balance_minor: { type: integer }
+        opening_bank_balance_minor: { type: integer }
+        closing_bank_balance_minor: { type: integer }
+        closing_book_balance_minor: { type: integer }
+        approved_at: { type: string, format: date-time, nullable: true }
+        approved_by: { type: integer, nullable: true }
+        created_by: { type: integer, nullable: true }
+        summary: { $ref: '#/components/schemas/BankReconciliationSummary' }
+        bank_lines:
+          type: array
+          items: { $ref: '#/components/schemas/BankReconciliationBankLine' }
+        book_lines:
+          type: array
+          items: { $ref: '#/components/schemas/BankReconciliationBookLine' }
+        matches:
+          type: array
+          items: { $ref: '#/components/schemas/BankReconciliationMatch' }
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/BankReconciliationCandidate' }
+        differences:
+          type: array
+          items: { $ref: '#/components/schemas/BankReconciliationDifference' }
+    BankReconciliationSummary:
+      type: object
+      properties:
+        opening_book_minor: { type: integer }
+        book_movement_minor: { type: integer }
+        book_closing_minor: { type: integer }
+        opening_bank_minor: { type: integer }
+        bank_movement_minor: { type: integer }
+        bank_closing_minor: { type: integer }
+        statement_balanced: { type: boolean }
+        matched_bank_minor: { type: integer }
+        matched_book_minor: { type: integer }
+        deposits_in_transit_minor: { type: integer }
+        outstanding_payments_minor: { type: integer }
+        unrecorded_bank_credits_minor: { type: integer }
+        unrecorded_bank_debits_minor: { type: integer }
+        tolerance_difference_minor: { type: integer }
+        adjusted_bank_minor: { type: integer }
+        adjusted_book_minor: { type: integer }
+        difference_minor: { type: integer }
+        tolerance_minor: { type: integer }
+        window_days: { type: integer }
+        reconciled: { type: boolean, description: Adjusted balances agree and no unrecorded bank item remains }
+        bank_lines: { type: integer }
+        book_lines: { type: integer }
+    BankReconciliationBankLine:
+      type: object
+      properties:
+        id: { type: string }
+        line_date: { type: string, format: date }
+        value_date: { type: string, format: date, nullable: true }
+        amount_minor: { type: integer }
+        balance_after_minor: { type: integer, nullable: true }
+        bank_reference: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        party_name: { type: string, nullable: true }
+        direction: { type: string, enum: [in, out] }
+        matched_minor: { type: integer }
+        remaining_minor: { type: integer }
+    BankReconciliationBookLine:
+      type: object
+      properties:
+        id: { type: string }
+        journal_entry_id: { type: string, nullable: true }
+        entry_number: { type: string, nullable: true }
+        entry_date: { type: string, format: date, nullable: true }
+        description: { type: string, nullable: true }
+        source_type: { type: string, nullable: true }
+        branch_id: { type: string, nullable: true }
+        debit_minor: { type: integer }
+        credit_minor: { type: integer }
+        amount_minor: { type: integer }
+        direction: { type: string, enum: [in, out] }
+        matched_minor: { type: integer }
+        remaining_minor: { type: integer }
+    BankReconciliationMatch:
+      type: object
+      properties:
+        id: { type: string }
+        group: { type: string, description: ULID shared by the rows of one match group }
+        bank_line_id: { type: string, nullable: true }
+        bank_line_date: { type: string, format: date, nullable: true }
+        bank_line_description: { type: string, nullable: true }
+        bank_line_amount_minor: { type: integer, nullable: true }
+        journal_line_id: { type: string, nullable: true }
+        journal_entry_number: { type: string, nullable: true }
+        journal_entry_date: { type: string, format: date, nullable: true }
+        journal_line_description: { type: string, nullable: true }
+        amount_minor: { type: integer }
+        kind: { type: string, enum: [auto, manual] }
+        note: { type: string, nullable: true }
+    BankReconciliationCandidate:
+      type: object
+      properties:
+        bank_line_id: { type: string }
+        journal_line_id: { type: string }
+        line_date: { type: string, format: date }
+        entry_date: { type: string, format: date }
+        bank_amount_minor: { type: integer }
+        book_amount_minor: { type: integer }
+        amount_minor: { type: integer }
+        difference_minor: { type: integer }
+        days_apart: { type: integer }
+        ambiguous: { type: boolean }
+    BankReconciliationDifference:
+      type: object
+      properties:
+        side: { type: string, enum: [bank, book] }
+        category:
+          type: string
+          enum: [outstanding_payment, deposit_in_transit, unrecorded_bank_debit, unrecorded_bank_credit, tolerance_difference]
+        line_id: { type: string }
+        date: { type: string, format: date, nullable: true }
+        description: { type: string, nullable: true }
+        amount_minor: { type: integer }
+        action:
+          type: string
+          enum: [post_adjustment, explain, carry_forward]
+          description: >-
+            post_adjustment when the item must be recorded in the books,
+            explain when only a tolerance/timing explanation is needed, and
+            carry_forward for a posted book line still outstanding at period
+            end (unpresented payment or deposit in transit) that rolls into the
+            next session.
 

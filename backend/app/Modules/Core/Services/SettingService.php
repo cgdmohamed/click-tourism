@@ -43,6 +43,8 @@ class SettingService
             'fx_loss_account_code' => '6900',
             // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
             'bank_charges_account_code' => '6500',
+            // PENDING ACCOUNTANT APPROVAL (DEC-037): interest earned credited on reconciliation.
+            'bank_interest_account_code' => '4100',
             'input_tax_account_code' => '1160',
             // PENDING ACCOUNTANT APPROVAL: output tax collected on customer sales.
             'output_tax_account_code' => '2200',
@@ -54,6 +56,10 @@ class SettingService
         'treasury' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.
             'block_negative_cash' => 'false',
+            // PENDING ACCOUNTANT APPROVAL (DEC-037): bank reconciliation matching rules.
+            'reconciliation_tolerance_minor' => '0',
+            'reconciliation_date_window_days' => '5',
+            'reconciliation_auto_match' => 'false',
         ],
         'expenses' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-032): the creator may not approve their own expense.

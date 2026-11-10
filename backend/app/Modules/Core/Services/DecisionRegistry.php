@@ -304,6 +304,14 @@ class DecisionRegistry
             'blocks' => 'TE-022, TAX, FIN',
             'status' => 'open',
         ],
+        [
+            'id' => 'DEC-037',
+            'type' => 'ACC',
+            'title_en' => 'Bank reconciliation matching and interest account',
+            'title_ar' => 'مطابقة البنك وحساب الفوائد',
+            'blocks' => 'TE-023, RPT, FIN',
+            'status' => 'open',
+        ],
     ];
 
     /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */
