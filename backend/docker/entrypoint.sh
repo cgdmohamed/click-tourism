@@ -6,6 +6,14 @@
 # opt-in and intended for the first boot of a demo installation only.
 set -eu
 
+# Reject any attempt to run destructive demo reset outside the isolated demo DB.
+if [ "${DEMO_MODE:-false}" = "true" ]; then
+    if [ "${APP_ENV:-}" != "demo" ] || [ "${DB_HOST:-}" != "demo-db" ] || [ "${DB_DATABASE:-}" != "demo_erp" ]; then
+        echo "FATAL: demo mode requires APP_ENV=demo, DB_HOST=demo-db and DB_DATABASE=demo_erp." >&2
+        exit 1
+    fi
+fi
+
 if [ -z "${APP_KEY:-}" ]; then
     echo "FATAL: APP_KEY is empty." >&2
     echo "Generate one with: php artisan key:generate --show" >&2
@@ -29,8 +37,12 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     php artisan migrate --force
 
     if [ "${SEED_DEMO:-false}" = "true" ]; then
-        echo "Seeding demo data. Set SEED_DEMO=false once the installation is live."
-        php artisan db:seed --force || true
+        if [ "${DEMO_MODE:-false}" != "true" ]; then
+            echo "FATAL: SEED_DEMO=true is permitted only in isolated demo mode." >&2
+            exit 1
+        fi
+        echo "Seeding isolated demo dataset..."
+        php artisan db:seed --force
     fi
 fi
 
@@ -39,6 +51,13 @@ php artisan storage:link >/dev/null 2>&1 || true
 if [ "${APP_OPTIMIZE:-true}" = "true" ]; then
     echo "Caching configuration, routes, events and views..."
     php artisan optimize
+fi
+
+if [ "${DEMO_MODE:-false}" = "true" ]; then
+    mkdir -p storage/app/public
+    # This loop shares this container's ephemeral upload directory.
+    php artisan demo:window --seconds="${DEMO_RESET_SECONDS:-600}"
+    /bin/sh /usr/local/bin/demo-reset-loop &
 fi
 
 exec "$@"
