@@ -19,6 +19,7 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Tax\Models\TaxProfile;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,7 @@ class BookingService
         private readonly FxService $fx,
         private readonly PostingService $posting,
         private readonly AuditService $audit,
+        private readonly PartyLedgerService $ledger,
     ) {}
 
     public function create(array $data, ?int $actorId = null): Booking
@@ -280,7 +282,7 @@ class BookingService
             return;
         }
 
-        $ar = $this->posting->account((string) $this->settings->get('accounting', 'ar_account_code', '1100'));
+        $ar = $this->ledger->receivable($booking->customer_id);
         $revenue = $this->posting->account((string) $this->settings->get('accounting', 'revenue_account_code', '4100'));
         $taxPayable = $this->posting->account((string) $this->settings->get('accounting', 'tax_payable_account_code', '2200'));
 
@@ -365,16 +367,29 @@ class BookingService
         }
 
         $cost = $this->posting->account((string) $this->settings->get('accounting', 'cost_account_code', '5100'));
-        $ap = $this->posting->account((string) $this->settings->get('accounting', 'ap_account_code', '2100'));
+        // Credit each supplier's own payable subaccount; items without a
+        // supplier stay on the payables control account.
+        $control = $this->posting->account((string) $this->settings->get('accounting', 'ap_account_code', '2100'));
+        $bySupplier = [];
+        foreach ($booking->items as $item) {
+            $key = $item->supplier_id ?? 0;
+            $bySupplier[$key] = ($bySupplier[$key] ?? 0) + (int) $item->total_cost_minor;
+        }
+        $lines = [PostingLine::debit($cost, $booking->total_cost_minor, null, null, 'Booking cost '.$booking->number)];
+        foreach ($bySupplier as $supplierId => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+            $lines[] = $supplierId === 0
+                ? PostingLine::credit($control, $amount, null, null, 'Supplier cost '.$booking->number)
+                : PostingLine::credit($this->ledger->payable($supplierId), $amount, 'supplier', $supplierId, 'Supplier cost '.$booking->number);
+        }
 
         $this->posting->post(PostingRequest::make(
             entryDate: $booking->completed_at?->toDateString() ?? $booking->start_date->toDateString(),
             branch: $booking->branch,
             currency: $booking->currency_code,
-            lines: [
-                PostingLine::debit($cost, $booking->total_cost_minor, null, null, 'Booking cost '.$booking->number),
-                PostingLine::credit($ap, $booking->total_cost_minor, null, null, 'Supplier cost '.$booking->number),
-            ],
+            lines: $lines,
             memo: 'Booking cost '.$booking->number,
             sourceType: 'booking',
             sourceId: $booking->id,
@@ -388,7 +403,7 @@ class BookingService
 
     private function postCancellationFee(Booking $booking, ?int $actorId): void
     {
-        $ar = $this->posting->account((string) $this->settings->get('accounting', 'ar_account_code', '1100'));
+        $ar = $this->ledger->receivable($booking->customer_id);
         $revenue = $this->posting->account((string) $this->settings->get('accounting', 'revenue_account_code', '4100'));
 
         $this->posting->post(PostingRequest::make(

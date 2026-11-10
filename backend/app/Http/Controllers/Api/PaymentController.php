@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Services\InvoiceSettlementService;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
@@ -89,5 +91,21 @@ class PaymentController extends ApiController
         $payment = $payments->record($data, $this->actorId(), $request->header('Idempotency-Key'));
 
         return $this->created($payment->toApiArray());
+    }
+
+    public function applyToInvoice(Request $request, Payment $payment, InvoiceSettlementService $settlement): JsonResponse
+    {
+        $this->authorizeBranchId($payment->branch_id);
+
+        $data = $request->validate([
+            'invoice_id' => ['required', 'string'],
+            'amount_minor' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $invoice = Invoice::query()->where('public_id', $data['invoice_id'])->firstOrFail();
+        $this->authorizeBranchId($invoice->branch_id);
+        $application = $settlement->applyReceipt($payment, $invoice, (int) $data['amount_minor'], $this->actorId());
+
+        return $this->created($application->toApiArray());
     }
 }

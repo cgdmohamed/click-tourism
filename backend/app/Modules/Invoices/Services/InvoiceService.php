@@ -20,6 +20,7 @@ use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyLedgerService;
 use DomainException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,7 @@ class InvoiceService
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
         private readonly FxService $fx,
+        private readonly PartyLedgerService $ledger,
     ) {}
 
     /**
@@ -50,62 +52,7 @@ class InvoiceService
      */
     public function provisionSubaccount(string $partyType, int $partyId, string $role): Account
     {
-        return DB::transaction(function () use ($partyType, $partyId, $role) {
-            $existing = PartyAccount::query()->where('party_type', $partyType)
-                ->where('party_id', $partyId)
-                ->where('role', $role)
-                ->with('account')
-                ->first();
-
-            if ($existing) {
-                return $existing->account;
-            }
-
-            $party = $this->resolveParty($partyType, $partyId);
-            $branch = $party->branch;
-
-            $controlCode = match ($role) {
-                PartyAccount::ROLE_RECEIVABLE => (string) $this->settings->get('accounting', 'ar_account_code', '1100'),
-                PartyAccount::ROLE_PAYABLE, PartyAccount::ROLE_PAYABLE_BALANCE => (string) $this->settings->get('accounting', 'ap_account_code', '2100'),
-                PartyAccount::ROLE_ADVANCE => (string) $this->settings->get('accounting', 'advance_account_code', '2300'),
-                default => throw new DomainException("Unsupported party account role: {$role}"),
-            };
-
-            $control = Account::query()->where('code', $controlCode)->first();
-            if (! $control || ! $control->is_active || ! $control->is_postable) {
-                throw new DomainException("Control account {$controlCode} is missing or not postable.");
-            }
-
-            $code = $this->generateChildCode($control->id, $control->code);
-            $type = $role === PartyAccount::ROLE_RECEIVABLE ? 'asset' : 'liability';
-
-            $account = Account::query()->create([
-                'code' => $code,
-                'name_ar' => $party->name_ar.' ('.$role.')',
-                'name_en' => $party->name_en.' ('.$role.')',
-                'type' => $type,
-                'parent_id' => $control->id,
-                'is_postable' => true,
-                'is_active' => true,
-                'currency_code' => $party->currency_code ?? $this->settings->baseCurrency(),
-            ]);
-
-            $partyAccount = PartyAccount::query()->create([
-                'party_type' => $partyType,
-                'party_id' => $partyId,
-                'role' => $role,
-                'account_id' => $account->id,
-            ]);
-
-            $this->audit->log('party_account.provisioned', $partyAccount, null, [
-                'party_type' => $partyType,
-                'party_id' => $partyId,
-                'role' => $role,
-                'account_code' => $code,
-            ], null);
-
-            return $account;
-        });
+        return $this->ledger->account($partyType, $partyId, $role);
     }
 
     /**
@@ -367,6 +314,17 @@ class InvoiceService
                 'journal_entry_id' => $entry->id,
                 'issued_at' => now(),
             ]);
+
+            // A credit note settles the original invoice first; any excess
+            // stays on the note as a credit balance.
+            if ($invoice->type === Invoice::TYPE_CREDIT_NOTE && $invoice->credit_note_of_id !== null) {
+                $original = Invoice::query()->lockForUpdate()->find($invoice->credit_note_of_id);
+                if ($original) {
+                    $applied = min((int) $original->outstanding_minor, (int) $invoice->total_minor);
+                    $original->update(['outstanding_minor' => (int) $original->outstanding_minor - $applied]);
+                    $invoice->update(['outstanding_minor' => (int) $invoice->total_minor - $applied]);
+                }
+            }
 
             $this->audit->log('invoice.issued', $invoice, ['status' => 'approved'], [
                 'status' => 'issued',
@@ -657,33 +615,6 @@ class InvoiceService
             : (string) $this->settings->get('accounting', 'input_tax_account_code', '1160');
 
         return $this->posting->account($code);
-    }
-
-    private function generateChildCode(int $parentId, string $parentCode): string
-    {
-        $max = Account::query()->where('parent_id', $parentId)
-            ->where('code', 'like', $parentCode.'%')
-            ->max('code');
-
-        $suffix = $max !== null ? (int) substr($max, strlen($parentCode)) : 0;
-        $next = $suffix + 1;
-
-        return $parentCode.str_pad((string) $next, 4, '0', STR_PAD_LEFT);
-    }
-
-    private function resolveParty(string $partyType, int $partyId): Branch|Customer|Supplier
-    {
-        $party = match ($partyType) {
-            'customer' => Customer::query()->find($partyId),
-            'supplier' => Supplier::query()->find($partyId),
-            default => throw new DomainException("Unsupported party type: {$partyType}"),
-        };
-
-        if (! $party) {
-            throw new DomainException("The selected {$partyType} does not exist.");
-        }
-
-        return $party;
     }
 
     private function resolvePartyId(string $partyType, ?string $publicId): int

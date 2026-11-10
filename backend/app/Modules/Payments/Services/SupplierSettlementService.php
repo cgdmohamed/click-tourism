@@ -15,6 +15,7 @@ use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Payments\Models\SupplierPaymentApplication;
@@ -39,6 +40,7 @@ class SupplierSettlementService
         private readonly FxService $fx,
         private readonly PostingService $posting,
         private readonly AuditService $audit,
+        private readonly PartyLedgerService $ledger,
     ) {}
 
     public function createObligation(array $data, ?int $actorId = null): SupplierObligation
@@ -195,7 +197,7 @@ class SupplierSettlementService
             $application = $this->applyToObligation($payment, $obligation, $amount);
 
             $advanceAccount = $this->posting->account($this->advanceAccountCode());
-            $ap = $this->posting->account($this->apAccountCode());
+            $ap = $this->ledger->payable($payment->supplier_id);
 
             $this->posting->post(PostingRequest::make(
                 entryDate: now()->toDateString(),
@@ -265,7 +267,7 @@ class SupplierSettlementService
             $obligation->refreshStatus();
 
             $advanceAccount = $this->posting->account($this->advanceAccountCode());
-            $ap = $this->posting->account($this->apAccountCode());
+            $ap = $this->ledger->payable($payment->supplier_id);
 
             $this->posting->post(PostingRequest::make(
                 entryDate: now()->toDateString(),
@@ -296,7 +298,7 @@ class SupplierSettlementService
 
     private function postSettlement(SupplierPayment $payment, Account $cashAccount, int $amount, ?int $actorId): void
     {
-        $ap = $this->posting->account($this->apAccountCode());
+        $ap = $this->ledger->payable($payment->supplier_id);
 
         $this->posting->post(PostingRequest::make(
             entryDate: $payment->paid_at->toDateString(),

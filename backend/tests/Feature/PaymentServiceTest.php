@@ -82,7 +82,7 @@ class PaymentServiceTest extends TestCase
         );
         $this->assertSame(
             150000,
-            (int) $receipt->lines()->whereHas('account', fn ($query) => $query->where('code', '1100'))->sum('credit_minor'),
+            (int) $receipt->lines()->whereHas('account', fn ($query) => $query->where('code', 'like', '1100%'))->sum('credit_minor'),
         );
     }
 
@@ -190,7 +190,7 @@ class PaymentServiceTest extends TestCase
         $this->assertSame(60000, (int) $entry->lines()->whereHas('account',
             fn ($q) => $q->where('code', '2300'))->sum('debit_minor'));
         $this->assertSame(60000, (int) $entry->lines()->whereHas('account',
-            fn ($q) => $q->where('code', '1100'))->sum('credit_minor'));
+            fn ($q) => $q->where('code', 'like', '1100%'))->sum('credit_minor'));
 
         $service->allocate($payment, $request, $this->user->id);
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment_allocation')->count());
@@ -221,7 +221,7 @@ class PaymentServiceTest extends TestCase
         $entry = JournalEntry::query()->where('source_type', 'payment_allocation')
             ->where('event', 'released')->firstOrFail();
         $this->assertSame(70000, (int) $entry->lines()->whereHas('account',
-            fn ($q) => $q->where('code', '1100'))->sum('debit_minor'));
+            fn ($q) => $q->where('code', 'like', '1100%'))->sum('debit_minor'));
         $this->assertSame(70000, (int) $entry->lines()->whereHas('account',
             fn ($q) => $q->where('code', '2300'))->sum('credit_minor'));
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment')

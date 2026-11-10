@@ -76,7 +76,7 @@ class BookingServiceTest extends TestCase
         $this->assertSame(200000, (int) $revenue->lines()->sum('credit_minor'));
         $this->assertSame(
             200000,
-            (int) $revenue->lines()->whereHas('account', fn ($query) => $query->where('code', '1100'))->sum('debit_minor'),
+            (int) $revenue->lines()->whereHas('account', fn ($query) => $query->where('code', 'like', '1100%'))->sum('debit_minor'),
         );
 
         $bookings->transition($booking->refresh(), 'completed', 'Trip finished', $this->user->id);
@@ -90,7 +90,7 @@ class BookingServiceTest extends TestCase
         $this->assertSame(100000, (int) $cost->lines()->sum('debit_minor'));
         $this->assertSame(
             100000,
-            (int) $cost->lines()->whereHas('account', fn ($query) => $query->where('code', '2100'))->sum('credit_minor'),
+            (int) $cost->lines()->whereHas('account', fn ($query) => $query->where('code', 'like', '2100%'))->sum('credit_minor'),
         );
     }
 

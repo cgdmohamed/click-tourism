@@ -13,6 +13,7 @@ use App\Modules\Expenses\Models\Expense;
 use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Support\Carbon;
@@ -31,6 +32,7 @@ class ExpenseService
         private readonly FxService $fx,
         private readonly SequenceService $sequences,
         private readonly AuditService $audit,
+        private readonly PartyLedgerService $ledger,
     ) {}
 
     /**
@@ -211,7 +213,9 @@ class ExpenseService
         if ($expense->cashAccount) {
             $lines[] = PostingLine::credit($expense->cashAccount->account, $expense->amount_minor, null, null, 'Paid '.$expense->number);
         } else {
-            $ap = $this->posting->account((string) $this->settings->get('accounting', 'ap_account_code', '2100'));
+            $ap = $expense->payee_id !== null
+                ? $this->ledger->payable($expense->payee_id)
+                : $this->posting->account((string) $this->settings->get('accounting', 'ap_account_code', '2100'));
             $lines[] = PostingLine::credit($ap, $expense->amount_minor, 'supplier', $expense->payee_id, 'Payable '.$expense->number);
         }
 
