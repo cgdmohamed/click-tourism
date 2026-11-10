@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Invoices\Services\InvoiceService;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
@@ -35,13 +37,38 @@ class SupplierSettlementTest extends TestCase
 
     private function obligation(array $overrides = []): SupplierObligation
     {
-        return app(SupplierSettlementService::class)->createObligation(array_merge([
+        $data = array_merge([
             'branch_id' => $this->branch->public_id,
             'supplier_id' => $this->testSupplier->public_id,
             'amount_minor' => 100000,
             'currency' => 'EGP',
             'invoice_reference' => 'INV-'.uniqid(),
-        ], $overrides), $this->user->id);
+        ], $overrides);
+
+        // A recognized AP fixture has a real issued/posted supplier invoice.
+        // Individual tests can pass invoice_id=null to exercise the
+        // operational-only obligation workflow.
+        if (! array_key_exists('invoice_id', $data)) {
+            $invoiceService = app(InvoiceService::class);
+            $invoice = $invoiceService->create([
+                'type' => 'supplier_invoice',
+                'party_type' => 'supplier',
+                'party_id' => $data['supplier_id'],
+                'issue_date' => now()->toDateString(),
+                'currency' => $data['currency'],
+                'lines' => [[
+                    'account_id' => $this->account('5100')->public_id,
+                    'description' => 'Supplier cost',
+                    'debit_minor' => $data['amount_minor'],
+                ]],
+            ], $this->branch, $this->user->id);
+            $invoiceService->submit($invoice, $this->user->id);
+            $invoiceService->approve($invoice, $this->user->id);
+            $invoiceService->issue($invoice, $this->user->id);
+            $data['invoice_id'] = $invoice->public_id;
+        }
+
+        return app(SupplierSettlementService::class)->createObligation($data, $this->user->id);
     }
 
     private function pay(array $overrides = [], ?string $key = null): SupplierPayment
@@ -73,6 +100,17 @@ class SupplierSettlementTest extends TestCase
         $this->assertSame('open', $obligation->status);
         $this->assertSame(100000, $obligation->balanceMinor());
         $this->assertSame('SUP-2026-001', $obligation->invoice_reference);
+    }
+
+    public function test_operational_obligation_is_unposted_and_cannot_be_settled_as_ap(): void
+    {
+        $obligation = $this->obligation(['invoice_id' => null]);
+        $this->assertSame('unposted', $obligation->toApiArray()['accounting_status']);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'invoice')->count());
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('operational only');
+        $this->pay(['supplier_obligation_id' => $obligation->public_id]);
     }
 
     public function test_a_supplier_payment_settles_an_obligation_and_posts_to_ap(): void
