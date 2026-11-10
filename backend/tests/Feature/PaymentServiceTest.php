@@ -173,6 +173,7 @@ class PaymentServiceTest extends TestCase
             'reason' => 'Too much',
         ], $this->user->id);
     }
+
     public function test_later_allocation_posts_transfer_without_duplicate_on_retry(): void
     {
         $booking = $this->confirmedBooking();
@@ -259,5 +260,4 @@ class PaymentServiceTest extends TestCase
         $this->assertSame(60000, $booking->fresh()->paidMinor());
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment_allocation')->count());
     }
-
 }
