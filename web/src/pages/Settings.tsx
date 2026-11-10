@@ -128,8 +128,9 @@ export default function Settings() {
       <PageHeader
         title={t('settings')}
         subtitle={locale === 'ar' ? 'إعدادات التثبيت والفروع والعملات' : 'Installation, branch, and currency configuration'}
+        icon="settings"
         actions={
-          <Button onClick={() => save.mutate()} disabled={readOnly || save.isPending}>
+          <Button icon="save" onClick={() => save.mutate()} disabled={readOnly || save.isPending}>
             {save.isPending ? t('saving') : saved ? t('saved') : t('save')}
           </Button>
         }

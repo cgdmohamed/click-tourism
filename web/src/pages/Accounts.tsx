@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Account } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, SearchableSelect, Select, Table, Td, Th } from '../components/ui'
+import { Icon } from '../components/icons'
 
 const accountTypes: Account['type'][] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
@@ -66,7 +67,8 @@ export default function Accounts() {
       <PageHeader
         title={t('accounts')}
         subtitle={locale === 'ar' ? 'دليل الحسابات الرئيسي والفرعي' : 'Nested chart of accounts'}
-        actions={<Button onClick={() => setOpen(true)}>{t('newAccount')}</Button>}
+        icon="ledger"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newAccount')}</Button>}
       />
 
       <Card>
@@ -104,7 +106,16 @@ export default function Accounts() {
                     <span className="ms-2 text-xs text-text-subtle">{locale === 'ar' ? account.name_en : account.name_ar}</span>
                   </Td>
                   <Td>{typeLabel(account.type)}</Td>
-                  <Td>{account.is_postable ? '✓' : '—'}</Td>
+                  <Td>
+                    {account.is_postable ? (
+                      <>
+                        <Icon name="check" className="h-4 w-4 text-success-text" />
+                        <span className="sr-only">{locale === 'ar' ? 'قابل للترحيل' : 'Postable'}</span>
+                      </>
+                    ) : (
+                      <span className="text-text-subtlest">—</span>
+                    )}
+                  </Td>
                   <Td>
                     <Badge tone={account.is_active ? 'positive' : 'neutral'}>
                       {account.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}

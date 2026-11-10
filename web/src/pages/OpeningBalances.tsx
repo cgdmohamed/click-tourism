@@ -12,6 +12,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  IconButton,
   Input,
   Loading,
   Modal,
@@ -25,6 +26,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { Icon } from '../components/icons'
 
 type Batch = {
   id: string
@@ -229,9 +231,10 @@ export default function OpeningBalances() {
       <PageHeader
         title={L('الأرصدة الافتتاحية', 'Opening balances')}
         subtitle={L('ترحيل أرصدة بداية التشغيل: كل عملة يجب أن تتوازن بذاتها', 'Cutover balances: each currency must balance on its own')}
+        icon="landmark"
         actions={
           can('opening_balances.manage') ? (
-            <Button onClick={() => { setError(''); setOpen(true) }}>{L('دفعة جديدة', 'New batch')}</Button>
+            <Button icon="plus" onClick={() => { setError(''); setOpen(true) }}>{L('دفعة جديدة', 'New batch')}</Button>
           ) : null
         }
       />
@@ -335,7 +338,11 @@ export default function OpeningBalances() {
                 <Input placeholder={t('credit')} value={line.credit} onChange={(event) => update(index, { credit: event.target.value, debit: '' })} inputMode="decimal" dir="ltr" />
               </div>
               <div className="flex justify-end sm:col-span-1">
-                <Button variant="ghost" onClick={() => setLines((current) => (current.length > 2 ? current.filter((_, i) => i !== index) : current))} aria-label="Remove">✕</Button>
+                <IconButton
+                  icon="x"
+                  label={t('removeLine')}
+                  onClick={() => setLines((current) => (current.length > 2 ? current.filter((_, i) => i !== index) : current))}
+                />
               </div>
               <div className="sm:col-span-5">
                 <Select value={line.party_type} onChange={(event) => update(index, { party_type: event.target.value as DraftLine['party_type'], party_id: '' })}>
@@ -357,8 +364,9 @@ export default function OpeningBalances() {
           <Button variant="secondary" onClick={() => setLines((current) => [...current, emptyLine()])}>{L('إضافة سطر', 'Add line')}</Button>
           <div className="flex flex-wrap gap-3 text-medium">
             {totals.map((row) => (
-              <span key={row.currency} className={row.balanced ? 'text-success-text' : 'text-danger-text'}>
-                {row.currency}: <Money amountMinor={row.debit} currency={row.currency} /> / <Money amountMinor={row.credit} currency={row.currency} /> {row.balanced ? '✓' : '⚠'}
+              <span key={row.currency} className={`inline-flex items-center gap-1 ${row.balanced ? 'text-success-text' : 'text-danger-text'}`}>
+                <Icon name={row.balanced ? 'checkCircle' : 'alertTriangle'} className="h-3.5 w-3.5" />
+                {row.currency}: <Money amountMinor={row.debit} currency={row.currency} /> / <Money amountMinor={row.credit} currency={row.currency} />
               </span>
             ))}
           </div>
@@ -406,7 +414,10 @@ export default function OpeningBalances() {
             </Table>
             {detailQuery.data.reconciliation.control_account_detail.map((row) => (
               <p key={row.account_code} className="mt-2 text-small text-text-subtle">
-                {row.account_code} ({row.party_type}): {row.matches ? '✓' : '⚠'}
+                <span className="inline-flex items-center gap-1">
+                  <Icon name={row.matches ? 'checkCircle' : 'alertTriangle'} className={row.matches ? 'h-3.5 w-3.5 text-success-text' : 'h-3.5 w-3.5 text-danger-text'} />
+                  {row.account_code} ({row.party_type})
+                </span>
               </p>
             ))}
           </div>

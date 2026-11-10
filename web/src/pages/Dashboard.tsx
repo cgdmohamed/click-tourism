@@ -6,6 +6,7 @@ import { api, errorMessage } from '../lib/api'
 import { formatDate } from '../lib/format'
 import type { Booking, Payment } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Loading, Money, PageHeader, StatCard, Table, Td, Th, statusTone } from '../components/ui'
+import { Icon } from '../components/icons'
 
 type Summary = {
   open_bookings: number
@@ -33,13 +34,16 @@ export default function Dashboard() {
       <PageHeader
         title={`${t('welcome')}${user ? `، ${user.name}` : ''}`}
         subtitle={activeBranch ? (locale === 'ar' ? activeBranch.name_ar : activeBranch.name_en) : undefined}
+        icon="dashboard"
         actions={
           <>
             <Link to="/bookings">
-              <Button>{t('newBooking')}</Button>
+              <Button icon="plus">{t('newBooking')}</Button>
             </Link>
             <Link to="/payments">
-              <Button variant="secondary">{t('newPayment')}</Button>
+              <Button variant="secondary" icon="plus">
+                {t('newPayment')}
+              </Button>
             </Link>
           </>
         }
@@ -51,17 +55,19 @@ export default function Dashboard() {
       {query.data ? (
         <div className="flex flex-col gap-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label={t('openBookings')} value={query.data.open_bookings} />
-            <StatCard label={t('confirmed')} value={query.data.confirmed_bookings} />
+            <StatCard label={t('openBookings')} value={query.data.open_bookings} icon="calendar" />
+            <StatCard label={t('confirmed')} value={query.data.confirmed_bookings} icon="checkCircle" />
             <StatCard
               label={t('collected')}
               value={<Money amountMinor={query.data.collected_minor} currency={query.data.currency} />}
               tone="positive"
+              icon="coins"
             />
             <StatCard
               label={t('overdue')}
               value={<Money amountMinor={query.data.overdue_minor} currency={query.data.currency} />}
               tone={query.data.overdue_minor > 0 ? 'negative' : undefined}
+              icon="alertTriangle"
             />
           </div>
 
@@ -69,14 +75,16 @@ export default function Dashboard() {
             <Card>
               <CardHeader
                 title={t('bookings')}
+                icon="plane"
                 actions={
-                  <Link to="/bookings" className="text-sm font-medium text-brand-1-accent">
-                    {t('reports')} →
+                  <Link to="/bookings" className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
+                    {t('viewAll')}
+                    <Icon name="arrowRight" className="h-3.5 w-3.5" directional />
                   </Link>
                 }
               />
               {query.data.recent_bookings.length === 0 ? (
-                <EmptyState />
+                <EmptyState icon="plane" />
               ) : (
                 <Table>
                   <thead>
@@ -110,14 +118,16 @@ export default function Dashboard() {
             <Card>
               <CardHeader
                 title={t('payments')}
+                icon="creditCard"
                 actions={
-                  <Link to="/payments" className="text-sm font-medium text-brand-1-accent">
-                    {t('payments')} →
+                  <Link to="/payments" className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
+                    {t('viewAll')}
+                    <Icon name="arrowRight" className="h-3.5 w-3.5" directional />
                   </Link>
                 }
               />
               {query.data.recent_payments.length === 0 ? (
-                <EmptyState />
+                <EmptyState icon="creditCard" />
               ) : (
                 <Table>
                   <thead>

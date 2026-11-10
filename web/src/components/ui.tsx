@@ -9,6 +9,8 @@ import type {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { formatMoney } from '../lib/format'
+import { Icon } from './icons'
+import type { IconName } from './icons'
 
 export function cx(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ')
@@ -20,8 +22,10 @@ export function Button({
   variant = 'primary',
   className,
   children,
+  icon,
+  iconEnd,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; icon?: IconName; iconEnd?: IconName }) {
   const styles: Record<ButtonVariant, string> = {
     primary:
       'bg-action-primary-background text-action-primary-text hover:bg-action-primary-hovered active:bg-action-primary-pressed disabled:opacity-50',
@@ -39,8 +43,32 @@ export function Button({
       )}
       {...props}
     >
+      {icon ? <Icon name={icon} className="h-4 w-4" /> : null}
       {children}
+      {iconEnd ? <Icon name={iconEnd} className="h-4 w-4" directional /> : null}
     </button>
+  )
+}
+
+/**
+ * Square, icon-only action for toolbars and table rows. Always pass `label`
+ * so the action stays accessible and gets a hover tooltip.
+ */
+export function IconButton({
+  icon,
+  label,
+  variant = 'ghost',
+  className,
+  ...props
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
+  icon: IconName
+  label: string
+  variant?: ButtonVariant
+}) {
+  return (
+    <Button variant={variant} aria-label={label} title={label} className={cx('h-8 w-8 px-0', className)} {...props}>
+      <Icon name={icon} className="h-4 w-4" />
+    </Button>
   )
 }
 
@@ -73,8 +101,21 @@ export function Field({
 const controlBase =
   'text-medium w-full rounded-12 border border-border-default bg-surface-default px-3 text-text-default shadow-1 outline-none transition placeholder:text-text-placeholder focus:border-border-focus focus:ring-2 focus:ring-border-focus/25 disabled:bg-surface-disabled disabled:text-text-disabled'
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cx(controlBase, 'h-9', className)} {...props} />
+export function Input({
+  className,
+  icon,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { icon?: IconName }) {
+  if (!icon) return <input className={cx(controlBase, 'h-9', className)} {...props} />
+  return (
+    <div className={cx('relative', className)}>
+      <Icon
+        name={icon}
+        className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle"
+      />
+      <input className={cx(controlBase, 'h-9 ps-9')} {...props} />
+    </div>
+  )
 }
 
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -204,16 +245,10 @@ export function SearchableSelect({
         }}
         onKeyDown={onKeyDown}
       />
-      <svg
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
+      <Icon
+        name="chevronDown"
         className="pointer-events-none absolute end-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle"
-        aria-hidden="true"
-      >
-        <path d="m5 7.5 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      />
       {open ? (
         <div
           className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-12 border border-border-default bg-surface-default p-1 shadow-3"
@@ -260,24 +295,58 @@ export function Card({ children, className }: { children: ReactNode; className?:
   )
 }
 
-export function CardHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export function CardHeader({
+  title,
+  subtitle,
+  actions,
+  icon,
+}: {
+  title: string
+  subtitle?: string
+  actions?: ReactNode
+  icon?: IconName
+}) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-subtle px-5 py-4">
-      <div>
-        <h2 className="heading-small text-text-default">{title}</h2>
-        {subtitle ? <p className="text-medium mt-0.5 text-text-subtle">{subtitle}</p> : null}
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? (
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-12 bg-surface-selected text-brand-1-accent">
+            <Icon name={icon} size={18} />
+          </span>
+        ) : null}
+        <div className="min-w-0">
+          <h2 className="heading-small text-text-default">{title}</h2>
+          {subtitle ? <p className="text-medium mt-0.5 text-text-subtle">{subtitle}</p> : null}
+        </div>
       </div>
       {actions}
     </div>
   )
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  icon,
+}: {
+  title: string
+  subtitle?: string
+  actions?: ReactNode
+  icon?: IconName
+}) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="heading-large text-text-default">{title}</h1>
-        {subtitle ? <p className="text-medium mt-1 text-text-subtle">{subtitle}</p> : null}
+      <div className="flex min-w-0 items-center gap-3">
+        {icon ? (
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-16 border border-border-subtle bg-surface-default text-brand-1-accent shadow-1">
+            <Icon name={icon} size={22} />
+          </span>
+        ) : null}
+        <div className="min-w-0">
+          <h1 className="heading-large text-text-default">{title}</h1>
+          {subtitle ? <p className="text-medium mt-1 text-text-subtle">{subtitle}</p> : null}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">{actions}</div>
     </div>
@@ -353,10 +422,23 @@ export function Td({ children, className, dir }: { children?: ReactNode; classNa
   )
 }
 
-export function EmptyState({ title, hint, action }: { title?: string; hint?: string; action?: ReactNode }) {
+export function EmptyState({
+  title,
+  hint,
+  action,
+  icon = 'inbox',
+}: {
+  title?: string
+  hint?: string
+  action?: ReactNode
+  icon?: IconName
+}) {
   const { t } = useI18n()
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+      <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-surface-subtle text-text-subtle">
+        <Icon name={icon} size={22} />
+      </span>
       <p className="text-medium font-medium text-text-default">{title ?? t('noData')}</p>
       {hint ? <p className="text-medium max-w-sm text-text-subtle">{hint}</p> : null}
       {action}
@@ -390,10 +472,13 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   const { t } = useI18n()
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-danger-background text-danger-text">
+        <Icon name="alertTriangle" size={22} />
+      </span>
       <p className="text-medium font-medium text-danger-text">{t('error')}</p>
       <p className="text-medium max-w-md text-text-subtle">{message}</p>
       {onRetry ? (
-        <Button variant="secondary" onClick={onRetry}>
+        <Button variant="secondary" icon="refresh" onClick={onRetry}>
           {t('retry')}
         </Button>
       ) : null}
@@ -401,10 +486,65 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   )
 }
 
-export function StatCard({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: string; tone?: 'positive' | 'negative' }) {
+export function InlineNotice({
+  tone = 'info',
+  children,
+}: {
+  tone?: 'positive' | 'warning' | 'negative' | 'info'
+  children: ReactNode
+}) {
+  const styles = {
+    positive: 'border-success-border bg-success-background text-success-text',
+    warning: 'border-warning-border bg-warning-background text-warning-text',
+    negative: 'border-danger-border bg-danger-background text-danger-text',
+    info: 'border-info-border bg-info-background text-info-text',
+  }
+  const icons: Record<typeof tone, IconName> = {
+    positive: 'checkCircle',
+    warning: 'alertTriangle',
+    negative: 'alertTriangle',
+    info: 'info',
+  }
+  return (
+    <div className={cx('text-medium flex items-start gap-2 rounded-12 border px-3 py-2', styles[tone])}>
+      <Icon name={icons[tone]} className="mt-0.5 h-4 w-4" />
+      <span className="min-w-0">{children}</span>
+    </div>
+  )
+}
+
+export function StatCard({
+  label,
+  value,
+  hint,
+  tone,
+  icon,
+}: {
+  label: string
+  value: ReactNode
+  hint?: string
+  tone?: 'positive' | 'negative'
+  icon?: IconName
+}) {
   return (
     <Card className="p-6">
-      <p className="text-medium text-text-subtle">{label}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-medium text-text-subtle">{label}</p>
+        {icon ? (
+          <span
+            className={cx(
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-12',
+              tone === 'negative'
+                ? 'bg-danger-background text-danger-text'
+                : tone === 'positive'
+                  ? 'bg-success-background text-success-text'
+                  : 'bg-surface-selected text-brand-1-accent',
+            )}
+          >
+            <Icon name={icon} size={18} />
+          </span>
+        ) : null}
+      </div>
       <p className={cx('heading-large mt-2 tabular', tone === 'positive' && 'text-positive', tone === 'negative' && 'text-negative')}>
         {value}
       </p>
@@ -431,6 +571,7 @@ export function Modal({
   children: ReactNode
   footer?: ReactNode
 }) {
+  const { t } = useI18n()
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
@@ -457,9 +598,7 @@ export function Modal({
       >
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
           <h2 className="heading-small">{title}</h2>
-          <button className="rounded-8 p-1 text-text-subtle hover:bg-surface-hovered" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+          <IconButton icon="x" label={t('closeLabel')} onClick={onClose} />
         </div>
         <div className="px-5 py-5">{children}</div>
         {footer ? <div className="flex justify-end gap-2 border-t border-border-subtle px-5 py-4">{footer}</div> : null}
@@ -478,17 +617,14 @@ export function Pagination({
   onChange: (page: number) => void
 }) {
   if (lastPage <= 1) return null
+  const { t } = useI18n()
   return (
     <div className="text-medium flex items-center justify-end gap-2 px-4 py-3">
-      <Button variant="secondary" disabled={page <= 1} onClick={() => onChange(page - 1)}>
-        ‹
-      </Button>
-      <span className="tabular text-text-subtle">
+      <IconButton icon="chevronLeft" label={t('previousPage')} variant="secondary" disabled={page <= 1} onClick={() => onChange(page - 1)} />
+      <span className="tabular px-1 text-text-subtle">
         {page} / {lastPage}
       </span>
-      <Button variant="secondary" disabled={page >= lastPage} onClick={() => onChange(page + 1)}>
-        ›
-      </Button>
+      <IconButton icon="chevronRight" label={t('nextPage')} variant="secondary" disabled={page >= lastPage} onClick={() => onChange(page + 1)} />
     </div>
   )
 }

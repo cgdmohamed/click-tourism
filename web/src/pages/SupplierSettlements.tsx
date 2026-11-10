@@ -270,15 +270,16 @@ export default function SupplierSettlements() {
             ? 'التزامات الموردين والمدفوعات والدفعات المقدمة'
             : 'Supplier obligations, payments, and advances'
         }
+        icon="handshake"
         actions={
           <>
             {can('supplier_obligations.create') ? (
-              <Button variant="secondary" onClick={() => { setError(''); setObligationOpen(true) }}>
+              <Button variant="secondary" icon="plus" onClick={() => { setError(''); setObligationOpen(true) }}>
                 {t('newObligation')}
               </Button>
             ) : null}
             {can('supplier_payments.create') ? (
-              <Button onClick={() => startPayment()}>{t('newSupplierPayment')}</Button>
+              <Button icon="plus" onClick={() => startPayment()}>{t('newSupplierPayment')}</Button>
             ) : null}
           </>
         }

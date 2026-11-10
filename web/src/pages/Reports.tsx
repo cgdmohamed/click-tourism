@@ -5,7 +5,9 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
 import type { Account, JournalEntry } from '../lib/types'
-import { Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
+import { Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
+import { Icon } from '../components/icons'
+import type { IconName } from '../components/icons'
 
 type CurrencyRow = { code: string; is_active: boolean }
 type PartyRow = { id: string; name_ar: string; name_en: string }
@@ -397,14 +399,14 @@ export default function Reports() {
 
   const active = isLedger ? ledgerQuery : isStatement ? statementQuery : query
 
-  const tabs: Array<{ key: ReportKey; ar: string; en: string }> = [
-    { key: 'trial-balance', ar: 'ميزان المراجعة', en: 'Trial balance' },
-    { key: 'general-ledger', ar: 'دفتر الأستاذ', en: 'General ledger' },
-    { key: 'income-statement', ar: 'قائمة الدخل', en: 'Income statement' },
-    { key: 'balance-sheet', ar: 'المركز المالي', en: 'Balance sheet' },
-    { key: 'aging', ar: 'أعمار الديون', en: 'Aging' },
-    { key: 'aging-reconciliation', ar: 'مطابقة الأعمار', en: 'Aging reconciliation' },
-    { key: 'party-statement', ar: 'كشف حساب طرف', en: 'Party statement' },
+  const tabs: Array<{ key: ReportKey; ar: string; en: string; icon: IconName }> = [
+    { key: 'trial-balance', ar: 'ميزان المراجعة', en: 'Trial balance', icon: 'scale' },
+    { key: 'general-ledger', ar: 'دفتر الأستاذ', en: 'General ledger', icon: 'ledger' },
+    { key: 'income-statement', ar: 'قائمة الدخل', en: 'Income statement', icon: 'trendUp' },
+    { key: 'balance-sheet', ar: 'المركز المالي', en: 'Balance sheet', icon: 'landmark' },
+    { key: 'aging', ar: 'أعمار الديون', en: 'Aging', icon: 'clock' },
+    { key: 'aging-reconciliation', ar: 'مطابقة الأعمار', en: 'Aging reconciliation', icon: 'listChecks' },
+    { key: 'party-statement', ar: 'كشف حساب طرف', en: 'Party statement', icon: 'users' },
   ]
 
   const label = (line: StatementLine) => (locale === 'ar' ? line.name_ar : line.name_en)
@@ -463,6 +465,7 @@ export default function Reports() {
       <PageHeader
         title={t('reports')}
         subtitle={locale === 'ar' ? 'تقارير مالية مبنية على القيود المُرحّلة فقط' : 'Financial reports based on posted entries only'}
+        icon="chart"
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -471,12 +474,13 @@ export default function Reports() {
             key={tab.key}
             onClick={() => setReport(tab.key)}
             className={cx(
-              'rounded-12 border px-3 py-2 text-sm font-medium transition',
+              'inline-flex items-center gap-2 rounded-12 border px-3 py-2 text-sm font-medium transition',
               report === tab.key
                 ? 'border-border-selected bg-surface-selected text-text-default'
                 : 'border-border-subtle bg-surface-default text-text-subtle hover:text-text-default',
             )}
           >
+            <Icon name={tab.icon} className={cx('h-4 w-4', report === tab.key && 'text-brand-1-accent')} />
             {locale === 'ar' ? tab.ar : tab.en}
           </button>
         ))}
@@ -680,13 +684,22 @@ export default function Reports() {
           ) : null}
           <Button
             variant="secondary"
+            icon="play"
             onClick={() => void active.refetch()}
             disabled={active.isFetching || (isLedger && ledgerAccount === '') || (isStatement && partyId === '')}
           >
             {active.isFetching ? <Spinner className="h-4 w-4" /> : t('run')}
           </Button>
+          <Button
+            variant="secondary"
+            icon="printer"
+            onClick={() => window.print()}
+            disabled={(isLedger && ledgerAccount === '') || (isStatement && partyId === '')}
+          >
+            {t('print')}
+          </Button>
           {canExport ? (
-            <Button variant="secondary" onClick={() => void downloadCsv()} disabled={exporting}>
+            <Button variant="secondary" icon="download" onClick={() => void downloadCsv()} disabled={exporting}>
               {exporting ? <Spinner className="h-4 w-4" /> : t('exportCsv')}
             </Button>
           ) : null}
@@ -707,8 +720,10 @@ export default function Reports() {
         {active.isLoading && active.fetchStatus !== 'idle' ? <Loading /> : null}
         {active.isError ? <ErrorState message={errorMessage(active.error)} onRetry={() => void active.refetch()} /> : null}
 
-        {isLedger && ledgerAccount === '' ? <EmptyState title={t('selectAccountForLedger')} /> : null}
-        {isStatement && partyId === '' ? <EmptyState title={locale === 'ar' ? 'اختر نوع الطرف وحسابه' : 'Select a party type and party'} /> : null}
+        {isLedger && ledgerAccount === '' ? <EmptyState icon="ledger" title={t('selectAccountForLedger')} /> : null}
+        {isStatement && partyId === '' ? (
+          <EmptyState icon="users" title={locale === 'ar' ? 'اختر نوع الطرف وحسابه' : 'Select a party type and party'} />
+        ) : null}
 
         {isLedger && ledgerQuery.data
           ? (() => {
@@ -719,6 +734,7 @@ export default function Reports() {
                   <CardHeader
                     title={`${t('generalLedger')} · ${data.account.code} — ${accountName}`}
                     subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`}
+                    icon="ledger"
                   />
                   <Table>
                     <thead>
@@ -809,9 +825,13 @@ export default function Reports() {
               const closingNet = data.total_closing_debit_minor - data.total_closing_credit_minor
               return (
                 <>
-                  <CardHeader title={t('trialBalance')} subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`} />
+                  <CardHeader
+                    title={t('trialBalance')}
+                    subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`}
+                    icon="scale"
+                  />
                   {data.rows.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState icon="scale" />
                   ) : (
                     <Table>
                       <thead>
@@ -865,15 +885,17 @@ export default function Reports() {
                       </tbody>
                     </Table>
                   )}
-                  <p className="px-5 py-3 text-small text-text-subtle">
-                    {data.total_debit_minor === data.total_credit_minor
-                      ? locale === 'ar'
-                        ? '✓ حركة الفترة متوازنة'
-                        : '✓ Period movements balance'
-                      : locale === 'ar'
-                        ? '⚠ حركة الفترة غير متوازنة'
-                        : '⚠ Period movements do not balance'}
-                  </p>
+                  <div className="px-5 py-3">
+                    <InlineNotice tone={data.total_debit_minor === data.total_credit_minor ? 'positive' : 'warning'}>
+                      {data.total_debit_minor === data.total_credit_minor
+                        ? locale === 'ar'
+                          ? 'حركة الفترة متوازنة'
+                          : 'Period movements balance'
+                        : locale === 'ar'
+                          ? 'حركة الفترة غير متوازنة'
+                          : 'Period movements do not balance'}
+                    </InlineNotice>
+                  </div>
                 </>
               )
             })()
@@ -884,7 +906,11 @@ export default function Reports() {
               const data = query.data as IncomeStatement
               return (
                 <>
-                  <CardHeader title={t('incomeStatement')} subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`} />
+                  <CardHeader
+                    title={t('incomeStatement')}
+                    subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`}
+                    icon="trendUp"
+                  />
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الإيرادات' : 'Revenue'}</div>
                   {statementRows(data.revenue, data.currency, data.comparison?.revenue)}
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'المصروفات' : 'Expenses'}</div>
@@ -934,7 +960,7 @@ export default function Reports() {
               const data = query.data as BalanceSheet
               return (
                 <>
-                  <CardHeader title={t('balanceSheet')} subtitle={`${t('asOf')} ${formatDate(data.as_of, locale)}`} />
+                  <CardHeader title={t('balanceSheet')} subtitle={`${t('asOf')} ${formatDate(data.as_of, locale)}`} icon="landmark" />
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الأصول' : 'Assets'}</div>
                   {statementRows(data.assets, data.currency, data.comparison?.assets)}
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الالتزامات' : 'Liabilities'}</div>
@@ -969,15 +995,17 @@ export default function Reports() {
                       <Money amountMinor={data.total_liabilities_and_equity_minor} currency={data.currency} />
                     </span>
                   </div>
-                  <p className={`px-5 py-3 text-small ${data.balanced ? 'text-success-text' : 'text-danger-text'}`}>
-                    {data.balanced
-                      ? locale === 'ar'
-                        ? '✓ الميزانية متوازنة'
-                        : '✓ Balance sheet balances'
-                      : locale === 'ar'
-                        ? '⚠ الميزانية غير متوازنة'
-                        : '⚠ Balance sheet does not balance'}
-                  </p>
+                  <div className="px-5 py-3">
+                    <InlineNotice tone={data.balanced ? 'positive' : 'negative'}>
+                      {data.balanced
+                        ? locale === 'ar'
+                          ? 'الميزانية متوازنة'
+                          : 'Balance sheet balances'
+                        : locale === 'ar'
+                          ? 'الميزانية غير متوازنة'
+                          : 'Balance sheet does not balance'}
+                    </InlineNotice>
+                  </div>
                 </>
               )
             })()
@@ -991,9 +1019,10 @@ export default function Reports() {
                   <CardHeader
                     title={t('aging')}
                     subtitle={`${agingType === 'ar' ? (locale === 'ar' ? 'مدينون' : 'Receivables') : locale === 'ar' ? 'دائنون' : 'Payables'} · ${formatDate(data.as_of, locale)}`}
+                    icon="clock"
                   />
                   {data.buckets.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState icon="clock" />
                   ) : (
                     <Table>
                       <thead>
@@ -1033,6 +1062,7 @@ export default function Reports() {
                   <CardHeader
                     title={locale === 'ar' ? 'مطابقة أعمار الديون مع دفتر الأستاذ' : 'Aging reconciliation to the ledger'}
                     subtitle={`${isReceivable ? (locale === 'ar' ? 'مدينون' : 'Receivables') : locale === 'ar' ? 'دائنون' : 'Payables'} · ${formatDate(data.as_of, locale)}`}
+                    icon="listChecks"
                   />
                   <div className="grid gap-3 px-5 py-4 md:grid-cols-3">
                     <div className="rounded-12 border border-border-subtle p-4">
@@ -1058,8 +1088,9 @@ export default function Reports() {
                       <div className={`mt-1 text-lg font-semibold ${data.reconciled ? 'text-success-text' : 'text-danger-text'}`}>
                         <Money amountMinor={data.difference_minor} currency={data.currency} />
                       </div>
-                      <div className={`mt-1 text-small ${data.reconciled ? 'text-success-text' : 'text-danger-text'}`}>
-                        {data.reconciled ? (locale === 'ar' ? '✓ مطابق' : '✓ Reconciled') : locale === 'ar' ? '⚠ يحتاج مراجعة' : '⚠ Needs review'}
+                      <div className={`mt-1 flex items-center gap-1 text-small ${data.reconciled ? 'text-success-text' : 'text-danger-text'}`}>
+                        <Icon name={data.reconciled ? 'checkCircle' : 'alertTriangle'} className="h-3.5 w-3.5" />
+                        {data.reconciled ? (locale === 'ar' ? 'مطابق' : 'Reconciled') : locale === 'ar' ? 'يحتاج مراجعة' : 'Needs review'}
                       </div>
                     </div>
                   </div>
@@ -1099,9 +1130,9 @@ export default function Reports() {
                     </Table>
                   ) : null}
 
-                  <CardHeader title={locale === 'ar' ? 'المطابقة حسب الطرف' : 'Reconciliation by party'} />
+                  <CardHeader title={locale === 'ar' ? 'المطابقة حسب الطرف' : 'Reconciliation by party'} icon="users" />
                   {data.parties.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState icon="users" />
                   ) : (
                     <Table>
                       <thead>
@@ -1165,6 +1196,7 @@ export default function Reports() {
                   <CardHeader
                     title={`${locale === 'ar' ? 'كشف حساب' : 'Statement'} · ${partyLabel} ${partyName}`}
                     subtitle={`${formatDate(data.from, locale)} → ${formatDate(data.to, locale)}`}
+                    icon="users"
                   />
                   <div className="grid gap-3 px-5 py-4 md:grid-cols-4">
                     {[
@@ -1199,8 +1231,9 @@ export default function Reports() {
                       <div className={`mt-1 font-semibold ${data.reconciliation.reconciled ? 'text-success-text' : 'text-danger-text'}`}>
                         <Money amountMinor={data.reconciliation.difference_minor} currency={data.currency} />
                       </div>
-                      <div className={`text-small ${data.reconciliation.reconciled ? 'text-success-text' : 'text-danger-text'}`}>
-                        {data.reconciliation.reconciled ? (locale === 'ar' ? '✓ مطابق' : '✓ Reconciled') : locale === 'ar' ? '⚠ يحتاج مراجعة' : '⚠ Needs review'}
+                      <div className={`flex items-center gap-1 text-small ${data.reconciliation.reconciled ? 'text-success-text' : 'text-danger-text'}`}>
+                        <Icon name={data.reconciliation.reconciled ? 'checkCircle' : 'alertTriangle'} className="h-3.5 w-3.5" />
+                        {data.reconciliation.reconciled ? (locale === 'ar' ? 'مطابق' : 'Reconciled') : locale === 'ar' ? 'يحتاج مراجعة' : 'Needs review'}
                       </div>
                     </div>
                   </div>
@@ -1225,7 +1258,7 @@ export default function Reports() {
                     </ul>
                   ) : null}
                   {data.lines.length === 0 ? (
-                    <EmptyState />
+                    <EmptyState icon="ledger" />
                   ) : (
                     <Table>
                       <thead>

@@ -209,15 +209,16 @@ export default function Treasury() {
       <PageHeader
         title={L('الخزينة والبنوك', 'Cash & bank')}
         subtitle={L('الحسابات النقدية والبنكية والتحويلات بينها', 'Cash and bank accounts and transfers between them')}
+        icon="wallet"
         actions={
           <>
             {can('cash_accounts.manage') ? (
-              <Button variant="secondary" onClick={() => { setError(''); setAccountOpen(true) }}>
+              <Button variant="secondary" icon="plus" onClick={() => { setError(''); setAccountOpen(true) }}>
                 {L('حساب جديد', 'New account')}
               </Button>
             ) : null}
             {can('transfers.create') ? (
-              <Button onClick={() => { setError(''); setTransferOpen(true) }}>{L('تحويل جديد', 'New transfer')}</Button>
+              <Button icon="plus" onClick={() => { setError(''); setTransferOpen(true) }}>{L('تحويل جديد', 'New transfer')}</Button>
             ) : null}
           </>
         }

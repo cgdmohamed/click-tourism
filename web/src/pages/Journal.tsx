@@ -139,7 +139,8 @@ export default function Journal() {
       <PageHeader
         title={t('journal')}
         subtitle={locale === 'ar' ? 'قيود اليومية — مدينة = دائنة' : 'Double-entry journal — debits must equal credits'}
-        actions={<Button onClick={() => setOpen(true)}>{t('newJournal')}</Button>}
+        icon="scale"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newJournal')}</Button>}
       />
 
       {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
@@ -289,12 +290,11 @@ export default function Journal() {
                 <Button
                   variant="ghost"
                   className="w-full"
+                  icon="x"
                   onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
                   disabled={lines.length <= 2}
-                  aria-label="Remove line"
-                >
-                  ✕
-                </Button>
+                  aria-label={t('removeLine')}
+                />
               </div>
             </div>
           ))}

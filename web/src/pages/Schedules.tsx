@@ -372,9 +372,11 @@ export default function Schedules() {
           'جداول الاعتراف بالمصروفات المدفوعة مقدماً والإيرادات المؤجلة والمستحقات، مع قائمة استثناءات وقائمة إغلاق الفترة.',
           'Recognition schedules for prepayments, deferred revenue and accruals, with an exception queue and a period-end checklist.',
         )}
+        icon="calendarClock"
         actions={
           manage ? (
             <Button
+              icon="plus"
               onClick={() => {
                 setForm({ ...emptyForm, starts_on: todayISO() })
                 setError('')

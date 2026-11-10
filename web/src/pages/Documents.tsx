@@ -12,6 +12,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  IconButton,
   Input,
   Loading,
   Modal,
@@ -337,9 +338,10 @@ export default function Documents() {
       <PageHeader
         title={L('السندات المحاسبية', 'Accounting vouchers')}
         subtitle={L('سندات القبض والصرف والتحويل والتسوية مع دورة اعتماد وترحيل', 'Receipt, payment, transfer and adjustment vouchers with approval and posting')}
+        icon="clipboardCheck"
         actions={
           can('documents.create') ? (
-            <Button onClick={() => { setError(''); setOpen(true) }}>{L('سند جديد', 'New voucher')}</Button>
+            <Button icon="plus" onClick={() => { setError(''); setOpen(true) }}>{L('سند جديد', 'New voucher')}</Button>
           ) : null
         }
       />
@@ -536,7 +538,7 @@ export default function Documents() {
                   />
                 </div>
                 <div className="flex justify-end sm:col-span-1">
-                  <Button variant="ghost" onClick={() => removeLine(index)} aria-label="Remove">✕</Button>
+                  <IconButton icon="x" label={t('removeLine')} onClick={() => removeLine(index)} />
                 </div>
               </div>
             ))}

@@ -571,12 +571,13 @@ export default function Reconciliation() {
               ? `${name(detail.cash_account)} · ${formatDate(detail.period_from, locale)} → ${formatDate(detail.period_to, locale)}`
               : undefined
           }
+          icon="listChecks"
           actions={
             <>
               <Button variant="secondary" className="no-print" onClick={() => setSelectedId(null)}>
                 {L('رجوع', 'Back')}
               </Button>
-              <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+              <Button variant="secondary" className="no-print" icon="printer" onClick={() => window.print()}>
                 {L('طباعة', 'Print')}
               </Button>
             </>
@@ -1035,15 +1036,16 @@ export default function Reconciliation() {
       <PageHeader
         title={L('مطابقة البنك', 'Bank reconciliation')}
         subtitle={L('استيراد كشوف البنك ومطابقة الحركات مع الدفاتر', 'Import bank statements and match them with the ledger')}
+        icon="listChecks"
         actions={
           <>
             {manage ? (
-              <Button variant="secondary" onClick={() => { setError(''); setNotice(''); setImportOpen(true) }}>
+              <Button variant="secondary" icon="upload" onClick={() => { setError(''); setNotice(''); setImportOpen(true) }}>
                 {L('استيراد كشف', 'Import statement')}
               </Button>
             ) : null}
             {manage ? (
-              <Button onClick={() => { setError(''); setNotice(''); setSessionOpen(true) }}>{L('مطابقة جديدة', 'New reconciliation')}</Button>
+              <Button icon="plus" onClick={() => { setError(''); setNotice(''); setSessionOpen(true) }}>{L('مطابقة جديدة', 'New reconciliation')}</Button>
             ) : null}
           </>
         }

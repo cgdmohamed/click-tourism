@@ -69,7 +69,8 @@ export default function Customers() {
       <PageHeader
         title={t('customers')}
         subtitle={locale === 'ar' ? 'بيانات العملاء وأرصدتهم' : 'Customer records and balances'}
-        actions={<Button onClick={() => setOpen(true)}>{t('newCustomer')}</Button>}
+        icon="users"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newCustomer')}</Button>}
       />
 
       <Card>
