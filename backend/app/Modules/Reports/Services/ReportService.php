@@ -762,7 +762,7 @@ class ReportService
             ->where('status', 'posted')->where('unallocated_minor', '>', 0)
             ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
             ->get()->sum(fn (Payment $p) => (new Money($p->unallocated_minor, $p->currency_code))
-                ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+            ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
 
         $unreconciledBankCount = DB::table('bank_statement_lines as bsl')
             ->leftJoin('bank_reconciliation_matches as brm', 'brm.bank_statement_line_id', '=', 'bsl.id')
@@ -815,13 +815,13 @@ class ReportService
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
                 ->get()->sum(fn (Payment $p) => (new Money($p->amount_minor, $p->currency_code))
-                    ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+                ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
             $outflow = SupplierPayment::query()
                 ->where('status', 'posted')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
                 ->get()->sum(fn ($p) => (new Money($p->amount_minor, $p->currency_code))
-                    ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+                ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
             $monthlyCashFlow[] = [
                 'month' => $at->format('Y-m'),
                 'inflow_minor' => $inflow,
