@@ -218,6 +218,7 @@ class PaymentService
             if ($changes !== []) {
                 $this->audit->log('payment.allocated', $payment, null, ['allocations' => $changes], $actorId);
             }
+
             return $payment->refresh()->load('allocations');
         });
     }
@@ -255,6 +256,7 @@ class PaymentService
             $this->audit->log('payment.unallocated', $payment, null, [
                 'booking_id' => $bookingPublicId, 'amount_minor' => $released,
             ], $actorId);
+
             return $payment->refresh()->load('allocations');
         });
     }
