@@ -105,3 +105,23 @@ export function employeeTransactionLabel(value: string | null | undefined, local
   return employeeTransactionTypes[value]?.[locale] ?? value
 }
 
+const statementSourceTypes: Record<string, Label> = {
+  invoice: { ar: 'فاتورة', en: 'Invoice' },
+  payment: { ar: 'سند قبض', en: 'Receipt' },
+  refund: { ar: 'مرتجع', en: 'Refund' },
+  supplier_payment: { ar: 'مدفوع مورد', en: 'Supplier payment' },
+  expense: { ar: 'مصروف', en: 'Expense' },
+  accounting_document: { ar: 'سند محاسبي', en: 'Voucher' },
+  accounting_schedule: { ar: 'قيد مجدول', en: 'Schedule' },
+  booking: { ar: 'حجز', en: 'Booking' },
+  transfer: { ar: 'تحويل', en: 'Transfer' },
+  fixed_asset: { ar: 'أصل ثابت', en: 'Fixed asset' },
+  fixed_asset_depreciation_run: { ar: 'إهلاك', en: 'Depreciation' },
+  manual: { ar: 'قيد يدوي', en: 'Manual entry' },
+}
+
+export function statementSourceLabel(value: string | null | undefined, locale: Locale): string {
+  if (!value) return '—'
+  return statementSourceTypes[value]?.[locale] ?? value.replace(/_/g, ' ')
+}
+

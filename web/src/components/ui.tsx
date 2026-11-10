@@ -414,9 +414,19 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   )
 }
 
-export function Td({ children, className, dir }: { children?: ReactNode; className?: string; dir?: 'ltr' | 'rtl' }) {
+export function Td({
+  children,
+  className,
+  dir,
+  colSpan,
+}: {
+  children?: ReactNode
+  className?: string
+  dir?: 'ltr' | 'rtl'
+  colSpan?: number
+}) {
   return (
-    <td dir={dir} className={cx('border-b border-border-subtle px-4 py-3 align-middle text-text-default', className)}>
+    <td dir={dir} colSpan={colSpan} className={cx('border-b border-border-subtle px-4 py-3 align-middle text-text-default', className)}>
       {children}
     </td>
   )

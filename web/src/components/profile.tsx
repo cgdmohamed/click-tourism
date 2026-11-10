@@ -2,7 +2,9 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PartyStatement, StatementLine } from '../lib/types'
 import { formatDate } from '../lib/format'
+import { statementSourceLabel } from '../lib/labels'
 import { useI18n } from '../i18n'
+import { useAuth } from '../auth/AuthProvider'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card, CardHeader, EmptyState, InlineNotice, Money, Table, Td, Th, cx } from './ui'
 import { Icon } from './icons'
@@ -232,10 +234,10 @@ export function StatementView({
         />
 
         <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
-          <StatementFigure label={t('openingBalance')} amountMinor={statement.opening_minor} currency={statement.currency} />
+          <StatementFigure label={t('openingBalance')} amountMinor={statement.opening_minor} currency={statement.currency} showSide />
           <StatementFigure label={t('totalDebit')} amountMinor={statement.total_debit_minor} currency={statement.currency} tone="debit" />
           <StatementFigure label={t('totalCredit')} amountMinor={statement.total_credit_minor} currency={statement.currency} tone="credit" />
-          <StatementFigure label={t('closingBalance')} amountMinor={statement.closing_minor} currency={statement.currency} emphasis />
+          <StatementFigure label={t('closingBalance')} amountMinor={statement.closing_minor} currency={statement.currency} emphasis showSide />
         </div>
 
         <div className="border-t border-border-subtle p-5">
@@ -292,7 +294,7 @@ export function StatementView({
         {statement.lines.length === 0 ? (
           <EmptyState icon="ledger" title={t('noStatementLines')} />
         ) : (
-          <StatementTable lines={statement.lines} currency={statement.currency} />
+          <StatementTable statement={statement} />
         )}
       </Card>
     </div>
@@ -305,12 +307,14 @@ function StatementFigure({
   currency,
   tone,
   emphasis,
+  showSide,
 }: {
   label: string
   amountMinor: number
   currency: string
   tone?: 'debit' | 'credit'
   emphasis?: boolean
+  showSide?: boolean
 }) {
   return (
     <div className={cx('rounded-12 border p-3', emphasis ? 'border-border-selected bg-surface-selected' : 'border-border-subtle bg-surface-subtle')}>
@@ -321,14 +325,107 @@ function StatementFigure({
           tone === 'debit' ? 'text-info-text' : tone === 'credit' ? 'text-warning-text' : 'text-text-default',
         )}
       >
-        <Money amountMinor={amountMinor} currency={currency} />
+        {showSide ? <BalanceSide amountMinor={amountMinor} currency={currency} /> : <Money amountMinor={amountMinor} currency={currency} />}
       </p>
     </div>
   )
 }
 
-function StatementTable({ lines, currency }: { lines: StatementLine[]; currency: string }) {
+/** Absolute amount plus its ledger side, the way a printed subledger reads (Dr/Cr). */
+function BalanceSide({ amountMinor, currency }: { amountMinor: number; currency: string }) {
+  const { t } = useI18n()
+
+  if (amountMinor === 0) {
+    return <Money amountMinor={0} currency={currency} />
+  }
+
+  const debit = amountMinor > 0
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Money amountMinor={Math.abs(amountMinor)} currency={currency} />
+      <span className={cx('text-small font-semibold', debit ? 'text-info-text' : 'text-warning-text')}>
+        {debit ? t('dr') : t('cr')}
+      </span>
+    </span>
+  )
+}
+
+type StatementSource = { href: string; permission?: string }
+
+/**
+ * Where a posted journal line came from. Invoice profiles exist, so those link
+ * straight to the document. Searchable booking/payment lists are pre-filtered;
+ * other source types link to their owning module's record list.
+ */
+function statementSource(line: StatementLine): StatementSource | null {
+  const reference = line.source_reference ?? ''
+  const publicId = line.source_public_id ?? ''
+  const search = reference ? `?search=${encodeURIComponent(reference)}` : ''
+
+  switch (line.source_type) {
+    case 'invoice':
+      return publicId ? { href: `/invoices/${publicId}`, permission: 'invoices.view' } : null
+    case 'booking':
+      return { href: `/bookings${search}` }
+    case 'payment':
+    case 'refund':
+      return { href: `/payments${search}` }
+    case 'supplier_payment':
+      return { href: '/supplier-settlements' }
+    case 'expense':
+      return { href: '/expenses', permission: 'expenses.view' }
+    case 'accounting_document':
+      return { href: '/documents', permission: 'documents.view' }
+    case 'accounting_schedule':
+      return { href: '/schedules', permission: 'schedules.view' }
+    case 'fixed_asset':
+    case 'fixed_asset_depreciation_run':
+      return { href: '/fixed-assets', permission: 'assets.view' }
+    case 'transfer':
+      return { href: '/treasury', permission: 'accounts.view' }
+    default:
+      return null
+  }
+}
+
+function SourceDocument({ line }: { line: StatementLine }) {
   const { t, locale } = useI18n()
+  const { can } = useAuth()
+  const source = statementSource(line)
+  const allowed = !source?.permission || can(source.permission)
+
+  if (!line.source_type && !line.source_reference) {
+    return <span className="text-text-subtlest">—</span>
+  }
+
+  return (
+    <span className="text-small flex flex-col gap-0.5">
+      {line.source_reference && source && allowed ? (
+        <Link
+          to={source.href}
+          title={t('openRecord')}
+          className="inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline"
+        >
+          <span dir="ltr">{line.source_reference}</span>
+          <Icon name="externalLink" className="h-3 w-3 shrink-0" />
+        </Link>
+      ) : (
+        <span className="font-medium" dir="ltr">
+          {line.source_reference ?? '—'}
+        </span>
+      )}
+      {line.source_type ? <span className="text-text-subtlest">{statementSourceLabel(line.source_type, locale)}</span> : null}
+    </span>
+  )
+}
+
+function StatementTable({ statement }: { statement: PartyStatement }) {
+  const { t, locale } = useI18n()
+  const { currency, lines } = statement
+  const debitOf = (line: StatementLine) => (statement.basis === 'base' ? line.base_debit_minor : line.debit_minor)
+  const creditOf = (line: StatementLine) => (statement.basis === 'base' ? line.base_credit_minor : line.credit_minor)
+  const currencyOf = (line: StatementLine) => (statement.basis === 'base' ? currency : (line.currency ?? currency))
 
   return (
     <Table>
@@ -344,6 +441,18 @@ function StatementTable({ lines, currency }: { lines: StatementLine[]; currency:
         </tr>
       </thead>
       <tbody>
+        {statement.opening_minor !== 0 ? (
+          <tr className="bg-surface-subtle">
+            <Td colSpan={4} className="font-medium">
+              {t('openingBalance')}
+            </Td>
+            <Td className="text-end text-text-subtlest">—</Td>
+            <Td className="text-end text-text-subtlest">—</Td>
+            <Td className="text-end font-medium">
+              <BalanceSide amountMinor={statement.opening_minor} currency={currency} />
+            </Td>
+          </tr>
+        ) : null}
         {lines.map((line) => (
           <tr key={`${line.entry_id}-${line.number}-${line.debit_minor}-${line.credit_minor}-${line.balance_minor}`}>
             <Td className="whitespace-nowrap">{formatDate(line.entry_date, locale)}</Td>
@@ -353,27 +462,36 @@ function StatementTable({ lines, currency }: { lines: StatementLine[]; currency:
               {line.account_code ? <span className="text-small text-text-subtlest">{line.account_code}</span> : null}
             </Td>
             <Td className="min-w-36">
-              {line.source_reference ? (
-                <span className="text-small">
-                  <span className="block font-medium">{line.source_reference}</span>
-                  <span className="text-text-subtlest">{line.source_type}</span>
-                </span>
-              ) : (
-                <span className="text-text-subtlest">—</span>
-              )}
+              <SourceDocument line={line} />
             </Td>
             <Td className="text-end">
-              {line.debit_minor ? <Money amountMinor={line.debit_minor} currency={line.currency ?? currency} /> : '—'}
+              {debitOf(line) ? <Money amountMinor={debitOf(line)} currency={currencyOf(line)} /> : '—'}
             </Td>
             <Td className="text-end">
-              {line.credit_minor ? <Money amountMinor={line.credit_minor} currency={line.currency ?? currency} /> : '—'}
+              {creditOf(line) ? <Money amountMinor={creditOf(line)} currency={currencyOf(line)} /> : '—'}
             </Td>
             <Td className="text-end font-medium">
-              <Money amountMinor={line.balance_minor} currency={line.currency ?? currency} />
+              <BalanceSide amountMinor={line.balance_minor} currency={currency} />
             </Td>
           </tr>
         ))}
       </tbody>
+      <tfoot>
+        <tr className="bg-surface-subtle">
+          <Td colSpan={4} className="font-semibold">
+            {t('total')}
+          </Td>
+          <Td className="text-end font-semibold">
+            <Money amountMinor={statement.total_debit_minor} currency={currency} />
+          </Td>
+          <Td className="text-end font-semibold">
+            <Money amountMinor={statement.total_credit_minor} currency={currency} />
+          </Td>
+          <Td className="text-end font-semibold">
+            <BalanceSide amountMinor={statement.closing_minor} currency={currency} />
+          </Td>
+        </tr>
+      </tfoot>
     </Table>
   )
 }
