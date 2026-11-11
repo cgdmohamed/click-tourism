@@ -56,6 +56,7 @@ class BookingController extends ApiController
             'customer_id' => ['required', 'string'],
             'branch_id' => ['required', 'string'],
             'owner_user_id' => ['nullable', 'string'],
+            'tour_departure_id' => ['nullable', 'string'],
             'start_date' => ['required', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'pax_adults' => ['nullable', 'integer', 'min:1'],
