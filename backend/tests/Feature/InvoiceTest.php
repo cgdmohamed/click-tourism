@@ -114,6 +114,41 @@ class InvoiceTest extends TestCase
         return (int) $row->d - (int) $row->c;
     }
 
+    public function test_invoice_index_filters_by_booking_and_rejects_mismatched_customer(): void
+    {
+        $booking = app(\App\Modules\Bookings\Services\BookingService::class)->create([
+            'customer_id' => $this->customer()->public_id,
+            'branch_id' => $this->branch->public_id,
+            'start_date' => now()->toDateString(),
+            'currency' => 'EGP',
+            'items' => [[
+                'service_type' => 'program',
+                'description' => 'Program',
+                'quantity' => 1,
+                'unit_cost_minor' => 1000,
+                'unit_sell_minor' => 2000,
+                'cost_currency' => 'EGP',
+                'sell_currency' => 'EGP',
+            ]],
+        ], $this->user->id);
+        $linked = $this->customerInvoicePayload();
+        $linked['booking_id'] = $booking->public_id;
+        $this->create($linked)->assertCreated();
+        $this->create($this->customerInvoicePayload())->assertCreated();
+
+        $this->getJson('/api/v1/invoices?booking_id='.$booking->public_id)
+            ->assertOk()->assertJsonCount(1, 'data');
+
+        $unrelated = $this->customerInvoicePayload();
+        $unrelated['booking_id'] = $booking->public_id;
+        $other = \App\Modules\Parties\Models\Customer::query()->create([
+            'name_ar' => 'عميل آخر', 'name_en' => 'Other customer',
+            'type' => 'individual', 'branch_id' => $this->branch->id, 'is_active' => true,
+        ]);
+        $unrelated['party_id'] = $other->public_id;
+        $this->create($unrelated)->assertStatus(422);
+    }
+
     public function test_invoice_index_eager_loads_customer_and_supplier_parties(): void
     {
         $this->create($this->customerInvoicePayload())->assertCreated();
