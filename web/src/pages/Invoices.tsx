@@ -533,9 +533,13 @@ export default function Invoices() {
                     <div className="sm:col-span-2">
                       <Field label={L('تطبيق الضريبة', 'Apply tax')}>
                         <label className="flex items-center gap-2 text-small">
-                          <input type="checkbox" checked={taxEnabled && line.tax_applied}
-                            disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
-                            onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
+                          <span className="relative inline-flex h-5 w-9 shrink-0">
+                            <input type="checkbox" role="switch" className="peer sr-only" checked={taxEnabled && line.tax_applied}
+                              disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
+                              onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
+                            <span className="absolute inset-0 rounded-full bg-border-default transition-colors peer-checked:bg-brand-1 peer-disabled:opacity-40" />
+                            <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
+                          </span>
                           {L('ضريبة', 'VAT')} {defaultTaxRate}% — {L('تلقائي', 'Automatic')}
                         </label>
                       </Field>
@@ -576,9 +580,13 @@ export default function Invoices() {
                     </div>
                     <div className="sm:col-span-1">
                       <label className="flex items-center gap-1 text-small" title={L('الضريبة من الإعدادات', 'Tax from settings')}>
-                        <input type="checkbox" checked={taxEnabled && line.tax_applied}
-                          disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
-                          onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
+                        <span className="relative inline-flex h-5 w-9 shrink-0">
+                          <input type="checkbox" role="switch" className="peer sr-only" checked={taxEnabled && line.tax_applied}
+                            disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
+                            onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
+                          <span className="absolute inset-0 rounded-full bg-border-default transition-colors peer-checked:bg-brand-1 peer-disabled:opacity-40" />
+                          <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
+                        </span>
                         {defaultTaxRate}%
                       </label>
                     </div>
