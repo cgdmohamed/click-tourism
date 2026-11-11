@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\InvoiceApplicationController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\InvoiceCollectionController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\OpeningBalanceController;
@@ -279,6 +280,7 @@ Route::prefix('v1')->group(function () {
         Route::get('invoices', [InvoiceController::class, 'index'])->middleware('permission:invoices.view');
         Route::post('invoices', [InvoiceController::class, 'store'])->middleware(['permission:invoices.create', 'idempotent']);
         Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->middleware('permission:invoices.view');
+        Route::post('invoices/{invoice}/collections', [InvoiceCollectionController::class, 'store'])->middleware(['permission:payments.create', 'idempotent']);
         Route::patch('invoices/{invoice}', [InvoiceController::class, 'update'])->middleware('permission:invoices.create');
         Route::post('invoices/{invoice}/submit', [InvoiceController::class, 'submit'])->middleware('permission:invoices.create');
         Route::post('invoices/{invoice}/approve', [InvoiceController::class, 'approve'])->middleware(['permission:invoices.approve', 'idempotent']);
