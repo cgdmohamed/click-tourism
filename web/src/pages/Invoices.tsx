@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -89,6 +89,8 @@ const emptyForm = {
 export default function Invoices() {
   const { t, locale } = useI18n()
   const { activeBranch, can } = useAuth()
+  const [searchParams] = useSearchParams()
+  const bookingFilter = searchParams.get('booking_id') ?? ''
   const queryClient = useQueryClient()
   const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
   const partyLabel = (ar: string, en: string) => (locale === 'ar' ? ar : en)
@@ -109,7 +111,7 @@ export default function Invoices() {
   const [overrideReason, setOverrideReason] = useState('')
 
   const invoicesQuery = useQuery({
-    queryKey: ['invoices', page, typeFilter, statusFilter, activeBranch?.id],
+    queryKey: ['invoices', page, typeFilter, statusFilter, bookingFilter, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<{ data: Invoice[]; meta: { current_page: number; last_page: number; total: number; per_page: number } }>('/invoices', {
         params: {
@@ -117,6 +119,7 @@ export default function Invoices() {
           per_page: 20,
           ...(typeFilter ? { type: typeFilter } : {}),
           ...(statusFilter ? { status: statusFilter } : {}),
+          ...(bookingFilter ? { booking_id: bookingFilter } : {}),
         },
       })
       return data
