@@ -25,7 +25,7 @@ Status: Draft for architect approval. Produced by step `03-architecture-contract
 - `migration-order.md` — safe migration sequence and rollback notes.
 - `threat-model.md` — assets, threats, mitigations.
 - `dependency-graph.md` — module dependency rules.
-- `openapi.yaml` — draft API contract (v1).
+- `openapi.yaml` — API contract (v1). It must list every `/api/v1` route (method + path, parameter names ignored); `backend/tests/Feature/OpenApiCoverageTest.php` fails when a route is missing from it or documents an operation with no route. Add new endpoints here in the same PR.
 
 ## Non-negotiables
 
