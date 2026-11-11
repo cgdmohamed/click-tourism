@@ -15,6 +15,7 @@ use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Payments\Services\PaymentService;
 use App\Modules\Payments\Services\SupplierSettlementService;
+use App\Modules\Reports\Services\ReportService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -208,20 +209,150 @@ class OpeningBalanceSettlementTest extends TestCase
         $this->assertSame('reversed', $batch->refresh()->status);
     }
 
-    public function test_credit_side_party_lines_stay_on_the_subaccount_without_a_document(): void
+    private function creditBatch(): OpeningBalanceBatch
     {
         $service = app(OpeningBalanceService::class);
         $batch = $service->create([
             'as_of_date' => now()->startOfMonth()->toDateString(),
             'lines' => [
+                ['account_id' => '1100', 'debit_minor' => 1000000, 'party_type' => 'customer', 'party_id' => $this->customer()->public_id],
                 ['account_id' => '1100', 'credit_minor' => 400000, 'party_type' => 'customer', 'party_id' => $this->customer()->public_id],
-                ['account_id' => '3200', 'debit_minor' => 400000],
+                ['account_id' => '2100', 'credit_minor' => 900000, 'party_type' => 'supplier', 'party_id' => $this->vendor->public_id],
+                ['account_id' => '2100', 'debit_minor' => 250000, 'party_type' => 'supplier', 'party_id' => $this->vendor->public_id],
+                ['account_id' => '3200', 'debit_minor' => 50000],
             ],
         ], $this->branch, $this->user->id);
-        $service->post($batch, $this->user->id);
 
-        $this->assertSame(-400000, $this->net($this->subaccount('customer', $this->customer()->id, 'receivable')));
-        $this->assertSame(0, Invoice::query()->where('is_opening', true)->count());
-        $this->assertTrue($service->reconciliation($batch->refresh())['reconciled']);
+        return $service->post($batch, $this->user->id);
+    }
+
+    public function test_credit_side_lines_post_to_the_advance_accounts_and_create_applicable_records(): void
+    {
+        $batch = $this->creditBatch();
+        $customer = $this->customer();
+
+        // Ledger: advance accounts tagged with the party, not the subaccount, not the control account.
+        $this->assertSame(-400000, $this->net($this->account('2300')));
+        $this->assertSame(250000, $this->net($this->account('1153')));
+        $this->assertSame(1000000, $this->net($this->subaccount('customer', $customer->id, 'receivable')));
+        $this->assertSame(-900000, $this->net($this->subaccount('supplier', $this->vendor->id, 'payable')));
+        $this->assertSame(0, $this->net($this->account('1100')));
+        $this->assertSame(0, $this->net($this->account('2100')));
+        $advanceLine = DB::table('journal_lines')->where('account_id', $this->account('2300')->id)->first();
+        $this->assertSame('customer', $advanceLine->party_type);
+        $this->assertSame($customer->id, (int) $advanceLine->party_id);
+
+        // Records: unapplied, no cash account, flagged, linked to their batch line.
+        $receipt = Payment::query()->where('is_opening', true)->firstOrFail();
+        $this->assertSame('posted', $receipt->status);
+        $this->assertSame(400000, (int) $receipt->amount_minor);
+        $this->assertSame(400000, (int) $receipt->unallocated_minor);
+        $this->assertNull($receipt->cash_account_id);
+        $this->assertNotNull($receipt->opening_balance_line_id);
+        $this->assertTrue($receipt->toApiArray()['is_opening']);
+        $advance = SupplierPayment::query()->where('is_opening', true)->firstOrFail();
+        $this->assertSame(250000, $advance->unallocatedMinor());
+        $this->assertNull($advance->cash_account_id);
+        $this->assertNull($advance->toApiArray()['cash_account_id']);
+        $this->assertSame(2, Invoice::query()->where('is_opening', true)->count(), 'the credit side has no document');
+
+        $report = app(OpeningBalanceService::class)->reconciliation($batch->refresh());
+        $this->assertTrue($report['reconciled']);
+        $this->assertTrue(collect($report['accounts'])->every(fn ($row) => $row['matches_ledger'] === true));
+        $this->assertTrue(collect($report['control_account_detail'])->every(fn ($row) => $row['ledger_matches'] === true));
+    }
+
+    public function test_opening_credit_is_applied_to_an_invoice_with_the_normal_settlement_service(): void
+    {
+        $this->creditBatch();
+        $settlement = app(InvoiceSettlementService::class);
+
+        $customerDoc = $this->openingInvoice('customer_invoice');
+        $settlement->applyReceipt(Payment::query()->where('is_opening', true)->firstOrFail(), $customerDoc, 400000, $this->user->id);
+        $this->assertSame(600000, (int) $customerDoc->refresh()->outstanding_minor);
+        $this->assertSame(0, $this->net($this->account('2300')));
+        $this->assertSame(600000, $this->net($this->subaccount('customer', $this->customer()->id, 'receivable')));
+        $this->assertSame(0, (int) Payment::query()->where('is_opening', true)->value('unallocated_minor'));
+
+        $supplierDoc = $this->openingInvoice('supplier_invoice');
+        $settlement->applySupplierPayment(SupplierPayment::query()->where('is_opening', true)->firstOrFail(), $supplierDoc, 250000, $this->user->id);
+        $this->assertSame(650000, (int) $supplierDoc->refresh()->outstanding_minor);
+        $this->assertSame(0, $this->net($this->account('1153')));
+        $this->assertSame(-650000, $this->net($this->subaccount('supplier', $this->vendor->id, 'payable')));
+    }
+
+    public function test_opening_credit_cannot_be_refunded_or_cancelled_and_never_counts_as_cash(): void
+    {
+        $this->creditBatch();
+        $receipt = Payment::query()->where('is_opening', true)->firstOrFail();
+        $payments = app(PaymentService::class);
+
+        try {
+            $payments->requestRefund(['payment_id' => $receipt->public_id, 'amount_minor' => 1000], $this->user->id);
+            $this->fail('refund should be refused');
+        } catch (DomainException $e) {
+            $this->assertSame('Opening credit cannot be refunded in cash; apply it to an invoice.', $e->getMessage());
+        }
+        try {
+            $payments->cancel($receipt, 'x', $this->user->id);
+            $this->fail('cancel should be refused');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('reverse the batch', $e->getMessage());
+        }
+        try {
+            app(SupplierSettlementService::class)->cancel(SupplierPayment::query()->where('is_opening', true)->firstOrFail(), 'x', $this->user->id);
+            $this->fail('cancel should be refused');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('reverse the batch', $e->getMessage());
+        }
+
+        // A real receipt next to it: only that one is cash.
+        $this->receipt(70000);
+        $dashboard = app(ReportService::class)->dashboard(null);
+        $month = collect($dashboard['monthly_cash_flow'])->last();
+        $this->assertSame(70000, $month['inflow_minor'], 'the opening receipt is not cash inflow');
+        $this->assertSame(0, $month['outflow_minor'], 'the opening supplier advance is not cash outflow');
+        $this->assertCount(1, $dashboard['recent_payments'], 'the opening receipt is not a recent receipt');
+        // It still counts as a customer advance (unapplied credit) next to the real receipt's.
+        $this->assertSame(470000, $dashboard['customer_advances_minor']);
+    }
+
+    public function test_reversal_cancels_unused_credit_records_and_is_refused_once_applied(): void
+    {
+        $batch = $this->creditBatch();
+        $settlement = app(InvoiceSettlementService::class);
+        $application = $settlement->applyReceipt(
+            Payment::query()->where('is_opening', true)->firstOrFail(),
+            $this->openingInvoice('customer_invoice'), 100000, $this->user->id,
+        );
+
+        try {
+            app(OpeningBalanceService::class)->reverse($batch, 'Too late', $this->user->id);
+            $this->fail('reversal should be refused');
+        } catch (DomainException) {
+            $this->assertSame('posted', $batch->refresh()->status);
+        }
+
+        $settlement->unapply($application, 'Undo', $this->user->id);
+        app(OpeningBalanceService::class)->reverse($batch, 'Wrong', $this->user->id);
+
+        $this->assertSame('reversed', $batch->refresh()->status);
+        $this->assertSame('cancelled', Payment::query()->where('is_opening', true)->value('status'));
+        $this->assertSame('cancelled', SupplierPayment::query()->where('is_opening', true)->value('status'));
+        $this->assertSame(0, $this->net($this->account('2300')));
+        $this->assertSame(0, $this->net($this->account('1153')));
+    }
+
+    public function test_supplier_advance_application_blocks_reversal(): void
+    {
+        $batch = $this->creditBatch();
+        app(InvoiceSettlementService::class)->applySupplierPayment(
+            SupplierPayment::query()->where('is_opening', true)->firstOrFail(),
+            $this->openingInvoice('supplier_invoice'), 50000, $this->user->id,
+        );
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('already been');
+        app(OpeningBalanceService::class)->reverse($batch, 'Too late', $this->user->id);
     }
 }

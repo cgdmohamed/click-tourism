@@ -21,6 +21,7 @@ use Carbon\Carbon;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -50,6 +51,12 @@ class BankReconciliationService
     public const CATEGORY_UNRECORDED_BANK_CREDIT = 'unrecorded_bank_credit';
 
     public const CATEGORY_TOLERANCE = 'tolerance_difference';
+
+    /** Hard cap on data rows per statement file (the import runs in one transaction). */
+    public const MAX_STATEMENT_ROWS = 20000;
+
+    /** Cap on the uncompressed size of an XLSX worksheet / shared strings part. */
+    private const MAX_XLSX_PART_BYTES = 40 * 1024 * 1024;
 
     public function __construct(
         private readonly SettingService $settings,
@@ -96,6 +103,10 @@ class BankReconciliationService
                 throw new DomainException('The statement has no data rows.');
             }
 
+            if (count($rows) - 1 > self::MAX_STATEMENT_ROWS) {
+                throw new DomainException('The statement has more than '.self::MAX_STATEMENT_ROWS.' rows. Split it into smaller files (for example one per month).');
+            }
+
             $header = array_shift($rows);
             $mapping = $this->normalizeMapping($data['mapping'] ?? [], $header);
             $columns = $this->resolveColumns($mapping, $header);
@@ -104,7 +115,11 @@ class BankReconciliationService
             $parsed = [];
             $seenHashes = [];
             foreach ($rows as $index => $row) {
-                $line = $this->parseStatementRow($row, $columns, $dateFormat, $currency, $cashAccount, $seenHashes);
+                try {
+                    $line = $this->parseStatementRow($row, $columns, $dateFormat, $currency, $cashAccount, $seenHashes);
+                } catch (DomainException $exception) {
+                    throw new DomainException('Statement row '.($index + 2).': '.$exception->getMessage());
+                }
                 if ($line !== null) {
                     $line['row_number'] = $index + 2;
                     $parsed[] = $line;
@@ -219,13 +234,10 @@ class BankReconciliationService
             $cashAccount = $this->cashAccount((string) ($data['cash_account_id'] ?? ''));
             $this->assertBranchAccess($cashAccount, $actorId);
 
+            // Foreign-currency bank accounts reconcile in their own currency
+            // (Odoo/Zoho behaviour): book amounts are the account's native
+            // debit/credit, never the base-currency equivalents.
             $currency = strtoupper($cashAccount->currency_code);
-            if ($currency !== $this->settings->baseCurrency()) {
-                throw new DomainException(
-                    'Bank reconciliation is limited to base-currency bank accounts. '.
-                    'Foreign-currency bank reconciliation is pending an accountant decision (DEC-037).'
-                );
-            }
 
             $statement = null;
             if (! empty($data['statement_id'])) {
@@ -305,6 +317,8 @@ class BankReconciliationService
         return DB::transaction(function () use ($reconciliation, $actorId) {
             $reconciliation = BankReconciliation::query()->lockForUpdate()->findOrFail($reconciliation->id);
             $this->assertNotApproved($reconciliation);
+            $this->lockAccount($reconciliation);
+            $this->lockAccount($reconciliation);
 
             $detail = $this->compute($reconciliation);
             $candidates = $detail['candidates'];
@@ -378,6 +392,8 @@ class BankReconciliationService
         return DB::transaction(function () use ($reconciliation, $items, $actorId) {
             $reconciliation = BankReconciliation::query()->lockForUpdate()->findOrFail($reconciliation->id);
             $this->assertNotApproved($reconciliation);
+            $this->lockAccount($reconciliation);
+            $this->lockAccount($reconciliation);
 
             if ($items === []) {
                 throw new DomainException('A match needs at least one bank line and one journal line.');
@@ -388,6 +404,8 @@ class BankReconciliationService
             $bankConsumed = $this->consumedBank($bankLines->pluck('id')->all());
             $journalConsumed = $this->consumedJournal($journalLines->pluck('id')->all());
             $tolerance = $this->tolerance();
+            $foreign = $this->isForeign($reconciliation->cashAccount);
+            $voided = $this->voidedLineIds($journalLines->values(), $foreign, $journalConsumed);
 
             $rows = [];
             $totals = [];
@@ -404,7 +422,11 @@ class BankReconciliationService
                     throw new DomainException("Item {$position}: the journal line is not part of this reconciliation period.");
                 }
 
-                $bookIsDebit = $book->base_debit_minor > 0;
+                [$bookDebit, $bookCredit] = $this->nativeAmounts($book, $foreign);
+                if (isset($voided[$book->id])) {
+                    throw new DomainException("Item {$position}: this ledger line was reversed and is paired out; it cannot be matched.");
+                }
+                $bookIsDebit = $bookDebit > 0;
                 if (($bank->amount_minor >= 0) !== $bookIsDebit) {
                     throw new DomainException("Item {$position}: a money-in bank line must match a debit and a money-out line a credit.");
                 }
@@ -421,7 +443,7 @@ class BankReconciliationService
                 $seenPairs[$pairKey] = true;
 
                 $bankRemaining = abs($bank->amount_minor) - ($bankConsumed[$bank->id] ?? 0);
-                $bookRemaining = ($bookIsDebit ? $book->base_debit_minor : $book->base_credit_minor) - ($journalConsumed[$book->id] ?? 0);
+                $bookRemaining = ($bookIsDebit ? $bookDebit : $bookCredit) - ($journalConsumed[$book->id] ?? 0);
                 if ($amount > $bankRemaining + $tolerance || $amount > $bookRemaining + $tolerance) {
                     throw new DomainException("Item {$position}: the amount exceeds the unmatched amount of the line.");
                 }
@@ -443,8 +465,8 @@ class BankReconciliationService
                     $amount = abs($line->amount_minor) - ($bankConsumed[$line->id] ?? 0);
                 } else {
                     $line = $journalLines->firstWhere('id', (int) $id);
-                    $amount = ($line->base_debit_minor > 0 ? $line->base_debit_minor : $line->base_credit_minor)
-                        - ($journalConsumed[$line->id] ?? 0);
+                    [$lineDebit, $lineCredit] = $this->nativeAmounts($line, $foreign);
+                    $amount = ($lineDebit > 0 ? $lineDebit : $lineCredit) - ($journalConsumed[$line->id] ?? 0);
                 }
 
                 if (abs($amount - $total) > $tolerance) {
@@ -483,6 +505,8 @@ class BankReconciliationService
         return DB::transaction(function () use ($reconciliation, $group, $actorId) {
             $reconciliation = BankReconciliation::query()->lockForUpdate()->findOrFail($reconciliation->id);
             $this->assertNotApproved($reconciliation);
+            $this->lockAccount($reconciliation);
+            $this->lockAccount($reconciliation);
 
             $matches = BankReconciliationMatch::query()
                 ->where('bank_reconciliation_id', $reconciliation->id)
@@ -521,6 +545,8 @@ class BankReconciliationService
         return DB::transaction(function () use ($reconciliation, $data, $actorId) {
             $reconciliation = BankReconciliation::query()->lockForUpdate()->findOrFail($reconciliation->id);
             $this->assertNotApproved($reconciliation);
+            $this->lockAccount($reconciliation);
+            $this->lockAccount($reconciliation);
 
             if ($reconciliation->branch_id === null) {
                 throw new DomainException('A branch is required to create the adjustment voucher.');
@@ -533,20 +559,30 @@ class BankReconciliationService
                 $bankLines = $bankLines->whereIn('id', $selected);
             }
 
+            // A statement line that already has a live adjustment voucher
+            // (draft, in approval or posted) is never proposed again: a second
+            // voucher would book the same bank charge twice.
+            $covered = $this->coveredBankLineIds($reconciliation);
+            if (is_array($selected) && $selected !== [] && array_intersect($selected, $covered) !== []) {
+                throw new DomainException('A selected bank line already has an adjustment voucher. Post or cancel that voucher first.');
+            }
+
             $items = [];
             $dates = [];
+            $itemLineIds = [];
             foreach ($bankLines as $line) {
                 $residual = (int) $line['remaining_minor'];
-                if ($residual <= 0) {
+                if ($residual <= 0 || in_array($line['id'], $covered, true)) {
                     continue;
                 }
+                $itemLineIds[] = $line['id'];
                 if (! empty($line['line_date'])) {
                     $dates[] = (string) $line['line_date'];
                 }
                 $items[] = [
                     'direction' => $line['amount_minor'] >= 0 ? 'in' : 'out',
                     'amount_minor' => $residual,
-                    'description' => trim(($line['description'] ?? 'Unrecorded bank item').' · '.($line['line_date'] ?? '')),
+                    'description' => mb_substr(trim(($line['description'] ?? 'Unrecorded bank item').' · '.($line['line_date'] ?? '')), 0, 250),
                 ];
             }
 
@@ -558,6 +594,12 @@ class BankReconciliationService
             $bankAccount = $cashAccount->account->public_id;
             $charges = (string) ($data['charges_account_code'] ?? $this->settings->get('accounting', 'bank_charges_account_code', '6500'));
             $interest = (string) ($data['interest_account_code'] ?? $this->settings->get('accounting', 'bank_interest_account_code', '7920'));
+
+            foreach ([$charges, $interest] as $offset) {
+                if ($offset === $bankAccount || $offset === (string) $cashAccount->account->code) {
+                    throw new DomainException('The charges/interest account cannot be the bank account itself.');
+                }
+            }
 
             if (in_array('in', array_column($items, 'direction'), true)
                 && ! Account::query()->where('code', $interest)->exists()) {
@@ -590,7 +632,12 @@ class BankReconciliationService
 
             $ids = $reconciliation->adjustment_document_ids ?? [];
             $ids[] = $document->public_id;
-            $reconciliation->update(['adjustment_document_ids' => array_values(array_unique($ids))]);
+            $map = $reconciliation->adjustment_line_map ?? [];
+            $map[$document->public_id] = $itemLineIds;
+            $reconciliation->update([
+                'adjustment_document_ids' => array_values(array_unique($ids)),
+                'adjustment_line_map' => $map,
+            ]);
 
             $this->audit->log('bank_reconciliation.adjustment_proposed', $reconciliation, null, [
                 'document' => $document->public_id,
@@ -601,6 +648,93 @@ class BankReconciliationService
                 'document' => $document->load('lines.account')->toApiArray(true),
                 'reconciliation' => $this->detail($reconciliation->refresh()),
             ];
+        });
+    }
+
+    /**
+     * Statement lines already covered by a live adjustment voucher of this
+     * session: not rejected/cancelled/voided and not undone by a posted
+     * correction (reversal) document.
+     *
+     * @return array<int, string>
+     */
+    private function coveredBankLineIds(BankReconciliation $reconciliation): array
+    {
+        $map = $reconciliation->adjustment_line_map ?? [];
+        if ($map === []) {
+            return [];
+        }
+
+        $documents = AccountingDocument::query()->whereIn('public_id', array_keys($map))->get();
+        $undone = AccountingDocument::query()
+            ->whereIn('reversal_of_id', $documents->pluck('id'))
+            ->where('status', AccountingDocument::STATUS_POSTED)
+            ->pluck('reversal_of_id')
+            ->all();
+
+        $covered = [];
+        foreach ($documents as $document) {
+            if (in_array($document->status, [AccountingDocument::STATUS_REJECTED, AccountingDocument::STATUS_CANCELLED, AccountingDocument::STATUS_VOIDED], true)
+                || in_array($document->id, $undone, true)) {
+                continue;
+            }
+            $covered = array_merge($covered, $map[$document->public_id] ?? []);
+        }
+
+        return array_values(array_unique($covered));
+    }
+
+    /**
+     * Reopen an approved session (Odoo "reset to draft" / Zoho "undo
+     * reconciliation"): only the newest approved session of an account can be
+     * reopened, a reason is required, and the frozen snapshot is kept in the
+     * audit trail. Nothing in the ledger changes.
+     */
+    public function reopen(BankReconciliation $reconciliation, string $reason, ?int $actorId): BankReconciliation
+    {
+        return DB::transaction(function () use ($reconciliation, $reason, $actorId) {
+            $reconciliation = BankReconciliation::query()->lockForUpdate()->findOrFail($reconciliation->id);
+            $this->lockAccount($reconciliation);
+
+            if (! $reconciliation->isApproved()) {
+                throw new DomainException('Only an approved reconciliation can be reopened.');
+            }
+
+            $reason = trim($reason);
+            if ($reason === '') {
+                throw new DomainException('A reason is required to reopen a reconciliation.');
+            }
+
+            $newer = BankReconciliation::query()
+                ->where('cash_account_id', $reconciliation->cash_account_id)
+                ->where('status', BankReconciliation::STATUS_APPROVED)
+                ->where('id', '!=', $reconciliation->id)
+                ->whereDate('period_to', '>', $reconciliation->period_to->toDateString())
+                ->exists();
+            if ($newer) {
+                throw new DomainException('A later reconciliation of this bank account is approved. Reopen the latest one first.');
+            }
+
+            $before = [
+                'status' => BankReconciliation::STATUS_APPROVED,
+                'approved_by' => $reconciliation->approved_by,
+                'approved_at' => $reconciliation->approved_at?->toIso8601String(),
+                'summary' => $reconciliation->snapshot['summary'] ?? null,
+            ];
+
+            $reconciliation->update([
+                'status' => BankReconciliation::STATUS_OPEN,
+                'snapshot' => null,
+                'approved_by' => null,
+                'approved_at' => null,
+            ]);
+
+            $this->audit->log('bank_reconciliation.reopened', $reconciliation, $before, [
+                'status' => BankReconciliation::STATUS_OPEN,
+                'reason' => $reason,
+            ], $actorId);
+
+            return $reconciliation->refresh();
         });
     }
 
@@ -628,6 +762,17 @@ class BankReconciliationService
                 throw new DomainException(
                     'The statement has unrecorded bank items. Match them or post their adjustment voucher before approving the reconciliation.'
                 );
+            }
+
+            // A proposed adjustment voucher that is still a draft / awaiting
+            // approval would be posted after the session is locked and create
+            // an item the locked snapshot does not contain.
+            $pending = AccountingDocument::query()
+                ->whereIn('public_id', $reconciliation->adjustment_document_ids ?? [])
+                ->whereIn('status', [AccountingDocument::STATUS_DRAFT, AccountingDocument::STATUS_SUBMITTED, AccountingDocument::STATUS_APPROVED])
+                ->count();
+            if ($pending > 0) {
+                throw new DomainException('Post or cancel the proposed adjustment vouchers before approving the reconciliation.');
             }
 
             if (! $summary['reconciled']) {
@@ -671,6 +816,31 @@ class BankReconciliationService
     private function compute(BankReconciliation $reconciliation): array
     {
         $reconciliation->load('cashAccount.account', 'cashAccount.branch', 'branch', 'statement', 'approvedBy');
+
+        // An approved session is a frozen record: later matches in newer
+        // sessions consume its outstanding items, which must not change what
+        // was approved. Serve the stored snapshot, refreshed only with the
+        // session header (status, approver, dates).
+        if ($reconciliation->isApproved() && is_array($reconciliation->snapshot) && isset($reconciliation->snapshot['summary'])) {
+            $frozen = $reconciliation->snapshot;
+            unset($frozen['snapshot']);
+
+            return [
+                ...$frozen,
+                ...$reconciliation->toApiArray(),
+                'candidates' => [],
+            ];
+        }
+
+        // The ledger may have received back-dated postings since the session
+        // was opened; an open session always shows the live opening balance.
+        if (! $reconciliation->isApproved()) {
+            $liveOpening = $this->bookOpeningBalance($reconciliation->cashAccount, $reconciliation->period_from->toDateString());
+            if ($liveOpening !== $reconciliation->opening_book_balance_minor) {
+                $reconciliation->update(['opening_book_balance_minor' => $liveOpening]);
+            }
+        }
+
         $bankLines = $this->bankLines($reconciliation);
         $bookLines = $this->bookLines($reconciliation);
         $summary = $this->summary($reconciliation, $bankLines, $bookLines);
@@ -718,12 +888,15 @@ class BankReconciliationService
     /** @return array<int, array<string, mixed>> */
     private function bookLines(BankReconciliation $reconciliation): array
     {
+        $foreign = $this->isForeign($reconciliation->cashAccount);
         $lines = $this->bookLineQuery($reconciliation)->orderBy('journal_entry_id')->orderBy('id')->get();
         $consumed = $this->consumedJournal($lines->pluck('id')->all());
+        $voided = $this->voidedLineIds($lines, $foreign, $consumed);
 
-        return $lines->map(function (JournalLine $line) use ($consumed) {
+        return $lines->map(function (JournalLine $line) use ($consumed, $voided, $foreign) {
+            [$debit, $credit] = $this->nativeAmounts($line, $foreign);
             $matched = (int) ($consumed[$line->id] ?? 0);
-            $amount = $line->base_debit_minor > 0 ? $line->base_debit_minor : $line->base_credit_minor;
+            $amount = $debit > 0 ? $debit : $credit;
 
             return [
                 'id' => $line->public_id,
@@ -733,12 +906,16 @@ class BankReconciliationService
                 'description' => $line->description ?? $line->entry?->memo,
                 'source_type' => $line->entry?->source_type,
                 'branch_id' => $line->branch?->public_id,
-                'debit_minor' => $line->base_debit_minor,
-                'credit_minor' => $line->base_credit_minor,
+                'debit_minor' => $debit,
+                'credit_minor' => $credit,
                 'amount_minor' => $amount,
-                'direction' => $line->base_debit_minor > 0 ? 'in' : 'out',
+                'direction' => $debit > 0 ? 'in' : 'out',
                 'matched_minor' => $matched,
                 'remaining_minor' => $amount - $matched,
+                // True when this line and its reversal cancel each other out
+                // (cancelled receipt / supplier payment): they stay in the
+                // book balance but are never outstanding items or candidates.
+                'reversed' => isset($voided[$line->id]),
             ];
         })->values()->all();
     }
@@ -790,6 +967,10 @@ class BankReconciliationService
                 $bookMovement += $line['debit_minor'] - $line['credit_minor'];
             }
             $residual = $line['remaining_minor'];
+
+            if (! empty($line['reversed'])) {
+                continue;
+            }
 
             if ($line['matched_minor'] > 0) {
                 $toleranceDifference += abs($residual);
@@ -853,6 +1034,14 @@ class BankReconciliationService
                 && $unrecordedBankCredits === 0,
             'bank_lines' => count($bankLines),
             'book_lines' => count($bookLines),
+            'reversed_pairs_minor' => (int) array_sum(array_map(
+                fn (array $line) => ! empty($line['reversed']) && $line['debit_minor'] > 0 ? $line['amount_minor'] : 0,
+                $bookLines,
+            )),
+            // Ledger lines of this account that carry no amount in its own
+            // currency (base-only revaluation lines, legacy base-currency
+            // lines on a foreign account) and are therefore not reconciled.
+            'excluded_non_native_lines' => $this->excludedLineCount($reconciliation, count($bookLines)),
         ];
     }
 
@@ -884,7 +1073,7 @@ class BankReconciliationService
 
         foreach ($bookLines as $line) {
             $residual = $line['remaining_minor'];
-            if ($residual <= 0) {
+            if ($residual <= 0 || ! empty($line['reversed'])) {
                 continue;
             }
 
@@ -917,26 +1106,43 @@ class BankReconciliationService
         $tolerance = $this->tolerance();
         $window = $this->windowDays();
 
-        $unmatchedBank = array_filter($bankLines, fn (array $line) => $line['remaining_minor'] > 0);
-        $unmatchedBook = array_filter($bookLines, fn (array $line) => $line['remaining_minor'] > 0);
+        // Only untouched lines are candidates: a line that is already matched
+        // with a tolerance residual must not be paired a second time.
+        $unmatchedBank = array_filter($bankLines, fn (array $line) => $line['remaining_minor'] > 0 && $line['matched_minor'] === 0);
+        $unmatchedBook = array_filter(
+            $bookLines,
+            fn (array $line) => $line['remaining_minor'] > 0 && $line['matched_minor'] === 0 && empty($line['reversed']),
+        );
+
+        // Index ledger lines by direction and remaining amount so the search
+        // is proportional to the number of lines, not their product.
+        $index = [];
+        foreach ($unmatchedBook as $book) {
+            $index[($book['debit_minor'] > 0 ? 'in' : 'out').'|'.$book['remaining_minor']][] = $book;
+        }
+        $scanAll = $tolerance > 500;
 
         $pairs = [];
         foreach ($unmatchedBank as $bank) {
-            foreach ($unmatchedBook as $book) {
-                if (($bank['amount_minor'] >= 0) !== ($book['debit_minor'] > 0)) {
-                    continue;
+            $direction = $bank['amount_minor'] >= 0 ? 'in' : 'out';
+            $found = [];
+            if ($scanAll) {
+                foreach ($unmatchedBook as $book) {
+                    if (($book['debit_minor'] > 0 ? 'in' : 'out') === $direction && abs($bank['remaining_minor'] - $book['remaining_minor']) <= $tolerance) {
+                        $found[] = $book;
+                    }
                 }
+            } else {
+                for ($delta = -$tolerance; $delta <= $tolerance; $delta++) {
+                    foreach ($index[$direction.'|'.($bank['remaining_minor'] + $delta)] ?? [] as $book) {
+                        $found[] = $book;
+                    }
+                }
+            }
 
+            foreach ($found as $book) {
                 $difference = abs($bank['remaining_minor'] - $book['remaining_minor']);
-                if ($difference > $tolerance) {
-                    continue;
-                }
-
-                $days = (int) abs(
-                    Carbon::parse($bank['line_date'])->startOfDay()->diffInDays(
-                        Carbon::parse($book['entry_date'])->startOfDay()
-                    )
-                );
+                $days = $this->daysBetween((string) $bank['line_date'], (string) $book['entry_date']);
                 if ($days > $window) {
                     continue;
                 }
@@ -960,16 +1166,28 @@ class BankReconciliationService
         $bankCount = array_count_values(array_column($pairs, 'bank_line_id'));
         $bookCount = array_count_values(array_column($pairs, 'journal_line_id'));
 
-        foreach ($pairs as $index => $pair) {
-            $pairs[$index]['ambiguous'] = $bankCount[$pair['bank_line_id']] > 1 || $bookCount[$pair['journal_line_id']] > 1;
+        foreach ($pairs as $position => $pair) {
+            $pairs[$position]['ambiguous'] = $bankCount[$pair['bank_line_id']] > 1 || $bookCount[$pair['journal_line_id']] > 1;
         }
 
+        // Fully ordered (ids last) so the outcome never depends on sort stability.
         usort($pairs, function (array $a, array $b) {
-            return [$a['ambiguous'], ! $a['reference_match'], $a['days_apart'], $a['difference_minor']]
-                <=> [$b['ambiguous'], ! $b['reference_match'], $b['days_apart'], $b['difference_minor']];
+            return [$a['ambiguous'], ! $a['reference_match'], $a['days_apart'], $a['difference_minor'], $a['line_date'], $a['bank_line_id'], $a['journal_line_id']]
+                <=> [$b['ambiguous'], ! $b['reference_match'], $b['days_apart'], $b['difference_minor'], $b['line_date'], $b['bank_line_id'], $b['journal_line_id']];
         });
 
         return $pairs;
+    }
+
+    private function daysBetween(string $a, string $b): int
+    {
+        $first = strtotime($a.' 00:00:00 UTC');
+        $second = strtotime($b.' 00:00:00 UTC');
+        if ($first === false || $second === false) {
+            return PHP_INT_MAX;
+        }
+
+        return (int) abs(intdiv($first - $second, 86400));
     }
 
     private function referenceMatches(?string $bankReference, array $bookLine): bool
@@ -1042,7 +1260,7 @@ class BankReconciliationService
             ->whereDate('line_date', '<=', $reconciliation->period_to->toDateString());
     }
 
-    private function bookLineQuery(BankReconciliation $reconciliation): Builder
+    private function bookLineBaseQuery(BankReconciliation $reconciliation): Builder
     {
         $cashAccount = $reconciliation->cashAccount;
 
@@ -1058,6 +1276,100 @@ class BankReconciliationService
                     ->whereDate('entry_date', '<=', $reconciliation->period_to->toDateString());
             })
             ->when($cashAccount->branch_id !== null, fn (Builder $query) => $query->where('branch_id', $cashAccount->branch_id));
+    }
+
+    private function bookLineQuery(BankReconciliation $reconciliation): Builder
+    {
+        $query = $this->bookLineBaseQuery($reconciliation);
+        $this->applyNativeScope($query, $reconciliation->cashAccount);
+
+        return $query;
+    }
+
+    private function excludedLineCount(BankReconciliation $reconciliation, int $included): int
+    {
+        return max(0, $this->bookLineBaseQuery($reconciliation)->count() - $included);
+    }
+
+    private function isForeign(CashAccount $cashAccount): bool
+    {
+        return strtoupper((string) $cashAccount->currency_code) !== $this->settings->baseCurrency();
+    }
+
+    /**
+     * Keep only ledger lines that carry an amount in the bank account's own
+     * currency. Revaluation lines (zero transaction amount, base only) and
+     * legacy base-currency lines on a foreign account have none, so they can
+     * neither change the native book balance nor become phantom outstanding
+     * items. Base-currency accounts use the base amounts as before.
+     *
+     * @param  Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    private function applyNativeScope($query, CashAccount $cashAccount, string $prefix = ''): void
+    {
+        if ($this->isForeign($cashAccount)) {
+            $query->where($prefix.'currency_code', strtoupper((string) $cashAccount->currency_code))
+                ->where(fn ($inner) => $inner->where($prefix.'debit_minor', '>', 0)->orWhere($prefix.'credit_minor', '>', 0));
+
+            return;
+        }
+
+        $query->where(fn ($inner) => $inner->where($prefix.'base_debit_minor', '>', 0)->orWhere($prefix.'base_credit_minor', '>', 0));
+    }
+
+    /** @return array{0: int, 1: int} debit, credit in the bank account's own currency */
+    private function nativeAmounts(JournalLine $line, bool $foreign): array
+    {
+        return $foreign
+            ? [(int) $line->debit_minor, (int) $line->credit_minor]
+            : [(int) $line->base_debit_minor, (int) $line->base_credit_minor];
+    }
+
+    /**
+     * Ledger lines that cancel each other out: an entry on this account and
+     * its reversal (cancelled receipt or supplier payment) with equal and
+     * opposite amounts, neither matched to the statement. They are removed
+     * from the outstanding items (net effect on the book balance is zero).
+     * If the original was already matched to a bank line, its reversal stays
+     * an outstanding payment on purpose.
+     *
+     * @param  Collection<int, JournalLine>  $lines
+     * @param  array<int, int>  $consumed
+     * @return array<int, true>
+     */
+    private function voidedLineIds($lines, bool $foreign, array $consumed): array
+    {
+        $byEntry = $lines->groupBy('journal_entry_id');
+        $voided = [];
+
+        foreach ($lines as $reversalLine) {
+            $originalEntryId = $reversalLine->entry?->reversal_of_id;
+            if ($originalEntryId === null || isset($voided[$reversalLine->id]) || ($consumed[$reversalLine->id] ?? 0) > 0) {
+                continue;
+            }
+
+            [$debit, $credit] = $this->nativeAmounts($reversalLine, $foreign);
+            foreach ($byEntry->get($originalEntryId, collect()) as $original) {
+                if (isset($voided[$original->id]) || ($consumed[$original->id] ?? 0) > 0) {
+                    continue;
+                }
+                [$originalDebit, $originalCredit] = $this->nativeAmounts($original, $foreign);
+                if ($originalDebit === $credit && $originalCredit === $debit) {
+                    $voided[$original->id] = true;
+                    $voided[$reversalLine->id] = true;
+                    break;
+                }
+            }
+        }
+
+        return $voided;
+    }
+
+    private function lockAccount(BankReconciliation $reconciliation): void
+    {
+        // Serialises matching per bank account: line consumption is global
+        // (across sessions), so two concurrent matches must not both pass.
+        CashAccount::query()->whereKey($reconciliation->cash_account_id)->lockForUpdate()->first();
     }
 
     /** @param  array<int, int>  $ids */
@@ -1094,13 +1406,20 @@ class BankReconciliationService
 
     private function bookOpeningBalance(CashAccount $cashAccount, string $before): int
     {
-        $row = DB::table('journal_lines as jl')
+        $foreign = $this->isForeign($cashAccount);
+
+        $query = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.status', 'posted')
             ->where('jl.account_id', $cashAccount->account_id)
             ->whereDate('je.entry_date', '<', $before)
-            ->when($cashAccount->branch_id !== null, fn ($query) => $query->where('jl.branch_id', $cashAccount->branch_id))
-            ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
+            ->when($cashAccount->branch_id !== null, fn ($query) => $query->where('jl.branch_id', $cashAccount->branch_id));
+        $this->applyNativeScope($query, $cashAccount, 'jl.');
+
+        $row = $query
+            ->selectRaw($foreign
+                ? 'COALESCE(SUM(jl.debit_minor), 0) as debit, COALESCE(SUM(jl.credit_minor), 0) as credit'
+                : 'COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
             ->first();
 
         return (int) $row->debit - (int) $row->credit;
@@ -1133,7 +1452,32 @@ class BankReconciliationService
     /** @return array<int, array<int, string>> */
     private function readCsv(string $content, string $delimiter): array
     {
+        $content = $this->toUtf8($content);
         $delimiter = $delimiter === '' ? ',' : $delimiter;
+
+        $rows = $this->parseCsv($content, $delimiter);
+
+        // Regional Excel exports use ";" (decimal comma) or tabs. When the
+        // header collapsed into a single cell, retry with the delimiter the
+        // first line actually contains.
+        if (isset($rows[0]) && count($rows[0]) === 1) {
+            $firstLine = (string) strtok($content, "\n");
+            foreach ([';', "\t", '|'] as $candidate) {
+                if ($candidate !== $delimiter && substr_count($firstLine, $candidate) > 0) {
+                    $retry = $this->parseCsv($content, $candidate);
+                    if (isset($retry[0]) && count($retry[0]) > 1) {
+                        return $retry;
+                    }
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /** @return array<int, array<int, string>> */
+    private function parseCsv(string $content, string $delimiter): array
+    {
         $handle = fopen('php://temp', 'r+');
         if ($handle === false) {
             throw new DomainException('The statement file could not be read.');
@@ -1148,11 +1492,32 @@ class BankReconciliationService
             }
             $row = array_map(fn ($value) => trim((string) $value), $row);
             $row[0] = preg_replace('/^\xEF\xBB\xBF/', '', $row[0]);
+            if (count(array_filter($row, fn ($value) => $value !== '')) === 0) {
+                continue;
+            }
             $rows[] = $row;
         }
         fclose($handle);
 
         return $rows;
+    }
+
+    /**
+     * Bank exports are often UTF-16 (Excel "Unicode text") or Windows-1256
+     * (Arabic). Invalid UTF-8 would otherwise abort the insert, so convert.
+     */
+    private function toUtf8(string $content): string
+    {
+        if (str_starts_with($content, "\xFF\xFE") || str_starts_with($content, "\xFE\xFF")) {
+            return (string) mb_convert_encoding($content, 'UTF-8', 'UTF-16');
+        }
+        if (mb_check_encoding($content, 'UTF-8')) {
+            return $content;
+        }
+
+        $converted = function_exists('iconv') ? @iconv('CP1256', 'UTF-8//IGNORE', $content) : false;
+
+        return $converted !== false ? $converted : (string) mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
     }
 
     /**
@@ -1176,6 +1541,13 @@ class BankReconciliationService
                 throw new DomainException('The XLSX file could not be opened.');
             }
 
+            foreach (['xl/worksheets/sheet1.xml', 'xl/sharedStrings.xml'] as $part) {
+                $stat = $zip->statName($part);
+                if ($stat !== false && $stat['size'] > self::MAX_XLSX_PART_BYTES) {
+                    throw new DomainException('The XLSX file is too large to import. Split it or export it as CSV.');
+                }
+            }
+
             $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
             if ($sheet === false) {
                 throw new DomainException('The XLSX file has no first worksheet.');
@@ -1184,7 +1556,7 @@ class BankReconciliationService
             $shared = [];
             $sharedXml = $zip->getFromName('xl/sharedStrings.xml');
             if ($sharedXml !== false) {
-                $xml = simplexml_load_string($sharedXml);
+                $xml = simplexml_load_string($sharedXml, 'SimpleXMLElement', LIBXML_NONET);
                 if ($xml !== false) {
                     foreach ($xml->si as $item) {
                         $text = '';
@@ -1199,7 +1571,7 @@ class BankReconciliationService
                 }
             }
 
-            $xml = simplexml_load_string($sheet);
+            $xml = simplexml_load_string($sheet, 'SimpleXMLElement', LIBXML_NONET);
             if ($xml === false) {
                 throw new DomainException('The XLSX worksheet could not be parsed.');
             }
@@ -1359,7 +1731,8 @@ class BankReconciliationService
         }
 
         $amount = $this->amountFromRow($row, $columns, $currency);
-        if ($amount === null) {
+        if ($amount === null || $amount === 0) {
+            // Blank or zero rows (headers repeated per page, notes) carry no movement.
             return null;
         }
 
@@ -1401,9 +1774,10 @@ class BankReconciliationService
             'value_date' => $valueDate,
             'amount_minor' => $amount,
             'balance_after_minor' => $balanceMinor,
-            'bank_reference' => $reference,
-            'description' => $description,
-            'party_name' => $party,
+            // The columns are varchar(255): bank narratives can be longer.
+            'bank_reference' => $reference === null ? null : mb_substr($reference, 0, 255),
+            'description' => $description === null ? null : mb_substr($description, 0, 255),
+            'party_name' => $party === null ? null : mb_substr($party, 0, 255),
             'raw' => array_combine(array_keys($columns), array_map(fn ($column) => $column === null ? null : ($row[$column] ?? null), $columns)) ?: null,
         ];
     }
@@ -1448,12 +1822,15 @@ class BankReconciliationService
 
     private function parseDate(string $value, ?string $format): string
     {
-        $value = trim($value);
+        $value = $this->latinDigits(trim($value));
         if ($value === '') {
             throw new DomainException('A statement row is missing its date.');
         }
 
-        if ($format !== null && $format !== '') {
+        // Excel serial dates (XLSX exports) are accepted whatever the format.
+        $serial = preg_match('/^\d{5}(\.\d+)?$/', $value) === 1;
+
+        if ($format !== null && $format !== '' && ! $serial) {
             if (! Carbon::hasFormat($value, $format)) {
                 throw new DomainException('Date "'.$value.'" does not match the configured format "'.$format.'".');
             }
@@ -1461,20 +1838,68 @@ class BankReconciliationService
             return Carbon::createFromFormat($format, $value)->toDateString();
         }
 
-        if (preg_match('/^\d{5}(\.\d+)?$/', $value)) {
+        if ($serial) {
             return Carbon::createFromFormat('Y-m-d', '1899-12-30')->addDays((int) $value)->toDateString();
         }
 
-        return Carbon::parse($value)->toDateString();
+        // Without a configured format only unambiguous dates are accepted:
+        // "03/04/2026" is 3 April for most banks here and 4 March in the US,
+        // and guessing silently moves lines into the wrong period.
+        if (preg_match('/^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{4})(?:\s.*)?$/', $value, $m) === 1) {
+            $first = (int) $m[1];
+            $second = (int) $m[3];
+            if ($first > 12) {
+                $day = $first;
+                $month = $second;
+            } elseif ($second > 12 || $first === $second) {
+                $day = $second;
+                $month = $first;
+            } else {
+                throw new DomainException('Date "'.$value.'" is ambiguous (day/month or month/day). Set the date format of the statement, for example d/m/Y.');
+            }
+            if (! checkdate($month, $day, (int) $m[4])) {
+                throw new DomainException('Invalid date "'.$value.'" in the statement.');
+            }
+
+            return sprintf('%04d-%02d-%02d', (int) $m[4], $month, $day);
+        }
+
+        try {
+            return Carbon::parse($value)->toDateString();
+        } catch (\Throwable) {
+            throw new DomainException('Date "'.$value.'" could not be read. Set the date format of the statement.');
+        }
+    }
+
+    /** Arabic-Indic and Persian digits and separators to ASCII. */
+    private function latinDigits(string $value): string
+    {
+        return strtr($value, [
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4', '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            '٫' => '.', '٬' => ',', '−' => '-', '–' => '-',
+        ]);
     }
 
     private function parseAmount(string $value, string $currency): int
     {
-        $clean = trim($value);
+        $clean = $this->latinDigits(trim($value));
         $negative = false;
         if (str_starts_with($clean, '(') && str_ends_with($clean, ')')) {
             $negative = true;
             $clean = substr($clean, 1, -1);
+        }
+        // Trailing minus ("50.00-") and DR/CR suffixes used by some banks.
+        if (preg_match('/^(.*?)\s*(-|dr|db)$/i', $clean, $m) === 1 && preg_match('/\d/', $m[1]) === 1) {
+            $negative = true;
+            $clean = $m[1];
+        } elseif (preg_match('/^(.*?)\s*cr$/i', $clean, $m) === 1 && preg_match('/\d/', $m[1]) === 1) {
+            $clean = $m[1];
+        }
+
+        if ($clean !== '' && preg_match('/\d/', $clean) !== 1 && preg_match('/^[\s\-.,]*$/', $clean) !== 1) {
+            // Text such as "n/a" must not silently become a zero amount.
+            throw new DomainException('Invalid amount "'.$value.'" in the statement.');
         }
 
         $clean = preg_replace('/[^0-9.,\-]/', '', $clean) ?? '';
@@ -1490,6 +1915,10 @@ class BankReconciliationService
             $clean = str_replace(['.', ','], ['', '.'], $clean);
         }
 
+        // Spreadsheet floats ("12.339999999999998"): round half up at the
+        // currency exponent instead of truncating, which would lose a cent.
+        $clean = $this->roundToExponent($clean, $currency);
+
         try {
             $minor = Money::fromDecimal($clean, $currency)->amountMinor;
         } catch (InvalidArgumentException) {
@@ -1497,5 +1926,47 @@ class BankReconciliationService
         }
 
         return $negative ? -abs($minor) : $minor;
+    }
+
+    /** Round a plain decimal string half-up to the currency exponent (no floats). */
+    private function roundToExponent(string $amount, string $currency): string
+    {
+        $plain = str_replace(',', '', $amount);
+        if (preg_match('/^(-?)(\d+)\.(\d+)$/', $plain, $m) !== 1) {
+            return $amount;
+        }
+
+        $scale = Money::exponent($currency);
+        if (strlen($m[3]) <= $scale) {
+            return $amount;
+        }
+
+        $kept = substr($m[3], 0, $scale);
+        $roundUp = (int) $m[3][$scale] >= 5;
+        $digits = $m[2].$kept;
+        if ($roundUp) {
+            $digits = $this->incrementDigits($digits);
+        }
+        $whole = substr($digits, 0, strlen($digits) - $scale);
+        $fraction = $scale > 0 ? substr($digits, -$scale) : '';
+
+        return $m[1].($whole === '' ? '0' : $whole).($scale > 0 ? '.'.$fraction : '');
+    }
+
+    private function incrementDigits(string $digits): string
+    {
+        $chars = str_split($digits);
+        for ($i = count($chars) - 1; $i >= 0; $i--) {
+            if ($chars[$i] === '9') {
+                $chars[$i] = '0';
+
+                continue;
+            }
+            $chars[$i] = (string) ((int) $chars[$i] + 1);
+
+            return implode('', $chars);
+        }
+
+        return '1'.implode('', $chars);
     }
 }

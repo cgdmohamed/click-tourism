@@ -407,6 +407,37 @@ class SupplierSettlementTest extends TestCase
             ->assertStatus(403);
     }
 
+    public function test_obligation_list_supports_payable_and_currency_filters_for_pickers(): void
+    {
+        $recognized = $this->obligation(['invoice_reference' => 'REC-1']);
+        $this->obligation(['invoice_reference' => 'OPS-1', 'invoice_id' => null]);
+        SupplierObligation::query()->create([
+            'supplier_id' => $this->testSupplier->id,
+            'branch_id' => $this->branch->id,
+            'amount_minor' => 1000,
+            'currency_code' => 'USD',
+            'invoice_reference' => 'USD-1',
+            'status' => 'open',
+        ]);
+
+        $this->grant('supplier_obligations.view');
+        $this->grant('invoices.view');
+        Sanctum::actingAs($this->user);
+        $headers = ['X-Branch-Id' => $this->branch->public_id];
+
+        $this->withHeaders($headers)->getJson('/api/v1/supplier-obligations?payable=1')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $recognized->public_id);
+        $this->withHeaders($headers)->getJson('/api/v1/supplier-obligations?currency=usd')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.invoice_reference', 'USD-1');
+        $this->withHeaders($headers)->getJson('/api/v1/supplier-obligations?search=OPS')
+            ->assertOk()->assertJsonCount(1, 'data');
+
+        $this->withHeaders($headers)->getJson('/api/v1/invoices?type=supplier_invoice&currency=USD')
+            ->assertOk()->assertJsonCount(0, 'data');
+        $this->withHeaders($headers)->getJson('/api/v1/invoices?type=supplier_invoice&currency=egp')
+            ->assertOk()->assertJsonCount(1, 'data');
+    }
+
     private function grant(string $permission): void
     {
         Permission::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);

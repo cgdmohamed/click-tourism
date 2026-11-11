@@ -31,6 +31,8 @@ class Payment extends Model
         'paid_at',
         'idempotency_key',
         'created_by',
+        'is_opening',
+        'opening_balance_line_id',
     ];
 
     protected function casts(): array
@@ -38,6 +40,7 @@ class Payment extends Model
         return [
             'amount_minor' => 'integer',
             'unallocated_minor' => 'integer',
+            'is_opening' => 'boolean',
             'paid_at' => 'datetime',
             'fx_rate' => 'decimal:10',
         ];
@@ -90,6 +93,7 @@ class Payment extends Model
             'currency' => $this->currency_code,
             'paid_at' => $this->paid_at?->toIso8601String(),
             'status' => $this->status,
+            'is_opening' => (bool) $this->is_opening,
         ];
     }
 }

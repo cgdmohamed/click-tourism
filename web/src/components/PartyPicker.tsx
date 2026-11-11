@@ -30,6 +30,7 @@ export default function PartyPicker({
       onChange={onChange}
       options={picker.options}
       onSearch={picker.setSearch}
+      hasMore={picker.hasMore}
       placeholder={placeholder}
       clearLabel={clearLabel}
     />
