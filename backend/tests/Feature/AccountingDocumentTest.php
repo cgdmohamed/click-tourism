@@ -449,4 +449,45 @@ class AccountingDocumentTest extends TestCase
     {
         return Account::query()->where('code', $code)->firstOrFail();
     }
+
+    public function test_a_rejected_document_can_be_reopened_and_resubmitted(): void
+    {
+        $id = $this->withHeaders($this->headers())->postJson('/api/v1/accounting-documents', $this->receiptVoucherPayload(['submit' => true]))
+            ->assertCreated()->json('data.id');
+
+        $this->postJson("/api/v1/accounting-documents/{$id}/reopen")->assertStatus(422);
+
+        $this->postJson("/api/v1/accounting-documents/{$id}/reject", ['reason' => 'Wrong account'])->assertOk();
+
+        $this->postJson("/api/v1/accounting-documents/{$id}/reopen")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'draft');
+
+        $this->assertDatabaseHas('audit_events', ['action' => 'accounting_document.reopened']);
+
+        $this->postJson("/api/v1/accounting-documents/{$id}/submit")->assertOk()->assertJsonPath('data.status', 'submitted');
+    }
+
+    public function test_reopening_a_document_requires_the_creator_or_an_approver(): void
+    {
+        $id = $this->withHeaders($this->headers())->postJson('/api/v1/accounting-documents', $this->receiptVoucherPayload(['submit' => true]))
+            ->assertCreated()->json('data.id');
+        $this->postJson("/api/v1/accounting-documents/{$id}/reject", ['reason' => 'Wrong account'])->assertOk();
+
+        $other = User::factory()->create();
+        $other->branches()->attach($this->branch->id);
+        $other->givePermissionTo(['documents.view', 'documents.create']);
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($other);
+
+        $this->withHeaders($this->headers())->postJson("/api/v1/accounting-documents/{$id}/reopen")->assertStatus(403);
+
+        $viewer = User::factory()->create();
+        $viewer->branches()->attach($this->branch->id);
+        $viewer->givePermissionTo(['documents.view']);
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($viewer);
+
+        $this->withHeaders($this->headers())->postJson("/api/v1/accounting-documents/{$id}/reopen")->assertStatus(403);
+    }
 }
