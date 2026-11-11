@@ -50,6 +50,7 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '6999', 'name_ar' => 'فروق تقريب العملة', 'name_en' => 'FX Rounding Difference', 'type' => 'expense'],
             ['code' => '7900', 'name_ar' => 'أرباح فروق العملة', 'name_en' => 'FX Gain', 'type' => 'revenue'],
             ['code' => '7901', 'name_ar' => 'أرباح فروق العملة غير المحققة', 'name_en' => 'Unrealized FX Gain', 'type' => 'revenue'],
+            ['code' => '7920', 'name_ar' => 'إيرادات فوائد بنكية', 'name_en' => 'Bank Interest Income', 'type' => 'revenue'],
             ['code' => '7910', 'name_ar' => 'أرباح استبعاد الأصول', 'name_en' => 'Gain on Asset Disposal', 'type' => 'revenue'],
         ];
 
