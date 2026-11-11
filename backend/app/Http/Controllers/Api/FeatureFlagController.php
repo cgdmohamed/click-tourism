@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Tax\Services\TaxPolicy;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -11,12 +12,13 @@ use Illuminate\Http\JsonResponse;
  */
 class FeatureFlagController extends ApiController
 {
-    public function show(SettingService $settings): JsonResponse
+    public function show(SettingService $settings, TaxPolicy $tax): JsonResponse
     {
         $policy = strtolower((string) $settings->get('accounting', 'credit_limit_policy', 'warn'));
 
         return $this->ok([
-            'tax_enabled' => $settings->bool('tax', 'enabled', false),
+            'tax_enabled' => $tax->enabled(),
+            'tax_default_rate' => $tax->defaultRate(),
             'credit_limit_policy' => in_array($policy, ['off', 'warn', 'block'], true) ? $policy : 'warn',
             'base_currency' => $settings->baseCurrency(),
             'refund_segregation' => $settings->bool('accounting', 'refund_segregation', false),
