@@ -1099,6 +1099,13 @@ paths:
     get:
       tags: [Reports]
       summary: Trial balance export (requires reports.export; audited)
+      description: >-
+        CSV layout is stable: Code, Name (EN), Name (AR), Opening debit,
+        Opening credit, Debit, Credit, Closing debit, Closing credit, Abnormal
+        (Yes or blank), Currency. Amounts are decimal strings in the report
+        currency; the last row is the Total row with blank Code and Name (EN).
+        Note that `Abnormal` was added after the first release, so consumers
+        that read columns by position must select by header name.
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }

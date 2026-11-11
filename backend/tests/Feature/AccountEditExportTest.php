@@ -55,6 +55,22 @@ class AccountEditExportTest extends TestCase
             ->assertJsonPath('code', 'account_has_history');
     }
 
+    public function test_account_used_by_settings_cannot_be_deactivated_retyped_or_made_non_postable(): void
+    {
+        $ar = Account::query()->where('code', '1100')->firstOrFail();
+
+        $this->patchJson("/api/v1/accounts/{$ar->public_id}", ['is_active' => false])
+            ->assertStatus(422)->assertJsonPath('code', 'account_used_by_settings');
+        $this->patchJson("/api/v1/accounts/{$ar->public_id}", ['type' => 'revenue'])
+            ->assertStatus(422)->assertJsonPath('code', 'account_used_by_settings');
+        $this->patchJson("/api/v1/accounts/{$ar->public_id}", ['is_postable' => false])
+            ->assertStatus(422)->assertJsonPath('code', 'account_used_by_settings');
+
+        // Renaming is still allowed: the mapping is by code, not by name.
+        $this->patchJson("/api/v1/accounts/{$ar->public_id}", ['name_en' => 'Trade receivables'])
+            ->assertOk()->assertJsonPath('data.name_en', 'Trade receivables');
+    }
+
     public function test_overlapping_fiscal_year_is_rejected(): void
     {
         $this->postJson('/api/v1/fiscal-periods', [

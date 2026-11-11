@@ -58,8 +58,13 @@ class DashboardAndAgingTest extends TestCase
         ));
     }
 
-    private function receipt(int $amount, string $currency = 'EGP', string $fx = '1', string $status = 'posted'): Payment
-    {
+    private function receipt(
+        int $amount,
+        string $currency = 'EGP',
+        string $fx = '1',
+        string $status = 'posted',
+        ?\DateTimeInterface $paidAt = null,
+    ): Payment {
         return Payment::query()->create([
             'number' => 'RC-'.++$this->seq,
             'customer_id' => $this->customer()->id,
@@ -72,7 +77,7 @@ class DashboardAndAgingTest extends TestCase
             'fx_rate_date' => now()->toDateString(),
             'unallocated_minor' => $amount,
             'status' => $status,
-            'paid_at' => now(),
+            'paid_at' => $paidAt ?? now(),
         ]);
     }
 
@@ -164,6 +169,25 @@ class DashboardAndAgingTest extends TestCase
         $this->assertSame(70000, $data['collected_minor']);
         $this->assertSame(70000, collect($data['monthly_cash_flow'])->last()['inflow_minor']);
         $this->assertSame(70000, collect($data['monthly_cash_flow'])->last()['net_minor']);
+    }
+
+    public function test_dashboard_collected_is_scoped_to_the_selected_period(): void
+    {
+        $this->receipt(100000, paidAt: now()->startOfMonth());
+        $this->receipt(70000, paidAt: now()->subMonthNoOverflow()->startOfMonth());
+
+        $thisMonth = $this->dashboard();
+        $this->assertSame(100000, $thisMonth['collected_minor']);
+
+        $lastMonth = app(ReportService::class)->dashboard($this->branch, ['period' => 'lastMonth']);
+        $this->assertSame(70000, $lastMonth['collected_minor']);
+
+        $custom = app(ReportService::class)->dashboard($this->branch, [
+            'period' => 'customRange',
+            'from' => now()->subMonthNoOverflow()->startOfMonth()->toDateString(),
+            'to' => now()->subMonthNoOverflow()->endOfMonth()->toDateString(),
+        ]);
+        $this->assertSame(70000, $custom['collected_minor']);
     }
 
     public function test_dashboard_refunds_use_the_receipt_fx_snapshot(): void

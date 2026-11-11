@@ -60,13 +60,16 @@ class AccountingPolicySettingsTest extends TestCase
     public function test_mapping_rejects_unknown_wrong_type_inactive_and_non_postable(): void
     {
         $this->actAs('admin');
-        Account::query()->where('code', '1150')->update(['is_active' => false]);
+        Account::query()->where('code', '1154')->update(['is_active' => false]);
         Account::query()->where('code', '1160')->update(['is_postable' => false]);
 
         $this->putSettings([$this->row('accounting', 'ar_account_code', '9999')])
             ->assertStatus(422)->assertJsonValidationErrors('ar_account_code');
         $this->putSettings([$this->row('accounting', 'ar_account_code', '2100')])
             ->assertStatus(422)->assertJsonValidationErrors('ar_account_code');
+        $this->putSettings([$this->row('accounting', 'prepaid_expense_account_code', '1154')])
+            ->assertStatus(422)->assertJsonValidationErrors('prepaid_expense_account_code');
+        // 1150 is the non-postable prepayment group header since the 1150 split.
         $this->putSettings([$this->row('accounting', 'prepaid_expense_account_code', '1150')])
             ->assertStatus(422)->assertJsonValidationErrors('prepaid_expense_account_code');
         $this->putSettings([$this->row('accounting', 'input_tax_account_code', '1160')])
