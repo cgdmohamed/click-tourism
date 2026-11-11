@@ -74,6 +74,25 @@ class PaymentMethodTest extends TestCase
         $this->assertSame('bank_transfer', $payment->method);
     }
 
+    public function test_payment_method_code_is_generated_automatically_and_is_immutable(): void
+    {
+        $payload = [
+            'name_ar' => 'تحصيل نقدي',
+            'name_en' => 'Cash collection',
+            'type' => 'cash',
+        ];
+        $first = $this->postJson('/api/v1/payment-methods', $payload)->assertCreated()->json('data');
+        $second = $this->postJson('/api/v1/payment-methods', $payload)->assertCreated()->json('data');
+        $this->assertStringStartsWith('PM-', $first['code']);
+        $this->assertNotSame($first['code'], $second['code']);
+
+        $this->patchJson('/api/v1/payment-methods/'.$first['id'], [
+            'code' => 'MANUAL-CODE',
+            'name_ar' => 'نقدي',
+        ])->assertOk()->assertJsonPath('data.code', $first['code']);
+        $this->assertDatabaseMissing('payment_methods', ['code' => 'MANUAL-CODE']);
+    }
+
     public function test_inactive_method_cannot_be_used_on_receipt(): void
     {
         $method = PaymentMethod::query()->create([
