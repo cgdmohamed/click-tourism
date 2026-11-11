@@ -2,6 +2,7 @@
 
 namespace App\Modules\Core\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Setting;
 use Illuminate\Support\Facades\Cache;
 
@@ -68,6 +69,8 @@ class SettingService
             // Auto-posting (bookings, schedules, FX revaluation) remains
             // disabled until an accountant explicitly approves the policy.
             'accounting_policy_approved' => 'false',
+            'approved_by' => '',
+            'approved_at' => '',
             // Days after a recognition date that an accrual reversal is dated.
             'accrual_reversal_offset_days' => '1',
             'prepaid_expense_account_code' => '1150',
@@ -165,6 +168,84 @@ class SettingService
             'depreciation_run_prefix' => 'DEP',
         ],
     ];
+
+    /**
+     * Required account type for every default account mapping, per group.
+     * Writes through the settings API are validated against this map.
+     */
+    public const ACCOUNT_TYPES = [
+        'accounting' => [
+            'ar_account_code' => 'asset',
+            'ap_account_code' => 'liability',
+            'advance_account_code' => 'liability',
+            'supplier_advance_account_code' => 'asset',
+            'revenue_account_code' => 'revenue',
+            'cost_account_code' => 'expense',
+            'tax_payable_account_code' => 'liability',
+            'output_tax_account_code' => 'liability',
+            'input_tax_account_code' => 'asset',
+            'retained_earnings_account_code' => 'equity',
+            'fx_gain_account_code' => 'revenue',
+            'fx_loss_account_code' => 'expense',
+            'rounding_account_code' => 'expense',
+            'bank_charges_account_code' => 'expense',
+            'bank_interest_account_code' => 'revenue',
+            'employee_advance_account_code' => 'asset',
+            'employee_custody_account_code' => 'asset',
+            'prepaid_expense_account_code' => 'asset',
+            'deferred_revenue_account_code' => 'liability',
+            'accrued_liability_account_code' => 'liability',
+            'accrued_revenue_account_code' => 'asset',
+            'unearned_account_code' => 'liability',
+        ],
+        'assets' => [
+            'asset_account_code' => 'asset',
+            'accumulated_depreciation_account_code' => 'asset',
+            'depreciation_expense_account_code' => 'expense',
+            'disposal_gain_account_code' => 'revenue',
+            'disposal_loss_account_code' => 'expense',
+            'impairment_loss_account_code' => 'expense',
+            'acquisition_offset_account_code' => 'liability',
+            'disposal_proceeds_account_code' => 'asset',
+        ],
+    ];
+
+    /** Accounting-policy switches that need the accounting.approve_policy permission. */
+    public const POLICY_KEYS = ['accounting_policy_approved', 'auto_post_bookings'];
+
+    /**
+     * Returns an error message when $value is not a valid account for the
+     * mapping, or null when valid / when the key is not an account mapping.
+     */
+    public function accountMappingError(string $group, string $key, ?string $value): ?string
+    {
+        if (! str_ends_with($key, '_account_code') || ! in_array($group, ['accounting', 'assets'], true)) {
+            return null;
+        }
+
+        $expected = self::ACCOUNT_TYPES[$group][$key] ?? null;
+        if ($expected === null) {
+            return "{$group}.{$key} is not a known account mapping.";
+        }
+
+        $code = trim((string) $value);
+        $account = $code === '' ? null : Account::query()->where('code', $code)->first();
+
+        if (! $account) {
+            return "{$group}.{$key}: account '{$code}' does not exist.";
+        }
+        if (! $account->is_active) {
+            return "{$group}.{$key}: account '{$code}' is inactive.";
+        }
+        if (! $account->is_postable) {
+            return "{$group}.{$key}: account '{$code}' is not postable.";
+        }
+        if ($account->type !== $expected) {
+            return "{$group}.{$key}: account '{$code}' must be of type {$expected}, found {$account->type}.";
+        }
+
+        return null;
+    }
 
     public function get(string $group, string $key, ?string $default = null): ?string
     {

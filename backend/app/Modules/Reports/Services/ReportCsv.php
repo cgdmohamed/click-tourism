@@ -68,22 +68,34 @@ class ReportCsv
     public function trialBalance(array $report): string
     {
         $exp = $this->exponent($report['currency']);
-        $rows = [['Code', 'Name (EN)', 'Name (AR)', 'Debit', 'Credit', 'Balance', 'Currency']];
+        $rows = [[
+            'Code', 'Name (EN)', 'Name (AR)',
+            'Opening debit', 'Opening credit', 'Debit', 'Credit',
+            'Closing debit', 'Closing credit', 'Abnormal', 'Currency',
+        ]];
 
         foreach ($report['rows'] as $row) {
             $rows[] = [
                 $row->code, $row->name_en, $row->name_ar,
+                $this->amount($row->opening_debit_minor, $exp),
+                $this->amount($row->opening_credit_minor, $exp),
                 $this->amount($row->debit_minor, $exp),
                 $this->amount($row->credit_minor, $exp),
-                $this->amount($row->balance_minor, $exp),
+                $this->amount($row->closing_debit_minor, $exp),
+                $this->amount($row->closing_credit_minor, $exp),
+                ($row->abnormal ?? false) ? 'Yes' : '',
                 $report['currency'],
             ];
         }
 
         $rows[] = [
             '', 'Total', '',
+            $this->amount($report['total_opening_debit_minor'], $exp),
+            $this->amount($report['total_opening_credit_minor'], $exp),
             $this->amount($report['total_debit_minor'], $exp),
             $this->amount($report['total_credit_minor'], $exp),
+            $this->amount($report['total_closing_debit_minor'], $exp),
+            $this->amount($report['total_closing_credit_minor'], $exp),
             '',
             $report['currency'],
         ];
@@ -250,8 +262,24 @@ class ReportCsv
         }
         $rows[] = ['Total revenue', '', '', '', $this->amount($report['total_revenue_minor'], $exp), $currency];
 
-        foreach ($report['expenses'] as $line) {
-            $rows[] = ['Expense', $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
+        // Older payloads without the split fall back to a single expense list.
+        $cost = $report['cost_of_services'] ?? [];
+        $opex = $report['operating_expenses'] ?? $report['expenses'];
+
+        foreach ($cost as $line) {
+            $rows[] = ['Cost of services', $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
+        }
+        if (isset($report['total_cost_of_services_minor'])) {
+            $rows[] = ['Total cost of services', '', '', '', $this->amount($report['total_cost_of_services_minor'], $exp), $currency];
+            $rows[] = ['Gross profit', '', '', '', $this->amount($report['gross_profit_minor'], $exp), $currency];
+        }
+
+        foreach ($opex as $line) {
+            $rows[] = ['Operating expense', $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
+        }
+        if (isset($report['total_operating_expenses_minor'])) {
+            $rows[] = ['Total operating expenses', '', '', '', $this->amount($report['total_operating_expenses_minor'], $exp), $currency];
+            $rows[] = ['Operating profit', '', '', '', $this->amount($report['operating_profit_minor'], $exp), $currency];
         }
         $rows[] = ['Total expenses', '', '', '', $this->amount($report['total_expense_minor'], $exp), $currency];
         $rows[] = ['Net profit', '', '', '', $this->amount($report['net_profit_minor'], $exp), $currency];
@@ -269,10 +297,30 @@ class ReportCsv
             ['Section', 'Code', 'Name (EN)', 'Name (AR)', 'Amount', 'Currency'],
         ];
 
-        foreach (['assets' => 'Asset', 'liabilities' => 'Liability', 'equity' => 'Equity'] as $key => $label) {
+        $sections = isset($report['current_assets'])
+            ? [
+                'current_assets' => 'Current asset', 'non_current_assets' => 'Non-current asset',
+                'current_liabilities' => 'Current liability', 'non_current_liabilities' => 'Non-current liability',
+                'equity' => 'Equity',
+            ]
+            : ['assets' => 'Asset', 'liabilities' => 'Liability', 'equity' => 'Equity'];
+
+        foreach ($sections as $key => $label) {
             foreach ($report[$key] as $line) {
                 $rows[] = [$label, $line['code'], $line['name_en'], $line['name_ar'], $this->amount($line['amount_minor'], $exp), $currency];
             }
+        }
+
+        if (isset($report['current_assets_minor'])) {
+            foreach ([
+                'current_assets_minor' => 'Total current assets',
+                'non_current_assets_minor' => 'Total non-current assets',
+                'current_liabilities_minor' => 'Total current liabilities',
+                'non_current_liabilities_minor' => 'Total non-current liabilities',
+            ] as $key => $label) {
+                $rows[] = [$label, '', '', '', $this->amount($report[$key], $exp), $currency];
+            }
+            $rows[] = ['Classification', $report['classification'] ?? ''];
         }
 
         $rows[] = ['Current earnings', '', '', '', $this->amount($report['current_earnings_minor'], $exp), $currency];

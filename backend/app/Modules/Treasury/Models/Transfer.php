@@ -28,6 +28,8 @@ class Transfer extends Model
         'status',
         'journal_entry_id',
         'reversal_journal_entry_id',
+        'repaired_at',
+        'repair_journal_entry_id',
         'created_by',
     ];
 
@@ -40,6 +42,7 @@ class Transfer extends Model
             'fee_minor' => 'integer',
             'from_fx_rate' => 'decimal:10',
             'to_fx_rate' => 'decimal:10',
+            'repaired_at' => 'datetime',
         ];
     }
 
@@ -61,6 +64,12 @@ class Transfer extends Model
     public function journalEntry()
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /** Replacement entry posted by accounting:repair-foreign-transfers; supersedes journalEntry. */
+    public function repairJournalEntry()
+    {
+        return $this->belongsTo(JournalEntry::class, 'repair_journal_entry_id');
     }
 
     public function toApiArray(): array
