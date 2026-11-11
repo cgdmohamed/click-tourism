@@ -77,7 +77,7 @@ Each section states what the software does today, the exact knob behind it, and 
 ### 2.5 Refunds and cancellations (DEC-006, DEC-019)
 
 - **Today:** a refund is requested against a posted receipt (`refunds.create`) and approved separately (`refunds.approve`); `sales` holds only the first, the accountant role holds both. The approval screen accepts the refund FX rate explicitly (no silent rate 1). A refund reduces the booking allocation first and the unallocated advance second, and refuses to exceed what the receipt still holds. Invoice-settled money must be unapplied before it can be refunded; the error message says so.
-- **Gap:** approval is separated by **permission**, not by identity. `requested_by` and `approved_by` are both stored, but nothing compares them, so a user who holds both permissions (any `admin`, or the accountant role) can approve their own request. Enforcing requester ≠ approver is DEC-017 (segregation of duties).
+- **Update (work order 02):** requester ≠ approver is now enforced by DEC-017 settings — on by default for expenses, vouchers, invoices, bank reconciliations and employee advances, and configurable for refunds (`accounting.refund_segregation`, off by default per the owner's ruling; see ADR-0006). A single-person installation must disable the rules in Settings.
 - **Gap:** whether a cancelled booking keeps a cancellation fee, and how that fee is taxed and recognised, is not decided. The code can post a `cancellation_fee` entry but nothing in the UI or policy tells an operator when to use it.
 - **Needs from you:** the cancellation/refund rule and the fee treatment.
 - **Blocks:** DEC-006 acceptance; nothing in the refund mechanics.

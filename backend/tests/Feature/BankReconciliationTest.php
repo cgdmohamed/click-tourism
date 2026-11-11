@@ -1316,6 +1316,40 @@ class BankReconciliationTest extends TestCase
         $this->approve($session)->assertOk();
     }
 
+    public function test_the_preparer_cannot_approve_their_own_reconciliation_unless_segregation_is_off(): void
+    {
+        app(SettingService::class)->set('treasury', 'reconciliation_segregation', 'true');
+
+        $this->importStatement("Date,Description,Reference,Amount\n".$this->day(3).",Deposit,D-1,100.00\n")->assertCreated();
+        $this->postJournal($this->day(3), 10000, true, 'Deposit');
+        $session = $this->createSession()->assertCreated()->json('data.id');
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/auto-match")->assertOk();
+
+        $this->approve($session)->assertStatus(422);
+        $this->assertSame('open', BankReconciliation::query()->where('public_id', $session)->value('status'));
+
+        // A different approver may approve the session while the rule is on.
+        $approver = User::factory()->create();
+        $approver->branches()->attach($this->branch->id);
+        $approver->givePermissionTo(['reconciliation.view', 'reconciliation.approve']);
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($approver);
+        $this->approve($session)->assertOk()->assertJsonPath('data.status', 'approved');
+
+        // With segregation off, the preparer may approve their own session.
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($this->user);
+        app(SettingService::class)->set('treasury', 'reconciliation_segregation', 'false');
+        $own = $this->createSession([
+            'period_from' => $this->day(10),
+            'period_to' => $this->day(19),
+            'opening_bank_balance_minor' => null, // carried from the approved session
+            'closing_bank_balance_minor' => 10000,
+        ])->assertCreated()->json('data.id');
+
+        $this->approve($own)->assertOk()->assertJsonPath('data.status', 'approved');
+    }
+
     public function test_period_end_checklist_warns_about_bank_accounts_without_a_reconciliation(): void
     {
         $this->user->givePermissionTo(Permission::query()->firstOrCreate(['name' => 'periods.view', 'guard_name' => 'web']));

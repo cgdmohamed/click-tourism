@@ -903,6 +903,15 @@ class BankReconciliationService
                 return $reconciliation;
             }
 
+            // DEC-017 (work order 02): maker-checker. The person who prepared
+            // the reconciliation cannot approve it while
+            // treasury.reconciliation_segregation is on.
+            if ($this->settings->bool('treasury', 'reconciliation_segregation', true)
+                && $actorId !== null
+                && $actorId === $reconciliation->created_by) {
+                throw new DomainException('The person who prepared a bank reconciliation cannot approve it.');
+            }
+
             $detail = $this->compute($reconciliation);
             $summary = $detail['summary'];
 

@@ -169,6 +169,35 @@ class InvoiceTest extends TestCase
         $this->assertSame(15000, $this->balance('1160'));
     }
 
+    public function test_the_creator_cannot_approve_their_own_invoice_unless_segregation_is_off(): void
+    {
+        app(SettingService::class)->set('invoices', 'segregation', 'true');
+
+        $id = $this->create($this->customerInvoicePayload(['submit' => true]))->assertCreated()
+            ->assertJsonPath('data.status', 'submitted')
+            ->json('data.id');
+
+        $this->postJson("/api/v1/invoices/{$id}/approve")->assertStatus(422);
+        $this->assertSame('submitted', Invoice::query()->where('public_id', $id)->firstOrFail()->status);
+
+        // A different approver is never blocked by the maker-checker rule.
+        $approver = User::factory()->create();
+        $approver->branches()->attach($this->branch->id);
+        $approver->givePermissionTo(['invoices.view', 'invoices.approve']);
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($approver);
+        $this->withHeaders($this->headers())->postJson("/api/v1/invoices/{$id}/approve")->assertOk()
+            ->assertJsonPath('data.status', 'approved');
+
+        // With segregation off, the maker may approve their own invoice.
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($this->user);
+        app(SettingService::class)->set('invoices', 'segregation', 'false');
+        $own = $this->create($this->supplierInvoicePayload(['submit' => true]))->assertCreated()->json('data.id');
+
+        $this->postJson("/api/v1/invoices/{$own}/approve")->assertOk()->assertJsonPath('data.status', 'approved');
+    }
+
     public function test_customer_invoice_partial_settlement_posts_realized_fx_gain(): void
     {
         $customer = $this->customer();

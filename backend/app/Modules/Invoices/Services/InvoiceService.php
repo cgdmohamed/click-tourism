@@ -247,6 +247,14 @@ class InvoiceService
                 throw new DomainException('Only submitted invoices can be approved.');
             }
 
+            // DEC-017 (work order 02): maker-checker. The person who created
+            // the invoice cannot approve it while invoices.segregation is on.
+            if ($this->settings->bool('invoices', 'segregation', true)
+                && $actorId !== null
+                && $actorId === $invoice->created_by) {
+                throw new DomainException('The person who created an invoice cannot approve it.');
+            }
+
             $this->assertOpenPeriod($invoice->issue_date, $invoice->branch_id, $actorId);
 
             $invoice->update(['status' => 'approved', 'approved_by' => $actorId, 'approved_at' => now()]);
