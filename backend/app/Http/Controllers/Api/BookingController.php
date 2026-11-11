@@ -80,6 +80,37 @@ class BookingController extends ApiController
         return $this->created($booking->toApiArray(true));
     }
 
+    public function update(Request $request, Booking $booking, BookingService $bookings): JsonResponse
+    {
+        $this->authorizeBranchId($booking->branch_id);
+
+        $data = $request->validate([
+            'customer_id' => ['sometimes', 'string'],
+            'start_date' => ['sometimes', 'date'],
+            'end_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:start_date'],
+            'pax_adults' => ['sometimes', 'integer', 'min:1'],
+            'pax_children' => ['sometimes', 'integer', 'min:0'],
+            'pax_infants' => ['sometimes', 'integer', 'min:0'],
+            'currency' => ['sometimes', 'string', 'size:3'],
+            'fx_rate' => ['sometimes', 'nullable', 'string'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'items' => ['sometimes', 'array', 'min:1'],
+            'items.*.service_type' => ['required_with:items', 'in:flight,hotel,transport,visa,program,other'],
+            'items.*.description' => ['required_with:items', 'string', 'max:255'],
+            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
+            'items.*.unit_cost_minor' => ['required_with:items', 'integer', 'min:0'],
+            'items.*.unit_sell_minor' => ['required_with:items', 'integer', 'min:0'],
+            'items.*.cost_currency' => ['nullable', 'string', 'size:3'],
+            'items.*.sell_currency' => ['nullable', 'string', 'size:3'],
+            'items.*.supplier_id' => ['nullable', 'string'],
+            'items.*.tax_profile_id' => ['nullable', 'regex:/^[0-9A-Za-z]+$/'],
+        ]);
+
+        $booking = $bookings->update($booking, $data, $this->actorId());
+
+        return $this->ok($booking->toApiArray(true));
+    }
+
     public function transition(Request $request, Booking $booking, BookingService $bookings): JsonResponse
     {
         $data = $request->validate([
