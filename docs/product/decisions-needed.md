@@ -1,6 +1,8 @@
 # Decisions Needed — Tourism ERP
 
-Status: **OPEN** unless marked. Every decision here blocks or constrains implementation. `ACC` = **HUMAN/ACCOUNTANT APPROVAL REQUIRED**; `HUM` = product owner / human approval required; `ARC` = architect.
+Status: **CLOSED on 2026-11-11** by the project owner, adopting the Odoo/Zoho reference behaviour — see `decisions-closed-2026-11-11.md` for the ruling on each decision. The table below keeps the original options for the record.
+
+Original status: **OPEN** unless marked. Every decision here blocks or constrains implementation. `ACC` = **HUMAN/ACCOUNTANT APPROVAL REQUIRED**; `HUM` = product owner / human approval required; `ARC` = architect.
 
 No decision may be silently assumed in code. When implementation starts, unresolved decisions must be represented by an explicit setting or a guarded default documented in the ADR.
 

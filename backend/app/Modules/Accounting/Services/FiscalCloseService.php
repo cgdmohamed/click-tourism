@@ -31,10 +31,11 @@ class FiscalCloseService
         private readonly SettingService $settings,
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
+        private readonly RevaluationService $revaluation,
     ) {}
 
     /**
-     * @return array{year: array<string, mixed>, can_close: bool, checks: array<int, array<string, mixed>>}
+     * @return array{year: array<string, mixed>, can_close: bool, checks: array<int, array<string, mixed>>, warnings: array<int, array<string, mixed>>}
      */
     public function checks(FiscalYear $year): array
     {
@@ -79,7 +80,12 @@ class FiscalCloseService
 
         $yearEndMessage = $yearEndPeriod === null
             ? "No fiscal period covers {$end}; create and open the final period so the closing entries can post."
-            : "The period covering {$end} is {$yearEndPeriod->status}; reopen it before closing the year so the closing entries can post.";
+            : "The period covering {$end} is {$yearEndPeriod->status}; it must be open before closing the year so the closing entries can post.";
+
+        // Reference behaviour (Odoo, Zoho): the close does not stop for the
+        // currency revaluation, but the user is told that revaluing first is the
+        // only order that works, because a posting after the close is refused.
+        [$revaluationPassed, $revaluationMessage] = $this->revaluationCheck($end);
 
         $checks = [
             $this->check('year_open', ! $year->isClosed(), $year->isClosed() ? 'The fiscal year is already closed.' : null),
@@ -90,7 +96,7 @@ class FiscalCloseService
             $this->check('last_period_postable', $lastPeriod !== null && $lastPeriod->status !== 'closed', 'The final period is closed; reopen it before closing the year so the closing entries can post.'),
             $this->check(
                 'year_end_period',
-                ! $hasProfitAndLoss || ($yearEndPeriod !== null && $yearEndPeriod->status !== 'closed'),
+                ! $hasProfitAndLoss || ($yearEndPeriod !== null && $yearEndPeriod->status === 'open'),
                 $hasProfitAndLoss ? $yearEndMessage : null,
             ),
         ];
@@ -99,7 +105,32 @@ class FiscalCloseService
             'year' => $this->present($year),
             'can_close' => collect($checks)->every(fn ($check) => $check['passed']),
             'checks' => $checks,
+            'warnings' => $revaluationPassed ? [] : [['code' => 'fx_revaluation', 'message' => $revaluationMessage]],
         ];
+    }
+
+    /**
+     * @return array{0: bool, 1: ?string}
+     */
+    private function revaluationCheck(string $end): array
+    {
+        if (! $this->revaluation->enabled()) {
+            return [true, null];
+        }
+
+        foreach (Branch::query()->where('is_active', true)->get() as $branch) {
+            try {
+                $rows = $this->revaluation->preview($end, $branch);
+            } catch (DomainException $exception) {
+                return [false, "Foreign-currency balances cannot be revalued for {$branch->code}: ".$exception->getMessage()];
+            }
+
+            if ($rows !== []) {
+                return [false, "Foreign-currency balances of branch {$branch->code} are not revalued at {$end}; run accounting:revalue for the final period before closing the year (a posting after the close is refused)."];
+            }
+        }
+
+        return [true, null];
     }
 
     public function close(FiscalYear $year, ?int $actorId): FiscalYear

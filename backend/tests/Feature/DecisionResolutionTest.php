@@ -73,14 +73,14 @@ class DecisionResolutionTest extends TestCase
         $this->assertNull($all['DEC-002']['resolution']);
     }
 
-    public function test_rejected_and_deferred_responses_stay_in_the_unresolved_list(): void
+    public function test_rejected_and_deferred_responses_are_recorded_with_the_decision(): void
     {
         $this->as('accountant');
 
         $this->postJson('/api/v1/decisions/DEC-002/resolve', ['status' => 'deferred', 'note' => 'Next quarter'])->assertOk();
         $this->postJson('/api/v1/decisions/DEC-003/resolve', ['status' => 'rejected', 'note' => 'Needs rework'])->assertOk();
 
-        $list = collect($this->getJson('/api/v1/decisions')->json('data'))->keyBy('id');
+        $list = collect($this->getJson('/api/v1/decisions?all=1')->json('data'))->keyBy('id');
         $this->assertSame('deferred', $list['DEC-002']['resolution']['status']);
         $this->assertSame('rejected', $list['DEC-003']['resolution']['status']);
     }

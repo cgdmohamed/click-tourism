@@ -5,7 +5,13 @@ namespace App\Modules\Core\Services;
 use App\Modules\Core\Models\Setting;
 
 /**
- * Registry of product/accounting decisions that are not yet approved.
+ * Registry of product/accounting decisions.
+ *
+ * 2026-11-11: the project owner closed every open decision by adopting the
+ * behaviour of the reference systems (Odoo, Zoho Books); the chosen rule for
+ * each decision is in docs/product/decisions-closed-2026-11-11.md. The
+ * entries stay in the registry as an audit trail; `unresolved()` is empty
+ * unless a new decision is added.
  *
  * This file must be kept in sync with docs/product/decisions-needed.md.
  * Each entry mirrors one row of that document: the id, the type, a short
@@ -26,7 +32,7 @@ class DecisionRegistry
             'title_en' => 'Revenue recognition point for bookings',
             'title_ar' => 'نقطة الاعتراف بالإيراد للحجوزات',
             'blocks' => 'FIN-009, BOOK, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-002',
@@ -34,7 +40,7 @@ class DecisionRegistry
             'title_en' => 'Supplier cost recognition',
             'title_ar' => 'الاعتراف بتكلفة المورد',
             'blocks' => 'FIN-009, PAY, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-003',
@@ -42,7 +48,7 @@ class DecisionRegistry
             'title_en' => 'Commission accounting treatment',
             'title_ar' => 'معالجة العمولات محاسبيًا',
             'blocks' => 'COMM, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-004',
@@ -50,7 +56,7 @@ class DecisionRegistry
             'title_en' => 'Commission accrual trigger',
             'title_ar' => 'مُحفّز استحقاق العمولة',
             'blocks' => 'COMM',
-            'status' => 'pending_accountant_approval',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-005',
@@ -58,7 +64,7 @@ class DecisionRegistry
             'title_en' => 'Customer advances',
             'title_ar' => 'دفعات العملاء المقدمة',
             'blocks' => 'PAY, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-006',
@@ -66,7 +72,7 @@ class DecisionRegistry
             'title_en' => 'Cancellation fee treatment',
             'title_ar' => 'معالجة رسوم الإلغاء',
             'blocks' => 'BOOK, PAY, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-007',
@@ -74,7 +80,7 @@ class DecisionRegistry
             'title_en' => 'FX policy',
             'title_ar' => 'سياسة العملات الأجنبية',
             'blocks' => 'FIN, PAY, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-008',
@@ -82,7 +88,7 @@ class DecisionRegistry
             'title_en' => 'Period-end FX revaluation of open AR/AP',
             'title_ar' => 'إعادة تقييم العملات آخر الفترة',
             'blocks' => 'FIN-010, RPT',
-            'status' => 'pending_accountant_approval',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-009',
@@ -90,7 +96,7 @@ class DecisionRegistry
             'title_en' => 'Tax point and inclusive/exclusive defaults',
             'title_ar' => 'نقطة الضريبة والاحتساب الشامل',
             'blocks' => 'TAX, BOOK, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-010',
@@ -98,7 +104,7 @@ class DecisionRegistry
             'title_en' => 'Rounding and residual account',
             'title_ar' => 'التقريب والحساب المتبقي',
             'blocks' => 'FIN, PAY, TAX',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-011',
@@ -106,7 +112,7 @@ class DecisionRegistry
             'title_en' => 'Opening balances method and cutover date',
             'title_ar' => 'طريقة الأرصدة الافتتاحية وتاريخ التحويل',
             'blocks' => 'FIN-005, DATA',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-012',
@@ -114,7 +120,7 @@ class DecisionRegistry
             'title_en' => 'Fiscal year start and closing procedure',
             'title_ar' => 'بداية السنة المالية وإجراء الإقفال',
             'blocks' => 'FIN-002, FIN-010',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-013',
@@ -122,7 +128,7 @@ class DecisionRegistry
             'title_en' => 'Commission rule precedence',
             'title_ar' => 'أولوية قواعد العمولة',
             'blocks' => 'COMM',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-014',
@@ -130,7 +136,7 @@ class DecisionRegistry
             'title_en' => 'Branch accounting model',
             'title_ar' => 'نموذج محاسبة الفروع',
             'blocks' => 'FIN, RPT, AUTH',
-            'status' => 'pending_accountant_approval',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-015',
@@ -154,7 +160,7 @@ class DecisionRegistry
             'title_en' => 'Approval thresholds and segregation of duties',
             'title_ar' => 'حدود الموافقة وفصل المهام',
             'blocks' => 'FIN, PAY, COMM, AUTH',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-018',
@@ -170,7 +176,7 @@ class DecisionRegistry
             'title_en' => 'Deletion / amendment policy',
             'title_ar' => 'سياسة الحذف والتعديل',
             'blocks' => 'ALL',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-020',
@@ -186,7 +192,7 @@ class DecisionRegistry
             'title_en' => 'Tax on commissions / withholding',
             'title_ar' => 'الضريبة على العمولات والاستقطاع',
             'blocks' => 'COMM, TAX',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-022',
@@ -202,7 +208,7 @@ class DecisionRegistry
             'title_en' => 'Payment methods and cash reconciliation',
             'title_ar' => 'طرق الدفع ومطابقة النقدية',
             'blocks' => 'PAY',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-024',
@@ -210,7 +216,7 @@ class DecisionRegistry
             'title_en' => 'Data retention and PII',
             'title_ar' => 'الاحتفاظ بالبيانات وخصوصية البيانات',
             'blocks' => 'CORE-006, CRM, INT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-025',
@@ -218,7 +224,7 @@ class DecisionRegistry
             'title_en' => 'Negative-margin and zero-value bookings',
             'title_ar' => 'الحجوزات بالسالب أو بدون قيمة',
             'blocks' => 'BOOK, COMM',
-            'status' => 'pending_accountant_approval',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-026',
@@ -226,7 +232,7 @@ class DecisionRegistry
             'title_en' => 'Notification channels',
             'title_ar' => 'قنوات الإشعارات',
             'blocks' => 'CORE, CRM',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-027',
@@ -234,7 +240,7 @@ class DecisionRegistry
             'title_en' => 'Idempotency scope',
             'title_ar' => 'نطاق منع التكرار',
             'blocks' => 'ALL',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-028',
@@ -242,7 +248,7 @@ class DecisionRegistry
             'title_en' => 'Booking invoice document',
             'title_ar' => 'مستند فاتورة الحجز',
             'blocks' => 'BOOK, RPT, TAX',
-            'status' => 'pending_accountant_approval',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-029',
@@ -258,7 +264,7 @@ class DecisionRegistry
             'title_en' => 'Reference data seeding',
             'title_ar' => 'تهيئة البيانات المرجعية',
             'blocks' => 'FOUNDATION',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-031',
@@ -266,7 +272,7 @@ class DecisionRegistry
             'title_en' => 'Cash and transfer policy',
             'title_ar' => 'سياسة النقدية والتحويلات',
             'blocks' => 'TE-018, PAY, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-032',
@@ -274,7 +280,7 @@ class DecisionRegistry
             'title_en' => 'Expense approval and input tax',
             'title_ar' => 'اعتماد المصروفات وضريبة المدخلات',
             'blocks' => 'TE-019, TAX, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-033',
@@ -282,7 +288,7 @@ class DecisionRegistry
             'title_en' => 'Opening balances cutover',
             'title_ar' => 'ترحيل الأرصدة الافتتاحية',
             'blocks' => 'TE-017, DATA',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-034',
@@ -290,7 +296,7 @@ class DecisionRegistry
             'title_en' => 'Year-end close and reopening',
             'title_ar' => 'إقفال نهاية السنة وإعادة الفتح',
             'blocks' => 'TE-021, FIN, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-035',
@@ -298,7 +304,7 @@ class DecisionRegistry
             'title_en' => 'Employee advances & custody control accounts',
             'title_ar' => 'حسابات الضبط للسلف والعهدة للموظفين',
             'blocks' => 'TE-021, PARTIES, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-036',
@@ -306,7 +312,7 @@ class DecisionRegistry
             'title_en' => 'Voucher tax treatment and correction policy',
             'title_ar' => 'معالجة الضريبة والتصحيح في السندات',
             'blocks' => 'TE-022, TAX, FIN',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-037',
@@ -314,7 +320,7 @@ class DecisionRegistry
             'title_en' => 'Bank reconciliation matching and interest account',
             'title_ar' => 'مطابقة البنك وحساب الفوائد',
             'blocks' => 'TE-023, RPT, FIN',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-038',
@@ -322,7 +328,7 @@ class DecisionRegistry
             'title_en' => 'Accrual, prepayment and deferred revenue recognition policy',
             'title_ar' => 'سياسة الاعتراف بالمستحقات والمصروفات المدفوعة مقدماً والإيرادات المؤجلة',
             'blocks' => 'TE-024, FIN, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-039',
@@ -330,7 +336,7 @@ class DecisionRegistry
             'title_en' => 'Fixed-asset depreciation and disposal policy',
             'title_ar' => 'سياسة إهلاك واستبعاد الأصول الثابتة',
             'blocks' => 'TE-025, FIN, RPT',
-            'status' => 'open',
+            'status' => 'decided',
         ],
         [
             'id' => 'DEC-040',

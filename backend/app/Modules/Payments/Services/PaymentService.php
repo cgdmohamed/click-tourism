@@ -445,6 +445,14 @@ class PaymentService
                 throw new DomainException('Only requested refunds can be approved.');
             }
 
+            // Optional approval rule (off by default, as in Odoo and Zoho): when
+            // enabled, the person who requested a refund cannot approve it.
+            if ($this->settings->bool('accounting', 'refund_segregation', false)
+                && $refund->requested_by !== null
+                && (int) $refund->requested_by === $actorId) {
+                throw new DomainException('Segregation of duties: the person who requested a refund cannot approve it.');
+            }
+
             $actor = User::query()->findOrFail($actorId);
             $this->branchScope->assertBranch($actor, Branch::query()->findOrFail($refund->branch_id));
 
