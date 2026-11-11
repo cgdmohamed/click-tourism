@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\FiscalPeriod;
+use App\Modules\Accounting\Models\FiscalYear;
 use App\Modules\Accounting\Models\FxRevaluationRun;
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Accounting\Services\FiscalCloseService;
 use App\Modules\Accounting\Services\PeriodEndChecklistService;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
@@ -159,6 +161,26 @@ class FxRevaluationTest extends TestCase
         $this->assertSame(1040000, $this->baseBalance($cash));
         $this->assertSame(100000, $this->baseBalance($this->account('6901')));
         $this->assertSame(-40000, $this->baseBalance($this->account('7901')));
+    }
+
+    public function test_the_year_end_check_warns_about_unrevalued_balances_without_blocking(): void
+    {
+        $this->usdReceivable();
+        $this->rate('52', '2026-03-31');
+        $year = FiscalYear::query()->findOrFail($this->period->fiscal_year_id);
+        $close = app(FiscalCloseService::class);
+
+        $before = $close->checks($year);
+        $this->assertSame('fx_revaluation', $before['warnings'][0]['code']);
+        $this->assertNotContains('fx_revaluation', collect($before['checks'])->pluck('code')->all(), 'revaluation is a warning, never a blocking check');
+
+        $this->service()->revalue($this->period, $this->branch, $this->user->id);
+        $year->refresh();
+        $yearEnd = $year->ends_on->toDateString();
+        $this->rate('52', $yearEnd);
+
+        $after = $close->checks($year);
+        $this->assertSame([], $after['warnings'], 'revalued balances raise no warning');
     }
 
     public function test_receivable_loss_when_the_closing_rate_falls(): void

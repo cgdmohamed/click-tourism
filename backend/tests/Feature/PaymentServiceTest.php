@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Core\Models\User;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Services\PaymentService;
@@ -126,6 +128,32 @@ class PaymentServiceTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, Payment::query()->count());
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment')->count());
+    }
+
+    public function test_refund_segregation_is_optional_and_blocks_self_approval_when_enabled(): void
+    {
+        $booking = $this->confirmedBooking();
+        $payment = $this->record(['booking_id' => $booking->public_id, 'amount_minor' => 100000]);
+        $service = app(PaymentService::class);
+
+        // Off by default (reference systems do not force it): the requester may approve.
+        $first = $service->requestRefund(['payment_id' => $payment->public_id, 'amount_minor' => 10000, 'reason' => 'a'], $this->user->id);
+        $this->assertSame('approved', $service->approveRefund($first, $this->user->id)->status);
+
+        app(SettingService::class)->set('accounting', 'refund_segregation', 'true');
+        $second = $service->requestRefund(['payment_id' => $payment->public_id, 'amount_minor' => 10000, 'reason' => 'b'], $this->user->id);
+
+        try {
+            $service->approveRefund($second, $this->user->id);
+            $this->fail('The requester approved their own refund.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('Segregation of duties', $exception->getMessage());
+        }
+
+        $other = User::factory()->create();
+        $other->branches()->attach($this->branch->id);
+        $other->givePermissionTo(['accounts.post', 'journal.reverse']);
+        $this->assertSame('approved', $service->approveRefund($second, $other->id)->status);
     }
 
     public function test_it_requests_and_approves_a_refund_against_the_payment(): void

@@ -54,7 +54,7 @@ class SettingService
             // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
             'bank_charges_account_code' => '6500',
             // PENDING ACCOUNTANT APPROVAL (DEC-037): interest earned credited on reconciliation.
-            'bank_interest_account_code' => '4100',
+            'bank_interest_account_code' => '7920',
             'input_tax_account_code' => '1160',
             // PENDING ACCOUNTANT APPROVAL: output tax collected on customer sales.
             'output_tax_account_code' => '2200',
@@ -81,6 +81,8 @@ class SettingService
             'accrued_revenue_account_code' => '1100',
             // PENDING ACCOUNTANT APPROVAL (DEC-004): infrastructure only;
             // no commission journal is posted while auto-post remains false.
+            // Optional, like Odoo/Zoho approval rules: when 'true' the requester of a refund cannot approve it.
+            'refund_segregation' => 'false',
             'commission_trigger' => 'fully_collected',
             'commission_auto_post' => 'false',
             // PENDING ACCOUNTANT APPROVAL (DEC-008): revaluation posting is

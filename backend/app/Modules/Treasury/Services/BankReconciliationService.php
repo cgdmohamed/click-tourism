@@ -556,7 +556,7 @@ class BankReconciliationService
             $cashAccount = $reconciliation->cashAccount;
             $bankAccount = $cashAccount->account->public_id;
             $charges = (string) ($data['charges_account_code'] ?? $this->settings->get('accounting', 'bank_charges_account_code', '6500'));
-            $interest = (string) ($data['interest_account_code'] ?? $this->settings->get('accounting', 'bank_interest_account_code', '4100'));
+            $interest = (string) ($data['interest_account_code'] ?? $this->settings->get('accounting', 'bank_interest_account_code', '7920'));
 
             $lines = [];
             foreach ($items as $item) {

@@ -1,5 +1,6 @@
 # Accountant sign-off packet — 2026-11-11
 
+- **Update 2026-11-11:** the decisions in §2 were closed by the project owner, who adopted the reference behaviour of Odoo and Zoho Books for each of them (`decisions-closed-2026-11-11.md`). This sheet now records the chosen rule and the go-live operations; the signature table in §5 remains for a client accountant's validation of a specific installation.
 - **Purpose:** one page the accountant can read and sign before the first real posting run, listing every accounting choice the software currently makes on their behalf, the exact setting or command behind it, and what stays blocked until they decide.
 - **Scope:** the hardening work of 2026-11-10/11 plus the decisions that were already open in `docs/product/decisions-needed.md`.
 - **Companion documents:** `docs/audits/accounting-review-2026-11-10.md` (findings), `docs/audits/year-end-close-review-2026-11-11.md` (close/reopen), `docs/product/decisions-needed.md` (full register), `docs/architecture/migration-order.md` (upgrade order).

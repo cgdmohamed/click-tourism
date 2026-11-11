@@ -319,6 +319,28 @@ class FiscalCloseTest extends TestCase
         $this->assertSame(-600000, $this->balance('3100'));
     }
 
+    public function test_a_soft_closed_year_end_period_blocks_the_close_until_it_is_open(): void
+    {
+        $this->profitYear();
+        FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)
+            ->whereDate('starts_on', '<=', "{$this->year}-12-31")
+            ->whereDate('ends_on', '>=', "{$this->year}-12-31")
+            ->update(['status' => 'soft_closed']);
+
+        $report = $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-checks")->assertOk();
+        $this->assertFalse(collect($report->json('data.checks'))->firstWhere('code', 'year_end_period')['passed']);
+        $this->assertStringContainsString('must be open', collect($report->json('data.checks'))->firstWhere('code', 'year_end_period')['message']);
+    }
+
+    public function test_unrevalued_foreign_balances_only_warn_and_never_block_the_close(): void
+    {
+        $this->profitYear();
+        $report = $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-checks")->assertOk();
+
+        $this->assertSame([], $report->json('data.warnings'));
+        $this->assertTrue($report->json('data.can_close'));
+    }
+
     public function test_a_year_without_activity_still_closes_without_a_period_covering_the_year_end(): void
     {
         FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)

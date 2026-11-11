@@ -69,9 +69,10 @@ class DecisionRegistryTest extends TestCase
         foreach (['DEC-015', 'DEC-016', 'DEC-018', 'DEC-020', 'DEC-022', 'DEC-029', 'DEC-040'] as $id) {
             $this->assertSame('decided', $byId[$id]['status']);
         }
-        foreach (['DEC-004', 'DEC-008', 'DEC-014', 'DEC-025', 'DEC-028'] as $id) {
-            $this->assertSame('pending_accountant_approval', $byId[$id]['status']);
+        // 2026-11-11: the owner closed the register by adopting the Odoo/Zoho reference behaviour.
+        foreach ($byId as $id => $decision) {
+            $this->assertSame('decided', $decision['status'], "{$id} must be closed");
         }
-        $this->assertCount(count($registry->all()) - 7, $registry->unresolved());
+        $this->assertSame([], $registry->unresolved());
     }
 }

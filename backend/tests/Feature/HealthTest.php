@@ -64,8 +64,8 @@ class HealthTest extends TestCase
 
         $decisions = $response->json('data.unresolved_decisions');
 
-        $this->assertNotEmpty($decisions);
-        $this->assertContains('DEC-001', array_column($decisions, 'id'));
+        // The register was closed on 2026-11-11 (docs/product/decisions-closed-2026-11-11.md).
+        $this->assertSame([], $decisions);
     }
 
     public function test_the_version_comes_from_configuration(): void
@@ -168,10 +168,12 @@ class HealthTest extends TestCase
     {
         Sanctum::actingAs($this->admin());
 
-        $this->getJson('/api/v1/decisions')
+        $this->getJson('/api/v1/decisions')->assertOk()->assertJsonPath('data', []);
+
+        $this->getJson('/api/v1/decisions?all=1')
             ->assertOk()
             ->assertJsonPath('data.0.id', 'DEC-001')
-            ->assertJsonPath('data.0.status', 'open')
+            ->assertJsonPath('data.0.status', 'decided')
             ->assertJsonStructure([
                 'data' => [
                     '*' => ['id', 'type', 'title_en', 'title_ar', 'blocks', 'status'],
