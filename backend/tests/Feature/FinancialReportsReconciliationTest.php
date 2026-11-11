@@ -298,7 +298,7 @@ class FinancialReportsReconciliationTest extends TestCase
         $this->issueCustomerInvoice($customer, 100000);
 
         // A receipt applied to the control account but not to the invoice itself.
-        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->id]);
+        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->public_id]);
 
         $response = $this->withHeaders($this->headers())
             ->getJson('/api/v1/reports/party-statement?'.http_build_query([
@@ -339,7 +339,7 @@ class FinancialReportsReconciliationTest extends TestCase
 
         $this->entry(
             $this->currentDate, '1150', '1110', 50000,
-            debitParty: ['employee', $employee->id],
+            debitParty: ['employee', $employee->public_id],
         );
 
         $this->withHeaders($this->headers())
@@ -363,7 +363,7 @@ class FinancialReportsReconciliationTest extends TestCase
         $this->issueCustomerInvoice($customer, 100000);
 
         // A receipt applied to AR in the ledger but not reflected on the invoice.
-        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->id]);
+        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->public_id]);
 
         $response = $this->withHeaders($this->headers())
             ->getJson('/api/v1/reports/aging-reconciliation?'.http_build_query([
@@ -454,7 +454,7 @@ class FinancialReportsReconciliationTest extends TestCase
 
         $customer = $this->customer();
         $this->issueCustomerInvoice($customer, 100000);
-        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->id]);
+        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->public_id]);
 
         $range = [
             'from' => now()->startOfMonth()->toDateString(),

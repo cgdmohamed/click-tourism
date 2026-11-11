@@ -8,8 +8,12 @@ use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Money\Services\FxService;
+use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Models\Employee;
+use App\Modules\Parties\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class JournalEntryController extends ApiController
 {
@@ -23,6 +27,15 @@ class JournalEntryController extends ApiController
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('entry_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('entry_date', '<=', $to))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            ->when(is_string($request->query('search')) && trim($request->query('search')) !== '', function ($query) use ($request) {
+                $needle = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], trim($request->query('search')));
+                $query->where(function ($query) use ($needle) {
+                    $query->where('number', 'like', "%{$needle}%")
+                        ->orWhere('memo', 'like', "%{$needle}%");
+                });
+            })
+            ->when($request->has('include_reversals') && ! $request->boolean('include_reversals'),
+                fn ($query) => $query->whereNull('reversal_of_id'))
             ->orderByDesc('entry_date')
             ->orderByDesc('id')
             ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
@@ -61,8 +74,8 @@ class JournalEntryController extends ApiController
             'lines.*.debit_minor' => ['nullable', 'integer', 'min:0'],
             'lines.*.credit_minor' => ['nullable', 'integer', 'min:0'],
             'lines.*.description' => ['nullable', 'string', 'max:255'],
-            'lines.*.party_type' => ['nullable', 'string', 'max:20'],
-            'lines.*.party_id' => ['nullable', 'integer'],
+            'lines.*.party_type' => ['nullable', 'required_with:lines.*.party_id', Rule::in(['customer', 'supplier', 'employee'])],
+            'lines.*.party_id' => ['nullable', 'required_with:lines.*.party_type', 'string', 'max:64'],
         ]);
 
         $branch = $this->branchOrFail();
@@ -91,12 +104,32 @@ class JournalEntryController extends ApiController
                 ], 422);
             }
 
+            $partyType = $line['party_type'] ?? null;
+            $partyId = null;
+
+            if ($partyType !== null) {
+                $party = match ($partyType) {
+                    'customer' => Customer::query()->where('public_id', (string) $line['party_id'])->first(),
+                    'supplier' => Supplier::query()->where('public_id', (string) $line['party_id'])->first(),
+                    default => Employee::query()->where('public_id', (string) $line['party_id'])->first(),
+                };
+
+                if (! $party || ($party->branch_id !== null && (int) $party->branch_id !== (int) $branch->id)) {
+                    return response()->json([
+                        'message' => "The selected {$partyType} does not exist.",
+                        'code' => 'party_not_found',
+                    ], 422);
+                }
+
+                $partyId = (int) $party->id;
+            }
+
             $lines[] = new PostingLine(
                 account: $account,
                 debitMinor: $debit,
                 creditMinor: $credit,
-                partyType: $line['party_type'] ?? null,
-                partyId: $line['party_id'] ?? null,
+                partyType: $partyType,
+                partyId: $partyId,
                 description: $line['description'] ?? null,
             );
         }

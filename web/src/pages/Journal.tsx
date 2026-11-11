@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Account, JournalEntry, Paginated } from '../lib/types'
+import { formatDate, isValidAmount, parseAmount, toDecimal, todayISO } from '../lib/format'
+import type { Account, Customer, JournalEntry, Paginated, Supplier } from '../lib/types'
 import {
   Badge,
   Button,
@@ -26,13 +26,37 @@ import {
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
 
-type DraftLine = { account_id: string; debit: string; credit: string; description: string }
+type PartyType = '' | 'customer' | 'supplier'
 
-const emptyLine = (): DraftLine => ({ account_id: '', debit: '', credit: '', description: '' })
+type DraftLine = {
+  account_id: string
+  debit: string
+  credit: string
+  description: string
+  party_type: PartyType
+  party_id: string
+  cost_center_id: string
+}
+
+type CostCenterOption = { id: string; code: string; name_ar: string; name_en: string }
+
+const emptyLine = (): DraftLine => ({
+  account_id: '',
+  debit: '',
+  credit: '',
+  description: '',
+  party_type: '',
+  party_id: '',
+  cost_center_id: '',
+})
+
+type Filters = { from: string; to: string; status: '' | 'draft' | 'posted'; search: string; includeReversals: boolean }
+
+const defaultFilters: Filters = { from: '', to: '', status: '', search: '', includeReversals: true }
 
 export default function Journal() {
   const { t, locale } = useI18n()
-  const { activeBranch } = useAuth()
+  const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -43,6 +67,31 @@ export default function Journal() {
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()])
   const [page, setPage] = useState(1)
   const [detail, setDetail] = useState<JournalEntry | null>(null)
+  const [filters, setFilters] = useState<Filters>(defaultFilters)
+  const [searchInput, setSearchInput] = useState('')
+
+  const ar = locale === 'ar'
+  const canPickCostCenter = can('cost_centers.view') && can('cost_centers.manage')
+  const canPickCustomer = can('customers.view')
+  const canPickSupplier = can('suppliers.view')
+  const canPickParty = canPickCustomer || canPickSupplier
+
+  // Debounce the free-text search so each keystroke does not hit the API.
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setFilters((current) => (current.search === searchInput.trim() ? current : { ...current, search: searchInput.trim() }))
+      setPage(1)
+    }, 300)
+    return () => window.clearTimeout(handle)
+  }, [searchInput])
+
+  const updateFilters = (patch: Partial<Filters>) => {
+    setFilters((current) => ({ ...current, ...patch }))
+    setPage(1)
+  }
+
+  const filtersActive =
+    filters.from !== '' || filters.to !== '' || filters.status !== '' || filters.search !== '' || !filters.includeReversals
 
   const accountsQuery = useQuery({
     queryKey: ['accounts'],
@@ -53,12 +102,47 @@ export default function Journal() {
   })
 
   const entriesQuery = useQuery({
-    queryKey: ['journal', page, activeBranch?.id],
+    queryKey: ['journal', page, activeBranch?.id, filters],
     queryFn: async () => {
       const { data } = await api.get<Paginated<JournalEntry>>('/journal-entries', {
-        params: { page, per_page: 20 },
+        params: {
+          page,
+          per_page: 20,
+          ...(filters.from ? { from: filters.from } : {}),
+          ...(filters.to ? { to: filters.to } : {}),
+          ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.search ? { search: filters.search } : {}),
+          ...(filters.includeReversals ? {} : { include_reversals: 0 }),
+        },
       })
       return data
+    },
+  })
+
+  const customersQuery = useQuery({
+    queryKey: ['journal-customers', activeBranch?.id],
+    enabled: open && canPickCustomer,
+    queryFn: async () => {
+      const { data } = await api.get<Paginated<Customer>>('/customers', { params: { per_page: 100 } })
+      return data.data
+    },
+  })
+
+  const suppliersQuery = useQuery({
+    queryKey: ['journal-suppliers', activeBranch?.id],
+    enabled: open && canPickSupplier,
+    queryFn: async () => {
+      const { data } = await api.get<Paginated<Supplier>>('/suppliers', { params: { per_page: 100 } })
+      return data.data
+    },
+  })
+
+  const costCentersQuery = useQuery({
+    queryKey: ['journal-cost-centers'],
+    enabled: open && canPickCostCenter,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: CostCenterOption[] }>('/cost-centers')
+      return data.data
     },
   })
 
@@ -69,11 +153,59 @@ export default function Journal() {
     [accountsQuery.data],
   )
 
+  const accountById = useMemo(() => new Map((accountsQuery.data ?? []).map((account) => [account.id, account])), [accountsQuery.data])
+
+  const partyOptions = useMemo(
+    () => ({
+      customer: (customersQuery.data ?? []).map((customer) => ({
+        value: customer.id,
+        label: ar ? customer.name_ar : customer.name_en,
+        hint: customer.phone,
+      })),
+      supplier: (suppliersQuery.data ?? []).map((supplier) => ({
+        value: supplier.id,
+        label: ar ? supplier.name_ar : supplier.name_en,
+        hint: supplier.phone,
+      })),
+    }),
+    [customersQuery.data, suppliersQuery.data, ar],
+  )
+
+  const costCenterOptions = useMemo(
+    () => (costCentersQuery.data ?? []).map((center) => ({ value: center.id, label: `${center.code} — ${ar ? center.name_ar : center.name_en}` })),
+    [costCentersQuery.data, ar],
+  )
+
+  // Per-line inline validation: strict amounts and the mandatory party on control accounts.
+  const lineErrors = useMemo(
+    () =>
+      lines.map((line) => {
+        const errors: { debit?: string; credit?: string; party?: string } = {}
+        const invalid = ar ? 'مبلغ غير صالح' : 'Invalid amount'
+        if (line.debit.trim() && !isValidAmount(line.debit, currency)) errors.debit = invalid
+        if (line.credit.trim() && !isValidAmount(line.credit, currency)) errors.credit = invalid
+        const expected = accountById.get(line.account_id)?.control_party_type
+        if (expected && (line.party_type !== expected || !line.party_id)) {
+          errors.party =
+            expected === 'customer'
+              ? ar ? 'حساب العملاء يتطلب اختيار العميل' : 'The receivable account requires a customer'
+              : ar ? 'حساب الموردين يتطلب اختيار المورد' : 'The payable account requires a supplier'
+        }
+        return errors
+      }),
+    [lines, currency, accountById, ar],
+  )
+
+  const hasLineErrors = lineErrors.some((errors) => errors.debit || errors.credit || errors.party)
+  const hasCostCenter = lines.some((line) => line.cost_center_id)
+
   const totals = useMemo(() => {
-    const debit = lines.reduce((sum, line) => sum + toMinor(line.debit || '0', currency), 0)
-    const credit = lines.reduce((sum, line) => sum + toMinor(line.credit || '0', currency), 0)
+    const debit = lines.reduce((sum, line) => sum + (parseAmount(line.debit, currency) ?? 0), 0)
+    const credit = lines.reduce((sum, line) => sum + (parseAmount(line.credit, currency) ?? 0), 0)
     return { debit, credit, balanced: debit === credit && debit > 0 }
   }, [lines, currency])
+
+  const canSubmit = totals.balanced && !hasLineErrors
 
   const create = useMutation({
     mutationFn: async (post: boolean) => {
@@ -87,19 +219,41 @@ export default function Journal() {
         post,
         lines: lines.map((line) => ({
           account_id: line.account_id,
-          debit_minor: toMinor(line.debit || '0', currency),
-          credit_minor: toMinor(line.credit || '0', currency),
+          debit_minor: parseAmount(line.debit, currency) ?? 0,
+          credit_minor: parseAmount(line.credit, currency) ?? 0,
           description: line.description,
+          ...(line.party_type && line.party_id ? { party_type: line.party_type, party_id: line.party_id } : {}),
         })),
       }
       const { data } = await api.post<{ data: JournalEntry }>('/journal-entries', payload)
-      return data.data
+      const entry = data.data
+
+      // Cost centers are allocated per posted journal line once the entry exists.
+      const failures: string[] = []
+      const createdLines = [...(entry.lines ?? [])].sort((a, b) => Number(a.id) - Number(b.id))
+      for (const [index, line] of lines.entries()) {
+        if (!line.cost_center_id) continue
+        const created = createdLines[index]
+        if (!created) continue
+        try {
+          await api.post(`/journal-lines/${created.id}/cost-allocations`, {
+            allocations: [{ cost_center_id: line.cost_center_id, allocation_type: 'percent', percent: 100 }],
+          })
+        } catch (cause) {
+          failures.push(`${index + 1}: ${errorMessage(cause)}`)
+        }
+      }
+      return { entry, failures }
     },
-    onSuccess: async () => {
+    onSuccess: async ({ entry, failures }) => {
       setOpen(false)
-      setError('')
       setMemo('')
       setLines([emptyLine(), emptyLine()])
+      setError(
+        failures.length
+          ? `${ar ? `تم إنشاء القيد ${entry.number} لكن تعذّر تحميل مراكز التكلفة على البنود` : `Entry ${entry.number} was created but cost centers could not be allocated on lines`} — ${failures.join(' | ')}`
+          : '',
+      )
       await queryClient.invalidateQueries({ queryKey: ['journal'] })
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -144,6 +298,58 @@ export default function Journal() {
       />
 
       {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+
+      <Card className="mb-4">
+        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
+          <div className="lg:col-span-2">
+            <Field label={ar ? 'بحث (الرقم أو البيان)' : 'Search (number or memo)'}>
+              <Input
+                icon="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder={ar ? 'رقم القيد أو البيان' : 'Entry number or memo'}
+              />
+            </Field>
+          </div>
+          <Field label={ar ? 'من تاريخ' : 'From'}>
+            <Input type="date" value={filters.from} max={filters.to || undefined} onChange={(event) => updateFilters({ from: event.target.value })} dir="ltr" />
+          </Field>
+          <Field label={ar ? 'إلى تاريخ' : 'To'}>
+            <Input type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => updateFilters({ to: event.target.value })} dir="ltr" />
+          </Field>
+          <Field label={t('status')}>
+            <Select value={filters.status} onChange={(event) => updateFilters({ status: event.target.value as Filters['status'] })}>
+              <option value="">{ar ? 'الكل' : 'All'}</option>
+              <option value="draft">{statusLabel('draft', locale)}</option>
+              <option value="posted">{statusLabel('posted', locale)}</option>
+            </Select>
+          </Field>
+          <div className="flex flex-col justify-end gap-2">
+            <label className="flex h-9 items-center gap-2 text-medium text-text-default">
+              <input
+                type="checkbox"
+                checked={filters.includeReversals}
+                onChange={(event) => updateFilters({ includeReversals: event.target.checked })}
+              />
+              {ar ? 'إظهار القيود العكسية' : 'Include reversals'}
+            </label>
+          </div>
+        </div>
+        {filtersActive ? (
+          <div className="flex justify-end px-4 pb-4">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setFilters(defaultFilters)
+                setSearchInput('')
+                setPage(1)
+              }}
+            >
+              {ar ? 'مسح التصفية' : 'Clear filters'}
+            </Button>
+          </div>
+        ) : null}
+      </Card>
 
       <Card>
         {entriesQuery.isLoading ? <Loading /> : null}
@@ -225,12 +431,13 @@ export default function Journal() {
             </Button>
             <Button
               variant="secondary"
-              disabled={create.isPending || !totals.balanced}
+              disabled={create.isPending || !canSubmit || hasCostCenter}
+              title={hasCostCenter ? (ar ? 'مراكز التكلفة تُوزَّع على القيود المرحّلة فقط' : 'Cost centers can only be allocated on posted entries') : undefined}
               onClick={() => create.mutate(false)}
             >
               {t('saveDraft')}
             </Button>
-            <Button disabled={create.isPending || !totals.balanced} onClick={() => create.mutate(true)}>
+            <Button disabled={create.isPending || !canSubmit} onClick={() => create.mutate(true)}>
               {create.isPending ? t('saving') : t('post')}
             </Button>
           </>
@@ -259,56 +466,130 @@ export default function Journal() {
         </div>
 
         <div className="mt-5 flex flex-col gap-3">
-          {lines.map((line, index) => (
-            <div key={index} className="grid gap-2 rounded-12 border border-border-default p-3 sm:grid-cols-12">
-              <div className="sm:col-span-5">
-                <SearchableSelect
-                  value={line.account_id}
-                  onChange={(account_id) => updateLine(index, { account_id })}
-                  placeholder={t('selectAccount')}
-                  options={postableAccounts.map((account) => ({
-                    value: account.id,
-                    label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
-                  }))}
-                />
+          {lines.map((line, index) => {
+            const errors = lineErrors[index] ?? {}
+            const expectedParty = accountById.get(line.account_id)?.control_party_type ?? null
+            const typeChoices: Array<'customer' | 'supplier'> = expectedParty
+              ? [expectedParty]
+              : ([canPickCustomer ? 'customer' : null, canPickSupplier ? 'supplier' : null].filter(Boolean) as Array<'customer' | 'supplier'>)
+            const showParty = canPickParty || expectedParty !== null
+            const showCostCenter = canPickCostCenter
+            return (
+              <div key={index} className="rounded-12 border border-border-default p-3">
+                <div className="grid gap-2 sm:grid-cols-12">
+                  <div className="sm:col-span-5">
+                    <SearchableSelect
+                      value={line.account_id}
+                      onChange={(account_id) => {
+                        const control = accountById.get(account_id)?.control_party_type ?? null
+                        // A control account fixes the party type; switch it (and drop a mismatched party).
+                        updateLine(
+                          index,
+                          control && line.party_type !== control
+                            ? { account_id, party_type: control, party_id: '' }
+                            : { account_id },
+                        )
+                      }}
+                      placeholder={t('selectAccount')}
+                      options={postableAccounts.map((account) => ({
+                        value: account.id,
+                        label: `${account.code} — ${ar ? account.name_ar : account.name_en}`,
+                      }))}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Input
+                      placeholder={t('debit')}
+                      value={line.debit}
+                      onChange={(event) => updateLine(index, { debit: event.target.value, credit: '' })}
+                      inputMode="decimal"
+                      dir="ltr"
+                      aria-invalid={errors.debit ? true : undefined}
+                    />
+                    {errors.debit ? <span className="text-small mt-1 block text-danger-text">{errors.debit}</span> : null}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Input
+                      placeholder={t('credit')}
+                      value={line.credit}
+                      onChange={(event) => updateLine(index, { credit: event.target.value, debit: '' })}
+                      inputMode="decimal"
+                      dir="ltr"
+                      aria-invalid={errors.credit ? true : undefined}
+                    />
+                    {errors.credit ? <span className="text-small mt-1 block text-danger-text">{errors.credit}</span> : null}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Input
+                      placeholder={t('description')}
+                      value={line.description}
+                      onChange={(event) => updateLine(index, { description: event.target.value })}
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <Button
+                      variant="ghost"
+                      className="w-full"
+                      icon="x"
+                      onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
+                      disabled={lines.length <= 2}
+                      aria-label={t('removeLine')}
+                    />
+                  </div>
+                </div>
+                {showParty || showCostCenter ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-12">
+                    {showParty ? (
+                      <>
+                        <div className="sm:col-span-3">
+                          <Select
+                            value={line.party_type}
+                            disabled={expectedParty !== null}
+                            aria-label={ar ? 'نوع الطرف' : 'Party type'}
+                            onChange={(event) => updateLine(index, { party_type: event.target.value as PartyType, party_id: '' })}
+                          >
+                            {expectedParty ? null : <option value="">{ar ? 'بدون طرف' : 'No party'}</option>}
+                            {typeChoices.map((type) => (
+                              <option key={type} value={type}>
+                                {type === 'customer' ? (ar ? 'عميل' : 'Customer') : ar ? 'مورد' : 'Supplier'}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="sm:col-span-4">
+                          <SearchableSelect
+                            value={line.party_id}
+                            disabled={!line.party_type}
+                            onChange={(party_id) => updateLine(index, { party_id })}
+                            placeholder={
+                              line.party_type === 'supplier'
+                                ? ar ? 'اختر المورد' : 'Select supplier'
+                                : line.party_type === 'customer'
+                                  ? ar ? 'اختر العميل' : 'Select customer'
+                                  : ar ? 'اختر نوع الطرف أولاً' : 'Choose a party type first'
+                            }
+                            options={line.party_type ? partyOptions[line.party_type] : []}
+                          />
+                        </div>
+                      </>
+                    ) : null}
+                    {showCostCenter ? (
+                      <div className={showParty ? 'sm:col-span-5' : 'sm:col-span-12'}>
+                        <SearchableSelect
+                          value={line.cost_center_id}
+                          onChange={(cost_center_id) => updateLine(index, { cost_center_id })}
+                          placeholder={ar ? 'مركز التكلفة (اختياري)' : 'Cost center (optional)'}
+                          clearLabel={ar ? 'بدون مركز تكلفة' : 'No cost center'}
+                          options={costCenterOptions}
+                        />
+                      </div>
+                    ) : null}
+                    {errors.party ? <p className="text-small text-danger-text sm:col-span-12">{errors.party}</p> : null}
+                  </div>
+                ) : null}
               </div>
-              <div className="sm:col-span-2">
-                <Input
-                  placeholder={t('debit')}
-                  value={line.debit}
-                  onChange={(event) => updateLine(index, { debit: event.target.value, credit: '' })}
-                  inputMode="decimal"
-                  dir="ltr"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Input
-                  placeholder={t('credit')}
-                  value={line.credit}
-                  onChange={(event) => updateLine(index, { credit: event.target.value, debit: '' })}
-                  inputMode="decimal"
-                  dir="ltr"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Input
-                  placeholder={t('description')}
-                  value={line.description}
-                  onChange={(event) => updateLine(index, { description: event.target.value })}
-                />
-              </div>
-              <div className="sm:col-span-1">
-                <Button
-                  variant="ghost"
-                  className="w-full"
-                  icon="x"
-                  onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
-                  disabled={lines.length <= 2}
-                  aria-label={t('removeLine')}
-                />
-              </div>
-            </div>
-          ))}
+            )
+          })}
           <Button variant="secondary" onClick={() => setLines((current) => [...current, emptyLine()])}>
             + {t('addLine')}
           </Button>
