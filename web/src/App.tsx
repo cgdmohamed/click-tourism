@@ -16,6 +16,7 @@ import SupplierProfile from './pages/SupplierProfile'
 import Employees from './pages/Employees'
 import EmployeeProfile from './pages/EmployeeProfile'
 import Bookings from './pages/Bookings'
+import TourPackages from './pages/TourPackages'
 import Payments from './pages/Payments'
 import PaymentMethods from './pages/PaymentMethods'
 import SupplierSettlements from './pages/SupplierSettlements'
@@ -80,6 +81,7 @@ export default function App() {
                   <Route path="employees" element={<Employees />} />
                   <Route path="employees/:id" element={<EmployeeProfile />} />
                   <Route path="bookings" element={<Bookings />} />
+                  <Route path="tour-packages" element={<TourPackages />} />
                   <Route path="payments" element={<Payments />} />
                   <Route path="payment-methods" element={<PaymentMethods />} />
                   <Route path="supplier-settlements" element={<SupplierSettlements />} />
