@@ -366,6 +366,12 @@ class BookingService
             return;
         }
 
+        // Same policy as the revenue guard: skip silently when an issued
+        // supplier invoice linked to this booking already recognized the cost.
+        if ($this->costAlreadyRecognizedBySupplierInvoice($booking)) {
+            return;
+        }
+
         $cost = $this->posting->account((string) $this->settings->get('accounting', 'cost_account_code', '5100'));
         // Credit each supplier's own payable subaccount; items without a
         // supplier stay on the payables control account.
@@ -399,6 +405,31 @@ class BookingService
             fxRateSource: $booking->fx_rate_source,
             actorId: $actorId,
         ));
+    }
+
+    /**
+     * True when an issued, un-reversed supplier invoice linked to this booking
+     * already posted the supplier cost (Dr expense / Cr payable).
+     */
+    private function costAlreadyRecognizedBySupplierInvoice(Booking $booking): bool
+    {
+        return JournalEntry::query()
+            ->where('source_type', 'invoice')
+            ->where('event', 'issued')
+            ->whereNull('reversal_of_id')
+            ->whereNotExists(function ($query) {
+                $query->select('id')
+                    ->from('journal_entries as reversals')
+                    ->whereColumn('reversals.reversal_of_id', 'journal_entries.id');
+            })
+            ->whereExists(function ($query) use ($booking) {
+                $query->select('id')
+                    ->from('invoices')
+                    ->whereColumn('invoices.id', 'journal_entries.source_id')
+                    ->where('invoices.booking_id', $booking->id)
+                    ->where('invoices.type', 'supplier_invoice');
+            })
+            ->exists();
     }
 
     private function postCancellationFee(Booking $booking, ?int $actorId): void
