@@ -126,7 +126,7 @@ class AgingReconciliationService
     {
         $code = $type === 'ar'
             ? (string) $this->settings->get('accounting', 'advance_account_code', '2300')
-            : (string) $this->settings->get('accounting', 'supplier_advance_account_code', '1150');
+            : (string) $this->settings->get('accounting', 'supplier_advance_account_code', '1153');
 
         return Account::query()->where('code', $code)->first();
     }

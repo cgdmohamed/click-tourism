@@ -756,7 +756,7 @@ class AccountingScheduleService
     private function defaultSourceCode(string $kind): string
     {
         return match ($kind) {
-            AccountingSchedule::KIND_PREPAID_EXPENSE => (string) $this->settings->get('accounting', 'prepaid_expense_account_code', '1150'),
+            AccountingSchedule::KIND_PREPAID_EXPENSE => (string) $this->settings->get('accounting', 'prepaid_expense_account_code', '1154'),
             AccountingSchedule::KIND_DEFERRED_REVENUE => (string) $this->settings->get('accounting', 'deferred_revenue_account_code', '2400'),
             AccountingSchedule::KIND_ACCRUED_EXPENSE => (string) $this->settings->get('accounting', 'accrued_liability_account_code', '2100'),
             AccountingSchedule::KIND_ACCRUED_REVENUE => (string) $this->settings->get('accounting', 'accrued_revenue_account_code', '1100'),

@@ -100,7 +100,8 @@ class EmployeeFinanceTest extends TestCase
         $this->disburseAdvance($emp['id'], $advance['id'])->assertOk()->assertJsonPath('data.status', 'disbursed');
 
         // GL: employee advance debited 100,000, cash credited 100,000.
-        $advanceAccount = (string) app(SettingService::class)->get('accounting', 'employee_advance_account_code', '1150');
+        $advanceAccount = (string) app(SettingService::class)->get('accounting', 'employee_advance_account_code', '1151');
+        $this->assertSame('1151', $advanceAccount);
         $this->assertSame(100000, $this->balance($advanceAccount));
         $this->assertSame(-100000, $this->balance('1110')); // cash on hand
 
@@ -184,7 +185,8 @@ class EmployeeFinanceTest extends TestCase
             'item_description' => 'Petty cash float',
         ])->assertCreated()->assertJsonPath('data.status', 'issued')->json('data');
 
-        $custodyAccount = (string) app(SettingService::class)->get('accounting', 'employee_custody_account_code', '1150');
+        $custodyAccount = (string) app(SettingService::class)->get('accounting', 'employee_custody_account_code', '1152');
+        $this->assertSame('1152', $custodyAccount);
         $this->assertSame(50000, $this->balance($custodyAccount));
         $this->assertSame(-50000, $this->balance('1110'));
 
@@ -223,7 +225,7 @@ class EmployeeFinanceTest extends TestCase
         $this->approveAdvance($e2['id'], $a2['id'])->assertOk();
         $this->disburseAdvance($e2['id'], $a2['id'])->assertOk();
 
-        $advanceAccount = (string) app(SettingService::class)->get('accounting', 'employee_advance_account_code', '1150');
+        $advanceAccount = (string) app(SettingService::class)->get('accounting', 'employee_advance_account_code', '1151');
         $this->assertSame(140000, $this->balance($advanceAccount));
 
         $s1 = $this->withHeaders($this->headers())->getJson(

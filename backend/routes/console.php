@@ -28,6 +28,17 @@ Schedule::command('schedules:post-due')
     ->dailyAt('00:15')
     ->withoutOverlapping();
 
+// Unrealized FX revaluation (DEC-008). Both are no-ops unless
+// accounting.fx_revaluation_enabled is on and the accounting policy is approved.
+Schedule::command('accounting:revalue --apply')
+    ->name('fx-revaluation-month-end')
+    ->lastDayOfMonth('23:30')
+    ->withoutOverlapping();
+Schedule::command('accounting:revalue --apply --reversals-only')
+    ->name('fx-revaluation-reversals')
+    ->dailyAt('00:30')
+    ->withoutOverlapping();
+
 /**
  * Only the dedicated disposable demo container publishes a reset window.
  * Production must never call the destructive demo reset script.
