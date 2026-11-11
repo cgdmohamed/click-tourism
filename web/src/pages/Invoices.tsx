@@ -240,6 +240,7 @@ export default function Invoices() {
           debit_minor: toMinor(line.debit || '0', form.currency),
           credit_minor: toMinor(line.credit || '0', form.currency),
           tax_minor: lineTax(line),
+          tax_applied: taxEnabled && line.tax_applied,
           tax_account_id: line.tax_account_id || undefined,
         }
       })
