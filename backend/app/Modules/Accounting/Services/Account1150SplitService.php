@@ -9,6 +9,7 @@ use App\Modules\Accounting\Models\OpeningBalanceLine;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\Setting;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SettingService;
 use App\Support\Money;
 use DomainException;
@@ -38,11 +39,12 @@ class Account1150SplitService
         private readonly PostingService $posting,
         private readonly SettingService $settings,
         private readonly AuditService $audit,
+        private readonly RoundingPolicy $rounding,
     ) {}
 
     /**
      * @return array{
-     *   moves: array<int, array<string, mixed>>, warnings: string[], entries: string[],
+     *   moves: array<int, array<string, mixed>>, warnings: string[], fallbacks: array<int, array<string, mixed>>, entries: string[],
      *   created_accounts: string[], missing_accounts: string[], settings: array<string, string>,
      *   made_non_postable: bool, non_postable_blockers: string[], applied: bool
      * }
@@ -59,12 +61,12 @@ class Account1150SplitService
         }
 
         $result = [
-            'moves' => [], 'warnings' => [], 'entries' => [], 'created_accounts' => [],
+            'moves' => [], 'warnings' => [], 'fallbacks' => [], 'entries' => [], 'created_accounts' => [],
             'missing_accounts' => [], 'settings' => [], 'made_non_postable' => false,
             'non_postable_blockers' => [], 'applied' => $apply,
         ];
 
-        $moves = $this->plan($parent, $result['warnings']);
+        $moves = $this->plan($parent, $result['warnings'], $result['fallbacks']);
         $result['moves'] = $moves;
 
         foreach (self::CHILDREN as $code => $meta) {
@@ -108,7 +110,8 @@ class Account1150SplitService
             }
 
             $unused = [];
-            $remaining = $this->plan($parent, $unused);
+            $unusedFallbacks = [];
+            $remaining = $this->plan($parent, $unused, $unusedFallbacks);
             $result['non_postable_blockers'] = $this->blockers($parent, $remaining, true);
             if ($result['non_postable_blockers'] === [] && $parent->is_postable) {
                 $parent->update(['is_postable' => false]);
@@ -132,17 +135,19 @@ class Account1150SplitService
      * party and destination account.
      *
      * @param  array<string, string>  $warnings
+     * @param  array<int, array<string, mixed>>  $fallbacks  employee lines with no linked employee transaction
      * @return array<int, array{branch_id: int, currency: string, party_type: ?string, party_id: ?int, target: string, net_minor: int, base_net_minor: int}>
      */
-    private function plan(Account $parent, ?array &$warnings): array
+    private function plan(Account $parent, ?array &$warnings, ?array &$fallbacks = null): array
     {
         $warnings = [];
+        $fallbacks = [];
         $rows = JournalLine::query()
             ->join('journal_entries as je', 'je.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_lines.account_id', $parent->id)
             ->where('je.status', 'posted')
-            ->groupBy('journal_lines.branch_id', 'journal_lines.currency_code', 'journal_lines.party_type', 'journal_lines.party_id', 'je.source_type', 'journal_lines.description')
-            ->selectRaw('journal_lines.branch_id, journal_lines.currency_code, journal_lines.party_type, journal_lines.party_id, je.source_type as src, journal_lines.description as descr,
+            ->groupBy('journal_lines.branch_id', 'journal_lines.currency_code', 'journal_lines.party_type', 'journal_lines.party_id', 'je.source_type', 'journal_lines.description', 'je.id', 'je.number', 'je.reversal_of_id')
+            ->selectRaw('journal_lines.branch_id, journal_lines.currency_code, journal_lines.party_type, journal_lines.party_id, je.source_type as src, journal_lines.description as descr, je.id as entry_id, je.number as entry_number, je.reversal_of_id as reversal_of,
                 SUM(journal_lines.debit_minor - journal_lines.credit_minor) as net,
                 SUM(journal_lines.base_debit_minor - journal_lines.base_credit_minor) as base_net')
             ->get();
@@ -153,7 +158,7 @@ class Account1150SplitService
             // destination is recorded in the line description we wrote.
             $target = $row->src === self::SOURCE_TYPE && str_starts_with((string) $row->descr, 'Reclassify to ')
                 ? substr((string) $row->descr, strlen('Reclassify to '))
-                : $this->target($row->party_type, $row->src, $warnings);
+                : $this->target($row, $warnings, $fallbacks);
             $key = implode('|', [$row->branch_id, $row->currency_code, $row->party_type ?? '', $row->party_id ?? '', $target]);
             $groups[$key] ??= [
                 'branch_id' => (int) $row->branch_id, 'currency' => (string) $row->currency_code,
@@ -170,9 +175,15 @@ class Account1150SplitService
         ));
     }
 
-    /** @param array<string, string> $warnings */
-    private function target(?string $partyType, ?string $sourceType, array &$warnings): string
+    /**
+     * @param  array<string, string>  $warnings
+     * @param  array<int, array<string, mixed>>  $fallbacks
+     */
+    private function target(object $row, array &$warnings, array &$fallbacks): string
     {
+        $partyType = $row->party_type;
+        $sourceType = $row->src;
+
         if ($partyType === 'supplier') {
             return '1153';
         }
@@ -181,10 +192,34 @@ class Account1150SplitService
             if ($sourceType === 'employee_custody') {
                 return '1152';
             }
-            if ($sourceType !== 'employee_advance') {
-                $label = $sourceType ?? 'none';
-                $warnings["employee:{$label}"] = "Employee lines from source type '{$label}' were classified as employee advances (1151); review them.";
+            if ($sourceType === 'employee_advance') {
+                return '1151';
             }
+
+            // Any other source: ask the employee subledger what the entry was.
+            $types = DB::table('employee_transactions')
+                ->where('journal_entry_id', $row->reversal_of ?? $row->entry_id)
+                ->pluck('type')->all();
+            $advance = collect($types)->contains(fn ($t) => str_starts_with((string) $t, 'advance_'));
+            $custody = collect($types)->contains(fn ($t) => str_starts_with((string) $t, 'custody_'));
+            if ($custody && ! $advance) {
+                return '1152';
+            }
+            if ($advance && ! $custody) {
+                return '1151';
+            }
+
+            $label = $sourceType ?? 'none';
+            $warnings["employee:{$label}"] = "Employee lines from source type '{$label}' without a clear advance/custody link were classified as employee advances (1151); review them.";
+            $fallbacks[] = [
+                'entry' => (string) $row->entry_number,
+                'branch_id' => (int) $row->branch_id,
+                'currency' => (string) $row->currency_code,
+                'party_id' => $row->party_id !== null ? (int) $row->party_id : null,
+                'source_type' => $label,
+                'net_minor' => (int) $row->net,
+                'target' => '1151',
+            ];
 
             return '1151';
         }
@@ -255,19 +290,32 @@ class Account1150SplitService
     }
 
     /**
-     * Effective rate that reproduces the original base carrying value.
+     * Effective rate that reproduces the original base carrying value exactly.
+     * Computed at a precision far beyond the stored FX rate (the line rate is
+     * only used for conversion) and verified, so no rounding residue is posted.
      *
      * @param  array<string, mixed>  $move
      */
     private function rate(array $move, string $currency, string $base): string
     {
+        $net = abs((int) $move['net_minor']);
+        $target = abs((int) $move['base_net_minor']);
         $shift = Money::exponent($base) - Money::exponent($currency);
-        $ratio = bcdiv((string) abs($move['base_net_minor']), (string) abs($move['net_minor']), 12);
+        $ratio = bcdiv((string) $target, (string) $net, 30);
         $rate = $shift >= 0
-            ? bcdiv($ratio, (string) (10 ** $shift), 10)
-            : bcmul($ratio, (string) (10 ** -$shift), 10);
+            ? bcdiv($ratio, (string) (10 ** $shift), 30)
+            : bcmul($ratio, (string) (10 ** -$shift), 30);
 
-        return bccomp($rate, '0', 10) === 0 ? '1' : $rate;
+        if (bccomp($rate, '0', 30) === 0) {
+            return '1';
+        }
+
+        $converted = (new Money($net, $currency))->convertTo($base, $rate, $this->rounding->mode())->amountMinor;
+        if ($converted !== $target) {
+            throw new DomainException("Cannot reproduce the base amount {$target} for {$currency} balance {$net}; review the 1150 lines manually.");
+        }
+
+        return $rate;
     }
 
     /**

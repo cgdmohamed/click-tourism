@@ -11,8 +11,10 @@ use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Parties\Models\Employee;
 use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -229,6 +231,113 @@ class Split1150Test extends TestCase
 
         $this->assertSame(0, $this->balance('1150'));
         $this->assertTrue($this->account('1150')->is_postable);
+    }
+
+    private function linkEmployeeTransaction(int $employeeId, JournalEntry $entry, string $type): void
+    {
+        DB::table('employee_transactions')->insert([
+            'public_id' => (string) \Illuminate\Support\Str::ulid(),
+            'employee_id' => $employeeId, 'branch_id' => $this->branch->id, 'type' => $type,
+            'journal_entry_id' => $entry->id, 'transaction_date' => now()->toDateString(),
+            'currency_code' => 'EGP', 'fx_rate' => 1, 'fx_rate_date' => now()->toDateString(),
+            'amount_minor' => 1000, 'balance_minor' => 1000, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function legacyEntry(string $sourceType, int $sourceId, int $amount, int $employeeId): JournalEntry
+    {
+        return app(PostingService::class)->post(PostingRequest::make(
+            now(), $this->branch, 'EGP',
+            [
+                PostingLine::debit($this->account('1150'), $amount, 'employee', $employeeId),
+                PostingLine::credit($this->account('1110'), $amount, 'employee', $employeeId),
+            ],
+            'legacy', sourceType: $sourceType, sourceId: $sourceId, event: 'legacy:'.$sourceType.$sourceId,
+        ));
+    }
+
+    public function test_employee_lines_from_other_sources_follow_their_linked_transactions(): void
+    {
+        $this->legacyChart();
+        $employee = Employee::query()->create([
+            'internal_code' => 'EMP-S1', 'name_ar' => 'موظف', 'name_en' => 'Employee',
+            'category' => 'staff', 'branch_id' => $this->branch->id, 'is_active' => true,
+        ]);
+        $custodyEntry = $this->legacyEntry('manual', 1, 70000, $employee->id);
+        $this->linkEmployeeTransaction($employee->id, $custodyEntry, 'custody_issued');
+        $advanceEntry = $this->legacyEntry('manual', 2, 30000, $employee->id);
+        $this->linkEmployeeTransaction($employee->id, $advanceEntry, 'advance_disbursed');
+        $this->legacyEntry('manual', 3, 5000, $employee->id); // no link
+
+        $this->artisan('accounting:split-1150', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame(70000, $this->balance('1152'), 'custody-linked entry goes to 1152');
+        $this->assertSame(35000, $this->balance('1151'), 'advance-linked entry and the unlinked fallback go to 1151');
+        $this->assertSame(0, $this->balance('1150'));
+    }
+
+    public function test_dry_run_lists_the_fallback_lines(): void
+    {
+        $this->legacyChart();
+        $entry = $this->legacyEntry('manual', 9, 5000, 41);
+
+        $result = app(\App\Modules\Accounting\Services\Account1150SplitService::class)->run(false);
+
+        $this->assertCount(1, $result['fallbacks']);
+        $this->assertSame($entry->number, $result['fallbacks'][0]['entry']);
+        $this->assertSame('1151', $result['fallbacks'][0]['target']);
+        $this->assertSame('manual', $result['fallbacks'][0]['source_type']);
+    }
+
+    public function test_foreign_balance_moves_without_rounding_residue(): void
+    {
+        $this->legacyChart();
+        // 33.33 USD at 49.9973 = 1666.4... EGP: the base amount is not a clean multiple of the rate.
+        $amount = 3333;
+        $rate = '49.9973';
+        $base = (int) round($amount * 49.9973);
+        app(PostingService::class)->post(PostingRequest::make(
+            now(), $this->branch, 'EGP',
+            [
+                PostingLine::debit($this->account('1150'), $amount, 'supplier', 7)->in('USD', $rate),
+                PostingLine::credit($this->account('1110'), $base),
+            ],
+            'legacy', sourceType: 'supplier_payment', sourceId: 77, event: 'legacy:77',
+        ));
+        $baseBefore = $this->baseBalance('1150');
+        $this->assertSame($base, $baseBefore);
+
+        $this->artisan('accounting:split-1150', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame($baseBefore, $this->baseBalance('1153'));
+        $this->assertSame($amount, $this->balance('1153', null, 'USD'));
+        $this->assertSame(0, $this->baseBalance('1150'));
+        $this->assertSame(0, JournalLine::query()->where('account_id', $this->account('6999')->id)->count(), 'nothing posts to the rounding account');
+    }
+
+    public function test_awkward_foreign_ratios_still_reproduce_the_base_exactly(): void
+    {
+        $this->legacyChart();
+        foreach ([[1, 'SAR', '13.3333333333', 17], [777, 'USD', '48.1234567891', 31], [789322879303, 'USD', '38.3667', 5], [386970086883, 'USD', '35.2091', 6]] as [$amount, $currency, $rate, $id]) {
+            $base = (new \App\Support\Money($amount, $currency))->convertTo('EGP', $rate)->amountMinor;
+            if ($base === 0) {
+                continue;
+            }
+            app(PostingService::class)->post(PostingRequest::make(
+                now(), $this->branch, 'EGP',
+                [
+                    PostingLine::debit($this->account('1150'), $amount, 'supplier', $id)->in($currency, $rate),
+                    PostingLine::credit($this->account('1110'), $base),
+                ],
+                'legacy', sourceType: 'supplier_payment', sourceId: $id, event: 'legacy:'.$id,
+            ));
+        }
+        $baseBefore = $this->baseBalance('1150');
+
+        $this->artisan('accounting:split-1150', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame($baseBefore, $this->baseBalance('1153'));
+        $this->assertSame(0, JournalLine::query()->where('account_id', $this->account('6999')->id)->count());
     }
 
     public function test_new_install_flows_use_the_new_accounts(): void

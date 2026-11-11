@@ -60,6 +60,17 @@ class Split1150Account extends Command
             ['Blockers for non-postable', implode('; ', $result['non_postable_blockers']) ?: '-'],
         ]);
 
+        if ($result['fallbacks'] !== []) {
+            $this->warn('Employee lines with no linked advance/custody transaction (classified as advances, 1151):');
+            $this->table(
+                ['Entry', 'Branch', 'Currency', 'Employee', 'Source', 'Net (minor)', 'To'],
+                array_map(fn ($f) => [
+                    $f['entry'], $f['branch_id'], $f['currency'], $f['party_id'] ?? '-',
+                    $f['source_type'], $f['net_minor'], $f['target'],
+                ], $result['fallbacks']),
+            );
+        }
+
         foreach ($result['warnings'] as $warning) {
             $this->warn($warning);
         }
