@@ -6,6 +6,7 @@ type Setting = { group: string; key: string; value: string | null; is_secret: bo
 
 export type FeatureFlags = {
   tax_enabled: boolean
+  tax_default_rate: string
   credit_limit_policy: 'off' | 'warn' | 'block'
   base_currency: string
   refund_segregation: boolean
@@ -79,4 +80,11 @@ export function useBaseCurrency(): string {
   const { flags } = useFeatureFlags()
   const legacy = useSetting('general', 'base_currency', 'EGP')
   return resolveBaseCurrency(flags, legacy.value)
+}
+
+/** Configured VAT percentage, never typed manually on invoice lines. */
+export function useDefaultTaxRate(): { rate: string; loaded: boolean } {
+  const { flags, loaded } = useFeatureFlags()
+  const legacy = useSetting('tax', 'default_rate', '0')
+  return { rate: flags?.tax_default_rate ?? (legacy.loaded ? legacy.value : '0'), loaded: loaded || legacy.loaded }
 }
