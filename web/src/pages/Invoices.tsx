@@ -236,7 +236,7 @@ export default function Invoices() {
           tax_account_id: line.tax_account_id || undefined,
         }
       })
-      await api.post(
+      const { data } = await api.post<{ data: { id: string } }>(
         '/invoices',
         {
           type: form.type,
@@ -251,9 +251,11 @@ export default function Invoices() {
         },
         { headers: { 'Idempotency-Key': idempotencyKey() } },
       )
+      return data.data.id
     },
-    onSuccess: async () => {
+    onSuccess: async (newInvoiceId) => {
       setOpen(false)
+      setDetailId(newInvoiceId)
       setForm(emptyForm)
       setError('')
       await refresh()
