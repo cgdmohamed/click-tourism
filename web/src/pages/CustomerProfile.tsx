@@ -111,6 +111,12 @@ export default function CustomerProfile() {
         badge={<Badge tone={party.is_active ? 'positive' : 'neutral'}>{party.is_active ? t('active') : t('inactive')}</Badge>}
         actions={
           <>
+            {can('bookings.create') ? (
+              <Link to={`/bookings?customer_id=${party.id}&create=1`}
+                className="inline-flex items-center rounded-8 bg-brand-1 px-3 py-2 text-small font-semibold text-white">
+                {locale === 'ar' ? 'حجز جديد لهذا العميل' : 'New booking for this customer'}
+              </Link>
+            ) : null}
             {can('customers.update') ? <Button variant="secondary" icon="edit" onClick={openEditor}>{t('edit')}</Button> : null}
             <Button variant="secondary" icon="printer" onClick={() => window.print()}>{t('print')}</Button>
           </>
@@ -216,7 +222,7 @@ export default function CustomerProfile() {
                   <tbody>
                     {profile.bookings.map((booking) => (
                       <tr key={booking.id}>
-                        <Td className="font-medium">{booking.number}</Td>
+                        <Td className="font-medium"><Link to={`/bookings?booking_id=${booking.id}`} className="text-brand-1-accent hover:underline">{booking.number}</Link></Td>
                         <Td>{formatDate(booking.start_date, locale)}</Td>
                         <Td>{formatDate(booking.end_date, locale)}</Td>
                         <Td>
