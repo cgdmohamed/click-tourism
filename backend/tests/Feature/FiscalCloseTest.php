@@ -290,6 +290,47 @@ class FiscalCloseTest extends TestCase
         $this->assertSame('closed', FiscalYear::query()->findOrFail($this->yearId)->status);
     }
 
+    public function test_closing_needs_a_period_covering_the_year_end_when_the_year_has_activity(): void
+    {
+        $this->profitYear();
+
+        FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)
+            ->whereDate('starts_on', '<=', "{$this->year}-12-31")
+            ->whereDate('ends_on', '>=', "{$this->year}-12-31")
+            ->delete();
+
+        $report = $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-checks")->assertOk();
+        $this->assertFalse($report->json('data.can_close'));
+        $this->assertFalse(collect($report->json('data.checks'))->firstWhere('code', 'year_end_period')['passed']);
+
+        $this->close()->assertStatus(422);
+        $this->assertCount(0, $this->closingEntries());
+        $this->assertSame('open', FiscalYear::query()->findOrFail($this->yearId)->status);
+
+        FiscalPeriod::query()->create([
+            'fiscal_year_id' => $this->yearId,
+            'name' => "{$this->year}-12",
+            'starts_on' => "{$this->year}-12-01",
+            'ends_on' => "{$this->year}-12-31",
+            'status' => 'open',
+        ]);
+
+        $this->close()->assertOk();
+        $this->assertSame(-600000, $this->balance('3100'));
+    }
+
+    public function test_a_year_without_activity_still_closes_without_a_period_covering_the_year_end(): void
+    {
+        FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)
+            ->whereDate('starts_on', '<=', "{$this->year}-12-31")
+            ->whereDate('ends_on', '>=', "{$this->year}-12-31")
+            ->delete();
+
+        $this->close()->assertOk();
+        $this->assertCount(0, $this->closingEntries());
+        $this->assertSame('closed', FiscalYear::query()->findOrFail($this->yearId)->status);
+    }
+
     public function test_closing_a_single_period_is_blocked_while_it_has_drafts(): void
     {
         $this->entry("{$this->year}-05-05", '1110', '4100', 5000, post: false)->assertCreated();
