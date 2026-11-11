@@ -26,6 +26,8 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import { taxMinor } from '../lib/tax'
+import { useTaxEnabled } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
 type DraftItem = {
@@ -54,21 +56,10 @@ const emptyItem = (currency: string): DraftItem => ({
   tax_profile_id: '',
 })
 
-/** Mirrors BookingService::taxFor with integer math (rate has up to 4 decimals). */
-function taxMinor(grossMinor: number, rate: string, inclusive: boolean): number {
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(rate.trim())
-  if (!match || grossMinor <= 0) return 0
-  const scaled = BigInt(match[1] + (match[2] ?? '').padEnd(4, '0').slice(0, 4))
-  if (scaled === 0n) return 0
-  const scale = 10000n
-  const denominator = (inclusive ? 100n * scale + scaled : 100n * scale) * 2n
-  const numerator = BigInt(grossMinor) * scaled * 2n + denominator / 2n
-  return Number(numerator / denominator)
-}
-
 export default function Bookings() {
   const { t, locale } = useI18n()
-  const { activeBranch, user } = useAuth()
+  const { activeBranch, user, can } = useAuth()
+  const { enabled: taxEnabled } = useTaxEnabled()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const urlSearch = searchParams.get('search') ?? ''
@@ -78,6 +69,7 @@ export default function Bookings() {
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
   const [viewId, setViewId] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<Booking | null>(null)
   const [form, setForm] = useState({
     customer_id: '',
     start_date: todayISO(),
@@ -126,7 +118,7 @@ export default function Bookings() {
 
   const taxProfilesQuery = useQuery({
     queryKey: ['tax-profiles'],
-    enabled: open,
+    enabled: open && taxEnabled,
     queryFn: async () => {
       const { data } = await api.get<{ data: TaxProfile[] }>('/tax-profiles')
       return data.data
@@ -139,11 +131,11 @@ export default function Bookings() {
       const quantity = Number.parseInt(item.quantity || '0', 10) || 0
       const gross = toMinor(item.unit_sell || '0', item.sell_currency) * quantity
       const cost = toMinor(item.unit_cost || '0', item.cost_currency) * quantity
-      const profile = taxProfiles.find((candidate) => candidate.id === item.tax_profile_id)
+      const profile = taxEnabled ? taxProfiles.find((candidate) => candidate.id === item.tax_profile_id) : undefined
       const tax = profile ? taxMinor(gross, profile.rate, profile.is_inclusive) : 0
       return { cost, tax, sell: gross + (profile?.is_inclusive ? 0 : tax) }
     },
-    [taxProfiles],
+    [taxProfiles, taxEnabled],
   )
 
   const totals = useMemo(() => {
@@ -164,15 +156,13 @@ export default function Bookings() {
       if (!activeBranch) throw new Error(t('branchRequired'))
       const payload = {
         customer_id: form.customer_id,
-        branch_id: activeBranch.id,
-        owner_user_id: user?.id,
         start_date: form.start_date,
         end_date: form.end_date || null,
         pax_adults: Number(form.pax_adults),
         pax_children: Number(form.pax_children),
         pax_infants: Number(form.pax_infants),
         currency: form.currency,
-        ...(form.fx_rate.trim() ? { fx_rate: form.fx_rate.trim(), fx_rate_date: form.start_date, fx_rate_source: 'manual' } : {}),
+        ...(form.fx_rate.trim() ? { fx_rate: form.fx_rate.trim() } : {}),
         notes: form.notes,
         items: items.map((item) => ({
           service_type: item.service_type,
@@ -184,20 +174,78 @@ export default function Bookings() {
           unit_sell_minor: toMinor(item.unit_sell || '0', item.sell_currency),
           cost_currency: item.cost_currency,
           sell_currency: item.sell_currency,
-          tax_profile_id: item.tax_profile_id || null,
+          tax_profile_id: taxEnabled ? item.tax_profile_id || null : null,
         })),
       }
-      const { data } = await api.post<{ data: Booking }>('/bookings', payload)
+      if (editTarget) {
+        const { data } = await api.patch<{ data: Booking }>(`/bookings/${editTarget.id}`, payload)
+        return data.data
+      }
+      const { data } = await api.post<{ data: Booking }>('/bookings', {
+        ...payload,
+        branch_id: activeBranch.id,
+        owner_user_id: user?.id,
+      })
       return data.data
     },
     onSuccess: async () => {
       setOpen(false)
+      setEditTarget(null)
       setError('')
       setItems([emptyItem(form.currency)])
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
     },
     onError: (cause) => setError(errorMessage(cause)),
   })
+
+  const startCreate = () => {
+    setError('')
+    setEditTarget(null)
+    setForm({
+      customer_id: '',
+      start_date: todayISO(),
+      end_date: '',
+      pax_adults: '1',
+      pax_children: '0',
+      pax_infants: '0',
+      currency: 'EGP',
+      fx_rate: '',
+      notes: '',
+    })
+    setItems([emptyItem('EGP')])
+    setOpen(true)
+  }
+
+  const startEdit = (booking: Booking) => {
+    setError('')
+    setEditTarget(booking)
+    setForm({
+      customer_id: booking.customer_id,
+      start_date: booking.start_date,
+      end_date: booking.end_date ?? '',
+      pax_adults: String(booking.pax_adults),
+      pax_children: String(booking.pax_children),
+      pax_infants: String(booking.pax_infants),
+      currency: booking.currency,
+      fx_rate: '',
+      notes: booking.notes ?? '',
+    })
+    setItems(
+      (booking.items ?? []).map((item) => ({
+        service_type: item.service_type,
+        supplier_id: item.supplier_id ?? '',
+        description: item.description,
+        starts_on: item.starts_on ?? booking.start_date,
+        quantity: String(item.quantity),
+        unit_cost: toDecimal(item.unit_cost_minor, item.cost_currency ?? booking.currency),
+        unit_sell: toDecimal(item.unit_sell_minor, item.sell_currency ?? booking.currency),
+        cost_currency: item.cost_currency ?? booking.currency,
+        sell_currency: item.sell_currency ?? booking.currency,
+        tax_profile_id: item.tax_profile_id ?? '',
+      })),
+    )
+    setOpen(true)
+  }
 
   const updateItem = (index: number, patch: Partial<DraftItem>) => {
     setItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)))
@@ -222,7 +270,7 @@ export default function Bookings() {
         title={t('bookings')}
         subtitle={locale === 'ar' ? 'حجوزات متعددة الخدمات مع التكلفة والربحية' : 'Multi-service bookings with cost and profitability'}
         icon="plane"
-        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newBooking')}</Button>}
+        actions={can('bookings.create') ? <Button icon="plus" onClick={startCreate}>{t('newBooking')}</Button> : null}
       />
 
       {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
@@ -291,9 +339,16 @@ export default function Bookings() {
                     {toDecimal(booking.margin_minor, booking.currency)} {booking.currency}
                   </Td>
                   <Td className="text-end">
-                    <Button variant="ghost" onClick={() => setViewId(booking.id)}>
-                      {locale === 'ar' ? 'عرض' : 'View'}
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      {['draft', 'quoted'].includes(booking.status) && can('bookings.update') ? (
+                        <Button variant="ghost" onClick={() => startEdit(booking)}>
+                          {t('edit')}
+                        </Button>
+                      ) : null}
+                      <Button variant="ghost" onClick={() => setViewId(booking.id)}>
+                        {locale === 'ar' ? 'عرض' : 'View'}
+                      </Button>
+                    </div>
                   </Td>
                 </tr>
               ))}
@@ -311,14 +366,14 @@ export default function Bookings() {
 
       <Modal
         open={open}
-        title={t('newBooking')}
-        onClose={() => setOpen(false)}
+        title={editTarget ? `${t('edit')} ${editTarget.number}` : t('newBooking')}
+        onClose={() => { setOpen(false); setEditTarget(null) }}
         footer={
           <>
             <span className="me-auto text-sm text-text-subtle">
               {t('total')}: {toDecimal(totals.sell, form.currency)} · {t('tax')}: {toDecimal(totals.tax, form.currency)} · {t('margin')}: {toDecimal(totals.margin, form.currency)}
             </span>
-            <Button variant="secondary" onClick={() => setOpen(false)}>
+            <Button variant="secondary" onClick={() => { setOpen(false); setEditTarget(null) }}>
               {t('cancel')}
             </Button>
             <Button disabled={create.isPending || !form.customer_id} onClick={() => create.mutate()}>
@@ -431,17 +486,21 @@ export default function Bookings() {
                 />
               </div>
               <div className="sm:col-span-4">
-                <Select value={item.tax_profile_id} onChange={(event) => updateItem(index, { tax_profile_id: event.target.value })} aria-label={t('tax')}>
-                  <option value="">{t('tax')}: {t('none')}</option>
-                  {taxProfiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.name} ({Number(profile.rate)}%{profile.is_inclusive ? (locale === 'ar' ? '، شامل' : ', inclusive') : ''})
-                    </option>
-                  ))}
-                </Select>
+                {taxEnabled ? (
+                  <Select value={item.tax_profile_id} onChange={(event) => updateItem(index, { tax_profile_id: event.target.value })} aria-label={t('tax')}>
+                    <option value="">{t('tax')}: {t('none')}</option>
+                    {taxProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} ({Number(profile.rate)}%{profile.is_inclusive ? (locale === 'ar' ? '، شامل' : ', inclusive') : ''})
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <p className="text-small text-text-subtle">{locale === 'ar' ? 'الضريبة معطلة في الإعدادات.' : 'Tax is disabled in settings.'}</p>
+                )}
               </div>
               <div className="text-small self-center text-text-subtle sm:col-span-7">
-                {t('tax')}: {toDecimal(itemAmounts(item).tax, item.sell_currency)} {item.sell_currency}
+                {taxEnabled ? `${t('tax')}: ${toDecimal(itemAmounts(item).tax, item.sell_currency)} ${item.sell_currency}` : ''}
               </div>
               <div className="sm:col-span-1">
                 <Button

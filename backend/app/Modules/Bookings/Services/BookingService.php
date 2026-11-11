@@ -21,6 +21,7 @@ use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\CreditLimitService;
 use App\Modules\Parties\Services\PartyLedgerService;
+use App\Modules\Payments\Models\PaymentAllocation;
 use App\Modules\Tax\Models\TaxProfile;
 use App\Modules\Tax\Services\TaxPolicy;
 use DomainException;
@@ -135,6 +136,136 @@ class BookingService
 
             $this->history($booking, null, 'draft', 'Booking created', $actorId);
             $this->audit->log('booking.created', $booking, null, $booking->toApiArray(), $actorId);
+
+            return $booking->refresh()->load('items', 'customer');
+        });
+    }
+
+    /**
+     * Edit a booking before anything financial exists for it.
+     *
+     * Confirmed bookings are corrected with adjustment documents, not edits
+     * (docs/product/workflows.md), so this only accepts draft/quoted bookings
+     * that have no payments, invoices, obligations or journal entries.
+     */
+    public function update(Booking $booking, array $data, ?int $actorId = null): Booking
+    {
+        return DB::transaction(function () use ($booking, $data, $actorId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+
+            if ($actorId !== null) {
+                $user = User::query()->findOrFail($actorId);
+                $this->branchScope->assertBranch($user, $booking->branch);
+            }
+
+            if (! in_array($booking->status, ['draft', 'quoted'], true)) {
+                throw new DomainException('Only draft or quoted bookings can be edited. Use an adjustment document for a confirmed booking.');
+            }
+
+            $itemIds = $booking->items()->pluck('id');
+            $hasFinancials = PaymentAllocation::query()->where('booking_id', $booking->id)->exists()
+                || Invoice::query()->where('booking_id', $booking->id)->exists()
+                || JournalEntry::query()
+                    ->where('source_type', 'booking')
+                    ->where('source_id', $booking->id)
+                    ->exists()
+                || DB::table('supplier_obligations')->whereIn('booking_item_id', $itemIds)->exists();
+
+            if ($hasFinancials) {
+                throw new DomainException('This booking already has payments, invoices, obligations or journal entries. Use an adjustment document instead of editing it.');
+            }
+
+            $before = [
+                'customer_id' => $booking->customer?->public_id,
+                'start_date' => $booking->start_date->toDateString(),
+                'end_date' => $booking->end_date?->toDateString(),
+                'currency' => $booking->currency_code,
+                'total_sell_minor' => (int) $booking->total_sell_minor,
+                'total_cost_minor' => (int) $booking->total_cost_minor,
+                'tax_minor' => (int) $booking->tax_minor,
+                'items' => $booking->items->map(fn (BookingItem $item) => [
+                    'service_type' => $item->service_type,
+                    'quantity' => (int) $item->quantity,
+                    'unit_cost_minor' => (int) $item->unit_cost_minor,
+                    'unit_sell_minor' => (int) $item->unit_sell_minor,
+                ])->all(),
+            ];
+
+            $customer = $booking->customer;
+            if (! empty($data['customer_id'])) {
+                $customer = Customer::query()->where('public_id', $data['customer_id'])->first();
+                if (! $customer) {
+                    throw new DomainException('Customer not found.');
+                }
+            }
+
+            $currency = strtoupper((string) ($data['currency'] ?? $booking->currency_code));
+            $startDate = (string) ($data['start_date'] ?? $booking->start_date->toDateString());
+            $fxRate = isset($data['fx_rate']) && $data['fx_rate'] !== ''
+                ? (string) $data['fx_rate']
+                : ($currency === $booking->currency_code
+                    ? (string) $booking->fx_rate
+                    : $this->fx->rateFor($currency, $startDate));
+
+            $attributes = [
+                'customer_id' => $customer?->id ?? $booking->customer_id,
+                'start_date' => $startDate,
+                'end_date' => $data['end_date'] ?? $booking->end_date?->toDateString(),
+                'pax_adults' => max(1, (int) ($data['pax_adults'] ?? $booking->pax_adults)),
+                'pax_children' => max(0, (int) ($data['pax_children'] ?? $booking->pax_children)),
+                'pax_infants' => max(0, (int) ($data['pax_infants'] ?? $booking->pax_infants)),
+                'currency_code' => $currency,
+                'fx_rate' => $fxRate,
+                'fx_rate_date' => $startDate,
+                'fx_rate_source' => isset($data['fx_rate']) && $data['fx_rate'] !== '' ? 'manual' : $booking->fx_rate_source,
+                'notes' => array_key_exists('notes', $data) ? $data['notes'] : $booking->notes,
+            ];
+
+            if (array_key_exists('items', $data) && is_array($data['items'])) {
+                $items = $data['items'];
+                if (count($items) === 0) {
+                    throw new DomainException('A booking needs at least one service item.');
+                }
+
+                $prepared = [];
+                $totalSell = 0;
+                $totalCost = 0;
+                $totalTax = 0;
+                foreach ($items as $item) {
+                    $row = $this->prepareItem($booking, $item, $currency);
+                    $prepared[] = $row;
+                    $totalSell += $row['total_sell_minor'];
+                    $totalCost += $row['total_cost_minor'];
+                    $totalTax += $row['tax_minor'];
+                }
+
+                $booking->items()->delete();
+                foreach ($prepared as $row) {
+                    BookingItem::query()->create($row);
+                }
+
+                $attributes['total_sell_minor'] = $totalSell;
+                $attributes['total_cost_minor'] = $totalCost;
+                $attributes['tax_minor'] = $totalTax;
+            }
+
+            $booking->update($attributes);
+
+            $this->audit->log('booking.updated', $booking, $before, [
+                'customer_id' => $booking->customer?->public_id,
+                'start_date' => $booking->start_date->toDateString(),
+                'end_date' => $booking->end_date?->toDateString(),
+                'currency' => $booking->currency_code,
+                'total_sell_minor' => (int) $booking->total_sell_minor,
+                'total_cost_minor' => (int) $booking->total_cost_minor,
+                'tax_minor' => (int) $booking->tax_minor,
+                'items' => $booking->items()->get()->map(fn (BookingItem $item) => [
+                    'service_type' => $item->service_type,
+                    'quantity' => (int) $item->quantity,
+                    'unit_cost_minor' => (int) $item->unit_cost_minor,
+                    'unit_sell_minor' => (int) $item->unit_sell_minor,
+                ])->all(),
+            ], $actorId);
 
             return $booking->refresh()->load('items', 'customer');
         });

@@ -4,13 +4,13 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
+import { usePartyOptions } from '../lib/usePartyOptions'
 import type { Account, JournalEntry } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 
 type CurrencyRow = { code: string; is_active: boolean }
-type PartyRow = { id: string; name_ar: string; name_en: string }
 type PartyType = 'customer' | 'supplier' | 'employee'
 type CostCenterRow = { id: string; code: string; name_ar: string; name_en: string }
 
@@ -375,14 +375,10 @@ export default function Reports() {
     enabled: report === 'trial-balance',
   })
 
-  const partiesQuery = useQuery({
-    queryKey: ['report-parties', partyType],
-    queryFn: async () => {
-      const endpoint = partyType === 'customer' ? '/customers' : partyType === 'supplier' ? '/suppliers' : '/employees'
-      const { data } = await api.get<{ data: PartyRow[] }>(endpoint, { params: { per_page: 100 } })
-      return data.data
-    },
+  const partyPicker = usePartyOptions(partyType || 'customer', {
     enabled: partyType !== '' && (isLedger || isStatement),
+    value: partyId,
+    locale,
   })
 
   const entryQuery = useQuery({
@@ -572,10 +568,8 @@ export default function Reports() {
                       setPartyId(value)
                       setStatementPage(1)
                     }}
-                    options={(partiesQuery.data ?? []).map((party) => ({
-                      value: party.id,
-                      label: locale === 'ar' ? party.name_ar : party.name_en,
-                    }))}
+                    onSearch={partyPicker.setSearch}
+                    options={partyPicker.options}
                   />
                 </Field>
               ) : null}
@@ -693,10 +687,8 @@ export default function Reports() {
                       setLedgerPage(1)
                     }}
                     clearLabel={t('allParties')}
-                    options={(partiesQuery.data ?? []).map((party) => ({
-                      value: party.id,
-                      label: locale === 'ar' ? party.name_ar : party.name_en,
-                    }))}
+                    onSearch={partyPicker.setSearch}
+                    options={partyPicker.options}
                   />
                 </Field>
               ) : null}

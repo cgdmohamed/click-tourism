@@ -27,6 +27,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import { usePartyOptions } from '../lib/usePartyOptions'
 
 type DocType = 'receipt_voucher' | 'payment_voucher' | 'transfer_voucher' | 'adjustment_voucher' | 'refund_voucher'
 type PartyType = 'customer' | 'supplier' | 'employee'
@@ -154,23 +155,6 @@ export default function Documents() {
     },
   })
 
-  const partiesQuery = useQuery({
-    queryKey: ['parties', 'documents'],
-    queryFn: async () => {
-      const [customers, suppliers, employees] = await Promise.all([
-        api.get<{ data: Party[] }>('/customers', { params: { per_page: 100 } }),
-        api.get<{ data: Party[] }>('/suppliers', { params: { per_page: 100 } }),
-        api.get<{ data: Party[] }>('/employees', { params: { per_page: 100 } }),
-      ])
-      return {
-        customers: customers.data.data,
-        suppliers: suppliers.data.data,
-        employees: employees.data.data,
-      }
-    },
-    enabled: open,
-  })
-
   const accountsQuery = useQuery({
     queryKey: ['accounts', 'documents'],
     queryFn: async () => {
@@ -221,18 +205,6 @@ export default function Documents() {
     await queryClient.invalidateQueries({ queryKey: ['accounting-document'] })
   }
 
-  const partyOptions = (() => {
-    const rows =
-      form.party_type === 'customer'
-        ? partiesQuery.data?.customers
-        : form.party_type === 'supplier'
-          ? partiesQuery.data?.suppliers
-          : form.party_type === 'employee'
-            ? partiesQuery.data?.employees
-            : []
-    return (rows ?? []).map((party) => ({ value: party.id, label: partyLabel(party.name_ar, party.name_en) }))
-  })()
-
   const accountOptions = (accountsQuery.data ?? [])
     .filter((account) => account.is_postable && account.is_active)
     .map((account) => ({ value: account.id, label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}` }))
@@ -267,6 +239,13 @@ export default function Documents() {
   const supportsSimple = form.type === 'receipt_voucher' || form.type === 'payment_voucher'
   const simple = supportsSimple && form.simpleMode
   const expectedParty = form.type === 'receipt_voucher' ? 'customer' : 'supplier'
+  const partyKind = simple ? expectedParty : form.party_type
+  const partyPicker = usePartyOptions(partyKind || 'customer', {
+    enabled: open && partyKind !== '',
+    value: form.party_id,
+    locale,
+  })
+  const partyOptions = partyPicker.options
   const selectedCash = (cashQuery.data ?? []).find((account) => (account.cash_account_id ?? account.id) === form.cash_account_id)
   const canSaveSimple = Boolean(form.party_type === expectedParty && form.party_id && form.cash_account_id
     && selectedCash?.currency === form.currency && toMinor(form.amount || '0', form.currency) > 0)
@@ -489,7 +468,8 @@ export default function Documents() {
             <SearchableSelect
               value={form.party_id}
               onChange={(value) => setForm({ ...form, party_type: expectedParty, party_id: value })}
-              options={((expectedParty === 'customer' ? partiesQuery.data?.customers : partiesQuery.data?.suppliers) ?? []).map((party) => ({ value: party.id, label: partyLabel(party.name_ar, party.name_en) }))}
+              options={partyOptions}
+              onSearch={partyPicker.setSearch}
               placeholder={L('اختر', 'Select')}
             />
           </Field> : null}
@@ -500,6 +480,7 @@ export default function Documents() {
                 onChange={(value) => setForm({ ...form, party_id: value })}
                 placeholder={L('اختر الطرف', 'Select party')}
                 options={partyOptions}
+                onSearch={partyPicker.setSearch}
               />
             </Field>
           ) : null}

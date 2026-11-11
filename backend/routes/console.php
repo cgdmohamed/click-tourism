@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use Database\Seeders\ProductionBootstrapSeeder;
+use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -151,3 +152,16 @@ Artisan::command('setup:admin {email} {--name=Administrator}', function () {
 
     return 0;
 })->purpose('Securely initialize production reference data and first admin');
+
+/**
+ * Re-applies roles and permissions on an existing installation after an
+ * upgrade. Idempotent: creates permissions introduced by the release and
+ * re-attaches them to the built-in roles without touching users.
+ */
+Artisan::command('roles:sync', function () {
+    Artisan::call('db:seed', ['--class' => RolePermissionSeeder::class, '--force' => true]);
+
+    $this->info('Roles and permissions synchronised. Users with cached permission data may need to sign in again.');
+
+    return 0;
+})->purpose('Create missing permissions and refresh the built-in role assignments');

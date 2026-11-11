@@ -28,6 +28,8 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import { usePartyOptions } from '../lib/usePartyOptions'
+import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -100,6 +102,8 @@ export default function Invoices() {
   const [creditId, setCreditId] = useState<string | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
   const [creditReason, setCreditReason] = useState('')
+  const [creditWarnings, setCreditWarnings] = useState<CreditWarning[]>([])
+  const [overrideReason, setOverrideReason] = useState('')
 
   const invoicesQuery = useQuery({
     queryKey: ['invoices', page, typeFilter, statusFilter, activeBranch?.id],
@@ -114,21 +118,6 @@ export default function Invoices() {
       })
       return data
     },
-  })
-
-  const partiesQuery = useQuery({
-    queryKey: ['parties', 'invoices'],
-    queryFn: async () => {
-      const [customers, suppliers] = await Promise.all([
-        api.get<{ data: Party[] }>('/customers', { params: { per_page: 100 } }),
-        api.get<{ data: Party[] }>('/suppliers', { params: { per_page: 100 } }),
-      ])
-      return {
-        customers: customers.data.data,
-        suppliers: suppliers.data.data,
-      }
-    },
-    enabled: open,
   })
 
   const accountsQuery = useQuery({
@@ -163,14 +152,6 @@ export default function Invoices() {
     await queryClient.invalidateQueries({ queryKey: ['invoice'] })
   }
 
-  const customerOptions = (partiesQuery.data?.customers ?? []).map((p) => ({
-    value: p.id,
-    label: partyLabel(p.name_ar, p.name_en),
-  }))
-  const supplierOptions = (partiesQuery.data?.suppliers ?? []).map((p) => ({
-    value: p.id,
-    label: partyLabel(p.name_ar, p.name_en),
-  }))
   const accountOptions = (accountsQuery.data ?? [])
     .filter((a) => a.is_postable && a.is_active)
     .map((a) => ({ value: a.id, label: `${a.code} — ${locale === 'ar' ? a.name_ar : a.name_en}` }))
@@ -184,7 +165,12 @@ export default function Invoices() {
 
   const data = invoicesQuery.data
   const isCustomer = form.type === 'customer_invoice'
-  const partyOptions = isCustomer ? customerOptions : supplierOptions
+  const partyPicker = usePartyOptions(isCustomer ? 'customer' : 'supplier', {
+    enabled: open,
+    value: form.party_id,
+    locale,
+  })
+  const partyOptions = partyPicker.options
 
   const updateLine = (index: number, patch: Partial<typeof emptyLine>) =>
     setForm((current) => ({
@@ -275,12 +261,20 @@ export default function Invoices() {
 
   const step = useMutation({
     mutationFn: async ({ invoice, path }: { invoice: Invoice; path: 'submit' | 'approve' | 'issue' }) => {
-      await api.post(`/invoices/${invoice.id}/${path}`, undefined, {
-        headers: path === 'approve' || path === 'issue' ? { 'Idempotency-Key': idempotencyKey() } : undefined,
-      })
+      const override = path === 'issue' && can('bookings.override_credit_limit') && overrideReason.trim()
+        ? { override_reason: overrideReason.trim() }
+        : undefined
+      const { data } = await api.post<{ data: { warnings?: CreditWarning[] } }>(
+        `/invoices/${invoice.id}/${path}`,
+        override,
+        { headers: path === 'approve' || path === 'issue' ? { 'Idempotency-Key': idempotencyKey() } : undefined },
+      )
+      return data.data.warnings ?? []
     },
-    onSuccess: async () => {
+    onSuccess: async (warnings) => {
       setError('')
+      setCreditWarnings(warnings)
+      if (warnings.length === 0) setOverrideReason('')
       await refresh()
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -385,7 +379,7 @@ export default function Invoices() {
                     <Td className="text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
                     <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
                     <Td className="text-end">
-                      <Button variant="ghost" onClick={() => setDetailId(invoice.id)}>{L('تفاصيل', 'Details')}</Button>
+                      <Button variant="ghost" onClick={() => { setError(''); setCreditWarnings([]); setOverrideReason(''); setDetailId(invoice.id) }}>{L('تفاصيل', 'Details')}</Button>
                     </Td>
                   </tr>
                 ))}
@@ -436,6 +430,7 @@ export default function Invoices() {
               onChange={(value) => setForm({ ...form, party_id: value })}
               placeholder={L('اختر الطرف', 'Select party')}
               options={partyOptions}
+              onSearch={partyPicker.setSearch}
             />
           </Field>
           <Field label={t('date')} required>
@@ -607,7 +602,7 @@ export default function Invoices() {
       <Modal
         open={detailId !== null}
         title={L('تفاصيل الفاتورة', 'Invoice details')}
-        onClose={() => setDetailId(null)}
+        onClose={() => { setDetailId(null); setCreditWarnings([]); setOverrideReason('') }}
         footer={<Button variant="secondary" onClick={() => setDetailId(null)}>{L('إغلاق', 'Close')}</Button>}
       >
         {detailQuery.isLoading ? <Loading /> : null}
@@ -661,6 +656,17 @@ export default function Invoices() {
                 ) : null}
               </div>
             </div>
+
+            {error ? (
+              <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
+            ) : null}
+            <CreditLimitNotice
+              warnings={creditWarnings}
+              blockedMessage={error}
+              canOverride={can('bookings.override_credit_limit')}
+              overrideReason={overrideReason}
+              onOverrideReasonChange={setOverrideReason}
+            />
 
             <div className="grid gap-4 sm:grid-cols-3 text-small text-text-subtle">
               <div>

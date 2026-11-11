@@ -15,3 +15,28 @@ All formats are produced from the same canonical report rows and decimal strings
 - Arabic and English data are retained in each export; PDF direction follows the selected language.
 - No statutory wording, signature, or jurisdiction-specific template is asserted until approved.
 - Larger future workloads require a separately authorized queued export design.
+
+## Trial balance CSV layout
+
+The trial balance CSV (`/reports/trial-balance/export`) has a fixed header, in
+this order:
+
+| # | Column | Notes |
+|---|--------|-------|
+| 1 | `Code` | Chart-of-accounts code |
+| 2 | `Name (EN)` | English account name |
+| 3 | `Name (AR)` | Arabic account name |
+| 4 | `Opening debit` | Decimal string in the report currency |
+| 5 | `Opening credit` | Decimal string |
+| 6 | `Debit` | Period movement |
+| 7 | `Credit` | Period movement |
+| 8 | `Closing debit` | Decimal string |
+| 9 | `Closing credit` | Decimal string |
+| 10 | `Abnormal` | `Yes` when the closing side is abnormal for the account type, otherwise blank |
+| 11 | `Currency` | Report currency code |
+
+The final row is a `Total` row: `Code` and `Name (EN)` are blank and the
+amount columns carry the report totals. `Abnormal` was introduced after the
+first release; consumers that index columns by position should switch to
+reading the header row.
+

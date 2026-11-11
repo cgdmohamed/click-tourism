@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Models\PaymentAllocation;
 use App\Modules\Tax\Models\TaxProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -60,6 +63,26 @@ class BookingApiTest extends TestCase
                 'unit_sell_minor' => 100000,
             ], $item)],
         ], $this->user->id);
+    }
+
+    private function receipt(): int
+    {
+        $payment = Payment::query()->create([
+            'number' => 'RC-EDIT-'.uniqid(),
+            'customer_id' => $this->customer()->id,
+            'branch_id' => $this->branch->id,
+            'method' => 'cash',
+            'cash_account_id' => Account::query()->where('code', '1110')->value('id'),
+            'amount_minor' => 1000,
+            'currency_code' => 'EGP',
+            'fx_rate' => '1',
+            'fx_rate_date' => now()->toDateString(),
+            'unallocated_minor' => 1000,
+            'status' => 'posted',
+            'paid_at' => now(),
+        ]);
+
+        return $payment->id;
     }
 
     public function test_show_returns_history_allowed_transitions_and_linked_counts(): void
@@ -177,6 +200,84 @@ class BookingApiTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.tax_minor', 1400)
             ->assertJsonPath('data.total_sell_minor', 11400);
+    }
+
+    public function test_update_replaces_draft_items_and_recalculates_totals(): void
+    {
+        $this->grant('bookings.view', 'bookings.update');
+        $booking = $this->booking();
+        Sanctum::actingAs($this->user);
+
+        $this->patchJson('/api/v1/bookings/'.$booking->public_id, [
+            'pax_adults' => 3,
+            'notes' => 'Window seat requested',
+            'items' => [[
+                'service_type' => 'flight',
+                'description' => 'Cairo - Sharm',
+                'quantity' => 3,
+                'unit_cost_minor' => 10000,
+                'unit_sell_minor' => 15000,
+            ]],
+        ])->assertOk()
+            ->assertJsonPath('data.number', $booking->number)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.pax_adults', 3)
+            ->assertJsonPath('data.notes', 'Window seat requested')
+            ->assertJsonPath('data.total_sell_minor', 45000)
+            ->assertJsonPath('data.total_cost_minor', 30000)
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.description', 'Cairo - Sharm');
+    }
+
+    public function test_update_keeps_items_when_the_payload_omits_them(): void
+    {
+        $this->grant('bookings.view', 'bookings.update');
+        $booking = $this->booking();
+        Sanctum::actingAs($this->user);
+
+        $this->patchJson('/api/v1/bookings/'.$booking->public_id, ['pax_children' => 2])
+            ->assertOk()
+            ->assertJsonPath('data.pax_children', 2)
+            ->assertJsonPath('data.total_sell_minor', 200000)
+            ->assertJsonCount(1, 'data.items');
+    }
+
+    public function test_update_is_rejected_once_the_booking_is_confirmed(): void
+    {
+        $this->grant('bookings.view', 'bookings.update');
+        $booking = $this->booking();
+        app(BookingService::class)->transition($booking, 'quoted', null, $this->user->id);
+        app(BookingService::class)->transition($booking, 'confirmed', null, $this->user->id);
+        Sanctum::actingAs($this->user);
+
+        $this->patchJson('/api/v1/bookings/'.$booking->public_id, ['notes' => 'Late edit'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'domain_error');
+    }
+
+    public function test_update_is_rejected_when_a_payment_is_allocated(): void
+    {
+        $this->grant('bookings.view', 'bookings.update');
+        $booking = $this->booking();
+        PaymentAllocation::query()->create([
+            'payment_id' => $this->receipt(),
+            'booking_id' => $booking->id,
+            'amount_minor' => 1000,
+        ]);
+        Sanctum::actingAs($this->user);
+
+        $this->patchJson('/api/v1/bookings/'.$booking->public_id, ['notes' => 'Late edit'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'domain_error');
+    }
+
+    public function test_update_requires_the_bookings_update_permission(): void
+    {
+        $booking = $this->booking();
+        Sanctum::actingAs($this->user);
+
+        $this->patchJson('/api/v1/bookings/'.$booking->public_id, ['notes' => 'Nope'])
+            ->assertStatus(403);
     }
 
     public function test_cancel_endpoint_records_reason_and_fee_and_exposes_them(): void

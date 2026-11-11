@@ -59,6 +59,28 @@ class FiscalCloseService
             ->where('code', (string) $this->settings->get('accounting', 'retained_earnings_account_code'))
             ->where('type', 'equity')->where('is_active', true)->where('is_postable', true)->exists();
 
+        // Closing entries are dated on the last day of the year, so a period
+        // must cover that date whenever there is profit-and-loss activity to
+        // close. Otherwise the close would pass every check and then fail
+        // while posting, with a message about a missing period.
+        $hasProfitAndLoss = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->where('je.status', 'posted')
+            ->whereIn('a.type', ['revenue', 'expense'])
+            ->whereDate('je.entry_date', '>=', $start)
+            ->whereDate('je.entry_date', '<=', $end)
+            ->exists();
+
+        $yearEndPeriod = FiscalPeriod::query()
+            ->whereDate('starts_on', '<=', $end)
+            ->whereDate('ends_on', '>=', $end)
+            ->first();
+
+        $yearEndMessage = $yearEndPeriod === null
+            ? "No fiscal period covers {$end}; create and open the final period so the closing entries can post."
+            : "The period covering {$end} is {$yearEndPeriod->status}; reopen it before closing the year so the closing entries can post.";
+
         $checks = [
             $this->check('year_open', ! $year->isClosed(), $year->isClosed() ? 'The fiscal year is already closed.' : null),
             $this->check('draft_entries', $drafts === 0, $drafts > 0 ? "{$drafts} draft journal entries must be posted or deleted (a draft can be deleted from the journal, or posted by another accountant or a senior accountant)." : null, $drafts),
@@ -66,6 +88,11 @@ class FiscalCloseService
             $this->check('trial_balance', (int) $totals->debit === (int) $totals->credit, 'Posted debits and credits of the year differ.'),
             $this->check('retained_earnings_account', $retained, 'The retained earnings account is missing, inactive, not postable or not an equity account.'),
             $this->check('last_period_postable', $lastPeriod !== null && $lastPeriod->status !== 'closed', 'The final period is closed; reopen it before closing the year so the closing entries can post.'),
+            $this->check(
+                'year_end_period',
+                ! $hasProfitAndLoss || ($yearEndPeriod !== null && $yearEndPeriod->status !== 'closed'),
+                $hasProfitAndLoss ? $yearEndMessage : null,
+            ),
         ];
 
         return [

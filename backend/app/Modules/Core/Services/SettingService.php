@@ -253,6 +253,26 @@ class SettingService
         return null;
     }
 
+    /**
+     * Settings keys (`group.key`) whose account mapping currently points at
+     * this account code. Used to protect stored mappings from account edits.
+     *
+     * @return list<string>
+     */
+    public function mappedSettingKeysForAccountCode(string $code): array
+    {
+        $keys = [];
+        foreach (self::ACCOUNT_TYPES as $group => $mappings) {
+            foreach (array_keys($mappings) as $key) {
+                if ((string) $this->get($group, $key) === $code) {
+                    $keys[] = "{$group}.{$key}";
+                }
+            }
+        }
+
+        return $keys;
+    }
+
     public function get(string $group, string $key, ?string $default = null): ?string
     {
         $stored = Setting::query()->where('group', $group)->where('key', $key)->value('value');

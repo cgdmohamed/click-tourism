@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\SettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -106,6 +107,30 @@ class AccountController extends ApiController
                 if (isset($data[$locked]) && $data[$locked] !== $account->{$locked}) {
                     return $this->errorResponse("The {$locked} cannot be changed once the account has postings.", 'account_has_history', 422);
                 }
+            }
+        }
+
+        // Settings can point at this account (AR, tax, FX, ...). A stored
+        // mapping must never be silently invalidated by editing the account it
+        // references, otherwise posting fails later with a confusing error.
+        $mappings = app(SettingService::class)->mappedSettingKeysForAccountCode((string) $account->code);
+        if ($mappings !== []) {
+            $used = implode(', ', $mappings);
+            $blocked = null;
+            if (array_key_exists('is_active', $data) && ! $data['is_active']) {
+                $blocked = 'deactivated';
+            } elseif (array_key_exists('is_postable', $data) && ! $data['is_postable']) {
+                $blocked = 'made non-postable';
+            } elseif (array_key_exists('type', $data) && $data['type'] !== $account->type) {
+                $blocked = 'given another type';
+            }
+
+            if ($blocked !== null) {
+                return $this->errorResponse(
+                    "Account {$account->code} cannot be {$blocked} while settings use it ({$used}). Point those settings to another account first.",
+                    'account_used_by_settings',
+                    422,
+                );
             }
         }
 

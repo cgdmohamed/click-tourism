@@ -751,7 +751,7 @@ class ReportService
         $open = $bookingScope()->whereIn('status', ['draft', 'quoted', 'confirmed', 'in_progress'])->count();
         $confirmed = $bookingScope()->whereIn('status', ['confirmed', 'in_progress'])->count();
 
-        $collected = $this->netReceiptsMinor($branch, $currency);
+        $collected = $this->netReceiptsMinor($branch, $currency, $monthStart, $monthEnd);
 
         $overdue = 0;
         $bookingScope()

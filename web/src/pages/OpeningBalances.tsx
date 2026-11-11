@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
-import type { Account, Customer, Paginated, Supplier } from '../lib/types'
+import type { Account, Paginated } from '../lib/types'
 import {
   Badge,
   Button,
@@ -27,6 +27,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { Icon } from '../components/icons'
+import PartyPicker from '../components/PartyPicker'
 import { statusLabel } from '../lib/labels'
 
 type Batch = {
@@ -90,24 +91,6 @@ export default function OpeningBalances() {
     enabled: open,
   })
 
-  const customersQuery = useQuery({
-    queryKey: ['customers', 'picker'],
-    queryFn: async () => {
-      const { data } = await api.get<Paginated<Customer>>('/customers', { params: { per_page: 100 } })
-      return data.data
-    },
-    enabled: open,
-  })
-
-  const suppliersQuery = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Supplier[] }>('/suppliers')
-      return data.data
-    },
-    enabled: open,
-  })
-
   const currenciesQuery = useQuery({
     queryKey: ['currencies'],
     queryFn: async () => {
@@ -141,11 +124,6 @@ export default function OpeningBalances() {
         .map((account) => ({ value: account.id, label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}` })),
     [accountsQuery.data, locale],
   )
-
-  const partyOptions = (type: DraftLine['party_type']) =>
-    type === 'customer'
-      ? (customersQuery.data ?? []).map((party) => ({ value: party.id, label: locale === 'ar' ? party.name_ar : party.name_en }))
-      : (suppliersQuery.data ?? []).map((party) => ({ value: party.id, label: locale === 'ar' ? party.name_ar : party.name_en }))
 
   const totals = useMemo(() => {
     const map = new Map<string, { debit: number; credit: number }>()
@@ -354,7 +332,7 @@ export default function OpeningBalances() {
               </div>
               {line.party_type ? (
                 <div className="sm:col-span-7">
-                  <SearchableSelect value={line.party_id} onChange={(value) => update(index, { party_id: value })} options={partyOptions(line.party_type)} placeholder={L('اختر الطرف', 'Select party')} />
+                  <PartyPicker kind={line.party_type} value={line.party_id} onChange={(value) => update(index, { party_id: value })} placeholder={L('اختر الطرف', 'Select party')} />
                 </div>
               ) : null}
             </div>
