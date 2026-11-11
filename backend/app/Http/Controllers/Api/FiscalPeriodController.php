@@ -53,6 +53,11 @@ class FiscalPeriodController extends ApiController
         return $this->ok($closing->checks($fiscalYear));
     }
 
+    public function closePreview(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
+    {
+        return $this->ok($closing->closePreview($fiscalYear));
+    }
+
     public function checklist(FiscalPeriod $period, PeriodEndChecklistService $checklist): JsonResponse
     {
         return $this->ok($checklist->forPeriod($period, $this->branch()));
@@ -65,9 +70,14 @@ class FiscalPeriodController extends ApiController
 
     public function reopen(Request $request, FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
     {
-        $data = $request->validate(['reason' => ['required', 'string', 'max:255']]);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+            'restore_period_status' => ['nullable', 'boolean'],
+        ]);
 
-        return $this->ok($closing->present($closing->reopen($fiscalYear, $data['reason'], $this->actorId())));
+        $year = $closing->reopen($fiscalYear, $data['reason'], $this->actorId(), (bool) ($data['restore_period_status'] ?? false));
+
+        return $this->ok($closing->present($year) + ['previous_period_status' => $closing->lastPreviousPeriodStatus()]);
     }
 
     public function store(Request $request, AuditService $audit, FiscalYearSuggestionService $suggestions): JsonResponse
