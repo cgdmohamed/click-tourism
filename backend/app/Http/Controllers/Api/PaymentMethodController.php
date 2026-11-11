@@ -8,6 +8,7 @@ use App\Modules\Payments\Models\PaymentMethod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 
 class PaymentMethodController extends ApiController
 {
@@ -25,7 +26,6 @@ class PaymentMethodController extends ApiController
     public function store(Request $request, AuditService $audit): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:40', 'unique:payment_methods,code'],
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'wallet', 'other'])],
@@ -39,7 +39,7 @@ class PaymentMethodController extends ApiController
         ]);
 
         $method = PaymentMethod::query()->create([
-            'code' => $data['code'],
+            'code' => 'PM-'.Str::ulid(),
             'name_ar' => $data['name_ar'],
             'name_en' => $data['name_en'],
             'type' => $data['type'],
@@ -62,7 +62,6 @@ class PaymentMethodController extends ApiController
     public function update(Request $request, PaymentMethod $method, AuditService $audit): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['sometimes', 'string', 'max:40', Rule::unique('payment_methods')->ignore($method->id)],
             'name_ar' => ['sometimes', 'string', 'max:255'],
             'name_en' => ['sometimes', 'string', 'max:255'],
             'type' => ['sometimes', Rule::in(['cash', 'bank_transfer', 'card', 'wallet', 'other'])],
