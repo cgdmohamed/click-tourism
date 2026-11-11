@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
+import { usePartyOptions } from '../lib/usePartyOptions'
 import type { Paginated, Supplier, SupplierObligation, SupplierPayment } from '../lib/types'
 import {
   Badge,
@@ -153,6 +154,11 @@ export default function SupplierSettlements() {
   const suppliers = suppliersQuery.data ?? []
   const obligations = obligationsQuery.data?.data ?? []
   const payments = paymentsQuery.data?.data ?? []
+
+  // The plain `/suppliers` list stays for lookups; the pickers search on the
+  // server so a supplier beyond the first page can still be selected.
+  const obligationSupplierPicker = usePartyOptions('supplier', { value: obligationForm.supplier_id, locale })
+  const paymentSupplierPicker = usePartyOptions('supplier', { value: paymentForm.supplier_id, locale })
 
   const supplierName = (supplier?: Supplier | null) =>
     supplier ? (locale === 'ar' ? supplier.name_ar : supplier.name_en) : '—'
@@ -538,11 +544,8 @@ export default function SupplierSettlements() {
               value={obligationForm.supplier_id}
               onChange={(supplier_id) => onSupplierChange(supplier_id, 'obligation')}
               placeholder={t('selectSupplier')}
-              options={suppliers.map((supplier) => ({
-                value: supplier.id,
-                label: supplierName(supplier),
-                hint: locale === 'ar' ? supplier.name_en : supplier.name_ar,
-              }))}
+              options={obligationSupplierPicker.options}
+              onSearch={obligationSupplierPicker.setSearch}
             />
           </Field>
           <Field label={t('currency')} required>
@@ -622,11 +625,8 @@ export default function SupplierSettlements() {
               value={paymentForm.supplier_id}
               onChange={(supplier_id) => onSupplierChange(supplier_id, 'payment')}
               placeholder={t('selectSupplier')}
-              options={suppliers.map((supplier) => ({
-                value: supplier.id,
-                label: supplierName(supplier),
-                hint: locale === 'ar' ? supplier.name_en : supplier.name_ar,
-              }))}
+              options={paymentSupplierPicker.options}
+              onSearch={paymentSupplierPicker.setSearch}
             />
           </Field>
           <Field label={t('obligation')} hint={paymentForm.supplier_id && paymentObligations.length === 0 ? t('noOpenObligations') : undefined}>

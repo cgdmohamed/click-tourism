@@ -28,6 +28,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import { usePartyOptions } from '../lib/usePartyOptions'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 
 type Party = { id: string; name_ar: string; name_en: string }
@@ -119,21 +120,6 @@ export default function Invoices() {
     },
   })
 
-  const partiesQuery = useQuery({
-    queryKey: ['parties', 'invoices'],
-    queryFn: async () => {
-      const [customers, suppliers] = await Promise.all([
-        api.get<{ data: Party[] }>('/customers', { params: { per_page: 100 } }),
-        api.get<{ data: Party[] }>('/suppliers', { params: { per_page: 100 } }),
-      ])
-      return {
-        customers: customers.data.data,
-        suppliers: suppliers.data.data,
-      }
-    },
-    enabled: open,
-  })
-
   const accountsQuery = useQuery({
     queryKey: ['accounts', 'invoices'],
     queryFn: async () => {
@@ -166,14 +152,6 @@ export default function Invoices() {
     await queryClient.invalidateQueries({ queryKey: ['invoice'] })
   }
 
-  const customerOptions = (partiesQuery.data?.customers ?? []).map((p) => ({
-    value: p.id,
-    label: partyLabel(p.name_ar, p.name_en),
-  }))
-  const supplierOptions = (partiesQuery.data?.suppliers ?? []).map((p) => ({
-    value: p.id,
-    label: partyLabel(p.name_ar, p.name_en),
-  }))
   const accountOptions = (accountsQuery.data ?? [])
     .filter((a) => a.is_postable && a.is_active)
     .map((a) => ({ value: a.id, label: `${a.code} — ${locale === 'ar' ? a.name_ar : a.name_en}` }))
@@ -187,7 +165,12 @@ export default function Invoices() {
 
   const data = invoicesQuery.data
   const isCustomer = form.type === 'customer_invoice'
-  const partyOptions = isCustomer ? customerOptions : supplierOptions
+  const partyPicker = usePartyOptions(isCustomer ? 'customer' : 'supplier', {
+    enabled: open,
+    value: form.party_id,
+    locale,
+  })
+  const partyOptions = partyPicker.options
 
   const updateLine = (index: number, patch: Partial<typeof emptyLine>) =>
     setForm((current) => ({
@@ -447,6 +430,7 @@ export default function Invoices() {
               onChange={(value) => setForm({ ...form, party_id: value })}
               placeholder={L('اختر الطرف', 'Select party')}
               options={partyOptions}
+              onSearch={partyPicker.setSearch}
             />
           </Field>
           <Field label={t('date')} required>
