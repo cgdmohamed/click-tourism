@@ -107,7 +107,7 @@ class AccountingScheduleTest extends TestCase
             'total_minor' => 120000,
             'periods' => 1,
             'starts_on' => $this->monthStart(),
-            'source_account_code' => '1150',
+            'source_account_code' => '1154',
             'target_account_code' => '6100',
         ]);
     }

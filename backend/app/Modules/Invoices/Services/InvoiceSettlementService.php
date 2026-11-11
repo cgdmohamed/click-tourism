@@ -139,7 +139,7 @@ class InvoiceSettlementService
                 'created_by' => $actorId,
             ]);
 
-            $advance = $this->posting->account((string) $this->settings->get('accounting', 'supplier_advance_account_code', '1150'));
+            $advance = $this->posting->account((string) $this->settings->get('accounting', 'supplier_advance_account_code', '1153'));
             $payable = $this->ledger->payable($payment->supplier_id);
             $label = 'Apply supplier payment '.$payment->public_id.' to '.$invoice->number;
 

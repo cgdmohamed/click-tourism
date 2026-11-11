@@ -279,7 +279,7 @@ class EmployeeFinanceService
 
             $amount = $advance->amount_minor;
 
-            $advanceAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_advance_account_code', '1150'));
+            $advanceAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_advance_account_code', '1151'));
 
             $entry = $this->posting->post(PostingRequest::make(
                 entryDate: $date,
@@ -340,7 +340,7 @@ class EmployeeFinanceService
                 ? '1'
                 : ((string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $date)));
 
-            $advanceAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_advance_account_code', '1150'));
+            $advanceAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_advance_account_code', '1151'));
 
             $settlementAmount = (int) ($data['settlement_amount_minor'] ?? 0);
             $cashReturn = (int) ($data['cash_return_minor'] ?? 0);
@@ -450,7 +450,7 @@ class EmployeeFinanceService
                 : ((string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $date)));
 
             $cashAccount = $this->cashAccount($data['cash_account_id'] ?? null);
-            $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1150'));
+            $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1152'));
 
             $custody = EmployeeCustody::query()->create([
                 'employee_id' => $employee->id,
@@ -513,7 +513,7 @@ class EmployeeFinanceService
                 ? '1'
                 : ((string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $date)));
 
-            $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1150'));
+            $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1152'));
 
             $clearedTotal = 0;
             $lines = [];
@@ -604,7 +604,7 @@ class EmployeeFinanceService
             }
 
             $cashAccount = $this->cashAccount($data['cash_account_id'] ?? null);
-            $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1150'));
+            $custodyAccount = $this->posting->account((string) $this->settings->get('accounting', 'employee_custody_account_code', '1152'));
 
             // Return the remaining custody value: CR custody, DR cash.
             $entry = $this->posting->post(PostingRequest::make(

@@ -263,7 +263,7 @@ class SupplierSettlementTest extends TestCase
         $advance = $this->entry('supplier_payment', $payment->id, 'supplier_advance');
         $this->assertSame(
             80000,
-            (int) $advance->lines()->whereHas('account', fn ($query) => $query->where('code', '1150'))->sum('debit_minor'),
+            (int) $advance->lines()->whereHas('account', fn ($query) => $query->where('code', '1153'))->sum('debit_minor'),
         );
 
         $applied = app(SupplierSettlementService::class)->applyAdvance($payment, [
@@ -283,7 +283,7 @@ class SupplierSettlementTest extends TestCase
         );
         $this->assertSame(
             50000,
-            (int) $entry->lines()->whereHas('account', fn ($query) => $query->where('code', '1150'))->sum('credit_minor'),
+            (int) $entry->lines()->whereHas('account', fn ($query) => $query->where('code', '1153'))->sum('credit_minor'),
         );
     }
 

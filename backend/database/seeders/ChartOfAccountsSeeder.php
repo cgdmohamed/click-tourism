@@ -32,7 +32,11 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '6800', 'name_ar' => 'مصروف الإهلاك', 'name_en' => 'Depreciation Expense', 'type' => 'expense'],
             ['code' => '6910', 'name_ar' => 'خسائر انخفاض قيمة الأصول', 'name_en' => 'Asset Impairment Loss', 'type' => 'expense'],
             ['code' => '6915', 'name_ar' => 'خسائر استبعاد الأصول', 'name_en' => 'Loss on Asset Disposal', 'type' => 'expense'],
-            ['code' => '1150', 'name_ar' => 'مصروفات مدفوعة مقدماً', 'name_en' => 'Prepaid Expenses', 'type' => 'asset'],
+            ['code' => '1150', 'name_ar' => 'دفعات مقدمة وسلف', 'name_en' => 'Prepayments and advances', 'type' => 'asset', 'is_postable' => false],
+            ['code' => '1151', 'name_ar' => 'سلف الموظفين', 'name_en' => 'Employee advances', 'type' => 'asset', 'parent_code' => '1150'],
+            ['code' => '1152', 'name_ar' => 'عهد الموظفين', 'name_en' => 'Employee custody', 'type' => 'asset', 'parent_code' => '1150'],
+            ['code' => '1153', 'name_ar' => 'دفعات مقدمة للموردين', 'name_en' => 'Supplier advances', 'type' => 'asset', 'parent_code' => '1150'],
+            ['code' => '1154', 'name_ar' => 'مصروفات مدفوعة مقدماً', 'name_en' => 'Prepaid expenses', 'type' => 'asset', 'parent_code' => '1150'],
             ['code' => '2100', 'name_ar' => 'دائنون - موردون', 'name_en' => 'Accounts Payable', 'type' => 'liability'],
             ['code' => '2200', 'name_ar' => 'ضريبة القيمة المضافة المستحقة', 'name_en' => 'VAT Payable', 'type' => 'liability'],
             ['code' => '2300', 'name_ar' => 'دفعات مقدمة من العملاء', 'name_en' => 'Customer Advances', 'type' => 'liability'],
@@ -48,10 +52,24 @@ class ChartOfAccountsSeeder extends Seeder
         ];
 
         foreach ($accounts as $account) {
-            Account::query()->updateOrCreate(
-                ['code' => $account['code']],
-                $account + ['is_postable' => true, 'is_active' => true],
-            );
+            $parentCode = $account['parent_code'] ?? null;
+            unset($account['parent_code']);
+
+            // The 1150 group header stays postable on an existing install until
+            // `accounting:split-1150` has moved its balances, so a seeder re-run
+            // never blocks live postings. Fresh installs create it non-postable.
+            $keepPostable = $account['code'] === '1150'
+                && Account::query()->where('code', '1150')->exists();
+            if ($keepPostable) {
+                unset($account['is_postable']);
+            }
+
+            $attributes = $account + ['is_postable' => true, 'is_active' => true];
+            if ($parentCode !== null) {
+                $attributes['parent_id'] = Account::query()->where('code', $parentCode)->value('id');
+            }
+
+            Account::query()->updateOrCreate(['code' => $account['code']], $attributes);
         }
     }
 }
