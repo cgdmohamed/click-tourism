@@ -117,7 +117,12 @@ class TourPackageTest extends TestCase
             'capacity' => 2,
             'status' => 'open',
         ]);
-        $other = Branch::factory()->create();
+        $other = Branch::query()->create([
+            'code' => 'OTHER-TRAVEL',
+            'name_ar' => 'فرع آخر',
+            'name_en' => 'Another branch',
+            'is_active' => true,
+        ]);
         $this->user->branches()->attach($other->id);
         $this->expectException(\DomainException::class);
         app(BookingService::class)->create([
