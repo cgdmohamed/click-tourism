@@ -23,7 +23,9 @@ import {
   Td,
   Th,
   statusTone,
+  type SelectOption,
 } from '../components/ui'
+import { ReasonModal } from '../components/ReasonModal'
 import { statusLabel } from '../lib/labels'
 
 type PartyType = '' | 'customer' | 'supplier'
@@ -80,6 +82,11 @@ export default function Journal() {
   const [detail, setDetail] = useState<JournalEntry | null>(null)
   const [filters, setFilters] = useState<Filters>(defaultFilters)
   const [searchInput, setSearchInput] = useState('')
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [supplierSearch, setSupplierSearch] = useState('')
+  const [pickedParties, setPickedParties] = useState<{ customer: SelectOption[]; supplier: SelectOption[] }>({ customer: [], supplier: [] })
+  const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null)
+  const [reverseError, setReverseError] = useState('')
 
   const ar = locale === 'ar'
   const canPickCostCenter = can('cost_centers.view') && can('cost_centers.manage')
@@ -131,19 +138,23 @@ export default function Journal() {
   })
 
   const customersQuery = useQuery({
-    queryKey: ['journal-customers', activeBranch?.id],
+    queryKey: ['journal-customers', activeBranch?.id, customerSearch],
     enabled: open && canPickCustomer,
     queryFn: async () => {
-      const { data } = await api.get<Paginated<Customer>>('/customers', { params: { per_page: 100 } })
+      const { data } = await api.get<Paginated<Customer>>('/customers', {
+        params: { per_page: 100, search: customerSearch || undefined },
+      })
       return data.data
     },
   })
 
   const suppliersQuery = useQuery({
-    queryKey: ['journal-suppliers', activeBranch?.id],
+    queryKey: ['journal-suppliers', activeBranch?.id, supplierSearch],
     enabled: open && canPickSupplier,
     queryFn: async () => {
-      const { data } = await api.get<Paginated<Supplier>>('/suppliers', { params: { per_page: 100 } })
+      const { data } = await api.get<Paginated<Supplier>>('/suppliers', {
+        params: { per_page: 100, search: supplierSearch || undefined },
+      })
       return data.data
     },
   })
@@ -166,21 +177,31 @@ export default function Journal() {
 
   const accountById = useMemo(() => new Map((accountsQuery.data ?? []).map((account) => [account.id, account])), [accountsQuery.data])
 
-  const partyOptions = useMemo(
-    () => ({
-      customer: (customersQuery.data ?? []).map((customer) => ({
-        value: customer.id,
-        label: ar ? customer.name_ar : customer.name_en,
-        hint: customer.phone,
-      })),
-      supplier: (suppliersQuery.data ?? []).map((supplier) => ({
-        value: supplier.id,
-        label: ar ? supplier.name_ar : supplier.name_en,
-        hint: supplier.phone,
-      })),
-    }),
-    [customersQuery.data, suppliersQuery.data, ar],
-  )
+  const partyOptions = useMemo(() => {
+    const merge = (fetched: SelectOption[], picked: SelectOption[]) => {
+      const seen = new Set(fetched.map((option) => option.value))
+      return [...fetched, ...picked.filter((option) => !seen.has(option.value))]
+    }
+
+    return {
+      customer: merge(
+        (customersQuery.data ?? []).map((customer) => ({
+          value: customer.id,
+          label: ar ? customer.name_ar : customer.name_en,
+          hint: customer.phone,
+        })),
+        pickedParties.customer,
+      ),
+      supplier: merge(
+        (suppliersQuery.data ?? []).map((supplier) => ({
+          value: supplier.id,
+          label: ar ? supplier.name_ar : supplier.name_en,
+          hint: supplier.phone,
+        })),
+        pickedParties.supplier,
+      ),
+    }
+  }, [customersQuery.data, suppliersQuery.data, pickedParties, ar])
 
   const costCenterOptions = useMemo(
     () => (costCentersQuery.data ?? []).map((center) => ({ value: center.id, label: `${center.code} — ${ar ? center.name_ar : center.name_en}` })),
@@ -299,17 +320,17 @@ export default function Journal() {
   })
 
   const reverse = useMutation({
-    mutationFn: async (entry: JournalEntry) => {
-      const reason = window.prompt(locale === 'ar' ? 'سبب الإلغاء/العكس' : 'Reversal reason')
-      if (!reason) return null
+    mutationFn: async ({ entry, reason }: { entry: JournalEntry; reason: string }) => {
       const { data } = await api.post(`/journal-entries/${entry.id}/reverse`, { reason })
       return data
     },
     onSuccess: async () => {
+      setReverseTarget(null)
+      setReverseError('')
       setError('')
       await queryClient.invalidateQueries({ queryKey: ['journal'] })
     },
-    onError: (cause) => setError(errorMessage(cause)),
+    onError: (cause) => setReverseError(errorMessage(cause)),
   })
 
   const updateLine = (index: number, patch: Partial<DraftLine>) => {
@@ -424,9 +445,11 @@ export default function Journal() {
                       ) : isDocumentEntry(entry.source_type) ? (
                         <Badge tone="neutral">{locale === 'ar' ? 'يُلغى من المستند' : 'Cancel from document'}</Badge>
                       ) : (
-                        <Button variant="ghost" onClick={() => reverse.mutate(entry)}>
-                          {locale === 'ar' ? 'عكس' : 'Reverse'}
-                        </Button>
+                        can('journal.reverse') ? (
+                          <Button variant="ghost" onClick={() => { setReverseError(''); setReverseTarget(entry) }}>
+                            {locale === 'ar' ? 'عكس' : 'Reverse'}
+                          </Button>
+                        ) : null
                       )
                     ) : (
                       <>
@@ -597,7 +620,27 @@ export default function Journal() {
                           <SearchableSelect
                             value={line.party_id}
                             disabled={!line.party_type}
-                            onChange={(party_id) => updateLine(index, { party_id })}
+                            onChange={(party_id) => {
+                              if (party_id && line.party_type) {
+                                const type = line.party_type
+                                const option = partyOptions[type].find((candidate) => candidate.value === party_id)
+                                if (option) {
+                                  setPickedParties((current) =>
+                                    current[type].some((candidate) => candidate.value === party_id)
+                                      ? current
+                                      : { ...current, [type]: [...current[type], option] },
+                                  )
+                                }
+                              }
+                              updateLine(index, { party_id })
+                            }}
+                            onSearch={
+                              line.party_type === 'customer'
+                                ? (query) => setCustomerSearch(query)
+                                : line.party_type === 'supplier'
+                                  ? (query) => setSupplierSearch(query)
+                                  : undefined
+                            }
                             placeholder={
                               line.party_type === 'supplier'
                                 ? ar ? 'اختر المورد' : 'Select supplier'
@@ -672,6 +715,19 @@ export default function Journal() {
           </>
         ) : null}
       </Modal>
+
+      <ReasonModal
+        open={reverseTarget !== null}
+        title={ar ? `عكس القيد ${reverseTarget?.number ?? ''}` : `Reverse entry ${reverseTarget?.number ?? ''}`}
+        description={ar
+          ? 'سيُنشأ قيد عكسي مرتبط بهذا القيد. لا يمكن التراجع عن العملية.'
+          : 'A reversing entry linked to this one will be posted. This cannot be undone.'}
+        confirmLabel={ar ? 'عكس' : 'Reverse'}
+        pending={reverse.isPending}
+        error={reverseError}
+        onClose={() => { setReverseTarget(null); setReverseError('') }}
+        onConfirm={(reason) => reverseTarget && reverse.mutate({ entry: reverseTarget, reason })}
+      />
     </div>
   )
 }

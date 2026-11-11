@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
+import { useSetting } from '../lib/useSetting'
 import type { Booking, Customer, Paginated, Payment, Refund } from '../lib/types'
 import type { PaymentMethod } from '../lib/types'
 import {
@@ -49,7 +50,9 @@ export default function Payments() {
   const [refundForm, setRefundForm] = useState({ amount: '', reason: '' })
   const [refundError, setRefundError] = useState('')
   const [refundsFor, setRefundsFor] = useState<Payment | null>(null)
-  const [refundsMessage, setRefundsMessage] = useState('')
+  const [approveTarget, setApproveTarget] = useState<Refund | null>(null)
+  const [approveFx, setApproveFx] = useState('')
+  const [approveError, setApproveError] = useState('')
   const [form, setForm] = useState({
     customer_id: '',
     booking_id: '',
@@ -163,17 +166,24 @@ export default function Payments() {
     onError: (cause) => setRefundError(errorMessage(cause)),
   })
 
+  const { value: baseCurrency } = useSetting('general', 'base_currency', 'EGP')
+
   const approveRefund = useMutation({
-    mutationFn: async (refund: Refund) => {
-      await api.post(`/refunds/${refund.id}/approve`)
+    mutationFn: async ({ refund, fxRate }: { refund: Refund; fxRate: string }) => {
+      await api.post(
+        `/refunds/${refund.id}/approve`,
+        fxRate.trim() ? { fx_rate: fxRate.trim() } : undefined,
+      )
     },
     onSuccess: async () => {
-      setRefundsMessage('')
+      setApproveTarget(null)
+      setApproveFx('')
+      setApproveError('')
       await queryClient.invalidateQueries({ queryKey: ['refunds'] })
       await queryClient.invalidateQueries({ queryKey: ['payments'] })
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
     },
-    onError: (cause) => setRefundsMessage(errorMessage(cause)),
+    onError: (cause) => setApproveError(errorMessage(cause)),
   })
 
   const customerBookings = useMemo(
@@ -320,7 +330,7 @@ export default function Payments() {
                       </Button>
                     ) : null}
                     {refunds.some((refund) => refund.payment_id === payment.id) ? (
-                      <Button variant="ghost" onClick={() => { setRefundsMessage(''); setRefundsFor(payment) }}>
+                      <Button variant="ghost" onClick={() => setRefundsFor(payment)}>
                         {locale === 'ar' ? 'الاستردادات' : 'Refunds'}
                       </Button>
                     ) : null}
@@ -509,7 +519,11 @@ export default function Payments() {
                   </Td>
                   <Td className="text-end">
                     {refund.status === 'requested' && can('refunds.approve') ? (
-                      <Button variant="secondary" disabled={approveRefund.isPending} onClick={() => approveRefund.mutate(refund)}>
+                      <Button
+                        variant="secondary"
+                        disabled={approveRefund.isPending}
+                        onClick={() => { setApproveError(''); setApproveFx(''); setApproveTarget(refund) }}
+                      >
                         {locale === 'ar' ? 'اعتماد' : 'Approve'}
                       </Button>
                     ) : null}
@@ -518,7 +532,42 @@ export default function Payments() {
               ))}
           </tbody>
         </Table>
-        {refundsMessage ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{refundsMessage}</p> : null}
+      </Modal>
+
+      <Modal
+        open={approveTarget !== null}
+        title={locale === 'ar' ? `اعتماد الاسترداد ${approveTarget?.number ?? ''}` : `Approve refund ${approveTarget?.number ?? ''}`}
+        onClose={() => setApproveTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setApproveTarget(null)}>{t('cancel')}</Button>
+            <Button
+              disabled={approveRefund.isPending}
+              onClick={() => approveTarget && approveRefund.mutate({ refund: approveTarget, fxRate: approveFx })}
+            >
+              {locale === 'ar' ? 'اعتماد' : 'Approve'}
+            </Button>
+          </>
+        }
+      >
+        {approveTarget ? (
+          <div className="grid gap-4">
+            <p className="text-small text-text-subtle">
+              {locale === 'ar' ? 'المبلغ' : 'Amount'}: {toDecimal(approveTarget.amount_minor, approveTarget.currency)} {approveTarget.currency}
+            </p>
+            {approveTarget.currency !== baseCurrency ? (
+              <Field
+                label={locale === 'ar' ? 'سعر الصرف (اختياري)' : 'FX rate (optional)'}
+                hint={locale === 'ar'
+                  ? 'اتركه فارغًا لاستخدام سعر الصرف المحفوظ في سند القبض.'
+                  : "Leave blank to use the receipt's saved FX rate."}
+              >
+                <Input value={approveFx} onChange={(event) => setApproveFx(event.target.value)} inputMode="decimal" dir="ltr" />
+              </Field>
+            ) : null}
+            {approveError ? <p className="rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{approveError}</p> : null}
+          </div>
+        ) : null}
       </Modal>
     </div>
   )

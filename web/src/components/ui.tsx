@@ -148,6 +148,7 @@ export function SearchableSelect({
   disabled,
   className,
   id,
+  onSearch,
 }: {
   value: string
   onChange: (value: string) => void
@@ -157,12 +158,25 @@ export function SearchableSelect({
   disabled?: boolean
   className?: string
   id?: string
+  /** Optional server-side search: called (debounced) with the typed query. */
+  onSearch?: (query: string) => void
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef(onSearch)
+
+  useEffect(() => {
+    searchRef.current = onSearch
+  }, [onSearch])
+
+  useEffect(() => {
+    if (!open || !searchRef.current) return
+    const timer = setTimeout(() => searchRef.current?.(query), 250)
+    return () => clearTimeout(timer)
+  }, [open, query])
 
   const selected = useMemo(() => options.find((option) => option.value === value), [options, value])
 

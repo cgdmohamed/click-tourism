@@ -26,6 +26,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import { useTaxEnabled } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
 type DraftItem = {
@@ -69,6 +70,7 @@ function taxMinor(grossMinor: number, rate: string, inclusive: boolean): number 
 export default function Bookings() {
   const { t, locale } = useI18n()
   const { activeBranch, user } = useAuth()
+  const { enabled: taxEnabled } = useTaxEnabled()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const urlSearch = searchParams.get('search') ?? ''
@@ -126,7 +128,7 @@ export default function Bookings() {
 
   const taxProfilesQuery = useQuery({
     queryKey: ['tax-profiles'],
-    enabled: open,
+    enabled: open && taxEnabled,
     queryFn: async () => {
       const { data } = await api.get<{ data: TaxProfile[] }>('/tax-profiles')
       return data.data
@@ -139,11 +141,11 @@ export default function Bookings() {
       const quantity = Number.parseInt(item.quantity || '0', 10) || 0
       const gross = toMinor(item.unit_sell || '0', item.sell_currency) * quantity
       const cost = toMinor(item.unit_cost || '0', item.cost_currency) * quantity
-      const profile = taxProfiles.find((candidate) => candidate.id === item.tax_profile_id)
+      const profile = taxEnabled ? taxProfiles.find((candidate) => candidate.id === item.tax_profile_id) : undefined
       const tax = profile ? taxMinor(gross, profile.rate, profile.is_inclusive) : 0
       return { cost, tax, sell: gross + (profile?.is_inclusive ? 0 : tax) }
     },
-    [taxProfiles],
+    [taxProfiles, taxEnabled],
   )
 
   const totals = useMemo(() => {
@@ -184,7 +186,7 @@ export default function Bookings() {
           unit_sell_minor: toMinor(item.unit_sell || '0', item.sell_currency),
           cost_currency: item.cost_currency,
           sell_currency: item.sell_currency,
-          tax_profile_id: item.tax_profile_id || null,
+          tax_profile_id: taxEnabled ? item.tax_profile_id || null : null,
         })),
       }
       const { data } = await api.post<{ data: Booking }>('/bookings', payload)
@@ -431,17 +433,21 @@ export default function Bookings() {
                 />
               </div>
               <div className="sm:col-span-4">
-                <Select value={item.tax_profile_id} onChange={(event) => updateItem(index, { tax_profile_id: event.target.value })} aria-label={t('tax')}>
-                  <option value="">{t('tax')}: {t('none')}</option>
-                  {taxProfiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.name} ({Number(profile.rate)}%{profile.is_inclusive ? (locale === 'ar' ? '، شامل' : ', inclusive') : ''})
-                    </option>
-                  ))}
-                </Select>
+                {taxEnabled ? (
+                  <Select value={item.tax_profile_id} onChange={(event) => updateItem(index, { tax_profile_id: event.target.value })} aria-label={t('tax')}>
+                    <option value="">{t('tax')}: {t('none')}</option>
+                    {taxProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} ({Number(profile.rate)}%{profile.is_inclusive ? (locale === 'ar' ? '، شامل' : ', inclusive') : ''})
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <p className="text-small text-text-subtle">{locale === 'ar' ? 'الضريبة معطلة في الإعدادات.' : 'Tax is disabled in settings.'}</p>
+                )}
               </div>
               <div className="text-small self-center text-text-subtle sm:col-span-7">
-                {t('tax')}: {toDecimal(itemAmounts(item).tax, item.sell_currency)} {item.sell_currency}
+                {taxEnabled ? `${t('tax')}: ${toDecimal(itemAmounts(item).tax, item.sell_currency)} ${item.sell_currency}` : ''}
               </div>
               <div className="sm:col-span-1">
                 <Button

@@ -28,6 +28,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -100,6 +101,8 @@ export default function Invoices() {
   const [creditId, setCreditId] = useState<string | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
   const [creditReason, setCreditReason] = useState('')
+  const [creditWarnings, setCreditWarnings] = useState<CreditWarning[]>([])
+  const [overrideReason, setOverrideReason] = useState('')
 
   const invoicesQuery = useQuery({
     queryKey: ['invoices', page, typeFilter, statusFilter, activeBranch?.id],
@@ -275,12 +278,20 @@ export default function Invoices() {
 
   const step = useMutation({
     mutationFn: async ({ invoice, path }: { invoice: Invoice; path: 'submit' | 'approve' | 'issue' }) => {
-      await api.post(`/invoices/${invoice.id}/${path}`, undefined, {
-        headers: path === 'approve' || path === 'issue' ? { 'Idempotency-Key': idempotencyKey() } : undefined,
-      })
+      const override = path === 'issue' && can('bookings.override_credit_limit') && overrideReason.trim()
+        ? { override_reason: overrideReason.trim() }
+        : undefined
+      const { data } = await api.post<{ data: { warnings?: CreditWarning[] } }>(
+        `/invoices/${invoice.id}/${path}`,
+        override,
+        { headers: path === 'approve' || path === 'issue' ? { 'Idempotency-Key': idempotencyKey() } : undefined },
+      )
+      return data.data.warnings ?? []
     },
-    onSuccess: async () => {
+    onSuccess: async (warnings) => {
       setError('')
+      setCreditWarnings(warnings)
+      if (warnings.length === 0) setOverrideReason('')
       await refresh()
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -385,7 +396,7 @@ export default function Invoices() {
                     <Td className="text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
                     <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
                     <Td className="text-end">
-                      <Button variant="ghost" onClick={() => setDetailId(invoice.id)}>{L('تفاصيل', 'Details')}</Button>
+                      <Button variant="ghost" onClick={() => { setError(''); setCreditWarnings([]); setOverrideReason(''); setDetailId(invoice.id) }}>{L('تفاصيل', 'Details')}</Button>
                     </Td>
                   </tr>
                 ))}
@@ -607,7 +618,7 @@ export default function Invoices() {
       <Modal
         open={detailId !== null}
         title={L('تفاصيل الفاتورة', 'Invoice details')}
-        onClose={() => setDetailId(null)}
+        onClose={() => { setDetailId(null); setCreditWarnings([]); setOverrideReason('') }}
         footer={<Button variant="secondary" onClick={() => setDetailId(null)}>{L('إغلاق', 'Close')}</Button>}
       >
         {detailQuery.isLoading ? <Loading /> : null}
@@ -661,6 +672,17 @@ export default function Invoices() {
                 ) : null}
               </div>
             </div>
+
+            {error ? (
+              <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
+            ) : null}
+            <CreditLimitNotice
+              warnings={creditWarnings}
+              blockedMessage={error}
+              canOverride={can('bookings.override_credit_limit')}
+              overrideReason={overrideReason}
+              onOverrideReasonChange={setOverrideReason}
+            />
 
             <div className="grid gap-4 sm:grid-cols-3 text-small text-text-subtle">
               <div>
