@@ -83,6 +83,11 @@ if [ "${DEMO_MODE:-false}" = "true" ]; then
     pg_restore --list "${SNAPSHOT}.tmp" >/dev/null
     test -s "${SNAPSHOT}.tmp"
     mv "${SNAPSHOT}.tmp" "${SNAPSHOT}"
+    # Prove the 10-minute reset works before the demo goes live; a restore that
+    # only fails at the first scheduled reset would take the demo offline.
+    echo "Verifying baseline restore (client $(pg_dump --version), server $(psql -X -Atc 'show server_version'))..."
+    /bin/sh /usr/local/bin/demo-restore-db "${SNAPSHOT}"
+    php artisan demo:ensure-users --verify-only
     echo "Verified demo snapshot is ready."
     php artisan up
 fi

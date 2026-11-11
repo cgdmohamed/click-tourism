@@ -25,7 +25,10 @@ RUN apk add --no-cache --virtual .build-deps \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del .build-deps \
-    && apk add --no-cache icu-libs libzip libpq oniguruma postgresql-client
+    && apk add --no-cache icu-libs libzip libpq oniguruma \
+    # Match the postgres:16 demo/production server; fall back to the default
+    # client (the restore script tolerates a newer pg_dump).
+    && (apk add --no-cache postgresql16-client || apk add --no-cache postgresql-client)
 
 COPY docker/php.ini /usr/local/etc/php/conf.d/99-app.ini
 
@@ -58,7 +61,8 @@ RUN php artisan storage:link >/dev/null 2>&1 || true
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint
 COPY docker/demo-reset-loop.sh /usr/local/bin/demo-reset-loop
-RUN chmod 755 /usr/local/bin/entrypoint /usr/local/bin/demo-reset-loop
+COPY docker/demo-restore-db.sh /usr/local/bin/demo-restore-db
+RUN chmod 755 /usr/local/bin/entrypoint /usr/local/bin/demo-reset-loop /usr/local/bin/demo-restore-db
 
 USER www-data
 

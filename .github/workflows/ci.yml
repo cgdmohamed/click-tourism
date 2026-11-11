@@ -132,6 +132,14 @@ jobs:
           php artisan tinker --execute="if (config('database.default') !== 'pgsql') { throw new RuntimeException('PostgreSQL connection was not selected'); }"
       - name: Migrate on PostgreSQL
         run: php artisan migrate --force
+      - name: Demo baseline restore (PostgreSQL 16 server, any pg_dump version)
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: tourism_test
+          PGUSER: tourism
+          PGPASSWORD: ci-test-only
+        run: sh docker/test-demo-restore.sh
       - name: Run financial integration tests on PostgreSQL
         run: |
           php artisan test --filter="(PostingServiceTest|PaymentServiceTest|InvoiceTest|FinancialReportsReconciliationTest|SupplierSettlementTest|BookingServiceTest)"
@@ -156,6 +164,8 @@ jobs:
         run: |
           sh -n backend/docker/entrypoint.sh
           sh -n backend/docker/demo-reset-loop.sh
+          sh -n backend/docker/demo-restore-db.sh
+          sh -n backend/docker/test-demo-restore.sh
       - name: Build Laravel nginx API image
         run: docker build -f deploy/Dockerfile.api -t click-tourism-api:ci .
       - name: Build Laravel PHP-FPM image
