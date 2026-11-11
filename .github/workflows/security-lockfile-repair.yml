@@ -3,7 +3,7 @@ name: One-time npm security lockfile repair
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/security-lockfile-repair.yml']
+    paths: ['.github/workflows/security-lockfile-repair.yml', 'web/package.json']
 
 permissions:
   contents: write
@@ -24,7 +24,6 @@ jobs:
         working-directory: web
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit
-          npm audit fix --package-lock-only --ignore-scripts --no-fund --legacy-peer-deps
       - name: Validate fresh lockfile against tests and build
         working-directory: web
         run: |
