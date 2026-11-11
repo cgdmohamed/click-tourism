@@ -243,7 +243,7 @@ export default function Payments() {
   return (
     <div>
       <PageHeader
-        title={t('payments')}
+        title={locale === 'ar' ? 'تحصيلات العملاء' : 'Customer collections'}
         subtitle={locale === 'ar' ? 'سندات القبض والدفعات الجزئية والدفعات المقدمة' : 'Receipts, partial payments, and advances'}
         icon="creditCard"
         actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newPayment')}</Button>}
