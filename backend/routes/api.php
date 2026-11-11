@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
 use App\Http\Controllers\Api\TaxProfileController;
+use App\Http\Controllers\Api\TourPackageController;
 use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebhookController;
@@ -251,6 +252,11 @@ Route::prefix('v1')->group(function () {
         Route::post('supplier-payments/{supplierPayment}/unapply', [SupplierSettlementController::class, 'unapply'])->middleware(['permission:supplier_payments.create']);
 
         Route::get('tax-profiles', [TaxProfileController::class, 'index'])->middleware('permission:bookings.view');
+        Route::get('tour-packages', [TourPackageController::class, 'index'])->middleware('permission:bookings.view');
+        Route::post('tour-packages', [TourPackageController::class, 'store'])->middleware('permission:bookings.create');
+        Route::get('tour-packages/{package}', [TourPackageController::class, 'show'])->middleware('permission:bookings.view');
+        Route::post('tour-packages/{package}/departures', [TourPackageController::class, 'departure'])->middleware('permission:bookings.create');
+        Route::post('tour-departures/{departure}/close', [TourPackageController::class, 'close'])->middleware('permission:bookings.update');
         Route::get('bookings', [BookingController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('bookings', [BookingController::class, 'store'])->middleware('permission:bookings.create');
         Route::get('bookings/{booking}', [BookingController::class, 'show'])->middleware('permission:bookings.view');
