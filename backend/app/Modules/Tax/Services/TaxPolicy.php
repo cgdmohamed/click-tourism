@@ -29,6 +29,19 @@ class TaxPolicy
         return is_numeric($rate) && bccomp($rate, '0', 4) > 0 ? $rate : '0';
     }
 
+    /** Calculate exclusive VAT in minor units using integer-safe BCMath rounding. */
+    public function exclusiveMinor(int $subtotalMinor): int
+    {
+        if (! $this->enabled() || $subtotalMinor <= 0) {
+            return 0;
+        }
+        $rate = $this->defaultRate();
+        $scaled = bcmul($rate, '10000', 0);
+        $numerator = bcadd(bcmul((string) $subtotalMinor, $scaled, 0), '500000', 0);
+
+        return (int) bcdiv($numerator, '1000000', 0);
+    }
+
     /** Reject any non-zero tax amount while tax is disabled. */
     public function assertTaxAllowed(int $taxMinor, ?string $prefix = null): void
     {
