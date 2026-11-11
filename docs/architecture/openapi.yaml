@@ -886,6 +886,46 @@ paths:
         '201': { description: Recorded }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Validation' }
+  /payments/{id}/cancel:
+    post:
+      tags: [Payments]
+      summary: Cancel a receipt (reverses the receipt and allocation postings, releases booking allocations; idempotent)
+      description: Requires permission payments.reverse. Refused with 422 while a requested/approved refund or an active invoice application exists.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200': { description: Cancelled (status cancelled, unallocated_minor 0) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-payments/{id}/cancel:
+    post:
+      tags: [Payments]
+      summary: Cancel a supplier payment (reverses its postings; idempotent)
+      description: Requires permission supplier_payments.reverse. Refused with 422 while applied to obligations or invoices.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200': { description: Cancelled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
   /refunds:
     post:
       tags: [Payments]

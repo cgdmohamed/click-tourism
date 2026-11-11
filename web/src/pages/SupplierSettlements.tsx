@@ -25,6 +25,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel as statusLabelOf } from '../lib/labels'
+import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
@@ -67,6 +68,8 @@ export default function SupplierSettlements() {
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm)
 
   const [applyPayment, setApplyPayment] = useState<SupplierPayment | null>(null)
+  const [cancelPayment, setCancelPayment] = useState<SupplierPayment | null>(null)
+  const [cancelError, setCancelError] = useState('')
   const [applyForm, setApplyForm] = useState({ supplier_obligation_id: '', amount: '' })
 
   const [obligationPage, setObligationPage] = useState(1)
@@ -240,6 +243,21 @@ export default function SupplierSettlements() {
       await invalidate()
     },
     onError: (cause) => setError(errorMessage(cause)),
+  })
+
+  const cancelSupplierPayment = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!cancelPayment) throw new Error('No supplier payment selected')
+      await api.post(`/supplier-payments/${cancelPayment.id}/cancel`, { reason })
+    },
+    onSuccess: async () => {
+      setCancelPayment(null)
+      setCancelError('')
+      await queryClient.invalidateQueries({ queryKey: ['supplier-payments'] })
+      await queryClient.invalidateQueries({ queryKey: ['supplier-obligations'] })
+      await queryClient.invalidateQueries({ queryKey: ['journal'] })
+    },
+    onError: (cause) => setCancelError(errorMessage(cause)),
   })
 
   const apply = useMutation({
@@ -469,6 +487,17 @@ export default function SupplierSettlements() {
                           }
                         >
                           {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
+                        </Button>
+                      ) : null}
+                      {payment.status === 'posted' && can('supplier_payments.reverse') ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setCancelError('')
+                            setCancelPayment(payment)
+                          }}
+                        >
+                          {locale === 'ar' ? 'إلغاء الدفعة' : 'Cancel payment'}
                         </Button>
                       ) : null}
                     </Td>
@@ -706,6 +735,21 @@ export default function SupplierSettlements() {
       </Modal>
 
       <ApplyToInvoiceModal target={invoiceTarget} onClose={() => setInvoiceTarget(null)} />
+
+      <ReasonModal
+        open={cancelPayment !== null}
+        title={locale === 'ar' ? 'إلغاء دفعة المورد' : 'Cancel supplier payment'}
+        description={
+          locale === 'ar'
+            ? 'سيتم عكس قيد الدفعة. لا يمكن الإلغاء قبل فك تطبيقها على الالتزامات أو الفواتير.'
+            : 'The payment posting is reversed. Not possible until it is unapplied from obligations and invoices.'
+        }
+        confirmLabel={locale === 'ar' ? 'إلغاء الدفعة' : 'Cancel payment'}
+        pending={cancelSupplierPayment.isPending}
+        error={cancelError}
+        onClose={() => setCancelPayment(null)}
+        onConfirm={(reason) => cancelSupplierPayment.mutate(reason)}
+      />
     </div>
   )
 }
