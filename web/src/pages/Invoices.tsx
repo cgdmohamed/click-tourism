@@ -5,7 +5,8 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
-import { useTaxEnabled } from '../lib/useSetting'
+import { useDefaultTaxRate, useTaxEnabled } from '../lib/useSetting'
+import { taxMinor } from '../lib/tax'
 import {
   Badge,
   Button,
@@ -70,7 +71,7 @@ const emptyLine = {
   unit_price: '',
   debit: '',
   credit: '',
-  tax: '',
+  tax_applied: false,
   tax_account_id: '',
 }
 const emptyForm = {
@@ -194,8 +195,10 @@ export default function Invoices() {
       ? (Number(line.quantity) || 0) * toMinor(line.unit_price || '0', form.currency)
       : toMinor(line.debit || '0', form.currency) + toMinor(line.credit || '0', form.currency)
 
-  const { enabled: taxEnabled } = useTaxEnabled()
-  const lineTax = (line: { tax: string }) => (taxEnabled ? toMinor(line.tax || '0', form.currency) : 0)
+  const { enabled: taxEnabled, loaded: taxFlagLoaded } = useTaxEnabled()
+  const { rate: defaultTaxRate, loaded: taxRateLoaded } = useDefaultTaxRate()
+  const lineTax = (line: typeof emptyLine) =>
+    taxEnabled && line.tax_applied ? taxMinor(lineSubtotal(line), defaultTaxRate, false) : 0
 
   const formSubtotal = form.lines.reduce((sum, line) => sum + lineSubtotal(line), 0)
   const formTax = form.lines.reduce((sum, line) => sum + lineTax(line), 0)
@@ -203,6 +206,9 @@ export default function Invoices() {
 
   const create = useMutation({
     mutationFn: async (submit: boolean) => {
+      if (taxEnabled && form.lines.some((line) => line.tax_applied) && (!taxFlagLoaded || !taxRateLoaded || Number(defaultTaxRate) <= 0)) {
+        throw new Error(L('لا يمكن حساب الضريبة قبل تحميل نسبتها من الإعدادات.', 'Tax settings must be loaded before calculating tax.'))
+      }
       if (!form.party_id) throw new Error(L('اختر العميل أو المورد أولاً', 'Select a customer or supplier'))
       if (simpleMode && !defaultLineAccount) {
         throw new Error(L('لا يوجد حساب إيراد أو تكلفة مفعل. راجع إعدادات دليل الحسابات.', 'No active revenue or cost account is configured.'))
@@ -523,14 +529,13 @@ export default function Invoices() {
                       </Field>
                     </div>
                     <div className="sm:col-span-2">
-                      <Field label={L('الضريبة (مبلغ)', 'Tax amount')}>
-                        <Input
-                          value={line.tax}
-                          onChange={(event) => updateLine(index, { tax: event.target.value })}
-                          inputMode="decimal"
-                          disabled={!taxEnabled}
-                          dir="ltr"
-                        />
+                      <Field label={L('تطبيق الضريبة', 'Apply tax')}>
+                        <label className="flex items-center gap-2 text-small">
+                          <input type="checkbox" checked={taxEnabled && line.tax_applied}
+                            disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
+                            onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
+                          {L('ضريبة', 'VAT')} {defaultTaxRate}% — {L('تلقائي', 'Automatic')}
+                        </label>
                       </Field>
                     </div>
                   </>
@@ -568,13 +573,12 @@ export default function Invoices() {
                       />
                     </div>
                     <div className="sm:col-span-1">
-                      <Input
-                        placeholder={t('tax')}
-                        value={line.tax}
-                        onChange={(event) => updateLine(index, { tax: event.target.value })}
-                        disabled={!taxEnabled}
-                        inputMode="decimal" dir="ltr"
-                      />
+                      <label className="flex items-center gap-1 text-small" title={L('الضريبة من الإعدادات', 'Tax from settings')}>
+                        <input type="checkbox" checked={taxEnabled && line.tax_applied}
+                          disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
+                          onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
+                        {defaultTaxRate}%
+                      </label>
                     </div>
                   </>
                 )}
