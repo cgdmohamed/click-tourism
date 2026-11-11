@@ -910,9 +910,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [code, name, category, execution_type, currency, base_price_minor, estimated_cost_minor]
+              required: [name, category, execution_type, currency, base_price_minor, estimated_cost_minor]
               properties:
-                code: { type: string }
                 name: { type: string }
                 category: { type: string, enum: [domestic, international, umrah, hajj, corporate, day_trip, other] }
                 execution_type: { type: string, enum: [fixed, private, standalone] }
