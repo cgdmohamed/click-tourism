@@ -2,6 +2,7 @@
 
 namespace App\Modules\Bookings\Models;
 
+use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Parties\Models\Customer;
@@ -143,7 +144,25 @@ class Booking extends Model
             'paid_minor' => $this->paidMinor(),
             'balance_minor' => $this->balanceMinor(),
             'notes' => $this->notes,
+            'tax_minor' => (int) $this->tax_minor,
+            'cancellation_reason' => $this->cancellation_reason,
+            'cancellation_fee_minor' => (int) $this->cancellation_fee_minor,
+            'margin_requested_by' => $this->margin_requested_by
+                ? User::query()->whereKey($this->margin_requested_by)->value('public_id')
+                : null,
+            'allowed_transitions' => BookingService::allowedTransitionsFor($this->status),
         ];
+
+        if ($this->relationLoaded('statusHistory')) {
+            $payload['status_history'] = $this->statusHistory
+                ->sortBy('id')
+                ->map(fn (BookingStatusHistory $row) => [
+                    'from' => $row->from_status,
+                    'to' => $row->to_status,
+                    'reason' => $row->reason,
+                    'at' => $row->created_at?->toIso8601String(),
+                ])->values()->all();
+        }
 
         if ($withItems) {
             $payload['items'] = $this->items->map(fn (BookingItem $item) => $item->toApiArray())->values()->all();
