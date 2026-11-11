@@ -7,6 +7,7 @@ use App\Modules\Bookings\Models\TourPackage;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class TourPackageController extends ApiController
@@ -33,7 +34,6 @@ class TourPackageController extends ApiController
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:50'],
             'name' => ['required', 'string', 'max:200'],
             'category' => ['required', Rule::in(['domestic', 'international', 'umrah', 'hajj', 'corporate', 'day_trip', 'other'])],
             'execution_type' => ['required', Rule::in(['fixed', 'private', 'standalone'])],
@@ -44,13 +44,9 @@ class TourPackageController extends ApiController
             'estimated_cost_minor' => ['required', 'integer', 'min:0'],
         ]);
         $branch = $this->branchOrFail();
-        if (TourPackage::query()->where('branch_id', $branch->id)->where('code', $data['code'])->exists()) {
-            throw new DomainException('Package code already exists in this branch.');
-        }
-
         $package = TourPackage::query()->create([
             'branch_id' => $branch->id,
-            'code' => $data['code'],
+            'code' => 'TOUR-'.Str::ulid(),
             'name' => $data['name'],
             'category' => $data['category'],
             'execution_type' => $data['execution_type'],
