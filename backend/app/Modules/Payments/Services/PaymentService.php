@@ -3,6 +3,7 @@
 namespace App\Modules\Payments\Services;
 
 use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
@@ -13,6 +14,7 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Services\PartyLedgerService;
@@ -306,12 +308,71 @@ class PaymentService
         ));
     }
 
+    /**
+     * Cancel a receipt: reverse the receipt entry and every allocation
+     * movement exactly once and release the booking allocations. Refused
+     * while refunds or active invoice applications depend on the receipt.
+     * Cancelling an already cancelled receipt is a no-op.
+     */
+    public function cancel(Payment $payment, string $reason, ?int $actorId = null): Payment
+    {
+        return DB::transaction(function () use ($payment, $reason, $actorId) {
+            $payment = Payment::query()->lockForUpdate()->findOrFail($payment->id);
+            if ($payment->status === 'cancelled') {
+                return $payment->load('allocations');
+            }
+            if ($payment->status !== 'posted') {
+                throw new DomainException('Only posted payments can be cancelled.');
+            }
+            $branch = Branch::query()->findOrFail($payment->branch_id);
+            if ($actorId !== null) {
+                $this->branchScope->assertBranch(User::query()->findOrFail($actorId), $branch);
+            }
+
+            if (Refund::query()->where('payment_id', $payment->id)->whereIn('status', ['requested', 'approved'])->exists()) {
+                throw new DomainException('This receipt has refunds. Resolve or reverse the refunds before cancelling it.');
+            }
+            if (InvoiceApplication::query()->active()->where('payment_id', $payment->id)->exists()) {
+                throw new DomainException('This receipt is applied to invoices. Undo the invoice applications first.');
+            }
+
+            $entries = JournalEntry::query()
+                ->posted()
+                ->whereNull('reversal_of_id')
+                ->where('branch_id', $payment->branch_id)
+                ->where(function ($query) use ($payment) {
+                    $query->where(fn ($q) => $q->where('source_type', 'payment')->where('source_id', $payment->id))
+                        ->orWhere(fn ($q) => $q->where('source_type', 'payment_allocation')
+                            ->whereIn('memo', ['Allocate receipt '.$payment->number, 'Unallocate receipt '.$payment->number]));
+                })
+                ->orderBy('id')
+                ->get()
+                ->filter(fn (JournalEntry $entry) => ! JournalEntry::query()->where('reversal_of_id', $entry->id)->exists());
+
+            foreach ($entries as $entry) {
+                $this->posting->reverse($entry, $reason, $actorId);
+            }
+
+            PaymentAllocation::query()->where('payment_id', $payment->id)->delete();
+            $payment->update(['status' => 'cancelled', 'unallocated_minor' => 0]);
+            $this->audit->log('payment.cancelled', $payment, ['status' => 'posted'], [
+                'status' => 'cancelled', 'reason' => $reason, 'reversed_entries' => $entries->count(),
+            ], $actorId);
+
+            return $payment->refresh()->load('allocations');
+        });
+    }
+
     public function requestRefund(array $data, ?int $actorId = null): Refund
     {
         return DB::transaction(function () use ($data, $actorId) {
             $payment = Payment::query()->where('public_id', $data['payment_id'] ?? '')->first();
             if (! $payment) {
                 throw new DomainException('Payment not found.');
+            }
+
+            if ($payment->status !== 'posted') {
+                throw new DomainException('Refunds can only be requested for posted payments.');
             }
 
             $branch = $payment->branch_id ? Branch::query()->find($payment->branch_id) : null;

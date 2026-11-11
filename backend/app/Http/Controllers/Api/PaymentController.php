@@ -59,6 +59,17 @@ class PaymentController extends ApiController
         return $this->ok($payments->allocate($payment, $data['allocations'], $this->actorId()));
     }
 
+    public function cancel(Request $request, Payment $payment, PaymentService $payments): JsonResponse
+    {
+        $this->authorizeBranchId($payment->branch_id);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        return $this->ok($payments->cancel($payment, $data['reason'], $this->actorId())->load('customer', 'booking')->toApiArray());
+    }
+
     public function unallocate(Request $request, Payment $payment, PaymentService $payments): JsonResponse
     {
         $this->authorizeBranchId($payment->branch_id);
