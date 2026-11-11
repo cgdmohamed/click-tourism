@@ -36,6 +36,15 @@ class BranchScope
             return $branch;
         }
 
+        // Without a header, prefer the user's own primary branch while it is
+        // still assigned; otherwise fall back to the lowest allowed id.
+        if ($user->primary_branch_id !== null && in_array($user->primary_branch_id, $allowed, true)) {
+            $primary = Branch::query()->find($user->primary_branch_id);
+            if ($primary) {
+                return $primary;
+            }
+        }
+
         return Branch::query()->whereIn('id', $allowed)->orderBy('id')->first();
     }
 

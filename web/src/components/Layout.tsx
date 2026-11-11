@@ -75,6 +75,8 @@ export function Layout() {
     {
       label: t('system'),
       items: [
+        { to: '/users', label: t('users'), icon: 'users', permission: 'users.view' },
+        { to: '/roles', label: t('rolesPermissions'), icon: 'shield', permission: 'roles.view' },
         { to: '/exchange-rates', label: locale === 'ar' ? 'أسعار الصرف' : 'Exchange rates', icon: 'refresh', permission: 'settings.view' },
         { to: '/settings', label: t('settings'), icon: 'settings' },
       ],
@@ -149,13 +151,19 @@ export function Layout() {
         {brand}
         {nav}
         <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-3">
-          <span className="text-small flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-subtle font-semibold text-text-subtle">
-            {initials}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-small truncate font-medium text-text-default">{user.name}</p>
-            <p className="text-small truncate text-text-subtle">{user.roles[0] ?? '—'}</p>
-          </div>
+          <NavLink
+            to="/profile"
+            title={t('profile')}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-12 p-1 transition hover:bg-surface-hovered"
+          >
+            <span className="text-small flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-subtle font-semibold text-text-subtle">
+              {initials}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-small truncate font-medium text-text-default">{user.name}</p>
+              <p className="text-small truncate text-text-subtle">{user.roles[0] ?? '—'}</p>
+            </div>
+          </NavLink>
           <IconButton icon="logOut" label={t('logout')} onClick={() => void logout()} />
         </div>
       </aside>

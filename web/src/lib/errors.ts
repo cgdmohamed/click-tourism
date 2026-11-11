@@ -121,6 +121,14 @@ const RULES: Rule[] = [
   { pattern: /^The person who created or submitted an expense cannot approve it\.$/, ar: 'لا يمكن لمن أنشأ المصروف أو أرسله اعتماده.' },
   { pattern: /^The person who submitted a document cannot approve it\.$/, ar: 'لا يمكن لمن أرسل المستند اعتماده.' },
   { pattern: /^The requester cannot approve their own negative-margin booking\.$/, ar: 'لا يمكن لمقدّم الطلب اعتماد حجزه ذي الهامش السالب بنفسه.' },
+  { pattern: /^You may not assign privileges you do not hold\.$/, ar: 'لا يمكنك منح صلاحيات لا تمتلكها.' },
+  { pattern: /^You may not assign a branch you are not assigned to\.$/, ar: 'لا يمكنك تعيين فرع غير مُسند إليك.' },
+  { pattern: /^You cannot deactivate your own account\.$/, ar: 'لا يمكنك إيقاف حسابك الخاص.' },
+  { pattern: /^The last active administrator cannot be deactivated or demoted\.$/, ar: 'لا يمكن إيقاف أو تخفيض آخر مدير نظام نشط.' },
+  { pattern: /^This role is a system role and cannot be modified or deleted\.$/, ar: 'هذا دور نظامي ولا يمكن تعديله أو حذفه.' },
+  { pattern: /^This role is assigned to users and cannot be deleted\.$/, ar: 'هذا الدور مُسند لمستخدمين ولا يمكن حذفه.' },
+  { pattern: /^The primary branch must be one of the assigned branches\.$/, ar: 'يجب أن يكون الفرع الرئيسي من ضمن الفروع المُسندة.' },
+  { pattern: /^The current password is incorrect\.$/, ar: 'كلمة المرور الحالية غير صحيحة.' },
 
   // --- Accounting policy / periods / posting ------------------------------
   {

@@ -52,7 +52,8 @@ class BranchIsolationTest extends TestCase
         $this->owner->branches()->attach([$this->branch->id, $this->other->id]);
 
         $permissions = [
-            'bookings.view', 'payments.view', 'customers.update', 'suppliers.update',
+            'bookings.view', 'payments.view', 'customers.update', 'customers.create', 'suppliers.update',
+            'suppliers.create', 'employees.manage',
             'leads.update', 'leads.convert', 'journal.view', 'journal.create', 'journal.reverse',
             'accounts.post',
         ];
@@ -205,5 +206,59 @@ class BranchIsolationTest extends TestCase
 
         $this->getJson('/api/v1/bookings/'.$this->booking($this->other)->public_id)->assertOk();
         $this->getJson('/api/v1/bookings/'.$this->booking($this->branch)->public_id)->assertOk();
+    }
+
+    public function test_a_customer_cannot_be_created_in_an_unassigned_branch(): void
+    {
+        $this->postJson('/api/v1/customers', [
+            'name_ar' => 'عميل فرع آخر',
+            'name_en' => 'Foreign Branch Customer',
+            'branch_id' => $this->other->public_id,
+        ])->assertStatus(403)
+            ->assertJsonPath('message', 'You are not assigned to the requested branch.');
+
+        $this->assertDatabaseMissing('customers', ['name_en' => 'Foreign Branch Customer']);
+
+        // An omitted branch keeps the resolved-branch behaviour.
+        $this->postJson('/api/v1/customers', [
+            'name_ar' => 'عميل الفرع الرئيسي',
+            'name_en' => 'Own Branch Customer',
+        ])->assertCreated();
+    }
+
+    public function test_a_supplier_cannot_be_created_in_an_unassigned_branch(): void
+    {
+        $this->postJson('/api/v1/suppliers', [
+            'name_ar' => 'مورد فرع آخر',
+            'name_en' => 'Foreign Branch Supplier',
+            'branch_id' => $this->other->public_id,
+        ])->assertStatus(403)
+            ->assertJsonPath('message', 'You are not assigned to the requested branch.');
+
+        $this->assertDatabaseMissing('suppliers', ['name_en' => 'Foreign Branch Supplier']);
+
+        $this->postJson('/api/v1/suppliers', [
+            'name_ar' => 'مورد الفرع الرئيسي',
+            'name_en' => 'Own Branch Supplier',
+        ])->assertCreated();
+    }
+
+    public function test_an_employee_cannot_be_created_in_an_unassigned_branch(): void
+    {
+        $this->postJson('/api/v1/employees', [
+            'internal_code' => 'EMP-CROSS',
+            'name_ar' => 'موظف فرع آخر',
+            'name_en' => 'Foreign Branch Employee',
+            'branch_id' => $this->other->public_id,
+        ])->assertStatus(403)
+            ->assertJsonPath('message', 'You are not assigned to this branch.');
+
+        $this->assertDatabaseMissing('employees', ['name_en' => 'Foreign Branch Employee']);
+
+        $this->postJson('/api/v1/employees', [
+            'internal_code' => 'EMP-OWN',
+            'name_ar' => 'موظف الفرع الرئيسي',
+            'name_en' => 'Own Branch Employee',
+        ])->assertCreated();
     }
 }

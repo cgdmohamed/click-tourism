@@ -48,6 +48,16 @@ abstract class ApiController extends Controller
         }
     }
 
+    /** Deny creating into an explicitly requested branch the user is not assigned to (ADR-0005). */
+    protected function authorizeBranchChoice(Branch $branch): void
+    {
+        $user = request()->user();
+
+        if ($user && ! in_array($branch->id, app(BranchScope::class)->allowedBranchIds($user), true)) {
+            throw new AuthorizationException('You are not assigned to the requested branch.');
+        }
+    }
+
     protected function actorId(): ?int
     {
         return request()->user()?->id;

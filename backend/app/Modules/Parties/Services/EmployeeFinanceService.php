@@ -61,12 +61,18 @@ class EmployeeFinanceService
     }
 
     /**
-     * Create an employee master record. User linkage is optional.
+     * Create an employee master record. User linkage is optional. The branch
+     * must be within the caller's assignment (ADR-0005, work order 01).
      *
      * @param  array<string, mixed>  $data
      */
     public function createEmployee(array $data, Branch $branch, ?int $actorId): Employee
     {
+        $user = request()->user();
+        if ($user) {
+            $this->branchScope->assertBranch($user, $branch);
+        }
+
         return DB::transaction(function () use ($data, $branch, $actorId) {
             $internalCode = strtoupper((string) $data['internal_code']);
 
