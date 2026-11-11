@@ -130,7 +130,14 @@ export default function TourPackages() {
                         {(item.departures ?? []).map((d) => (
                           <div key={d.id} className="text-small">
                             {d.starts_on} · {d.status === 'open' ? (
-                              <Badge tone="positive">{d.available_seats ?? '∞'} {L('متاح', 'left')}</Badge>
+                              <>
+                                <Badge tone="positive">{d.available_seats ?? '∞'} {L('متاح', 'left')}</Badge>
+                                {can('bookings.create') && (d.available_seats === null || d.available_seats > 0) ? (
+                                  <Link className="ms-2 font-semibold text-brand-1-accent underline" to={`/bookings?departure_id=${d.id}`}>
+                                    {L('احجز هذا الموعد', 'Book this departure')}
+                                  </Link>
+                                ) : null}
+                              </>
                             ) : <Badge tone="neutral">{L('مغلق', 'Closed')}</Badge>}
                           </div>
                         ))}
