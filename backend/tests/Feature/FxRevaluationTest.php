@@ -392,7 +392,7 @@ class FxRevaluationTest extends TestCase
             $this->service()->revalue($this->period, $this->branch);
             $this->fail('expected missing account');
         } catch (DomainException $e) {
-            $this->assertStringContainsString('ensure-fx-accounts', $e->getMessage());
+            $this->assertStringContainsString('ensure-accounts', $e->getMessage());
         }
 
         $this->artisan('accounting:ensure-fx-accounts')->assertSuccessful();
