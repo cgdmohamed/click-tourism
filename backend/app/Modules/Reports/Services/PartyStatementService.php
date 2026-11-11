@@ -216,7 +216,7 @@ class PartyStatementService
         $code = match ($partyType) {
             'customer' => (string) $this->settings->get('accounting', 'ar_account_code', '1100'),
             'supplier' => (string) $this->settings->get('accounting', 'ap_account_code', '2100'),
-            'employee' => (string) $this->settings->get('accounting', 'employee_advance_account_code', '1150'),
+            'employee' => (string) $this->settings->get('accounting', 'employee_advance_account_code', '1151'),
             default => throw new DomainException("Unsupported party type: {$partyType}"),
         };
 
@@ -228,8 +228,8 @@ class PartyStatementService
     {
         $codes = match ($partyType) {
             'employee' => array_values(array_unique([
-                (string) $this->settings->get('accounting', 'employee_advance_account_code', '1150'),
-                (string) $this->settings->get('accounting', 'employee_custody_account_code', '1150'),
+                (string) $this->settings->get('accounting', 'employee_advance_account_code', '1151'),
+                (string) $this->settings->get('accounting', 'employee_custody_account_code', '1152'),
             ])),
             default => [$this->controlAccount($partyType)->code],
         };

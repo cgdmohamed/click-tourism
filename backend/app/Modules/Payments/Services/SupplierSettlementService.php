@@ -505,7 +505,7 @@ class SupplierSettlementService
      */
     private function advanceAccountCode(): string
     {
-        return (string) $this->settings->get('accounting', 'supplier_advance_account_code', '1150');
+        return (string) $this->settings->get('accounting', 'supplier_advance_account_code', '1153');
     }
 
     private function branch(?string $publicId): Branch

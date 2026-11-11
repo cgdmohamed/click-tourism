@@ -215,7 +215,7 @@ Before go-live an accountant must review and sign off the following settings
 | `accounting.unearned_account_code` | `2400` | Unearned revenue |
 | `accounting.cost_account_code` | `5100` | Cost of services |
 | `accounting.ap_account_code` | `2100` | Payables control account |
-| `accounting.supplier_advance_account_code` | `1150` | Supplier advances (asset until applied) |
+| `accounting.supplier_advance_account_code` | `1153` | Supplier advances (asset until applied) |
 | `accounting.tax_payable_account_code` | `2200` | VAT payable |
 | `accounting.fx_gain_account_code` / `fx_loss_account_code` | `7900` / `6900` | FX policy (DEC-007) |
 | Commission treatment | not implemented yet | DEC-010 |

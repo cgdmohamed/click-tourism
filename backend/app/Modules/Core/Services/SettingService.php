@@ -41,7 +41,7 @@ class SettingService
             'ap_account_code' => '2100',
             // PENDING ACCOUNTANT APPROVAL: supplier advances (AC-PAY-009) are
             // an asset until applied to an obligation. Configurable per install.
-            'supplier_advance_account_code' => '1150',
+            'supplier_advance_account_code' => '1153',
             'tax_payable_account_code' => '2200',
             'fx_gain_account_code' => '7900',
             'fx_loss_account_code' => '6900',
@@ -58,8 +58,8 @@ class SettingService
             'output_tax_account_code' => '2200',
             'retained_earnings_account_code' => '3100',
             // PENDING ACCOUNTANT APPROVAL (DEC-035): employee advances/custody accounts.
-            'employee_advance_account_code' => '1150',
-            'employee_custody_account_code' => '1150',
+            'employee_advance_account_code' => '1151',
+            'employee_custody_account_code' => '1152',
             // PENDING ACCOUNTANT APPROVAL (DEC-038): accrual and prepayment policy.
             // Auto-post due recognition events from the daily scheduler; the
             // period-end checklist reports anything that could not post. Disabled
@@ -73,7 +73,7 @@ class SettingService
             'approved_at' => '',
             // Days after a recognition date that an accrual reversal is dated.
             'accrual_reversal_offset_days' => '1',
-            'prepaid_expense_account_code' => '1150',
+            'prepaid_expense_account_code' => '1154',
             'deferred_revenue_account_code' => '2400',
             'accrued_liability_account_code' => '2100',
             'accrued_revenue_account_code' => '1100',
