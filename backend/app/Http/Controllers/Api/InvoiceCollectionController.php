@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Services\PaymentService;
 use DomainException;
@@ -19,7 +20,7 @@ use Illuminate\Validation\Rule;
  */
 class InvoiceCollectionController extends ApiController
 {
-    public function store(Request $request, Invoice $invoice, PaymentService $payments, InvoiceSettlementService $settlements): JsonResponse
+    public function store(Request $request, Invoice $invoice, PaymentService $payments, InvoiceSettlementService $settlements, SettingService $settings): JsonResponse
     {
         $this->authorizeBranchId($invoice->branch_id);
         $data = $request->validate([
@@ -31,7 +32,7 @@ class InvoiceCollectionController extends ApiController
             'receipts.*.fx_rate' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
-        $result = DB::transaction(function () use ($invoice, $data, $payments, $settlements, $request) {
+        $result = DB::transaction(function () use ($invoice, $data, $payments, $settlements, $request, $settings) {
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             if ($invoice->type !== Invoice::TYPE_CUSTOMER_INVOICE || $invoice->status !== Invoice::STATUS_ISSUED
                 || $invoice->journal_entry_id === null || $invoice->party_type !== 'customer') {
@@ -45,7 +46,7 @@ class InvoiceCollectionController extends ApiController
             $branch = $invoice->branch;
             $collection = [];
             foreach ($data['receipts'] as $index => $receipt) {
-                if ($invoice->currency_code !== 'EGP' && ! isset($receipt['fx_rate'])) {
+                if ($invoice->currency_code !== $settings->baseCurrency() && ! isset($receipt['fx_rate'])) {
                     throw new DomainException('An explicit current exchange rate is required for foreign-currency collections.');
                 }
 
