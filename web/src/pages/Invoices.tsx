@@ -230,6 +230,7 @@ export default function Invoices() {
             debit_minor: form.type === 'supplier_invoice' ? amount : 0,
             credit_minor: form.type === 'customer_invoice' ? amount : 0,
             tax_minor: lineTax(line),
+            tax_applied: taxEnabled && line.tax_applied,
           }
         }
         if (!line.account_id) throw new Error(L('اختر حساب كل بند', 'Select an account for every line'))
