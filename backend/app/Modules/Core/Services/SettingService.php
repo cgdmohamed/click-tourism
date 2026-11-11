@@ -4,7 +4,9 @@ namespace App\Modules\Core\Services;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Setting;
+use DomainException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Typed access to installation settings. Values are stored in the `settings`
@@ -277,6 +279,15 @@ class SettingService
         return strtoupper((string) $this->get('general', 'base_currency', 'EGP'));
     }
 
+    /**
+     * The base currency is fixed once any journal entry has been posted:
+     * converted base amounts of posted entries must never be reinterpreted.
+     */
+    public function baseCurrencyLocked(): bool
+    {
+        return DB::table('journal_entries')->where('status', 'posted')->exists();
+    }
+
     /** @return array<int, array{group: string, key: string, value: ?string, is_secret: bool}> */
     public function all(): array
     {
@@ -308,12 +319,32 @@ class SettingService
             }
         }
 
+        $result[] = [
+            'group' => 'general',
+            'key' => 'base_currency_locked',
+            'value' => $this->baseCurrencyLocked() ? 'true' : 'false',
+            'is_secret' => false,
+        ];
+
         return $result;
     }
 
     public function set(string $group, string $key, ?string $value, bool $secret = false): Setting
     {
+        if ($group === 'general' && $key === 'base_currency_locked') {
+            throw new DomainException('base_currency_locked is computed and cannot be written.');
+        }
+
+        if ($group === 'general' && $key === 'base_currency'
+            && strtoupper((string) $value) !== $this->baseCurrency()
+            && $this->baseCurrencyLocked()) {
+            throw new DomainException('The base currency cannot be changed after the first journal entry has been posted. / لا يمكن تغيير العملة الأساسية بعد ترحيل أول قيد يومية.');
+        }
+
         Cache::forget("settings.{$group}.{$key}");
+        if ($group === 'accounting' && $key === 'rounding_policy') {
+            app(RoundingPolicy::class)->flush();
+        }
 
         return Setting::query()->updateOrCreate(
             ['group' => $group, 'key' => $key],

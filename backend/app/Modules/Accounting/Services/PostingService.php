@@ -9,6 +9,7 @@ use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
@@ -28,6 +29,7 @@ class PostingService
 {
     public function __construct(
         private readonly SettingService $settings,
+        private readonly RoundingPolicy $rounding,
         private readonly SequenceService $sequences,
         private readonly BranchScope $branchScope,
         private readonly FxService $fx,
@@ -508,9 +510,9 @@ class PostingService
                 continue;
             }
             $baseDebitMinor = (new Money($line->debitMinor, $lineCurrency))
-                ->convertTo($baseCurrency, $lineRate)->amountMinor;
+                ->convertTo($baseCurrency, $lineRate, $this->rounding->mode())->amountMinor;
             $baseCreditMinor = (new Money($line->creditMinor, $lineCurrency))
-                ->convertTo($baseCurrency, $lineRate)->amountMinor;
+                ->convertTo($baseCurrency, $lineRate, $this->rounding->mode())->amountMinor;
 
             $baseDebit += $baseDebitMinor;
             $baseCredit += $baseCreditMinor;

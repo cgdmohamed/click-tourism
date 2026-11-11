@@ -13,6 +13,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
@@ -45,6 +46,7 @@ class FixedAssetService
         private readonly PostingService $posting,
         private readonly AccountingDocumentService $documents,
         private readonly SettingService $settings,
+        private readonly RoundingPolicy $rounding,
         private readonly SequenceService $sequences,
         private readonly FxService $fx,
         private readonly AuditService $audit,
@@ -1080,7 +1082,7 @@ class FixedAssetService
             throw new DomainException('The FX rate must be greater than zero.');
         }
 
-        $valueBase = (new Money($value, $currency))->convertTo($base, $rate)->amountMinor;
+        $valueBase = (new Money($value, $currency))->convertTo($base, $rate, $this->rounding->mode())->amountMinor;
 
         $residual = max(0, (int) ($data['residual_value_minor'] ?? $category->default_residual_value_minor ?? $this->settings->int('assets', 'default_residual_value_minor', 0)));
         if ($residual >= $valueBase) {

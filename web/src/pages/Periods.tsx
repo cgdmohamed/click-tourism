@@ -10,6 +10,7 @@ import { statusLabel } from '../lib/labels'
 
 type Period = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'soft_closed' | 'closed' }
 type Year = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'closed'; closed_at: string | null; periods: Period[] }
+type Suggestion = { name: string; starts_on: string; ends_on: string; fiscal_year_start: string }
 type Check = { code: string; passed: boolean; message: string | null; count: number | null }
 type Checks = { can_close: boolean; checks: Check[] }
 
@@ -34,6 +35,8 @@ export default function Periods() {
   const [reason, setReason] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ name: '', starts_on: '', ends_on: '' })
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
+  const [confirmCustom, setConfirmCustom] = useState(false)
 
   const yearsQuery = useQuery({
     queryKey: ['fiscal-years'],
@@ -95,16 +98,32 @@ export default function Periods() {
 
   const createYear = useMutation({
     mutationFn: async () => {
-      await api.post('/fiscal-periods', form)
+      await api.post('/fiscal-periods', { ...form, confirm_custom_start: confirmCustom })
     },
     onSuccess: async () => {
       setCreateOpen(false)
       setForm({ name: '', starts_on: '', ends_on: '' })
+      setConfirmCustom(false)
       setError('')
       await refresh()
     },
     onError: (cause) => setError(errorMessage(cause)),
   })
+
+  const openCreate = async () => {
+    setError('')
+    setConfirmCustom(false)
+    setCreateOpen(true)
+    try {
+      const { data } = await api.get<{ data: Suggestion }>('/fiscal-years/suggested')
+      setSuggestion(data.data)
+      setForm({ name: data.data.name, starts_on: data.data.starts_on, ends_on: data.data.ends_on })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  const customStart = suggestion !== null && form.starts_on !== '' && form.starts_on.slice(5) !== suggestion.fiscal_year_start
 
   const years = yearsQuery.data ?? []
 
@@ -116,7 +135,7 @@ export default function Periods() {
         icon="calendar"
         actions={
           can('periods.manage') ? (
-            <Button icon="plus" onClick={() => { setError(''); setCreateOpen(true) }}>{L('سنة مالية جديدة', 'New fiscal year')}</Button>
+            <Button icon="plus" onClick={() => void openCreate()}>{L('سنة مالية جديدة', 'New fiscal year')}</Button>
           ) : null
         }
       />
@@ -249,7 +268,7 @@ export default function Periods() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
-            <Button onClick={() => createYear.mutate()} disabled={createYear.isPending}>{t('save')}</Button>
+            <Button onClick={() => createYear.mutate()} disabled={createYear.isPending || (customStart && !confirmCustom)}>{t('save')}</Button>
           </>
         }
       >
@@ -265,6 +284,17 @@ export default function Periods() {
             <Input type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} dir="ltr" />
           </Field>
         </div>
+        {customStart ? (
+          <label className="mt-4 flex items-start gap-2 text-medium text-warning-text">
+            <input type="checkbox" checked={confirmCustom} onChange={(event) => setConfirmCustom(event.target.checked)} />
+            <span>
+              {L(
+                `تاريخ البداية يختلف عن بداية السنة المالية المضبوطة (${suggestion?.fiscal_year_start ?? ''}). أؤكد المتابعة.`,
+                `The start date differs from the configured fiscal year start (${suggestion?.fiscal_year_start ?? ''}). I confirm this is intended.`,
+              )}
+            </span>
+          </label>
+        ) : null}
       </Modal>
     </div>
   )
