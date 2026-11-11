@@ -9,9 +9,9 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
-use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\PaymentMethod;
@@ -32,7 +32,7 @@ class InvoiceTest extends TestCase
 
     private const PERMISSIONS = [
         'invoices.view', 'invoices.create', 'invoices.approve',
-        'journal.view', 'journal.create',
+        'journal.view', 'journal.create', 'payments.create',
     ];
 
     protected function setUp(): void
