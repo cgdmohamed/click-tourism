@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { toDecimal, toMinor, todayISO } from '../lib/format'
+import { useBaseCurrency } from '../lib/useSetting'
 import type { PaymentMethod } from '../lib/types'
 import { Button, Field, Input, Modal, Money, SearchableSelect } from './ui'
 
@@ -24,6 +25,7 @@ export function InvoiceCollectionModal({
   const { locale } = useI18n()
   const L = (ar: string, en: string) => locale === 'ar' ? ar : en
   const queryClient = useQueryClient()
+  const baseCurrency = useBaseCurrency()
   const [mode, setMode] = useState<'full' | 'partial'>('full')
   const [rows, setRows] = useState<ReceiptRow[]>([newRow()])
   const [error, setError] = useState('')
@@ -64,7 +66,7 @@ export function InvoiceCollectionModal({
       const method = methods.find((m) => m.id === row.methodId)
       const account = accounts.find((a) => a.id === row.accountId)
       return !!method && !!account && (!method.default_cash_account_id || method.default_cash_account_id === account.id)
-        && (invoice?.currency === 'EGP' || (row.fxRate.trim() !== '' && Number(row.fxRate) > 0))
+        && (invoice?.currency === baseCurrency || (row.fxRate.trim() !== '' && Number(row.fxRate) > 0))
     })
   const valid = !!invoice && validRows && (mode === 'full' ? remaining === 0 : total > 0 && remaining >= 0)
 
@@ -80,7 +82,7 @@ export function InvoiceCollectionModal({
           payment_method_id: row.methodId,
           cash_account_id: row.accountId,
           paid_at: row.paidAt,
-          ...(invoice.currency !== 'EGP' ? { fx_rate: row.fxRate } : {}),
+          ...(invoice.currency !== baseCurrency ? { fx_rate: row.fxRate } : {}),
         })),
       }, { headers: { 'Idempotency-Key': idempotencyKey() } })
     },
@@ -161,7 +163,7 @@ export function InvoiceCollectionModal({
                   <Field label={L('تاريخ التحصيل', 'Collection date')} required>
                     <Input value={row.paidAt} type="date" dir="ltr" onChange={(e) => updateRow(index, { paidAt: e.target.value })} />
                   </Field>
-                  {invoice.currency !== 'EGP' ? (
+                  {invoice.currency !== baseCurrency ? (
                     <Field label={L('سعر الصرف وقت التحصيل', 'Collection FX rate')} required>
                       <Input value={row.fxRate} inputMode="decimal" dir="ltr" onChange={(e) => updateRow(index, { fxRate: e.target.value })} />
                     </Field>
