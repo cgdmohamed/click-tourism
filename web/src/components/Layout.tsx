@@ -67,6 +67,7 @@ export function Layout() {
         { to: '/customers', label: t('customers'), icon: 'users' },
         { to: '/suppliers', label: t('suppliers'), icon: 'truck' },
         { to: '/employees', label: t('employees'), icon: 'userCheck', permission: 'employees.view' },
+        { to: '/tour-packages', label: locale === 'ar' ? 'البرامج والرحلات' : 'Tours & Packages', icon: 'plane', permission: 'bookings.view' },
         { to: '/bookings', label: t('bookings'), icon: 'plane' },
         { to: '/leads', label: t('crm'), icon: 'target' },
         { to: '/assignment-rules', label: t('assignmentRules'), icon: 'target', permission: 'leads.manage_rules' },
