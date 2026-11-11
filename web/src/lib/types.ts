@@ -481,6 +481,8 @@ export type InvoiceLineRecord = {
   account_id?: string
   account?: Account | null
   description?: string | null
+  quantity?: number | null
+  unit_price_minor?: number | null
   debit_minor: number
   credit_minor: number
   tax_minor: number
