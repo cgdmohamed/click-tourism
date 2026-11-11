@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios'
+import { translateError } from './errors'
 import type { ApiError } from './types'
 
 const TOKEN_KEY = 'tourism_erp_token'
@@ -60,7 +61,7 @@ api.interceptors.response.use(
   },
 )
 
-export function errorMessage(error: unknown, fallback = 'Unexpected error'): string {
+function rawErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError<ApiError>(error)) {
     const data = error.response?.data
     if (data?.errors) {
@@ -71,6 +72,11 @@ export function errorMessage(error: unknown, fallback = 'Unexpected error'): str
   }
   if (error instanceof Error) return error.message
   return fallback
+}
+
+/** Human-readable error text; backend messages are translated when the UI locale is Arabic. */
+export function errorMessage(error: unknown, fallback = 'Unexpected error'): string {
+  return translateError(rawErrorMessage(error, fallback), getStoredLocale())
 }
 
 export function idempotencyKey(): string {

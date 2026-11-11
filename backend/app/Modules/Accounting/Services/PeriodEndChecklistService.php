@@ -190,6 +190,7 @@ class PeriodEndChecklistService
                 $abnormalAp ? 1 : 0,
                 ['balance_minor' => $apBalance],
             ),
+            $this->revaluationCheck($period, $branch),
             $this->check(
                 'trial_balance',
                 'ميزان المراجعة متوازن',
@@ -213,6 +214,50 @@ class PeriodEndChecklistService
             'as_of' => $end,
             'checks' => $checks,
         ];
+    }
+
+    /**
+     * Non-blocking: when FX revaluation is enabled, every branch with
+     * foreign-currency balances should have its period revaluation posted.
+     *
+     * @return array<string, mixed>
+     */
+    private function revaluationCheck(FiscalPeriod $period, ?Branch $branch): array
+    {
+        $labelAr = 'تقييم أرصدة العملات الأجنبية';
+        $labelEn = 'Foreign-currency revaluation';
+        $revaluation = app(RevaluationService::class);
+
+        if (! $revaluation->enabled()) {
+            return $this->check('revaluation', $labelAr, $labelEn, true, null, 0, [], false);
+        }
+
+        $missing = [];
+        $branches = $branch ? collect([$branch]) : Branch::query()->where('is_active', true)->get();
+        foreach ($branches as $candidate) {
+            if ($revaluation->runFor($period, $candidate) !== null) {
+                continue;
+            }
+            try {
+                $pending = $revaluation->preview($period->ends_on->toDateString(), $candidate) !== [];
+            } catch (\DomainException) {
+                $pending = true; // e.g. a missing closing rate also needs attention
+            }
+            if ($pending) {
+                $missing[] = $candidate->code;
+            }
+        }
+
+        return $this->check(
+            'revaluation',
+            $labelAr,
+            $labelEn,
+            $missing === [],
+            $missing === [] ? null : 'FX revaluation has not been posted for: '.implode(', ', $missing).'.',
+            count($missing),
+            ['branches' => $missing],
+            false,
+        );
     }
 
     /** @return array<int, array<string, mixed>> */

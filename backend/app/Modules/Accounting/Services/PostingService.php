@@ -57,7 +57,10 @@ class PostingService
                 throw new DomainException('Only draft journal entries can be posted.');
             }
 
-            $this->assertMakerChecker($actorId, $entry->created_by, 'poster');
+            $ownDraftOverride = $this->makerCheckerOverridden($actorId, $entry->created_by);
+            if (! $ownDraftOverride) {
+                $this->assertMakerChecker($actorId, $entry->created_by, 'poster');
+            }
 
             $this->assertActorMayPost(new PostingRequest(
                 entryDate: $entry->entry_date->toDateString(),
@@ -84,8 +87,58 @@ class PostingService
                 'number' => $entry->number,
             ], $actorId);
 
+            if ($ownDraftOverride) {
+                // Maker-checker was overridden by journal.post_own_drafts.
+                $this->audit->log('journal.posted_own_draft', $entry, ['status' => 'draft'], [
+                    'status' => 'posted',
+                    'number' => $entry->number,
+                    'created_by' => $entry->created_by,
+                    'posted_by' => $actorId,
+                ], $actorId);
+            }
+
             return $entry->refresh()->load('lines.account');
         });
+    }
+
+    /**
+     * Deletes a draft entry and its lines. Posted entries are never deletable;
+     * the model/line immutability hooks stay intact, so the lines are removed
+     * with a query-level delete that is only reachable for a draft parent.
+     */
+    public function deleteDraft(JournalEntry $entry, ?int $actorId = null): void
+    {
+        DB::transaction(function () use ($entry, $actorId) {
+            $entry = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
+
+            if ($entry->status !== 'draft') {
+                throw new DomainException('Only draft journal entries can be deleted; posted entries must be reversed.');
+            }
+
+            $entry->load('lines');
+            $debit = (int) $entry->lines->sum('debit_minor');
+            $credit = (int) $entry->lines->sum('credit_minor');
+
+            DB::table('journal_lines')->where('journal_entry_id', $entry->id)->delete();
+            $entry->delete();
+
+            $this->audit->log('journal.draft_deleted', $entry, [
+                'status' => 'draft',
+                'number' => $entry->number,
+                'debit_minor' => $debit,
+                'credit_minor' => $credit,
+                'created_by' => $entry->created_by,
+            ], null, $actorId);
+        });
+    }
+
+    private function makerCheckerOverridden(?int $actorId, ?int $createdBy): bool
+    {
+        if ($actorId === null || $createdBy === null || $actorId !== $createdBy) {
+            return false;
+        }
+
+        return (bool) User::query()->find($actorId)?->can('journal.post_own_drafts');
     }
 
     private function persist(PostingRequest $request, string $status): JournalEntry
@@ -152,9 +205,14 @@ class PostingService
      * Reverse a posted entry exactly once. Reversing a reversal is rejected:
      * create a new correction instead (ADR-0004 §5).
      */
-    public function reverse(JournalEntry $entry, string $reason, ?int $actorId = null): JournalEntry
-    {
-        return DB::transaction(function () use ($entry, $reason, $actorId) {
+    public function reverse(
+        JournalEntry $entry,
+        string $reason,
+        ?int $actorId = null,
+        ?string $reversalDate = null,
+        ?string $reversalEvent = null,
+    ): JournalEntry {
+        return DB::transaction(function () use ($entry, $reason, $actorId, $reversalDate, $reversalEvent) {
             $entry = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
 
             if ($entry->status !== 'posted') {
@@ -191,7 +249,9 @@ class PostingService
             $originalPeriod = FiscalPeriod::query()
                 ->whereDate('starts_on', '<=', $originalDate)
                 ->whereDate('ends_on', '>=', $originalDate)->firstOrFail();
-            $reversalDate = $originalPeriod->status === 'closed'
+            // An explicit reversal date (e.g. FX revaluation reversals on the
+            // first day of the next period) overrides the default dating.
+            $reversalDate ??= $originalPeriod->status === 'closed'
                 ? now()->toDateString()
                 : $originalDate;
             $period = $this->resolveOpenPeriod($reversalDate, $actorId);
@@ -212,7 +272,7 @@ class PostingService
                 // The unique (source_type, source_id, event) key must stay unique,
                 // so the reversal carries a derived event key while keeping the
                 // same source reference for traceability.
-                'event' => $entry->event !== null ? $entry->event.'.reversal' : null,
+                'event' => $reversalEvent ?? ($entry->event !== null ? $entry->event.'.reversal' : null),
                 'reversal_of_id' => $entry->id,
                 'reversal_reason' => $reason,
                 'posted_at' => now(),
@@ -275,6 +335,27 @@ class PostingService
                 throw new DomainException('Invalid posting line.');
             }
 
+            if ($line->isBaseOnly()) {
+                if ($line->baseDebitMinor < 0 || $line->baseCreditMinor < 0
+                    || ($line->baseDebitMinor > 0) === ($line->baseCreditMinor > 0)) {
+                    throw new DomainException('A base-only adjustment line needs exactly one positive base debit or credit.');
+                }
+                if ($line->currency === null) {
+                    throw new DomainException('A base-only adjustment line needs its own currency.');
+                }
+                $account = $line->account;
+                if (! $account->is_active || ! $account->is_postable) {
+                    throw new DomainException("Account {$account->code} is not active and postable.");
+                }
+                if ($account->currency_code !== null && strtoupper($account->currency_code) !== $line->currency) {
+                    throw new DomainException("Account {$account->code} only accepts {$account->currency_code}.");
+                }
+                // Transaction amounts of base-only lines are zero and not comparable.
+                $mixed = true;
+
+                continue;
+            }
+
             $hasDebit = $line->debitMinor > 0;
             $hasCredit = $line->creditMinor > 0;
 
@@ -330,12 +411,12 @@ class PostingService
 
     private function assertActorMayPost(PostingRequest $request): void
     {
-        // Accounting auto-posting remains disabled until the accountant
+        // Accounting posting (automatic and manual) remains disabled until the accountant
         // explicitly approves the accounting policy. This guards every
         // posting path (bookings, schedules, FX revaluation, documents).
         if ($this->settings->bool('accounting', 'accounting_policy_approved', false) === false) {
             throw new DomainException(
-                'Accounting auto-posting is disabled until the accounting policy is approved by an accountant.'
+                'Accounting posting is disabled until the accounting policy is approved by an accountant. This applies to automatic and manual journal entries.'
             );
         }
 
@@ -409,6 +490,23 @@ class PostingService
         foreach ($request->lines as $line) {
             $lineCurrency = $line->currency ?? $request->currency;
             $lineRate = $line->fxRate ?? $request->fxRate;
+            if ($line->isBaseOnly()) {
+                $baseDebit += $line->baseDebitMinor;
+                $baseCredit += $line->baseCreditMinor;
+                $prepared[] = [
+                    'account' => $line->account,
+                    'debit_minor' => 0,
+                    'credit_minor' => 0,
+                    'currency' => $lineCurrency,
+                    'base_debit_minor' => $line->baseDebitMinor,
+                    'base_credit_minor' => $line->baseCreditMinor,
+                    'party_type' => $line->partyType,
+                    'party_id' => $line->partyId,
+                    'description' => $line->description,
+                ];
+
+                continue;
+            }
             $baseDebitMinor = (new Money($line->debitMinor, $lineCurrency))
                 ->convertTo($baseCurrency, $lineRate)->amountMinor;
             $baseCreditMinor = (new Money($line->creditMinor, $lineCurrency))

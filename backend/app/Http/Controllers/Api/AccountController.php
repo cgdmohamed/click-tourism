@@ -27,6 +27,11 @@ class AccountController extends ApiController
 
     public function index(Request $request): JsonResponse
     {
+        $controlParty = [
+            (string) $this->settings()->get('accounting', 'ar_account_code', '1100') => 'customer',
+            (string) $this->settings()->get('accounting', 'ap_account_code', '2100') => 'supplier',
+        ];
+
         $accounts = Account::query()
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->when($request->query('search'), fn ($query, $search) => $query->where(function ($query) use ($search) {
@@ -36,7 +41,9 @@ class AccountController extends ApiController
             }))
             ->orderBy('code')
             ->get()
-            ->map(fn (Account $account) => $account->toApiArray());
+            ->map(fn (Account $account) => $account->toApiArray() + [
+                'control_party_type' => $controlParty[$account->code] ?? null,
+            ]);
 
         return $this->ok($accounts);
     }
