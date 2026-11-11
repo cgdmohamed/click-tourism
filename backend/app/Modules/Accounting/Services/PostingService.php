@@ -383,12 +383,12 @@ class PostingService
 
     private function assertActorMayPost(PostingRequest $request): void
     {
-        // Accounting auto-posting remains disabled until the accountant
+        // Accounting posting (automatic and manual) remains disabled until the accountant
         // explicitly approves the accounting policy. This guards every
         // posting path (bookings, schedules, FX revaluation, documents).
         if ($this->settings->bool('accounting', 'accounting_policy_approved', false) === false) {
             throw new DomainException(
-                'Accounting auto-posting is disabled until the accounting policy is approved by an accountant.'
+                'Accounting posting is disabled until the accounting policy is approved by an accountant. This applies to automatic and manual journal entries.'
             );
         }
 

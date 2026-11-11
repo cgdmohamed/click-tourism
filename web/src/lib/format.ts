@@ -78,3 +78,28 @@ export function formatDateTime(value: string | undefined | null, locale: 'ar' | 
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
+
+/**
+ * Strict amount check for user-typed money: digits with optional thousands
+ * commas (groups of three) and optional decimals up to the currency exponent.
+ * No sign, letters, spaces or exponent notation. Empty input is not valid
+ * (callers decide whether a blank field is allowed).
+ */
+export function isValidAmount(value: string, currency: string): boolean {
+  const text = value.trim()
+  if (!text) return false
+  const scale = exponent(currency)
+  const decimals = scale === 0 ? '' : `(\\.\\d{1,${scale}})?`
+  const pattern = new RegExp(`^(\\d+|\\d{1,3}(,\\d{3})+)${decimals}$`)
+  return pattern.test(text)
+}
+
+/**
+ * Parses a typed amount into integer minor units. Returns null for empty or
+ * invalid input — never 0 for garbage, so a typo cannot silently post nothing.
+ */
+export function parseAmount(value: string, currency: string): number | null {
+  if (!isValidAmount(value, currency)) return null
+  const minor = toMinor(value, currency)
+  return Number.isSafeInteger(minor) ? minor : null
+}

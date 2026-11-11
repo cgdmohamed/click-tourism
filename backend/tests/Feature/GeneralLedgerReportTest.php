@@ -80,7 +80,7 @@ class GeneralLedgerReportTest extends TestCase
                         'debit_minor' => $amount,
                         'credit_minor' => 0,
                         'party_type' => $party ? 'customer' : null,
-                        'party_id' => $party?->id,
+                        'party_id' => $party?->public_id,
                     ],
                     ['account_id' => $this->account($creditCode)->public_id, 'debit_minor' => 0, 'credit_minor' => $amount],
                 ],
