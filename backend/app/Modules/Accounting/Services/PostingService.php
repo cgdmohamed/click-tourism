@@ -205,9 +205,14 @@ class PostingService
      * Reverse a posted entry exactly once. Reversing a reversal is rejected:
      * create a new correction instead (ADR-0004 §5).
      */
-    public function reverse(JournalEntry $entry, string $reason, ?int $actorId = null): JournalEntry
-    {
-        return DB::transaction(function () use ($entry, $reason, $actorId) {
+    public function reverse(
+        JournalEntry $entry,
+        string $reason,
+        ?int $actorId = null,
+        ?string $reversalDate = null,
+        ?string $reversalEvent = null,
+    ): JournalEntry {
+        return DB::transaction(function () use ($entry, $reason, $actorId, $reversalDate, $reversalEvent) {
             $entry = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
 
             if ($entry->status !== 'posted') {
@@ -244,7 +249,9 @@ class PostingService
             $originalPeriod = FiscalPeriod::query()
                 ->whereDate('starts_on', '<=', $originalDate)
                 ->whereDate('ends_on', '>=', $originalDate)->firstOrFail();
-            $reversalDate = $originalPeriod->status === 'closed'
+            // An explicit reversal date (e.g. FX revaluation reversals on the
+            // first day of the next period) overrides the default dating.
+            $reversalDate ??= $originalPeriod->status === 'closed'
                 ? now()->toDateString()
                 : $originalDate;
             $period = $this->resolveOpenPeriod($reversalDate, $actorId);
@@ -265,7 +272,7 @@ class PostingService
                 // The unique (source_type, source_id, event) key must stay unique,
                 // so the reversal carries a derived event key while keeping the
                 // same source reference for traceability.
-                'event' => $entry->event !== null ? $entry->event.'.reversal' : null,
+                'event' => $reversalEvent ?? ($entry->event !== null ? $entry->event.'.reversal' : null),
                 'reversal_of_id' => $entry->id,
                 'reversal_reason' => $reason,
                 'posted_at' => now(),
@@ -326,6 +333,27 @@ class PostingService
         foreach ($request->lines as $line) {
             if (! $line instanceof PostingLine) {
                 throw new DomainException('Invalid posting line.');
+            }
+
+            if ($line->isBaseOnly()) {
+                if ($line->baseDebitMinor < 0 || $line->baseCreditMinor < 0
+                    || ($line->baseDebitMinor > 0) === ($line->baseCreditMinor > 0)) {
+                    throw new DomainException('A base-only adjustment line needs exactly one positive base debit or credit.');
+                }
+                if ($line->currency === null) {
+                    throw new DomainException('A base-only adjustment line needs its own currency.');
+                }
+                $account = $line->account;
+                if (! $account->is_active || ! $account->is_postable) {
+                    throw new DomainException("Account {$account->code} is not active and postable.");
+                }
+                if ($account->currency_code !== null && strtoupper($account->currency_code) !== $line->currency) {
+                    throw new DomainException("Account {$account->code} only accepts {$account->currency_code}.");
+                }
+                // Transaction amounts of base-only lines are zero and not comparable.
+                $mixed = true;
+
+                continue;
             }
 
             $hasDebit = $line->debitMinor > 0;
@@ -462,6 +490,23 @@ class PostingService
         foreach ($request->lines as $line) {
             $lineCurrency = $line->currency ?? $request->currency;
             $lineRate = $line->fxRate ?? $request->fxRate;
+            if ($line->isBaseOnly()) {
+                $baseDebit += $line->baseDebitMinor;
+                $baseCredit += $line->baseCreditMinor;
+                $prepared[] = [
+                    'account' => $line->account,
+                    'debit_minor' => 0,
+                    'credit_minor' => 0,
+                    'currency' => $lineCurrency,
+                    'base_debit_minor' => $line->baseDebitMinor,
+                    'base_credit_minor' => $line->baseCreditMinor,
+                    'party_type' => $line->partyType,
+                    'party_id' => $line->partyId,
+                    'description' => $line->description,
+                ];
+
+                continue;
+            }
             $baseDebitMinor = (new Money($line->debitMinor, $lineCurrency))
                 ->convertTo($baseCurrency, $lineRate)->amountMinor;
             $baseCreditMinor = (new Money($line->creditMinor, $lineCurrency))
