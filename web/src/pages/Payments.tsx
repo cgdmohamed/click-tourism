@@ -35,6 +35,7 @@ import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
+type OpenCustomerInvoice = { id: string; number: string; currency: string; outstanding_minor: number; issue_date: string }
 
 const bookingToOption = (booking: Booking): SelectOption => ({
   value: booking.id,
@@ -64,6 +65,7 @@ export default function Payments() {
   const [form, setForm] = useState({
     customer_id: '',
     booking_id: '',
+    invoice_id: '',
     cash_account_id: '',
     payment_method_id: '',
     method: 'cash',
@@ -188,10 +190,56 @@ export default function Payments() {
     value: form.booking_id,
   })
 
+  // One issued invoice can have many linked receipts. Selecting it prefills
+  // the outstanding amount, which remains editable for partial collection.
+  const invoiceParams = useMemo(() => ({
+    type: 'customer_invoice',
+    party_type: 'customer',
+    party_id: form.customer_id || undefined,
+    currency: form.currency,
+    open: 1,
+  }), [form.customer_id, form.currency])
+  const invoicePicker = useRemoteOptions<OpenCustomerInvoice>({
+    endpoint: '/invoices',
+    keyPrefix: 'customer-collection-invoices',
+    params: invoiceParams,
+    value: form.invoice_id,
+    enabled: open && !!form.customer_id,
+    toOption: (invoice) => ({
+      value: invoice.id,
+      label: `${invoice.number} · ${toDecimal(invoice.outstanding_minor, invoice.currency)} ${invoice.currency}`,
+    }),
+  })
+  const selectedInvoice = invoicePicker.rows.find((invoice) => invoice.id === form.invoice_id)
+  const chooseInvoice = (invoiceId: string) => {
+    const invoice = invoicePicker.rows.find((item) => item.id === invoiceId)
+    setForm((current) => ({
+      ...current,
+      invoice_id: invoiceId,
+      booking_id: '',
+      amount: invoice ? toDecimal(invoice.outstanding_minor, invoice.currency) : '',
+    }))
+  }
+
   const create = useMutation({
     mutationFn: async () => {
       if (!activeBranch) throw new Error(t('branchRequired'))
       const amountMinor = toMinor(form.amount, form.currency)
+      if (form.invoice_id) {
+        if (!selectedInvoice || !form.payment_method_id || amountMinor <= 0 || amountMinor > selectedInvoice.outstanding_minor) {
+          throw new Error(locale === 'ar' ? 'اختر فاتورة وطريقة تحصيل ومبلغًا لا يتجاوز المستحق.' : 'Choose an invoice, payment method, and amount within the outstanding balance.')
+        }
+        await api.post(`/invoices/${form.invoice_id}/collections`, {
+          receipts: [{
+            amount_minor: amountMinor,
+            cash_account_id: form.cash_account_id,
+            payment_method_id: form.payment_method_id,
+            paid_at: form.paid_at,
+            ...(form.currency !== baseCurrency ? { fx_rate: form.fx_rate } : {}),
+          }],
+        }, { headers: { 'Idempotency-Key': idempotencyKey() } })
+        return
+      }
       const payload = {
         customer_id: form.customer_id,
         booking_id: form.booking_id || null,
@@ -216,6 +264,7 @@ export default function Payments() {
       setForm({
         customer_id: '',
         booking_id: '',
+        invoice_id: '',
         cash_account_id: '',
         payment_method_id: '',
         method: 'cash',
@@ -226,6 +275,8 @@ export default function Payments() {
       })
       await queryClient.invalidateQueries({ queryKey: ['payments'] })
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      await queryClient.invalidateQueries({ queryKey: ['invoice-profile'] })
     },
     onError: (cause) => setError(errorMessage(cause)),
   })
@@ -364,7 +415,7 @@ export default function Payments() {
             <Button variant="secondary" onClick={() => setOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button disabled={create.isPending || !form.customer_id || !form.cash_account_id} onClick={() => create.mutate()}>
+            <Button disabled={create.isPending || !form.customer_id || !form.cash_account_id || (form.invoice_id !== '' && !form.payment_method_id)} onClick={() => create.mutate()}>
               {create.isPending ? t('saving') : t('save')}
             </Button>
           </>
@@ -375,17 +426,30 @@ export default function Payments() {
             <PartyPicker
               kind="customer"
               value={form.customer_id}
-              onChange={(customer_id) => setForm({ ...form, customer_id, booking_id: '' })}
+              onChange={(customer_id) => setForm({ ...form, customer_id, booking_id: '', invoice_id: '', amount: '' })}
               placeholder={t('selectCustomer')}
+            />
+          </Field>
+          <Field label={locale === 'ar' ? 'فاتورة العميل' : 'Customer invoice'}>
+            <SearchableSelect
+              value={form.invoice_id}
+              onChange={chooseInvoice}
+              placeholder={locale === 'ar' ? 'اختر الفاتورة (أو اتركها فارغة لدفعة مقدمة)' : 'Choose invoice (or leave blank for advance)'}
+              clearLabel={locale === 'ar' ? 'بدون فاتورة — دفعة مقدمة' : 'No invoice — advance'}
+              options={invoicePicker.options}
+              onSearch={invoicePicker.setSearch}
+              hasMore={invoicePicker.hasMore}
+              disabled={!form.customer_id}
             />
           </Field>
           <Field label={t('bookings')}>
             <SearchableSelect
               value={form.booking_id}
-              onChange={(booking_id) => setForm({ ...form, booking_id })}
+              onChange={(booking_id) => setForm({ ...form, booking_id, invoice_id: '', amount: '' })}
               placeholder={locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}
               clearLabel={locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}
               options={bookingPicker.options}
+              disabled={!!form.invoice_id}
               onSearch={bookingPicker.setSearch}
               hasMore={bookingPicker.hasMore}
             />
@@ -414,11 +478,13 @@ export default function Payments() {
               {locale === 'ar' ? 'إدارة طرق الدفع' : 'Manage payment methods'}
             </Link>
           </Field>
-          <Field label={t('amount')} required>
+          <Field label={t('amount')} required hint={selectedInvoice
+            ? (locale === 'ar' ? `المستحق: ${toDecimal(selectedInvoice.outstanding_minor, selectedInvoice.currency)} ${selectedInvoice.currency} — يمكنك تقليل المبلغ للتحصيل الجزئي` : `Outstanding: ${toDecimal(selectedInvoice.outstanding_minor, selectedInvoice.currency)} ${selectedInvoice.currency}. Edit for partial payment.`)
+            : undefined}>
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
-            <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
+            <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, invoice_id: '', amount: '' })}>
               <option value="EGP">EGP</option>
               <option value="SAR">SAR</option>
               <option value="USD">USD</option>
