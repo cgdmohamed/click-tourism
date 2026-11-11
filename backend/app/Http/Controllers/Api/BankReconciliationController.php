@@ -35,7 +35,7 @@ class BankReconciliationController extends ApiController
             ->orderByDesc('id')
             ->get();
 
-        return $this->ok($sessions->map(fn (BankReconciliation $session) => $session->toApiArray())->values());
+        return $this->ok($sessions->map(fn (BankReconciliation $session) => $session->toApiArray(false))->values());
     }
 
     public function statements(Request $request): JsonResponse
@@ -178,6 +178,19 @@ class BankReconciliationController extends ApiController
         ]);
 
         return $this->created($service->proposeAdjustment($reconciliation, $data, $this->actorId()));
+    }
+
+    public function reopen(Request $request, BankReconciliation $reconciliation, BankReconciliationService $service): JsonResponse
+    {
+        $this->authorizeBranchId($reconciliation->branch_id);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ]);
+
+        $service->reopen($reconciliation, $data['reason'], $this->actorId());
+
+        return $this->ok($service->detail($reconciliation->refresh()));
     }
 
     public function approve(BankReconciliation $reconciliation, BankReconciliationService $service): JsonResponse

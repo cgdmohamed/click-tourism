@@ -169,6 +169,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('reconciliations/{reconciliation}/matches/{group}', [BankReconciliationController::class, 'unmatch'])->middleware('permission:reconciliation.manage');
         Route::post('reconciliations/{reconciliation}/adjustment-voucher', [BankReconciliationController::class, 'adjustmentVoucher'])->middleware('permission:reconciliation.manage');
         Route::post('reconciliations/{reconciliation}/approve', [BankReconciliationController::class, 'approve'])->middleware(['permission:reconciliation.approve', 'idempotent']);
+        Route::post('reconciliations/{reconciliation}/reopen', [BankReconciliationController::class, 'reopen'])->middleware(['permission:reconciliation.approve', 'idempotent']);
 
         Route::get('accounting-schedules', [AccountingScheduleController::class, 'index'])->middleware('permission:schedules.view');
         Route::get('accounting-schedules/upcoming', [AccountingScheduleController::class, 'upcoming'])->middleware('permission:schedules.view');

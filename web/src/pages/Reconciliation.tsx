@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, formatDateTime, toMinor, todayISO } from '../lib/format'
+import { allocateMatch } from '../lib/reconciliationAllocation'
 import {
   Badge,
   Button,
@@ -103,6 +104,7 @@ type Summary = {
   reconciled: boolean
   bank_lines: number
   book_lines: number
+  excluded_non_native_lines?: number
 }
 
 type BankLine = {
@@ -132,6 +134,7 @@ type BookLine = {
   direction: 'in' | 'out'
   matched_minor: number
   remaining_minor: number
+  reversed?: boolean
 }
 
 type MatchRow = {
@@ -235,10 +238,12 @@ export default function Reconciliation() {
   const [sessionOpen, setSessionOpen] = useState(false)
   const [sessionForm, setSessionForm] = useState(emptySession)
   const [adjustOpen, setAdjustOpen] = useState(false)
-  const [adjustForm, setAdjustForm] = useState({ memo: '', document_date: '', line_ids: [] as string[] })
+  const [adjustForm, setAdjustForm] = useState({ memo: '', document_date: '', charges_account_code: '', interest_account_code: '', line_ids: [] as string[] })
   const [bankSel, setBankSel] = useState<string[]>([])
   const [bookSel, setBookSel] = useState<string[]>([])
   const [approveOpen, setApproveOpen] = useState(false)
+  const [reopenOpen, setReopenOpen] = useState(false)
+  const [reopenReason, setReopenReason] = useState('')
 
   const manage = can('reconciliation.manage')
   const approve = can('reconciliation.approve')
@@ -311,6 +316,7 @@ export default function Reconciliation() {
     mutationFn: async () => {
       if (!importFile) throw new Error(L('اختر ملف كشف الحساب', 'Choose a statement file'))
       if (!importForm.cash_account_id) throw new Error(L('اختر الحساب البنكي', 'Choose the bank account'))
+      if (importFile.size > 20 * 1024 * 1024) throw new Error(L('الملف أكبر من 20 ميجابايت؛ قسّمه إلى ملفات أصغر.', 'The file is larger than 20 MB; split it into smaller files.'))
       if (!importForm.amount && !importForm.money_in && !importForm.money_out) {
         throw new Error(L('حدد عمود المبلغ أو عمودي الإيداع/السحب', 'Map an amount column, or money-in/money-out columns'))
       }
@@ -321,8 +327,8 @@ export default function Reconciliation() {
       if (importForm.delimiter) body.append('delimiter', importForm.delimiter)
       if (importForm.period_from) body.append('period_from', importForm.period_from)
       if (importForm.period_to) body.append('period_to', importForm.period_to)
-      if (importForm.opening_balance_minor) body.append('opening_balance_minor', String(toMinor(importForm.opening_balance_minor, 'EGP')))
-      if (importForm.closing_balance_minor) body.append('closing_balance_minor', String(toMinor(importForm.closing_balance_minor, 'EGP')))
+      if (importForm.opening_balance_minor) body.append('opening_balance_minor', String(toMinor(importForm.opening_balance_minor, currencyOf(importForm.cash_account_id))))
+      if (importForm.closing_balance_minor) body.append('closing_balance_minor', String(toMinor(importForm.closing_balance_minor, currencyOf(importForm.cash_account_id))))
       const map: Array<[string, string]> = [
         ['date', importForm.date],
         ['description', importForm.description],
@@ -362,10 +368,10 @@ export default function Reconciliation() {
         period_from: sessionForm.period_from || undefined,
         period_to: sessionForm.period_to || undefined,
         opening_bank_balance_minor: sessionForm.opening_bank_balance_minor
-          ? toMinor(sessionForm.opening_bank_balance_minor, 'EGP')
+          ? toMinor(sessionForm.opening_bank_balance_minor, currencyOf(sessionForm.cash_account_id))
           : undefined,
         closing_bank_balance_minor: sessionForm.closing_bank_balance_minor
-          ? toMinor(sessionForm.closing_bank_balance_minor, 'EGP')
+          ? toMinor(sessionForm.closing_bank_balance_minor, currencyOf(sessionForm.cash_account_id))
           : undefined,
         notes: sessionForm.notes || undefined,
       })
@@ -441,13 +447,15 @@ export default function Reconciliation() {
           bank_line_ids: adjustForm.line_ids,
           document_date: adjustForm.document_date || undefined,
           memo: adjustForm.memo || undefined,
+          charges_account_code: adjustForm.charges_account_code.trim() || undefined,
+          interest_account_code: adjustForm.interest_account_code.trim() || undefined,
         },
       )
       return data.data.document
     },
     onSuccess: async (document) => {
       setAdjustOpen(false)
-      setAdjustForm({ memo: '', document_date: '', line_ids: [] })
+      setAdjustForm({ memo: '', document_date: '', charges_account_code: '', interest_account_code: '', line_ids: [] })
       setError('')
       if (document) {
         setNotice(
@@ -478,6 +486,27 @@ export default function Reconciliation() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
+  const currencyOf = (cashAccountId: string) =>
+    bankAccounts.find((account) => (account.cash_account_id ?? account.id) === cashAccountId)?.currency ?? 'EGP'
+
+  const reopenSession = useMutation({
+    mutationFn: async () => {
+      if (!selectedId) return
+      if (reopenReason.trim().length < 3) throw new Error(L('اكتب سبب إعادة الفتح', 'Enter a reason for reopening'))
+      await api.post(`/reconciliations/${selectedId}/reopen`, { reason: reopenReason.trim() }, {
+        headers: { 'Idempotency-Key': idempotencyKey() },
+      })
+    },
+    onSuccess: async () => {
+      setReopenOpen(false)
+      setReopenReason('')
+      setError('')
+      setNotice(L('أُعيد فتح المطابقة.', 'Reconciliation reopened.'))
+      await refresh()
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+
   const bankOptions = bankAccounts.map((account) => ({
     value: account.cash_account_id ?? account.id,
     label: `${name(account)} (${account.currency})`,
@@ -499,28 +528,7 @@ export default function Reconciliation() {
   const selectionBalanced =
     selectedBankLines.length > 0 && selectedBookLines.length > 0 && Math.abs(selectionDifference) <= tolerance
 
-  const matchItems = (() => {
-    if (!selectionBalanced) return []
-    if (selectedBankLines.length === 1) {
-      return selectedBookLines.map((book) => ({
-        bank_line_id: selectedBankLines[0].id,
-        journal_line_id: book.id,
-        amount_minor: book.remaining_minor,
-      }))
-    }
-    if (selectedBookLines.length === 1) {
-      return selectedBankLines.map((bank) => ({
-        bank_line_id: bank.id,
-        journal_line_id: selectedBookLines[0].id,
-        amount_minor: bank.remaining_minor,
-      }))
-    }
-    return selectedBankLines.map((bank, index) => ({
-      bank_line_id: bank.id,
-      journal_line_id: selectedBookLines[index].id,
-      amount_minor: bank.remaining_minor,
-    }))
-  })()
+  const matchItems = selectionBalanced ? allocateMatch(selectedBankLines, selectedBookLines) : []
 
   const unrecordedBankLines = (detail?.bank_lines ?? []).filter((line) => line.remaining_minor > 0)
   const adjustedBook = detail?.summary.adjusted_book_minor ?? 0
@@ -530,7 +538,13 @@ export default function Reconciliation() {
 
   const openAdjustment = () => {
     setError('')
-    setAdjustForm({ memo: '', document_date: '', line_ids: unrecordedBankLines.map((line) => line.id) })
+    setAdjustForm({
+      memo: '',
+      document_date: '',
+      charges_account_code: '',
+      interest_account_code: '',
+      line_ids: unrecordedBankLines.map((line) => line.id),
+    })
     setAdjustOpen(true)
   }
 
@@ -617,6 +631,11 @@ export default function Reconciliation() {
                     {L('اعتماد وقفل', 'Approve & lock')}
                   </Button>
                 ) : null}
+                {detail.status === 'approved' && approve ? (
+                  <Button variant="secondary" onClick={() => { setError(''); setReopenReason(''); setReopenOpen(true) }}>
+                    {L('إعادة فتح', 'Reopen')}
+                  </Button>
+                ) : null}
                 {detail.notes ? <span className="text-small text-text-subtle">{detail.notes}</span> : null}
               </div>
 
@@ -640,6 +659,14 @@ export default function Reconciliation() {
                   </p>
                 </div>
               </div>
+              {(detail.summary.excluded_non_native_lines ?? 0) > 0 ? (
+                <p className="text-small border-t border-border-subtle px-5 py-3 text-text-subtle">
+                  {L(
+                    `${detail.summary.excluded_non_native_lines} قيدًا على هذا الحساب بلا مبلغ بعملته (إعادة تقييم أو قيود قديمة بالعملة الأساسية) ولا تدخل في المطابقة.`,
+                    `${detail.summary.excluded_non_native_lines} ledger lines on this account carry no amount in its own currency (revaluation or legacy base-currency lines) and are not reconciled.`,
+                  )}
+                </p>
+              ) : null}
               {!detail.summary.statement_balanced ? (
                 <p className="text-small border-t border-border-subtle px-5 py-3 text-warning-text">
                   {L(
@@ -818,7 +845,7 @@ export default function Reconciliation() {
               <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-5 py-4">
                 <h3 className="text-medium">{L('قيود الدفاتر', 'Ledger lines')}</h3>
                 <span className="text-small text-text-subtle">
-                  {L('حركات الحساب البنكي المرحّلة داخل الفترة.', 'Posted bank-account lines inside the period.')}
+                  {L('حركات الحساب البنكي المرحّلة حتى نهاية الفترة (تشمل البنود المعلقة من فترات سابقة).', 'Posted bank-account lines up to the period end (including open items from earlier periods).')}
                 </span>
               </div>
               <Table>
@@ -840,7 +867,7 @@ export default function Reconciliation() {
                           type="checkbox"
                           aria-label={line.description ?? line.id}
                           checked={bookSel.includes(line.id)}
-                          disabled={line.remaining_minor <= 0 || detail.status === 'approved'}
+                          disabled={line.remaining_minor <= 0 || detail.status === 'approved' || line.reversed === true}
                           onChange={() => setBookSel((current) => toggle(current, line.id))}
                         />
                       </Td>
@@ -849,6 +876,7 @@ export default function Reconciliation() {
                       <Td>
                         {line.description ?? '—'}
                         {line.source_type ? <div className="text-small text-text-subtle">{line.source_type}</div> : null}
+                        {line.reversed ? <Badge tone="neutral">{L('معكوس ومُقاصّ', 'Reversed & paired out')}</Badge> : null}
                       </Td>
                       <Td className="text-end"><Money amountMinor={line.amount_minor} currency={detail.currency} /></Td>
                       <Td className={`text-end ${line.remaining_minor > 0 ? 'text-warning-text' : ''}`}>
@@ -950,9 +978,11 @@ export default function Reconciliation() {
               </Card>
             ) : null}
 
-            <p className="text-small text-text-subtle">
-              {L('اعتُمدت في', 'Approved at')}: {formatDateTime(detail.approved_at, locale)}
-            </p>
+            {detail.approved_at ? (
+              <p className="text-small text-text-subtle">
+                {L('اعتُمدت في', 'Approved at')}: {formatDateTime(detail.approved_at, locale)}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -1000,6 +1030,12 @@ export default function Reconciliation() {
             <Field label={t('memo')}>
               <Input value={adjustForm.memo} onChange={(event) => setAdjustForm({ ...adjustForm, memo: event.target.value })} />
             </Field>
+            <Field label={L('حساب الرسوم', 'Charges account')} hint={L('اتركه فارغًا لاستخدام الإعداد الافتراضي', 'Leave blank for the configured default')}>
+              <Input value={adjustForm.charges_account_code} onChange={(event) => setAdjustForm({ ...adjustForm, charges_account_code: event.target.value })} dir="ltr" />
+            </Field>
+            <Field label={L('حساب الفوائد', 'Interest account')} hint={L('اتركه فارغًا لاستخدام الإعداد الافتراضي', 'Leave blank for the configured default')}>
+              <Input value={adjustForm.interest_account_code} onChange={(event) => setAdjustForm({ ...adjustForm, interest_account_code: event.target.value })} dir="ltr" />
+            </Field>
           </div>
         </Modal>
 
@@ -1019,10 +1055,35 @@ export default function Reconciliation() {
           {error ? <p className="mb-3 text-medium text-danger-text">{error}</p> : null}
           <p className="text-medium">
             {L(
-              'سيتم قفل المطابقة وحفظ نسخة من الأرصدة والمطابقات. لا يمكن إعادة فتحها؛ التصحيح يتم بمطابقة جديدة.',
-              'The reconciliation will be locked with a snapshot of balances and matches. It cannot be reopened; corrections need a new session.',
+              'سيتم قفل المطابقة وحفظ نسخة من الأرصدة والمطابقات. يمكن لمن يملك صلاحية الاعتماد إعادة فتحها بسبب مكتوب (يُسجَّل في سجل التدقيق).',
+              'The reconciliation will be locked with a snapshot of balances and matches. A user with approval rights can reopen it with a written reason (audited).',
             )}
           </p>
+        </Modal>
+
+        <Modal
+          open={reopenOpen}
+          title={L('إعادة فتح المطابقة', 'Reopen reconciliation')}
+          onClose={() => setReopenOpen(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setReopenOpen(false)}>{t('cancel')}</Button>
+              <Button onClick={() => reopenSession.mutate()} disabled={reopenSession.isPending || reopenReason.trim().length < 3}>
+                {L('إعادة فتح', 'Reopen')}
+              </Button>
+            </>
+          }
+        >
+          {error ? <p className="mb-3 text-medium text-danger-text">{error}</p> : null}
+          <p className="text-small mb-3 text-text-subtle">
+            {L(
+              'لا يتغير شيء في الدفاتر. يمكن إعادة فتح أحدث مطابقة معتمدة للحساب فقط.',
+              'Nothing changes in the ledger. Only the newest approved reconciliation of the account can be reopened.',
+            )}
+          </p>
+          <Field label={L('السبب', 'Reason')} required>
+            <Input value={reopenReason} maxLength={255} onChange={(event) => setReopenReason(event.target.value)} />
+          </Field>
         </Modal>
       </div>
     )

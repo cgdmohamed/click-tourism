@@ -39,6 +39,7 @@ class BankReconciliation extends Model
         'closing_book_balance_minor',
         'status',
         'adjustment_document_ids',
+        'adjustment_line_map',
         'snapshot',
         'created_by',
         'approved_by',
@@ -56,6 +57,7 @@ class BankReconciliation extends Model
             'closing_bank_balance_minor' => 'integer',
             'closing_book_balance_minor' => 'integer',
             'adjustment_document_ids' => 'array',
+            'adjustment_line_map' => 'array',
             'snapshot' => 'array',
             'approved_at' => 'datetime',
         ];
@@ -96,7 +98,7 @@ class BankReconciliation extends Model
         return $this->status === self::STATUS_APPROVED;
     }
 
-    public function toApiArray(): array
+    public function toApiArray(bool $withSnapshot = true): array
     {
         return [
             'id' => $this->public_id,
@@ -114,7 +116,7 @@ class BankReconciliation extends Model
             'status' => $this->status,
             'notes' => $this->notes,
             'adjustment_document_ids' => $this->adjustment_document_ids ?? [],
-            'snapshot' => $this->snapshot,
+            'snapshot' => $withSnapshot ? $this->snapshot : null,
             'approved_at' => $this->approved_at?->toIso8601String(),
             'approved_by' => $this->approved_by,
             'created_by' => $this->created_by,
