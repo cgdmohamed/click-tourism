@@ -28,7 +28,7 @@ import PartyPicker from '../components/PartyPicker'
 import QuickCreateCustomer from '../components/QuickCreateCustomer'
 import { statusLabel } from '../lib/labels'
 import { taxMinor } from '../lib/tax'
-import { useBaseCurrency, useTaxEnabled } from '../lib/useSetting'
+import { useBaseCurrency, useDefaultTaxRate, useTaxEnabled } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
@@ -64,6 +64,7 @@ export default function Bookings() {
   const { t, locale } = useI18n()
   const { activeBranch, user, can } = useAuth()
   const { enabled: taxEnabled } = useTaxEnabled()
+  const { rate: defaultTaxRate } = useDefaultTaxRate()
   const baseCurrency = useBaseCurrency()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
@@ -149,10 +150,10 @@ export default function Bookings() {
       const gross = toMinor(item.unit_sell || '0', item.sell_currency) * quantity
       const cost = toMinor(item.unit_cost || '0', item.cost_currency) * quantity
       const profile = taxEnabled ? taxProfiles.find((candidate) => candidate.id === item.tax_profile_id) : undefined
-      const tax = profile ? taxMinor(gross, profile.rate, profile.is_inclusive) : 0
+      const tax = taxEnabled ? taxMinor(gross, profile?.rate ?? defaultTaxRate, profile?.is_inclusive ?? false) : 0
       return { cost, tax, sell: gross + (profile?.is_inclusive ? 0 : tax) }
     },
-    [taxProfiles, taxEnabled],
+    [taxProfiles, taxEnabled, defaultTaxRate],
   )
 
   const totals = useMemo(() => {
