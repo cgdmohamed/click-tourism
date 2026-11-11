@@ -7,16 +7,16 @@ use App\Modules\Bookings\Models\TourPackage;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class TourPackageController extends ApiController
 {
     public function index(Request $request): JsonResponse
     {
+        $branch = $this->branchOrFail();
         $packages = TourPackage::query()
             ->with('departures.package')
-            ->when($this->branch(), fn ($query, $branch) => $query->where('branch_id', $branch->id))
+            ->where('branch_id', $branch->id)
             ->orderByDesc('id')->get()
             ->map(fn (TourPackage $package) => $package->toApiArray());
 
