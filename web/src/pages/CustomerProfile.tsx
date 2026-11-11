@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate, todayISO, toDecimal, toMinor } from '../lib/format'
+import { formatDate, formatMoney, todayISO, toDecimal, toMinor } from '../lib/format'
 import { customerTypeLabel, paymentMethodLabel, statusLabel } from '../lib/labels'
 import type { CustomerProfile as CustomerProfilePayload } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, Money, Select, Table, Td, Th, statusTone } from '../components/ui'
@@ -162,6 +162,15 @@ export default function CustomerProfile() {
           icon="banknote"
           tone={profile.statement.reconciliation.operational_open_invoices_minor > 0 ? 'warning' : 'positive'}
         />
+        {profile.credit && profile.credit.credit_limit_minor > 0 ? (
+          <ProfileStat
+            label={t('creditLimit')}
+            value={<Money amountMinor={profile.credit.credit_limit_minor} currency={profile.credit.currency} />}
+            hint={`${locale === 'ar' ? 'التعرض الحالي' : 'Current exposure'}: ${formatMoney(profile.credit.exposure_minor, profile.credit.currency, locale)}`}
+            icon="shield"
+            tone={profile.credit.exposure_minor > profile.credit.credit_limit_minor ? 'negative' : undefined}
+          />
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-4">

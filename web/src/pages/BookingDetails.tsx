@@ -6,6 +6,7 @@ import { api, errorMessage } from '../lib/api'
 import { exponent, formatDate, formatDateTime, formatMoney, toMinor } from '../lib/format'
 import { statusLabel } from '../lib/labels'
 import type { Booking, BookingItem } from '../lib/types'
+import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 import {
   Badge,
   Button,
@@ -66,6 +67,8 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
   const [reason, setReason] = useState('')
   const [fee, setFee] = useState('')
   const [dialogError, setDialogError] = useState('')
+  const [overrideReason, setOverrideReason] = useState('')
+  const [creditWarnings, setCreditWarnings] = useState<CreditWarning[]>([])
   const ar = locale === 'ar'
 
   const query = useQuery({
@@ -93,15 +96,24 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
   const close = () => {
     closeDialog()
     setError('')
+    setCreditWarnings([])
+    setOverrideReason('')
     onClose()
   }
 
   const transition = useMutation({
     mutationFn: async (status: string) => {
-      await api.post(`/bookings/${bookingId}/transition`, { status })
+      const override = overrideReason.trim()
+      const { data } = await api.post<{ data: { warnings?: CreditWarning[] } }>(`/bookings/${bookingId}/transition`, {
+        status,
+        ...(override && can('bookings.override_credit_limit') ? { override_reason: override } : {}),
+      })
+      return data.data.warnings ?? []
     },
-    onSuccess: async () => {
+    onSuccess: async (warnings) => {
       setError('')
+      setOverrideReason('')
+      setCreditWarnings(warnings)
       await refresh()
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -203,6 +215,13 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
         {booking ? (
           <div className="flex flex-col gap-5">
             {error ? <InlineNotice tone="negative">{error}</InlineNotice> : null}
+            <CreditLimitNotice
+              warnings={creditWarnings}
+              blockedMessage={error}
+              canOverride={can('bookings.override_credit_limit')}
+              overrideReason={overrideReason}
+              onOverrideReasonChange={setOverrideReason}
+            />
 
             <dl className="grid gap-x-4 gap-y-3 sm:grid-cols-3">
               <Info label={ar ? 'العميل' : 'Customer'}>{(ar ? booking.customer?.name_ar : booking.customer?.name_en) ?? booking.customer?.name_ar ?? '—'}</Info>

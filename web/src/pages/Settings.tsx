@@ -18,6 +18,7 @@ const editable: Array<{ group: string; key: string; ar: string; en: string; type
   { group: 'general', key: 'locale', ar: 'اللغة الافتراضية', en: 'Default language', type: 'select', options: ['ar', 'en'] },
   { group: 'accounting', key: 'fiscal_year_start', ar: 'بداية السنة المالية (MM-DD)', en: 'Fiscal year start (MM-DD)' },
   { group: 'accounting', key: 'rounding_policy', ar: 'سياسة التقريب', en: 'Rounding policy', type: 'select', options: ['half_up', 'bankers'] },
+  { group: 'accounting', key: 'credit_limit_policy', ar: 'سياسة حد الائتمان', en: 'Credit limit policy', type: 'select', options: ['off', 'warn', 'block'] },
   { group: 'tax', key: 'enabled', ar: 'تفعيل الضريبة', en: 'Enable tax', type: 'toggle', options: ['true', 'false'] },
   { group: 'crm', key: 'reassign_after_hours', ar: 'إعادة توزيع العميل المحتمل بعد (ساعات)', en: 'Lead reassignment after (hours)' },
 ]
