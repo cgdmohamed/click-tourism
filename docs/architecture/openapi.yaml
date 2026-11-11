@@ -1835,8 +1835,15 @@ paths:
         Amounts use bank convention: money in the bank is positive (the book
         debits the bank account), money out is negative. Duplicate lines from
         overlapping statements are skipped and reported. Re-uploading the exact
-        same file is rejected. Only base-currency bank accounts are supported
-        until DEC-037 is decided.
+        same file is rejected. Foreign-currency bank accounts reconcile in
+        their own currency.
+
+        Opening and closing balances are never defaulted. The opening balance is
+        the entered value, else derived from the file's running-balance column
+        (`mapping.balance`), else the closing balance of the previous approved
+        reconciliation of the account (Odoo behaviour). The closing balance is
+        the entered value or the last running balance. When none is available the
+        import is refused with 422. The origin is returned as `balance_source`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -1877,6 +1884,18 @@ paths:
         The opening book balance is derived from posted journal lines dated
         before the period start, so the session always reconciles against the
         general ledger rather than a manual figure.
+
+        Bank opening/closing balances must be known: the entered values, the
+        balances of a statement covering exactly the period, the closing of the
+        previous approved session (opening) or the running balance of the
+        statement lines; otherwise 422. The origin is stored as `balance_source`
+        (`explicit`, `statement`, `line_balance`, `previous_session`).
+
+        Ledger lines posted up to `treasury.reconciliation_lookahead_days`
+        (default 31) after `period_to` are loaded for matching only
+        (`after_period_end`): they never change the period book balance or its
+        outstanding items. A look-ahead line matched in the session is added to
+        the adjusted book side as `recorded_after_period_minor`.
       requestBody:
         required: true
         content:
@@ -1972,7 +1991,9 @@ paths:
       summary: Approve and lock a reconciled session (idempotent)
       description: >-
         Refused while unrecorded bank items remain or the adjusted balances do
-        not agree within tolerance. Approved sessions store a JSON snapshot and
+        not agree within tolerance, and when the bank balances were never
+        confirmed (no `balance_source`, or an unverified legacy statement) and
+        disagree with the statement movement. Approved sessions store a JSON snapshot and
         stay locked until reopened (see reopen) or corrected by a new session.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -2147,7 +2168,7 @@ paths:
   /fiscal-periods/{period}/checklist:
     get:
       tags: [Accounting]
-      summary: Period-end checklist (unposted documents, open reconciliations, schedules, balances, trial balance)
+      summary: Period-end checklist (unposted documents, open reconciliations, bank accounts without a reconciliation (warning), schedules, balances, trial balance)
       parameters:
         - { name: period, in: path, required: true, schema: { type: integer } }
       responses:
@@ -4210,6 +4231,7 @@ components:
         period_to: { type: string, format: date, nullable: true }
         opening_balance_minor: { type: integer, nullable: true }
         closing_balance_minor: { type: integer, nullable: true }
+        balance_source: { $ref: '#/components/schemas/BankBalanceSource' }
         currency: { type: string }
         line_count: { type: integer }
         mapping: { type: object, nullable: true }
@@ -4237,8 +4259,8 @@ components:
         delimiter: { type: string, maxLength: 1, default: ',' }
         period_from: { type: string, format: date }
         period_to: { type: string, format: date }
-        opening_balance_minor: { type: integer }
-        closing_balance_minor: { type: integer }
+        opening_balance_minor: { type: integer, description: 'Required unless the file has a mapped balance column or an earlier reconciliation of the account is approved' }
+        closing_balance_minor: { type: integer, description: Required unless the file has a mapped balance column }
         mapping:
           type: object
           properties:
@@ -4263,8 +4285,8 @@ components:
         statement_id: { type: string, description: Optional imported statement to reconcile }
         period_from: { type: string, format: date }
         period_to: { type: string, format: date }
-        opening_bank_balance_minor: { type: integer, description: Defaults to the statement opening balance }
-        closing_bank_balance_minor: { type: integer, description: Defaults to the statement closing balance }
+        opening_bank_balance_minor: { type: integer, description: 'Else the statement opening balance (statement covering exactly the period), the previous approved session closing, or a statement line balance; 422 when none' }
+        closing_bank_balance_minor: { type: integer, description: 'Else the statement closing balance (statement covering exactly the period) or the last statement line balance; 422 when none' }
         notes: { type: string, maxLength: 255 }
     BankReconciliationMatchInput:
       type: object
@@ -4313,6 +4335,7 @@ components:
         opening_bank_balance_minor: { type: integer }
         closing_bank_balance_minor: { type: integer }
         closing_book_balance_minor: { type: integer }
+        balance_source: { $ref: '#/components/schemas/BankBalanceSource' }
         approved_at: { type: string, format: date-time, nullable: true }
         approved_by: { type: integer, nullable: true }
         created_by: { type: integer, nullable: true }
@@ -4332,6 +4355,13 @@ components:
         differences:
           type: array
           items: { $ref: '#/components/schemas/BankReconciliationDifference' }
+    BankBalanceSource:
+      type: object
+      nullable: true
+      description: Where the bank opening/closing balances came from; null on rows created before this was recorded (balances unverified)
+      properties:
+        opening: { type: string, enum: [explicit, statement, statement_unverified, line_balance, previous_session] }
+        closing: { type: string, enum: [explicit, statement, statement_unverified, line_balance] }
     BankReconciliationSummary:
       type: object
       properties:
@@ -4354,6 +4384,9 @@ components:
         difference_minor: { type: integer }
         tolerance_minor: { type: integer }
         window_days: { type: integer }
+        lookahead_days: { type: integer, description: 'Days after period_to in which ledger lines may be matched (setting treasury.reconciliation_lookahead_days, 0-366)' }
+        recorded_after_period_minor: { type: integer, description: 'Net signed ledger amount posted after period_to that clears bank lines of this session; added to the adjusted book side, never to book_closing_minor' }
+        after_period_matched_lines: { type: integer }
         reconciled: { type: boolean, description: Adjusted balances agree and no unrecorded bank item remains }
         bank_lines: { type: integer }
         book_lines: { type: integer }
@@ -4378,6 +4411,9 @@ components:
         journal_entry_id: { type: string, nullable: true }
         entry_number: { type: string, nullable: true }
         entry_date: { type: string, format: date, nullable: true }
+        entry_memo: { type: string, nullable: true }
+        after_period_end: { type: boolean, description: 'Posted after period_to (look-ahead): matchable, but not part of the period balance or its outstanding items' }
+        matched_here_minor: { type: integer, description: Amount matched by this session (matched_minor counts every session) }
         description: { type: string, nullable: true }
         source_type: { type: string, nullable: true }
         branch_id: { type: string, nullable: true }
@@ -4415,7 +4451,11 @@ components:
         amount_minor: { type: integer }
         difference_minor: { type: integer }
         days_apart: { type: integer }
-        ambiguous: { type: boolean }
+        reference_match: { type: boolean }
+        evidence: { type: integer, minimum: 0, maximum: 4, description: '4 bank reference = entry number, 3 = memo/description, 2 = bank description contains entry number, 1 shared word, 0 none' }
+        disambiguated: { type: boolean, description: 'Equal-amount candidates resolved because this pair has strictly the best evidence for both lines' }
+        after_period_end: { type: boolean }
+        ambiguous: { type: boolean, description: 'Several equal-amount candidates with no single best evidence: left for manual matching' }
     BankReconciliationDifference:
       type: object
       properties:

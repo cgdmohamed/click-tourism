@@ -132,13 +132,24 @@ class SettingController extends ApiController
     }
 
     /**
-     * Value rules for the rounding policy and the fiscal year start.
+     * Value rules for the rounding policy, the fiscal year start and the reconciliation day windows.
      *
      * @param  array<int, array<string, mixed>>  $items
      */
     private function validateAccountingPolicyValues(array $items): void
     {
         foreach ($items as $index => $item) {
+            if (($item['group'] ?? null) === 'treasury') {
+                $value = trim((string) ($item['value'] ?? ''));
+                if (in_array($item['key'], ['reconciliation_lookahead_days', 'reconciliation_date_window_days'], true)
+                    && (preg_match('/^\d{1,3}$/', $value) !== 1 || (int) $value > 366)) {
+                    throw ValidationException::withMessages([
+                        "settings.{$index}.value" => 'The reconciliation day setting must be a whole number of days from 0 to 366.',
+                    ]);
+                }
+
+                continue;
+            }
             if (($item['group'] ?? null) !== 'accounting') {
                 continue;
             }

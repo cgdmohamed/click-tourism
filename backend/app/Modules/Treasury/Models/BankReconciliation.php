@@ -37,6 +37,7 @@ class BankReconciliation extends Model
         'opening_bank_balance_minor',
         'closing_bank_balance_minor',
         'closing_book_balance_minor',
+        'balance_source',
         'status',
         'adjustment_document_ids',
         'adjustment_line_map',
@@ -58,6 +59,7 @@ class BankReconciliation extends Model
             'closing_book_balance_minor' => 'integer',
             'adjustment_document_ids' => 'array',
             'adjustment_line_map' => 'array',
+            'balance_source' => 'array',
             'snapshot' => 'array',
             'approved_at' => 'datetime',
         ];
@@ -113,6 +115,7 @@ class BankReconciliation extends Model
             'opening_bank_balance_minor' => $this->opening_bank_balance_minor,
             'closing_bank_balance_minor' => $this->closing_bank_balance_minor,
             'closing_book_balance_minor' => $this->closing_book_balance_minor,
+            'balance_source' => $this->balance_source,
             'status' => $this->status,
             'notes' => $this->notes,
             'adjustment_document_ids' => $this->adjustment_document_ids ?? [],

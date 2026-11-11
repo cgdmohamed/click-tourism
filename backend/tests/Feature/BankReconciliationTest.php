@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountingDocument;
+use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Accounting\Services\PostingLine;
@@ -89,9 +90,28 @@ class BankReconciliationTest extends TestCase
         ];
     }
 
+    /**
+     * Statement balances are mandatory (no silent defaults). Most tests only
+     * care about the lines, so the helper supplies an opening balance of 0 and a
+     * closing balance equal to the sum of a plain "Amount" column.
+     */
     private function importStatement(string $content, string $filename = 'statement.csv', array $extra = []): TestResponse
     {
+        $movement = 0;
+        if (str_ends_with($filename, '.csv')) {
+            $rows = array_map(fn ($row) => str_getcsv($row, str_contains($content, ';') ? ';' : ','), array_filter(preg_split('/\R/', $content)));
+            $header = array_shift($rows) ?? [];
+            $column = array_search('Amount', $header, true);
+            if ($column !== false) {
+                foreach ($rows as $row) {
+                    $movement += (int) round((float) str_replace(',', '.', (string) ($row[$column] ?? '0')) * 100);
+                }
+            }
+        }
+
         return $this->withHeaders($this->headers())->post('/api/v1/bank-statements/import', $extra + [
+            'opening_balance_minor' => 0,
+            'closing_balance_minor' => $movement,
             'file' => UploadedFile::fake()->createWithContent($filename, $content),
             'cash_account_id' => $this->bank()->public_id,
             'mapping' => $this->defaultMapping(),
@@ -100,10 +120,21 @@ class BankReconciliationTest extends TestCase
 
     private function createSession(array $overrides = []): TestResponse
     {
-        return $this->withHeaders($this->headers())->postJson('/api/v1/reconciliations', $overrides + [
+        // Bank balances are mandatory: default to an opening balance of 0 and a
+        // closing balance equal to the imported movement of the period.
+        $defaults = [
             'cash_account_id' => $this->bank()->public_id,
             'period_from' => $this->day(0),
             'period_to' => $this->day(9),
+        ];
+        $period = $overrides + $defaults;
+
+        return $this->withHeaders($this->headers())->postJson('/api/v1/reconciliations', $overrides + $defaults + [
+            'opening_bank_balance_minor' => 0,
+            'closing_bank_balance_minor' => (int) BankStatementLine::query()
+                ->whereDate('line_date', '>=', $period['period_from'])
+                ->whereDate('line_date', '<=', $period['period_to'])
+                ->sum('amount_minor'),
         ]);
     }
 
@@ -1024,6 +1055,290 @@ class BankReconciliationTest extends TestCase
     // ------------------------------------------------------------------
 
     /** @param  array<int, array<int, string>>  $rows */
+    // ------------------------------------------------------------------
+    // Open items: look-ahead, explicit balances, disambiguation, checklist
+    // ------------------------------------------------------------------
+
+    private function approve(string $session): TestResponse
+    {
+        return $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/approve");
+    }
+
+    public function test_ledger_line_posted_after_period_end_matches_but_never_enters_the_period_balance(): void
+    {
+        $this->importStatement("Date,Description,Reference,Amount\n"
+            .$this->day(9).",Late deposit,LATE-1,100.00\n")->assertCreated();
+        $this->postJournal($this->day(11), 10000, true, 'Late deposit');
+        // Not matched: a payment posted after period end is not an unpresented payment of the period.
+        $this->postJournal($this->day(12), 4000, false, 'Later payment');
+
+        $session = $this->createSession(['closing_bank_balance_minor' => 10000])->assertCreated()->json('data.id');
+        $before = $this->sessionDetail($session);
+
+        $late = collect($before['book_lines'])->firstWhere('description', 'Late deposit');
+        $this->assertTrue($late['after_period_end']);
+        $this->assertSame(0, $before['summary']['book_closing_minor'], 'ledger balance at period end is untouched');
+        $this->assertSame(0, $before['summary']['deposits_in_transit_minor']);
+        $this->assertSame(0, $before['summary']['outstanding_payments_minor']);
+        $this->assertSame(31, $before['summary']['lookahead_days']);
+        $this->assertFalse($before['summary']['reconciled'], 'the bank line is still unrecorded until matched');
+        $this->assertTrue(collect($before['candidates'])->every(fn (array $pair) => $pair['after_period_end']));
+        $this->assertCount(1, $before['candidates']);
+        $this->assertNotContains('Later payment', array_column($before['differences'], 'description'));
+
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/auto-match")
+            ->assertOk()->assertJsonPath('data.created', 1);
+
+        $after = $this->sessionDetail($session);
+        $this->assertSame(0, $after['summary']['book_closing_minor']);
+        $this->assertSame(10000, $after['summary']['recorded_after_period_minor']);
+        $this->assertSame(1, $after['summary']['after_period_matched_lines']);
+        $this->assertSame(0, $after['summary']['difference_minor']);
+        $this->assertTrue($after['summary']['reconciled']);
+
+        $this->approve($session)->assertOk()->assertJsonPath('data.summary.recorded_after_period_minor', 10000);
+
+        // The next session sees the line as already cleared: no double use, no outstanding item.
+        $next = $this->createSession([
+            'period_from' => $this->day(10),
+            'period_to' => $this->day(19),
+            'opening_bank_balance_minor' => null,
+            'closing_bank_balance_minor' => 10000,
+        ])->assertCreated()
+            ->assertJsonPath('data.balance_source.opening', 'previous_session')
+            ->assertJsonPath('data.opening_bank_balance_minor', 10000)
+            ->json('data.id');
+        $nextDetail = $this->sessionDetail($next);
+        $cleared = collect($nextDetail['book_lines'])->firstWhere('description', 'Late deposit');
+        $this->assertSame(10000, $cleared['matched_minor']);
+        $this->assertSame(0, $cleared['remaining_minor']);
+        $this->assertSame(0, $nextDetail['summary']['deposits_in_transit_minor']);
+        $this->assertSame(1, BankReconciliationMatch::query()->count());
+        $this->assertSame(4000, $nextDetail['summary']['outstanding_payments_minor']);
+        $this->assertSame(6000, $nextDetail['summary']['book_closing_minor']);
+        $this->assertSame(0, $nextDetail['summary']['difference_minor']);
+
+        // The approved snapshot never changed.
+        $frozen = $this->sessionDetail($session);
+        $this->assertSame(10000, $frozen['summary']['recorded_after_period_minor']);
+        $this->assertSame(0, $frozen['summary']['book_closing_minor']);
+    }
+
+    public function test_look_ahead_window_is_a_validated_setting_and_zero_disables_it(): void
+    {
+        $this->postJournal($this->day(11), 10000, true, 'Late deposit');
+        $session = $this->createSession(['closing_bank_balance_minor' => 0])->assertCreated()->json('data.id');
+        $this->assertCount(1, $this->sessionDetail($session)['book_lines']);
+
+        $this->user->givePermissionTo(Permission::query()->firstOrCreate(['name' => 'settings.update', 'guard_name' => 'web']));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        foreach (['-1', 'abc', '400', ''] as $bad) {
+            $this->withHeaders($this->headers())->putJson('/api/v1/settings', ['settings' => [
+                ['group' => 'treasury', 'key' => 'reconciliation_lookahead_days', 'value' => $bad],
+            ]])->assertStatus(422);
+        }
+
+        $this->withHeaders($this->headers())->putJson('/api/v1/settings', ['settings' => [
+            ['group' => 'treasury', 'key' => 'reconciliation_lookahead_days', 'value' => '0'],
+        ]])->assertOk();
+        app(SettingService::class)->set('treasury', 'reconciliation_lookahead_days', '0');
+
+        $this->assertCount(0, $this->sessionDetail($session)['book_lines']);
+    }
+
+    public function test_a_look_ahead_reversal_does_not_hide_the_outstanding_receipt_of_the_period(): void
+    {
+        $receipt = $this->postJournal($this->day(8), 10000, true, 'Receipt to cancel');
+        app(PostingService::class)->reverse($receipt, 'Cancelled', $this->user->id, $this->day(11));
+
+        $session = $this->createSession(['closing_bank_balance_minor' => 0])->assertCreated()->json('data.id');
+        $detail = $this->sessionDetail($session);
+
+        $this->assertSame(10000, $detail['summary']['deposits_in_transit_minor'], 'at period end the receipt was a real deposit in transit');
+        $this->assertTrue($detail['summary']['reconciled']);
+    }
+
+    public function test_equal_amount_candidates_are_disambiguated_by_reference_and_ties_stay_manual(): void
+    {
+        $this->importStatement("Date,Description,Reference,Amount\n"
+            .$this->day(3).",Transfer from customer,INV-777,100.00\n")->assertCreated();
+        $this->postJournal($this->day(3), 10000, true, 'Receipt INV-555');
+        $this->postJournal($this->day(3), 10000, true, 'Receipt INV-777');
+
+        $session = $this->createSession()->assertCreated()->json('data.id');
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/auto-match")
+            ->assertOk()
+            ->assertJsonPath('data.created', 1)
+            ->assertJsonPath('data.ambiguous', 0);
+
+        $match = BankReconciliationMatch::query()->with('journalLine')->firstOrFail();
+        $this->assertSame('Receipt INV-777', $match->journalLine->description);
+    }
+
+    public function test_equal_amount_candidates_with_the_same_evidence_stay_ambiguous(): void
+    {
+        $this->importStatement("Date,Description,Reference,Amount\n"
+            .$this->day(3).",Transfer,INV-777,100.00\n")->assertCreated();
+        $this->postJournal($this->day(3), 10000, true, 'Receipt INV-777 first');
+        $this->postJournal($this->day(3), 10000, true, 'Receipt INV-777 second');
+
+        $session = $this->createSession()->assertCreated()->json('data.id');
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/auto-match")
+            ->assertOk()
+            ->assertJsonPath('data.created', 0)
+            ->assertJsonPath('data.ambiguous', 2);
+        $this->assertSame(0, BankReconciliationMatch::query()->count());
+    }
+
+    public function test_description_words_disambiguate_when_there_is_no_reference(): void
+    {
+        $this->importStatement("Date,Description,Reference,Amount\n"
+            .$this->day(3).",Payment Nile Cruise deposit,,100.00\n")->assertCreated();
+        $this->postJournal($this->day(3), 10000, true, 'Pyramids tour balance');
+        $this->postJournal($this->day(3), 10000, true, 'Nile Cruise booking');
+
+        $session = $this->createSession()->assertCreated()->json('data.id');
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/auto-match")
+            ->assertOk()->assertJsonPath('data.created', 1);
+        $this->assertSame('Nile Cruise booking', BankReconciliationMatch::query()->with('journalLine')->firstOrFail()->journalLine->description);
+    }
+
+    public function test_statement_import_requires_explicit_balances(): void
+    {
+        $csv = "Date,Description,Reference,Amount\n".$this->day(3).",Deposit,D-1,100.00\n";
+        $post = fn (array $extra) => $this->withHeaders($this->headers())->post('/api/v1/bank-statements/import', $extra + [
+            'file' => UploadedFile::fake()->createWithContent('s'.count($extra).'.csv', $csv.str_repeat('', count($extra))),
+            'cash_account_id' => $this->bank()->public_id,
+            'mapping' => $this->defaultMapping(),
+        ]);
+
+        // Nothing to derive the balances from: refused instead of defaulting to 0.
+        $post([])->assertStatus(422);
+        $post(['opening_balance_minor' => 0])->assertStatus(422);
+        $this->assertSame(0, BankStatement::query()->count());
+
+        $this->importStatement($csv, 'explicit.csv', ['opening_balance_minor' => 5000, 'closing_balance_minor' => 15000])
+            ->assertCreated()
+            ->assertJsonPath('data.statement.balance_source.opening', 'explicit')
+            ->assertJsonPath('data.statement.opening_balance_minor', 5000);
+    }
+
+    public function test_statement_balances_come_from_the_balance_column_or_the_previous_approved_session(): void
+    {
+        $withBalance = "Date,Description,Reference,Amount,Balance\n"
+            .$this->day(3).",Deposit,D-1,100.00,\"1,100.00\"\n"
+            .$this->day(4).",Payment,P-1,-40.00,\"1,060.00\"\n";
+        $this->withHeaders($this->headers())->post('/api/v1/bank-statements/import', [
+            'file' => UploadedFile::fake()->createWithContent('bal.csv', $withBalance),
+            'cash_account_id' => $this->bank()->public_id,
+            'mapping' => $this->defaultMapping() + ['balance' => 'Balance'],
+        ])->assertCreated()
+            ->assertJsonPath('data.statement.opening_balance_minor', 100000)
+            ->assertJsonPath('data.statement.closing_balance_minor', 106000)
+            ->assertJsonPath('data.statement.balance_source.opening', 'line_balance')
+            ->assertJsonPath('data.statement.balance_source.closing', 'line_balance');
+
+        // Approve a session so later statements can carry its closing balance forward.
+        $this->postJournal($this->day(3), 10000, true, 'Deposit');
+        $this->postJournal($this->day(4), 4000, false, 'Payment');
+        $first = $this->createSession(['opening_bank_balance_minor' => 100000, 'closing_bank_balance_minor' => 106000])
+            ->assertCreated()->json('data.id');
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$first}/auto-match")->assertOk();
+        $this->assertTrue($this->sessionDetail($first)['summary']['statement_balanced'] === true);
+    }
+
+    public function test_opening_balance_is_carried_from_the_previous_approved_session(): void
+    {
+        $first = $this->createSession(['opening_bank_balance_minor' => 0, 'closing_bank_balance_minor' => 0])
+            ->assertCreated()->json('data.id');
+        $this->approve($first)->assertOk();
+
+        $csv = "Date,Description,Reference,Amount\n".$this->day(12).",Deposit,D-1,100.00\n";
+        $this->importStatement($csv, 'next.csv', ['opening_balance_minor' => null, 'closing_balance_minor' => 10000])
+            ->assertCreated()
+            ->assertJsonPath('data.statement.opening_balance_minor', 0)
+            ->assertJsonPath('data.statement.balance_source.opening', 'previous_session')
+            ->assertJsonPath('data.statement.balance_source.closing', 'explicit');
+    }
+
+    public function test_session_requires_bank_balances_and_shows_where_they_came_from(): void
+    {
+        $this->withHeaders($this->headers())->postJson('/api/v1/reconciliations', [
+            'cash_account_id' => $this->bank()->public_id,
+            'period_from' => $this->day(0),
+            'period_to' => $this->day(9),
+        ])->assertStatus(422);
+
+        $this->createSession(['opening_bank_balance_minor' => 0, 'closing_bank_balance_minor' => 0])
+            ->assertCreated()
+            ->assertJsonPath('data.balance_source.opening', 'explicit')
+            ->assertJsonPath('data.balance_source.closing', 'explicit');
+
+        $this->importStatement("Date,Description,Reference,Amount\n".$this->day(3).",Deposit,D-1,100.00\n", 'cover.csv', [
+            'period_from' => $this->day(0), 'period_to' => $this->day(9),
+            'opening_balance_minor' => 2000, 'closing_balance_minor' => 12000,
+        ])->assertCreated();
+        $statement = BankStatement::query()->firstOrFail();
+
+        // A session over exactly the statement period uses the statement balances; a different period does not.
+        $this->withHeaders($this->headers())->postJson('/api/v1/reconciliations', [
+            'cash_account_id' => $this->bank()->public_id,
+            'statement_id' => $statement->public_id,
+        ])->assertCreated()
+            ->assertJsonPath('data.opening_bank_balance_minor', 2000)
+            ->assertJsonPath('data.closing_bank_balance_minor', 12000)
+            ->assertJsonPath('data.balance_source.opening', 'statement');
+
+        $this->withHeaders($this->headers())->postJson('/api/v1/reconciliations', [
+            'cash_account_id' => $this->bank()->public_id,
+            'statement_id' => $statement->public_id,
+            'period_from' => $this->day(0),
+            'period_to' => $this->day(5),
+        ])->assertStatus(422);
+    }
+
+    public function test_approval_is_blocked_when_the_bank_balances_were_never_confirmed(): void
+    {
+        $this->importStatement("Date,Description,Reference,Amount\n".$this->day(3).",Deposit,D-1,100.00\n")->assertCreated();
+        $this->postJournal($this->day(3), 10000, true, 'Deposit');
+        $session = $this->createSession()->assertCreated()->json('data.id');
+        $this->withHeaders($this->headers())->postJson("/api/v1/reconciliations/{$session}/auto-match")->assertOk();
+
+        // A session created before balance sources were recorded whose opening balance disagrees with the statement.
+        BankReconciliation::query()->where('public_id', $session)->update(['balance_source' => null, 'opening_bank_balance_minor' => 777]);
+
+        $this->approve($session)->assertStatus(422);
+        $this->assertSame('open', BankReconciliation::query()->where('public_id', $session)->value('status'));
+
+        // Entering the balances explicitly (a new session) is the way forward.
+        BankReconciliation::query()->where('public_id', $session)->update(['opening_bank_balance_minor' => 0]);
+        $this->approve($session)->assertOk();
+    }
+
+    public function test_period_end_checklist_warns_about_bank_accounts_without_a_reconciliation(): void
+    {
+        $this->user->givePermissionTo(Permission::query()->firstOrCreate(['name' => 'periods.view', 'guard_name' => 'web']));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->postJournal($this->day(3), 10000, true, 'Deposit');
+        $period = FiscalPeriod::query()->where('name', now()->format('Y-m'))->firstOrFail();
+
+        $check = fn () => collect($this->withHeaders($this->headers())
+            ->getJson("/api/v1/fiscal-periods/{$period->id}/checklist")->assertOk()->json('data.checks'))
+            ->firstWhere('key', 'unreconciled_bank_accounts');
+
+        $warning = $check();
+        $this->assertFalse($warning['passed']);
+        $this->assertFalse($warning['blocking'], 'a warning, never a closing blocker');
+        $this->assertSame($this->bank()->public_id, $warning['details'][0]['id']);
+        $this->assertTrue($this->withHeaders($this->headers())
+            ->getJson("/api/v1/fiscal-periods/{$period->id}/checklist")->json('data.can_close'));
+
+        $session = $this->createSession(['opening_bank_balance_minor' => 0, 'closing_bank_balance_minor' => 0])
+            ->assertCreated()->json('data.id');
+        $this->assertTrue($check()['passed'], 'an open session is enough to clear the warning');
+    }
+
     private function xlsxContent(array $rows): string
     {
         $shared = [];

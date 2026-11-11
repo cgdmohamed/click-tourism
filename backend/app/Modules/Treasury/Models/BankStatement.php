@@ -30,6 +30,7 @@ class BankStatement extends Model
         'period_to',
         'opening_balance_minor',
         'closing_balance_minor',
+        'balance_source',
         'currency_code',
         'line_count',
         'mapping',
@@ -44,6 +45,7 @@ class BankStatement extends Model
             'closing_balance_minor' => 'integer',
             'line_count' => 'integer',
             'mapping' => 'array',
+            'balance_source' => 'array',
         ];
     }
 
@@ -74,6 +76,7 @@ class BankStatement extends Model
             'period_to' => $this->period_to?->toDateString(),
             'opening_balance_minor' => $this->opening_balance_minor,
             'closing_balance_minor' => $this->closing_balance_minor,
+            'balance_source' => $this->balance_source,
             'currency' => $this->currency_code,
             'line_count' => $this->line_count,
             'mapping' => $this->mapping,
