@@ -11,7 +11,10 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
+use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Parties\Models\PartyAccount;
+use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Models\PaymentMethod;
 use App\Modules\Payments\Services\PaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -236,6 +239,95 @@ class InvoiceTest extends TestCase
         $this->assertSame(2080000, (int) $entry->lines()->sum('base_debit_minor'));
         $this->assertSame(2080000, (int) $entry->lines()->sum('base_credit_minor'));
         $this->assertSame(60000, (int) $invoice->fresh()->outstanding_minor);
+    }
+
+    public function test_invoice_collection_accepts_split_methods_and_partial_then_full_receipts(): void
+    {
+        $this->user->givePermissionTo('payments.create');
+        $payload = $this->customerInvoicePayload();
+        $id = $this->create($payload)->assertCreated()->json('data.id');
+        $invoice = Invoice::query()->where('public_id', $id)->firstOrFail();
+        $service = app(InvoiceService::class);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+        $service->issue($invoice, $this->user->id);
+
+        $cash = $this->account('1110');
+        $cashMethod = PaymentMethod::query()->create([
+            'code' => 'COLLECTION-CASH', 'name_ar' => 'نقدي', 'name_en' => 'Cash',
+            'type' => 'cash', 'default_cash_account_id' => $cash->id, 'is_active' => true,
+        ]);
+        $cardMethod = PaymentMethod::query()->create([
+            'code' => 'COLLECTION-CARD', 'name_ar' => 'بطاقة', 'name_en' => 'Card',
+            'type' => 'card', 'default_cash_account_id' => $cash->id, 'is_active' => true,
+        ]);
+
+        $collection = $this->withHeaders($this->headers())->postJson("/api/v1/invoices/{$id}/collections", [
+            'receipts' => [
+                [
+                    'amount_minor' => 30000, 'cash_account_id' => $cash->public_id,
+                    'payment_method_id' => $cashMethod->public_id, 'paid_at' => now()->toDateString(),
+                ],
+                [
+                    'amount_minor' => 20000, 'cash_account_id' => $cash->public_id,
+                    'payment_method_id' => $cardMethod->public_id, 'paid_at' => now()->toDateString(),
+                ],
+            ],
+        ])->assertCreated()->assertJsonPath('data.invoice.outstanding_minor', 50000);
+        $this->assertCount(2, $collection->json('data.receipts'));
+        $this->assertSame(2, InvoiceApplication::query()->where('invoice_id', $invoice->id)->count());
+        $this->assertSame(2, Payment::query()->where('status', 'posted')->count());
+        $this->assertSame(0, (int) Payment::query()->sum('unallocated_minor'));
+
+        $this->withHeaders($this->headers())->postJson("/api/v1/invoices/{$id}/collections", [
+            'receipts' => [[
+                'amount_minor' => 50000, 'cash_account_id' => $cash->public_id,
+                'payment_method_id' => $cashMethod->public_id, 'paid_at' => now()->toDateString(),
+            ]],
+        ])->assertCreated()->assertJsonPath('data.invoice.outstanding_minor', 0);
+        $this->assertSame(3, Payment::query()->count());
+        $this->assertSame(3, InvoiceApplication::query()->where('invoice_id', $invoice->id)->count());
+    }
+
+    public function test_split_invoice_collections_roll_back_every_receipt_on_failure(): void
+    {
+        $this->user->givePermissionTo('payments.create');
+        $payload = $this->customerInvoicePayload();
+        $id = $this->create($payload)->assertCreated()->json('data.id');
+        $invoice = Invoice::query()->where('public_id', $id)->firstOrFail();
+        $service = app(InvoiceService::class);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+        $service->issue($invoice, $this->user->id);
+
+        $cash = $this->account('1110');
+        $method = PaymentMethod::query()->create([
+            'code' => 'COLLECTION-TEST', 'name_ar' => 'نقدي', 'name_en' => 'Cash',
+            'type' => 'cash', 'default_cash_account_id' => $cash->id, 'is_active' => true,
+        ]);
+        $inactive = PaymentMethod::query()->create([
+            'code' => 'COLLECTION-INACTIVE', 'name_ar' => 'متوقف', 'name_en' => 'Inactive',
+            'type' => 'card', 'default_cash_account_id' => $cash->id, 'is_active' => false,
+        ]);
+        $receipts = [
+            ['amount_minor' => 30000, 'cash_account_id' => $cash->public_id,
+                'payment_method_id' => $method->public_id, 'paid_at' => now()->toDateString()],
+            ['amount_minor' => 20000, 'cash_account_id' => $cash->public_id,
+                'payment_method_id' => $inactive->public_id, 'paid_at' => now()->toDateString()],
+        ];
+        $this->withHeaders($this->headers())->postJson("/api/v1/invoices/{$id}/collections", [
+            'receipts' => $receipts,
+        ])->assertStatus(422);
+        $this->assertSame(0, Payment::query()->count());
+        $this->assertSame(0, InvoiceApplication::query()->count());
+        $this->assertSame(100000, (int) $invoice->fresh()->outstanding_minor);
+
+        $receipts[1]['payment_method_id'] = $method->public_id;
+        $receipts[1]['amount_minor'] = 80000;
+        $this->withHeaders($this->headers())->postJson("/api/v1/invoices/{$id}/collections", [
+            'receipts' => $receipts,
+        ])->assertStatus(422);
+        $this->assertSame(0, Payment::query()->count());
     }
 
     public function test_only_approved_invoices_can_be_issued_and_once(): void
