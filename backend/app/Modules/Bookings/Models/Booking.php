@@ -7,11 +7,13 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\PaymentAllocation;
+use App\Support\CarriesWarnings;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 class Booking extends Model
 {
+    use CarriesWarnings;
     use HasPublicId;
 
     public const STATUSES = [
@@ -166,6 +168,10 @@ class Booking extends Model
 
         if ($withItems) {
             $payload['items'] = $this->items->map(fn (BookingItem $item) => $item->toApiArray())->values()->all();
+        }
+
+        if ($this->warnings() !== []) {
+            $payload['warnings'] = $this->warnings();
         }
 
         return $payload;

@@ -26,7 +26,10 @@ use App\Modules\Reports\Services\PartyStatementService;
  */
 class PartyProfileService
 {
-    public function __construct(private readonly PartyStatementService $statements) {}
+    public function __construct(
+        private readonly PartyStatementService $statements,
+        private readonly CreditLimitService $creditLimits,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -87,6 +90,7 @@ class PartyProfileService
                     (clone $paymentQuery)->max('paid_at'),
                 ),
             ],
+            'credit' => $this->creditLimits->summary($customer),
             'bookings' => $bookings,
             'invoices' => $invoices,
             'payments' => $payments,

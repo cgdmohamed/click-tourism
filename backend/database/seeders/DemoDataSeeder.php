@@ -69,6 +69,9 @@ class DemoDataSeeder extends Seeder
             return;
         }
 
+        // The demo data exercises VAT, so seeding it enables the tax setting.
+        app(SettingService::class)->set('tax', 'enabled', 'true');
+
         // Only the isolated, disposable demo installation can opt into the
         // provisional accounting policy needed to generate realistic samples.
         // Never approve accounting policies implicitly for real installations.

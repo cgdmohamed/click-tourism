@@ -7,6 +7,7 @@ use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
@@ -387,5 +388,23 @@ class InvoiceTest extends TestCase
 
         $this->assertSame($first, $second);
         $this->assertSame(1, Invoice::query()->count());
+    }
+
+    public function test_invoice_tax_is_rejected_when_tax_is_disabled(): void
+    {
+        app(SettingService::class)->set('tax', 'enabled', 'false');
+
+        $this->create($this->supplierInvoicePayload())->assertStatus(422)
+            ->assertJsonPath('message', 'Line 1: Tax is disabled in settings.');
+
+        $customerWithTax = $this->customerInvoicePayload();
+        $customerWithTax['lines'][0]['tax_minor'] = 14000;
+        $this->create($customerWithTax)->assertStatus(422);
+
+        // Zero tax is always fine.
+        $this->create($this->customerInvoicePayload())->assertCreated();
+
+        app(SettingService::class)->set('tax', 'enabled', 'true');
+        $this->create($this->supplierInvoicePayload())->assertCreated();
     }
 }

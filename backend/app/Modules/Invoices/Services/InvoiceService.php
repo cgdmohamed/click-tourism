@@ -20,7 +20,9 @@ use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\CreditLimitService;
 use App\Modules\Parties\Services\PartyLedgerService;
+use App\Modules\Tax\Services\TaxPolicy;
 use DomainException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +45,8 @@ class InvoiceService
         private readonly AuditService $audit,
         private readonly FxService $fx,
         private readonly PartyLedgerService $ledger,
+        private readonly CreditLimitService $creditLimits,
+        private readonly TaxPolicy $taxPolicy,
     ) {}
 
     /**
@@ -256,9 +260,9 @@ class InvoiceService
      * Post the approved invoice to the ledger. Idempotent: a posted journal
      * linked to this invoice means it has already been issued.
      */
-    public function issue(Invoice $invoice, ?int $actorId): Invoice
+    public function issue(Invoice $invoice, ?int $actorId, ?string $overrideReason = null, bool $canOverrideCreditLimit = false): Invoice
     {
-        return DB::transaction(function () use ($invoice, $actorId) {
+        return DB::transaction(function () use ($invoice, $actorId, $overrideReason, $canOverrideCreditLimit) {
             $invoice = Invoice::query()->with(['lines.account', 'creditNoteOf'])->lockForUpdate()->findOrFail($invoice->id);
 
             if ($invoice->status !== 'approved') {
@@ -306,6 +310,24 @@ class InvoiceService
 
             $this->assertOpenPeriod($invoice->issue_date, $invoice->branch_id, $actorId);
 
+            // Customer credit limit (accounting.credit_limit_policy); credit notes only reduce exposure.
+            $warnings = [];
+            if ($invoice->type === Invoice::TYPE_CUSTOMER_INVOICE && $invoice->party_type === 'customer') {
+                $customer = Customer::query()->find($invoice->party_id);
+                if ($customer) {
+                    $warnings = $this->creditLimits->enforce(
+                        $customer,
+                        $this->creditLimits->toBase((int) $invoice->total_minor, $invoice->currency_code, (string) $invoice->fx_rate),
+                        $invoice,
+                        'invoice issue',
+                        $actorId,
+                        $invoice->booking_id ? (int) $invoice->booking_id : null,
+                        $canOverrideCreditLimit,
+                        $overrideReason,
+                    );
+                }
+            }
+
             $partyAccount = $this->partySubaccount($invoice);
             $lines = $this->postingLines($invoice, $partyAccount);
 
@@ -346,7 +368,7 @@ class InvoiceService
                 'journal' => $entry->number,
             ], $actorId);
 
-            return $invoice->refresh()->load('lines.account', 'journalEntry');
+            return $invoice->refresh()->load('lines.account', 'journalEntry')->withWarnings($warnings);
         });
     }
 
@@ -550,6 +572,7 @@ class InvoiceService
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
             }
+            $this->taxPolicy->assertTaxAllowed($tax, "Line {$position}");
 
             $taxAccountId = null;
             if (! empty($raw['tax_account_id'])) {

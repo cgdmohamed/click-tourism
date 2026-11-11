@@ -554,6 +554,12 @@ export type CustomerProfile = {
     payments_count: number
     last_activity_on?: string | null
   }
+  credit?: {
+    policy: 'off' | 'warn' | 'block'
+    currency: string
+    credit_limit_minor: number
+    exposure_minor: number
+  }
   bookings: Booking[]
   invoices: InvoiceRecord[]
   payments: Payment[]

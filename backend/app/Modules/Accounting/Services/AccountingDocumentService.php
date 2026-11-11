@@ -18,6 +18,7 @@ use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Tax\Services\TaxPolicy;
 use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,7 @@ class AccountingDocumentService
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
         private readonly FxService $fx,
+        private readonly TaxPolicy $taxPolicy,
     ) {}
 
     /** @return array<int, string> */
@@ -577,6 +579,7 @@ class AccountingDocumentService
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
             }
+            $this->taxPolicy->assertTaxAllowed($tax, "Line {$position}");
 
             $taxAccountId = null;
             if (! empty($raw['tax_account_id'])) {

@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
+import { useTaxEnabled } from '../lib/useSetting'
 import {
   Badge,
   Button,
@@ -205,8 +206,11 @@ export default function Invoices() {
       ? (Number(line.quantity) || 0) * toMinor(line.unit_price || '0', form.currency)
       : toMinor(line.debit || '0', form.currency) + toMinor(line.credit || '0', form.currency)
 
+  const { enabled: taxEnabled } = useTaxEnabled()
+  const lineTax = (line: { tax: string }) => (taxEnabled ? toMinor(line.tax || '0', form.currency) : 0)
+
   const formSubtotal = form.lines.reduce((sum, line) => sum + lineSubtotal(line), 0)
-  const formTax = form.lines.reduce((sum, line) => sum + toMinor(line.tax || '0', form.currency), 0)
+  const formTax = form.lines.reduce((sum, line) => sum + lineTax(line), 0)
   const formTotal = formSubtotal + formTax
 
   const create = useMutation({
@@ -231,7 +235,7 @@ export default function Invoices() {
             unit_price_minor: unitPrice,
             debit_minor: form.type === 'supplier_invoice' ? amount : 0,
             credit_minor: form.type === 'customer_invoice' ? amount : 0,
-            tax_minor: toMinor(line.tax || '0', form.currency),
+            tax_minor: lineTax(line),
           }
         }
         if (!line.account_id) throw new Error(L('اختر حساب كل بند', 'Select an account for every line'))
@@ -240,7 +244,7 @@ export default function Invoices() {
           description: line.description || undefined,
           debit_minor: toMinor(line.debit || '0', form.currency),
           credit_minor: toMinor(line.credit || '0', form.currency),
-          tax_minor: toMinor(line.tax || '0', form.currency),
+          tax_minor: lineTax(line),
           tax_account_id: line.tax_account_id || undefined,
         }
       })
@@ -524,6 +528,7 @@ export default function Invoices() {
                           value={line.tax}
                           onChange={(event) => updateLine(index, { tax: event.target.value })}
                           inputMode="decimal"
+                          disabled={!taxEnabled}
                           dir="ltr"
                         />
                       </Field>
@@ -567,6 +572,7 @@ export default function Invoices() {
                         placeholder={t('tax')}
                         value={line.tax}
                         onChange={(event) => updateLine(index, { tax: event.target.value })}
+                        disabled={!taxEnabled}
                         inputMode="decimal" dir="ltr"
                       />
                     </div>
@@ -578,6 +584,9 @@ export default function Invoices() {
               </div>
             ))}
           </div>
+          {!taxEnabled ? (
+            <p className="mt-2 text-small text-text-subtle">{L('الضريبة معطّلة في الإعدادات.', 'Tax is disabled in settings.')}</p>
+          ) : null}
           <div className="mt-2 flex justify-end">
             <Button variant="secondary" onClick={addLine}>{L('إضافة بند', 'Add line')}</Button>
           </div>

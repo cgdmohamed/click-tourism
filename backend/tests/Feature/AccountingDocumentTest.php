@@ -450,6 +450,20 @@ class AccountingDocumentTest extends TestCase
         return Account::query()->where('code', $code)->firstOrFail();
     }
 
+    public function test_voucher_tax_is_rejected_when_tax_is_disabled(): void
+    {
+        $payload = $this->receiptVoucherPayload();
+        $payload['lines'][0]['tax_minor'] = 1000;
+
+        app(SettingService::class)->set('tax', 'enabled', 'false');
+        $this->create($payload)->assertStatus(422)
+            ->assertJsonPath('message', 'Line 1: Tax is disabled in settings.');
+        $this->assertSame(0, AccountingDocument::query()->count());
+
+        app(SettingService::class)->set('tax', 'enabled', 'true');
+        $this->create($payload)->assertCreated();
+    }
+
     public function test_a_rejected_document_can_be_reopened_and_resubmitted(): void
     {
         $id = $this->withHeaders($this->headers())->postJson('/api/v1/accounting-documents', $this->receiptVoucherPayload(['submit' => true]))
