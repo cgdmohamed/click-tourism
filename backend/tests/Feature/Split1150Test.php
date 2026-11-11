@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalLine;
+use App\Modules\Accounting\Services\Account1150SplitService;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
@@ -12,9 +13,11 @@ use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Employee;
+use App\Support\Money;
 use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -236,7 +239,7 @@ class Split1150Test extends TestCase
     private function linkEmployeeTransaction(int $employeeId, JournalEntry $entry, string $type): void
     {
         DB::table('employee_transactions')->insert([
-            'public_id' => (string) \Illuminate\Support\Str::ulid(),
+            'public_id' => (string) Str::ulid(),
             'employee_id' => $employeeId, 'branch_id' => $this->branch->id, 'type' => $type,
             'journal_entry_id' => $entry->id, 'transaction_date' => now()->toDateString(),
             'currency_code' => 'EGP', 'fx_rate' => 1, 'fx_rate_date' => now()->toDateString(),
@@ -281,7 +284,7 @@ class Split1150Test extends TestCase
         $this->legacyChart();
         $entry = $this->legacyEntry('manual', 9, 5000, 41);
 
-        $result = app(\App\Modules\Accounting\Services\Account1150SplitService::class)->run(false);
+        $result = app(Account1150SplitService::class)->run(false);
 
         $this->assertCount(1, $result['fallbacks']);
         $this->assertSame($entry->number, $result['fallbacks'][0]['entry']);
@@ -319,7 +322,7 @@ class Split1150Test extends TestCase
     {
         $this->legacyChart();
         foreach ([[1, 'SAR', '13.3333333333', 17], [777, 'USD', '48.1234567891', 31], [789322879303, 'USD', '38.3667', 5], [386970086883, 'USD', '35.2091', 6]] as [$amount, $currency, $rate, $id]) {
-            $base = (new \App\Support\Money($amount, $currency))->convertTo('EGP', $rate)->amountMinor;
+            $base = (new Money($amount, $currency))->convertTo('EGP', $rate)->amountMinor;
             if ($base === 0) {
                 continue;
             }
