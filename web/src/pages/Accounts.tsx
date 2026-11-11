@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import axios from 'axios'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Account } from '../lib/types'
@@ -24,6 +25,29 @@ import { Icon } from '../components/icons'
 
 const accountTypes: Account['type'][] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
+type ImportRowError = { row: number; code: string; message: string; params?: Record<string, string> }
+
+const arImportErrors: Record<string, (p: Record<string, string>) => string> = {
+  required: () => 'الكود والاسم العربي والاسم الإنجليزي مطلوبة.',
+  too_long: () => 'الكود (حتى 20 حرفًا) أو الاسم (حتى 255 حرفًا) أطول من المسموح.',
+  duplicate_code: (p) => `الكود '${p.code}' مكرر (ظهر أولًا في الصف ${p.first}).`,
+  invalid_type: (p) => `نوع غير صالح '${p.type}'.`,
+  invalid_boolean: (p) => `القيمة في العمود ${p.field} يجب أن تكون true أو false.`,
+  invalid_currency: (p) => `عملة غير معروفة '${p.currency}'.`,
+  self_parent: () => 'لا يمكن أن يكون الحساب أبًا لنفسه.',
+  parent_not_found: (p) => `الحساب الأب '${p.parent}' غير موجود.`,
+  circular_parent: () => 'تم اكتشاف مرجع دائري في الحساب الأب.',
+  account_has_history: (p) => `لا يمكن تغيير (${p.field}) للحساب '${p.code}' لأن لديه قيودًا أو تسجيلًا كحساب نقدي/بنكي.`,
+}
+
+function importRowErrorText(item: ImportRowError, locale: string): string {
+  if (locale === 'ar') {
+    const text = arImportErrors[item.code]
+    return `الصف ${item.row}: ${text ? text(item.params ?? {}) : item.message}`
+  }
+  return item.message
+}
+
 export default function Accounts() {
   const { t, locale } = useI18n()
   const queryClient = useQueryClient()
@@ -32,6 +56,7 @@ export default function Accounts() {
   const [editId, setEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [importError, setImportError] = useState('')
+  const [importRowErrors, setImportRowErrors] = useState<ImportRowError[]>([])
   const [importPreview, setImportPreview] = useState<Array<{ row: number; code: string; name_ar: string; name_en: string; type: string; action: string }>>([])
   const [showImport, setShowImport] = useState(false)
   const [form, setForm] = useState({
@@ -94,9 +119,21 @@ export default function Accounts() {
     onSuccess: async (result) => {
       setImportPreview(result.preview)
       setImportError('')
+      setImportRowErrors([])
       await queryClient.invalidateQueries({ queryKey: ['accounts'] })
     },
-    onError: (cause) => setImportError(errorMessage(cause)),
+    onError: (cause) => {
+      // A failed preview/import must not leave a stale preview that could be applied.
+      setImportPreview([])
+      const rowErrors = axios.isAxiosError<{ row_errors?: ImportRowError[] }>(cause) ? cause.response?.data?.row_errors : undefined
+      if (rowErrors?.length) {
+        setImportRowErrors(rowErrors)
+        setImportError('')
+      } else {
+        setImportRowErrors([])
+        setImportError(errorMessage(cause))
+      }
+    },
   })
 
   const exportAccounts = async () => {
@@ -328,7 +365,12 @@ export default function Accounts() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('file')} required>
-            <Input type="file" accept=".csv" onChange={(event) => setImportFile(event.target.files?.[0] ?? null)} />
+            <Input type="file" accept=".csv" onChange={(event) => {
+              setImportFile(event.target.files?.[0] ?? null)
+              setImportPreview([])
+              setImportRowErrors([])
+              setImportError('')
+            }} />
           </Field>
           <Field label={t('previewOnly')}>
             <label className="flex items-center gap-2 py-2 text-sm">
@@ -369,6 +411,20 @@ export default function Accounts() {
             </Table>
             <p className="text-small text-text-subtle">{locale === 'ar' ? `سيتم تحديث ${importPreview.length} حساب` : `Will update ${importPreview.length} accounts`}</p>
           </Card>
+        ) : null}
+        {importRowErrors.length > 0 ? (
+          <div className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text" role="alert">
+            <p className="font-semibold">
+              {locale === 'ar'
+                ? `يوجد ${importRowErrors.length} خطأ في الملف. صحح الأخطاء وأعد المعاينة.`
+                : `${importRowErrors.length} error(s) found. Fix the file and preview again.`}
+            </p>
+            <ul className="mt-2 max-h-60 list-disc space-y-1 overflow-y-auto ps-5">
+              {importRowErrors.map((item, index) => (
+                <li key={`${item.row}-${index}`}>{importRowErrorText(item, locale)}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         {importError ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{importError}</p> : null}
       </Modal>

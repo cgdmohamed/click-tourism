@@ -54,7 +54,10 @@ class SequenceService
         $sequence->next_value = $value + 1;
         $sequence->save();
 
-        return sprintf('%s-%d-%06d', $sequence->prefix ?: strtoupper(substr($documentType, 0, 2)), $year, $value);
+        // Format: PREFIX-BRANCHCODE-YEAR-000001. The branch code keeps numbers
+        // unique across branches (sequences are per branch). Numbers issued
+        // before the branch code was added are never rewritten.
+        return sprintf('%s-%s-%d-%06d', $sequence->prefix ?: $this->fallbackPrefix($documentType), $this->branchCode($branch), $year, $value);
     }
 
     private function prefixFor(string $documentType): string
@@ -79,7 +82,28 @@ class SequenceService
             default => null,
         };
 
-        return $key ? (string) $this->settings->get('documents', $key, strtoupper(substr($documentType, 0, 2))) : strtoupper(substr($documentType, 0, 2));
+        return $key ? (string) $this->settings->get('documents', $key, $this->fallbackPrefix($documentType)) : $this->fallbackPrefix($documentType);
+    }
+
+    /**
+     * Voucher series (RCV, PAY, TV, ADJ, RF, DOC) are passed in as the document
+     * type and already are the configured prefix: use them in full. Other
+     * unknown types keep the legacy two-letter abbreviation.
+     */
+    private function fallbackPrefix(string $documentType): string
+    {
+        if (preg_match('/^[A-Z][A-Z0-9]{1,9}$/', $documentType) === 1) {
+            return $documentType;
+        }
+
+        return strtoupper(substr($documentType, 0, 2));
+    }
+
+    private function branchCode(Branch $branch): string
+    {
+        $code = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '', (string) $branch->code));
+
+        return $code !== '' ? $code : 'B'.$branch->id;
     }
 
     private function fiscalYearNumber(Carbon $date): int
