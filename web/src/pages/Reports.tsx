@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
 import { usePartyOptions } from '../lib/usePartyOptions'
+import { useBaseCurrency } from '../lib/useSetting'
 import type { Account, JournalEntry } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
 import { Icon } from '../components/icons'
@@ -257,6 +258,7 @@ const firstOfYear = () => `${new Date().getFullYear()}-01-01`
 export default function Reports() {
   const { t, locale } = useI18n()
   const { activeBranch, can } = useAuth()
+  const baseCurrency = useBaseCurrency()
   const [report, setReport] = useState<ReportKey>('trial-balance')
   const [currency, setCurrency] = useState('')
   const [partyType, setPartyType] = useState<'' | PartyType>('')
@@ -900,15 +902,15 @@ export default function Reports() {
                 <tbody>
                   {result.centers.map((row) => <tr key={row.center.id}>
                     <Td>{row.center.code} — {locale === 'ar' ? row.center.name_ar : row.center.name_en}</Td>
-                    <Td className="text-end"><Money amountMinor={row.allocated_revenue_minor} currency={currency || 'EGP'}/></Td>
-                    <Td className="text-end"><Money amountMinor={row.allocated_expense_minor} currency={currency || 'EGP'}/></Td>
-                    <Td className="text-end"><Money amountMinor={row.allocated_net_minor} currency={currency || 'EGP'}/></Td>
+                    <Td className="text-end"><Money amountMinor={row.allocated_revenue_minor} currency={baseCurrency}/></Td>
+                    <Td className="text-end"><Money amountMinor={row.allocated_expense_minor} currency={baseCurrency}/></Td>
+                    <Td className="text-end"><Money amountMinor={row.allocated_net_minor} currency={baseCurrency}/></Td>
                   </tr>)}
                   <tr className="font-semibold">
                     <Td>{locale === 'ar' ? 'الإجمالي' : 'Total'}</Td>
-                    <Td className="text-end"><Money amountMinor={result.grand_allocated_revenue_minor} currency={currency || 'EGP'}/></Td>
-                    <Td className="text-end"><Money amountMinor={result.grand_allocated_expense_minor} currency={currency || 'EGP'}/></Td>
-                    <Td className="text-end"><Money amountMinor={result.grand_allocated_net_minor} currency={currency || 'EGP'}/></Td>
+                    <Td className="text-end"><Money amountMinor={result.grand_allocated_revenue_minor} currency={baseCurrency}/></Td>
+                    <Td className="text-end"><Money amountMinor={result.grand_allocated_expense_minor} currency={baseCurrency}/></Td>
+                    <Td className="text-end"><Money amountMinor={result.grand_allocated_net_minor} currency={baseCurrency}/></Td>
                   </tr>
                 </tbody>
               </Table>
@@ -925,7 +927,7 @@ export default function Reports() {
               <CardHeader title={locale === 'ar' ? 'القيود غير الموزعة على مراكز التكلفة' : 'Unallocated journal lines'} icon="listChecks" />
               <div className="px-5 py-3 text-small text-text-subtle">
                 {locale === 'ar' ? 'عدد البنود:' : 'Line count:'} {result.unallocated_line_count} ·
-                {' '}{locale === 'ar' ? 'إجمالي القيمة:' : 'Total amount:'} <Money amountMinor={result.unallocated_total_minor} currency={currency || 'EGP'}/>
+                {' '}{locale === 'ar' ? 'إجمالي القيمة:' : 'Total amount:'} <Money amountMinor={result.unallocated_total_minor} currency={baseCurrency}/>
               </div>
               {result.lines.length === 0 ? <EmptyState /> : <Table>
                 <thead><tr>
@@ -937,7 +939,7 @@ export default function Reports() {
                 <tbody>{result.lines.map((line, index) => <tr key={index}>
                   <Td>{line.journal_entry}</Td><Td>{formatDate(line.entry_date, locale)}</Td>
                   <Td>{line.account ?? '—'}</Td>
-                  <Td className="text-end"><Money amountMinor={line.amount_minor} currency={currency || 'EGP'}/></Td>
+                  <Td className="text-end"><Money amountMinor={line.amount_minor} currency={baseCurrency}/></Td>
                 </tr>)}</tbody>
               </Table>}
             </Card>
