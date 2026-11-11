@@ -23,6 +23,10 @@ const emptyForm = { currency: '', rate: '', rate_date: todayISO(), source: 'manu
  * FX rate history and manual entry (GET/POST /fx-rates). Rates are the
  * document snapshot source for foreign-currency postings, so entries are
  * never edited in place: the same currency/date pair is upserted.
+ *
+ * Direction (FxService / ADR-0003): 1 unit of the stored currency equals
+ * `rate` units of the installation base currency. The labels below must keep
+ * saying that: inverting them makes an operator enter 1/rate.
  */
 export default function ExchangeRates() {
   const { t, locale } = useI18n()
@@ -101,8 +105,8 @@ export default function ExchangeRates() {
       ) : null}
       <p className="mb-4 text-small text-text-subtle">
         {ar
-          ? `العملة الأساسية: ${baseCurrency}. تُدخل الأسعار كمقدار العملة الأجنبية مقابل وحدة واحدة من العملة الأساسية.`
-          : `Base currency: ${baseCurrency}. A rate is the amount of foreign currency per one base-currency unit.`}
+          ? `العملة الأساسية: ${baseCurrency}. يُدخل السعر كمقدار العملة الأساسية مقابل وحدة واحدة من العملة الأجنبية: فإذا كانت 1 USD = 50 ${baseCurrency} يُدخل 50.`
+          : `Base currency: ${baseCurrency}. A rate is how much one unit of the foreign currency is worth in ${baseCurrency}: if 1 USD = 50 ${baseCurrency}, enter 50.`}
       </p>
 
       <Card>
@@ -130,7 +134,7 @@ export default function ExchangeRates() {
               <tr>
                 <Th>{t('date')}</Th>
                 <Th>{t('currency')}</Th>
-                <Th className="text-end">{ar ? 'السعر مقابل 1 ' + baseCurrency : 'Rate per 1 ' + baseCurrency}</Th>
+                <Th className="text-end">{ar ? `القيمة بـ ${baseCurrency} لوحدة أجنبية واحدة` : `Value of 1 foreign unit in ${baseCurrency}`}</Th>
                 <Th>{ar ? 'المصدر' : 'Source'}</Th>
               </tr>
             </thead>
@@ -170,7 +174,13 @@ export default function ExchangeRates() {
               ))}
             </Select>
           </Field>
-          <Field label={ar ? `السعر مقابل 1 ${baseCurrency}` : `Rate per 1 ${baseCurrency}`} required>
+          <Field
+            label={ar ? `القيمة بـ ${baseCurrency} لوحدة أجنبية واحدة` : `Value of 1 foreign unit in ${baseCurrency}`}
+            hint={ar
+              ? `مقدار العملة الأساسية مقابل وحدة واحدة من العملة المختارة`
+              : `Amount of ${baseCurrency} for one unit of the selected currency`}
+            required
+          >
             <Input value={form.rate} onChange={(event) => setForm({ ...form, rate: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={t('date')} required>
