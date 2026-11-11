@@ -31,7 +31,7 @@ import { useTaxEnabled } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
-type TourOption = { id: string; name: string; currency: string; execution_type: string; departures: DepartureOption[] | null }
+type TourOption = { id: string; name: string; currency: string; execution_type: string; base_price_minor: number; estimated_cost_minor: number; departures: DepartureOption[] | null }
 
 type DraftItem = {
   service_type: string
@@ -66,6 +66,8 @@ export default function Bookings() {
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const urlSearch = searchParams.get('search') ?? ''
+  const requestedCustomerId = searchParams.get('customer_id') ?? ''
+  const requestedDepartureId = searchParams.get('departure_id') ?? ''
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState(urlSearch)
@@ -74,7 +76,7 @@ export default function Bookings() {
   const [viewId, setViewId] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<Booking | null>(null)
   const [form, setForm] = useState({
-    customer_id: '',
+    customer_id: requestedCustomerId,
     tour_departure_id: '',
     start_date: todayISO(),
     end_date: '',
@@ -122,6 +124,9 @@ export default function Bookings() {
         start: departure.starts_on,
         end: departure.ends_on,
         currency: tour.currency,
+        name: tour.name,
+        unitSell: toDecimal(tour.base_price_minor, tour.currency),
+        unitCost: toDecimal(tour.estimated_cost_minor, tour.currency),
       })))
 
   const taxProfilesQuery = useQuery({
@@ -197,12 +202,13 @@ export default function Bookings() {
       })
       return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (booking) => {
       setOpen(false)
       setEditTarget(null)
       setError('')
       setItems([emptyItem(form.currency)])
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      setViewId(booking.id)
     },
     onError: (cause) => setError(errorMessage(cause)),
   })
@@ -211,7 +217,7 @@ export default function Bookings() {
     setError('')
     setEditTarget(null)
     setForm({
-      customer_id: '',
+      customer_id: requestedCustomerId,
       tour_departure_id: '',
       start_date: todayISO(),
       end_date: '',
@@ -224,6 +230,34 @@ export default function Bookings() {
     })
     setItems([emptyItem('EGP')])
     setOpen(true)
+  }
+
+  const selectDeparture = (departureId: string) => {
+    const selected = departureOptions.find((option) => option.id === departureId)
+    setForm((current) => ({
+      ...current,
+      tour_departure_id: departureId,
+      start_date: selected?.start ?? current.start_date,
+      end_date: selected?.end ?? current.end_date,
+      currency: selected?.currency ?? current.currency,
+      fx_rate: '',
+    }))
+    if (selected) {
+      // Prefill a single program item from the catalog price snapshot.
+      // Staff can still edit the selling price and cost before saving.
+      const quantity = Math.max(1, Number(form.pax_adults || 0) + Number(form.pax_children || 0) + Number(form.pax_infants || 0))
+      setItems([{
+        ...emptyItem(selected.currency),
+        service_type: 'program',
+        description: selected.name,
+        starts_on: selected.start,
+        quantity: String(quantity),
+        unit_sell: selected.unitSell,
+        unit_cost: selected.unitCost,
+      }])
+    } else {
+      setItems([emptyItem(form.currency)])
+    }
   }
 
   const startEdit = (booking: Booking) => {
@@ -406,16 +440,7 @@ export default function Bookings() {
             <Field label={locale === 'ar' ? 'موعد برنامج سياحي (اختياري)' : 'Tour departure (optional)'}>
               <Select
                 value={form.tour_departure_id}
-                onChange={(event) => {
-                  const selected = departureOptions.find((option) => option.id === event.target.value)
-                  setForm((current) => ({
-                    ...current,
-                    tour_departure_id: event.target.value,
-                    start_date: selected?.start ?? current.start_date,
-                    end_date: selected?.end ?? current.end_date,
-                    currency: selected?.currency ?? current.currency,
-                  }))
-                }}
+                onChange={(event) => selectDeparture(event.target.value)}
               >
                 <option value="">{locale === 'ar' ? 'حجز مستقل / خدمة منفصلة' : 'Independent booking / standalone service'}</option>
                 {departureOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
