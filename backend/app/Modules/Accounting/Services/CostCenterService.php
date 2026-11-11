@@ -232,7 +232,6 @@ class CostCenterService
                 ->join('journal_lines as jl', 'jl.id', '=', 'cost_center_allocations.journal_line_id')
                 ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
                 ->where('je.status', 'posted')
-            ->when($branch, fn ($query) => $query->where('je.branch_id', $branch->id))
                 ->when($branch, fn ($query) => $query->where('je.branch_id', $branch->id))
                 ->whereDate('je.entry_date', '>=', $from)
                 ->whereDate('je.entry_date', '<=', $to)
