@@ -3,6 +3,7 @@
 namespace App\Modules\Accounting\Models;
 
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
 use App\Support\HasPublicId;
 use DomainException;
 use Illuminate\Database\Eloquent\Model;
@@ -62,6 +63,11 @@ class JournalEntry extends Model
         return $this->hasMany(JournalLine::class);
     }
 
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function branch()
     {
         return $this->belongsTo(Branch::class);
@@ -80,6 +86,20 @@ class JournalEntry extends Model
     public function reversal()
     {
         return $this->hasOne(self::class, 'reversal_of_id');
+    }
+
+    /** Source types owned by a business document with its own cancel/reverse action. */
+    public const DOCUMENT_SOURCE_TYPES = [
+        'payment', 'payment_allocation', 'refund', 'supplier_payment', 'supplier_payment_application',
+        'invoice', 'invoice_application', 'accounting_document', 'expense', 'transfer', 'booking',
+        'employee_advance', 'employee_custody', 'opening_balance', 'accounting_schedule', 'fiscal_year',
+    ];
+
+    public function isDocumentEntry(): bool
+    {
+        $type = (string) $this->source_type;
+
+        return in_array($type, self::DOCUMENT_SOURCE_TYPES, true) || str_starts_with($type, 'fixed_asset');
     }
 
     public function scopePosted($query)
@@ -115,6 +135,7 @@ class JournalEntry extends Model
             'source_type' => $this->source_type,
             'event' => $this->event,
             'posted_at' => $this->posted_at?->toIso8601String(),
+            'created_by_id' => $this->creator?->public_id,
         ];
 
         if ($withLines) {

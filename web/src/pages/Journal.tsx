@@ -30,9 +30,20 @@ type DraftLine = { account_id: string; debit: string; credit: string; descriptio
 
 const emptyLine = (): DraftLine => ({ account_id: '', debit: '', credit: '', description: '' })
 
+/** Entries owned by a business document are cancelled from that document, never reversed directly. */
+const DOCUMENT_SOURCES = [
+  'payment', 'payment_allocation', 'refund', 'supplier_payment', 'supplier_payment_application',
+  'invoice', 'invoice_application', 'accounting_document', 'expense', 'transfer', 'booking',
+  'employee_advance', 'employee_custody', 'opening_balance', 'accounting_schedule', 'fiscal_year',
+]
+
+function isDocumentEntry(sourceType?: string | null): boolean {
+  return !!sourceType && (DOCUMENT_SOURCES.includes(sourceType) || sourceType.startsWith('fixed_asset'))
+}
+
 export default function Journal() {
   const { t, locale } = useI18n()
-  const { activeBranch } = useAuth()
+  const { activeBranch, user, can } = useAuth()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -116,6 +127,23 @@ export default function Journal() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
+  const deleteDraft = useMutation({
+    mutationFn: async (entry: JournalEntry) => {
+      const message =
+        locale === 'ar'
+          ? `حذف المسودة ${entry.number} نهائيًا؟ لا يمكن التراجع عن هذا الإجراء.`
+          : `Permanently delete draft ${entry.number}? This cannot be undone.`
+      if (!window.confirm(message)) return null
+      await api.delete(`/journal-entries/${entry.id}`)
+      return entry.id
+    },
+    onSuccess: async () => {
+      setError('')
+      await queryClient.invalidateQueries({ queryKey: ['journal'] })
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+
   const reverse = useMutation({
     mutationFn: async (entry: JournalEntry) => {
       const reason = window.prompt(locale === 'ar' ? 'سبب الإلغاء/العكس' : 'Reversal reason')
@@ -187,15 +215,24 @@ export default function Journal() {
                         <Badge tone="neutral">{locale === 'ar' ? 'قيد عكس' : 'Reversal'}</Badge>
                       ) : entry.reversed_by_id ? (
                         <Badge tone="neutral">{locale === 'ar' ? 'معكوس' : 'Reversed'}</Badge>
+                      ) : isDocumentEntry(entry.source_type) ? (
+                        <Badge tone="neutral">{locale === 'ar' ? 'يُلغى من المستند' : 'Cancel from document'}</Badge>
                       ) : (
                         <Button variant="ghost" onClick={() => reverse.mutate(entry)}>
                           {locale === 'ar' ? 'عكس' : 'Reverse'}
                         </Button>
                       )
                     ) : (
-                      <Button variant="ghost" disabled={postDraft.isPending} onClick={() => postDraft.mutate(entry)}>
-                        {t('post')}
-                      </Button>
+                      <>
+                        <Button variant="ghost" disabled={postDraft.isPending} onClick={() => postDraft.mutate(entry)}>
+                          {t('post')}
+                        </Button>
+                        {(can('journal.delete_drafts') || (entry.created_by_id === user?.id && can('journal.create'))) && (
+                          <Button variant="ghost" disabled={deleteDraft.isPending} onClick={() => deleteDraft.mutate(entry)}>
+                            {locale === 'ar' ? 'حذف' : 'Delete'}
+                          </Button>
+                        )}
+                      </>
                     )}
                     </div>
                   </Td>

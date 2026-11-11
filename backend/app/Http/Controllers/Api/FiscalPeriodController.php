@@ -169,7 +169,7 @@ class FiscalPeriodController extends ApiController
                 ->count();
 
             if ($drafts > 0) {
-                throw new DomainException("{$drafts} draft journal entries in this period must be posted or discarded before closing it.");
+                throw new DomainException("{$drafts} draft journal entries in this period must be posted or deleted before closing it (open the journal and delete the draft, or post it).");
             }
         }
 

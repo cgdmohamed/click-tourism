@@ -18,9 +18,38 @@ class SettingController extends ApiController
         return $this->ok($settings->all());
     }
 
-    public function decisions(DecisionRegistry $decisions): JsonResponse
+    public function decisions(Request $request, DecisionRegistry $decisions): JsonResponse
     {
-        return $this->ok($decisions->unresolved());
+        $list = $request->boolean('all') ? $decisions->all() : $decisions->unresolved();
+
+        return $this->ok($decisions->withResolutions($list));
+    }
+
+    public function resolveDecision(Request $request, string $id, DecisionRegistry $decisions, SettingService $settings, AuditService $audit): JsonResponse
+    {
+        abort_unless($decisions->exists($id), 404, 'Unknown decision.');
+
+        $data = $request->validate([
+            'status' => ['required', 'in:approved,rejected,deferred'],
+            'option' => ['nullable', 'string', 'max:100'],
+            'note' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $user = $request->user();
+        $before = $decisions->resolutions()[$id] ?? null;
+        $resolution = array_filter([
+            'status' => $data['status'],
+            'option' => $data['option'] ?? null,
+            'note' => $data['note'],
+            'decided_by' => $user->public_id,
+            'decided_by_name' => $user->name,
+            'decided_at' => now()->toIso8601String(),
+        ], static fn ($value): bool => $value !== null);
+
+        $settings->set(DecisionRegistry::SETTINGS_GROUP, $id, json_encode($resolution, JSON_UNESCAPED_UNICODE));
+        $audit->log('decision.resolved', null, ['decision' => $id, 'resolution' => $before], ['decision' => $id, 'resolution' => $resolution], $this->actorId());
+
+        return $this->ok(['id' => $id, 'resolution' => $resolution]);
     }
 
     public function update(Request $request, SettingService $settings, AuditService $audit): JsonResponse

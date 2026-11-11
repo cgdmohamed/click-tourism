@@ -59,7 +59,10 @@ class PostingService
                 throw new DomainException('Only draft journal entries can be posted.');
             }
 
-            $this->assertMakerChecker($actorId, $entry->created_by, 'poster');
+            $ownDraftOverride = $this->makerCheckerOverridden($actorId, $entry->created_by);
+            if (! $ownDraftOverride) {
+                $this->assertMakerChecker($actorId, $entry->created_by, 'poster');
+            }
 
             $this->assertActorMayPost(new PostingRequest(
                 entryDate: $entry->entry_date->toDateString(),
@@ -86,8 +89,58 @@ class PostingService
                 'number' => $entry->number,
             ], $actorId);
 
+            if ($ownDraftOverride) {
+                // Maker-checker was overridden by journal.post_own_drafts.
+                $this->audit->log('journal.posted_own_draft', $entry, ['status' => 'draft'], [
+                    'status' => 'posted',
+                    'number' => $entry->number,
+                    'created_by' => $entry->created_by,
+                    'posted_by' => $actorId,
+                ], $actorId);
+            }
+
             return $entry->refresh()->load('lines.account');
         });
+    }
+
+    /**
+     * Deletes a draft entry and its lines. Posted entries are never deletable;
+     * the model/line immutability hooks stay intact, so the lines are removed
+     * with a query-level delete that is only reachable for a draft parent.
+     */
+    public function deleteDraft(JournalEntry $entry, ?int $actorId = null): void
+    {
+        DB::transaction(function () use ($entry, $actorId) {
+            $entry = JournalEntry::query()->lockForUpdate()->findOrFail($entry->id);
+
+            if ($entry->status !== 'draft') {
+                throw new DomainException('Only draft journal entries can be deleted; posted entries must be reversed.');
+            }
+
+            $entry->load('lines');
+            $debit = (int) $entry->lines->sum('debit_minor');
+            $credit = (int) $entry->lines->sum('credit_minor');
+
+            DB::table('journal_lines')->where('journal_entry_id', $entry->id)->delete();
+            $entry->delete();
+
+            $this->audit->log('journal.draft_deleted', $entry, [
+                'status' => 'draft',
+                'number' => $entry->number,
+                'debit_minor' => $debit,
+                'credit_minor' => $credit,
+                'created_by' => $entry->created_by,
+            ], null, $actorId);
+        });
+    }
+
+    private function makerCheckerOverridden(?int $actorId, ?int $createdBy): bool
+    {
+        if ($actorId === null || $createdBy === null || $actorId !== $createdBy) {
+            return false;
+        }
+
+        return (bool) User::query()->find($actorId)?->can('journal.post_own_drafts');
     }
 
     private function persist(PostingRequest $request, string $status): JournalEntry

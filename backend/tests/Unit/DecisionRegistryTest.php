@@ -3,10 +3,13 @@
 namespace Tests\Unit;
 
 use App\Modules\Core\Services\DecisionRegistry;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class DecisionRegistryTest extends TestCase
 {
+    use RefreshDatabase;
+
     /** @return array<string, array{type: string, title: string, blocks: string}> */
     private function documented(): array
     {

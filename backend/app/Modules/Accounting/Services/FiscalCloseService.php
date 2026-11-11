@@ -61,7 +61,7 @@ class FiscalCloseService
 
         $checks = [
             $this->check('year_open', ! $year->isClosed(), $year->isClosed() ? 'The fiscal year is already closed.' : null),
-            $this->check('draft_entries', $drafts === 0, $drafts > 0 ? "{$drafts} draft journal entries must be posted or discarded." : null, $drafts),
+            $this->check('draft_entries', $drafts === 0, $drafts > 0 ? "{$drafts} draft journal entries must be posted or deleted (a draft can be deleted from the journal, or posted by another accountant or a senior accountant)." : null, $drafts),
             $this->check('submitted_expenses', $pendingExpenses === 0, $pendingExpenses > 0 ? "{$pendingExpenses} submitted expenses await approval." : null, $pendingExpenses),
             $this->check('trial_balance', (int) $totals->debit === (int) $totals->credit, 'Posted debits and credits of the year differ.'),
             $this->check('retained_earnings_account', $retained, 'The retained earnings account is missing, inactive, not postable or not an equity account.'),

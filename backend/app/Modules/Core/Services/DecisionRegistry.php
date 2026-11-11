@@ -2,6 +2,8 @@
 
 namespace App\Modules\Core\Services;
 
+use App\Modules\Core\Models\Setting;
+
 /**
  * Registry of product/accounting decisions that are not yet approved.
  *
@@ -14,6 +16,8 @@ namespace App\Modules\Core\Services;
  */
 class DecisionRegistry
 {
+    public const SETTINGS_GROUP = 'decisions';
+
     /** @var array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */
     private const DECISIONS = [
         [
@@ -344,12 +348,54 @@ class DecisionRegistry
         return self::DECISIONS;
     }
 
-    /** @return array<int, array{id: string, type: string, title_en: string, title_ar: string, blocks: string, status: string}> */
+    /**
+     * Stored responses keyed by decision id (settings table, group `decisions`).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function resolutions(): array
+    {
+        $result = [];
+
+        foreach (Setting::query()->where('group', self::SETTINGS_GROUP)->get(['key', 'value']) as $row) {
+            $decoded = json_decode((string) $row->value, true);
+
+            if (is_array($decoded)) {
+                $result[$row->key] = $decoded;
+            }
+        }
+
+        return $result;
+    }
+
+    /** Decisions not yet decided in the registry and not approved by a stored response. */
     public function unresolved(): array
     {
+        $resolutions = $this->resolutions();
+
         return array_values(array_filter(
             self::DECISIONS,
-            static fn (array $decision): bool => $decision['status'] !== 'decided',
+            static fn (array $decision): bool => $decision['status'] !== 'decided'
+                && ($resolutions[$decision['id']]['status'] ?? null) !== 'approved',
         ));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $decisions
+     * @return array<int, array<string, mixed>>
+     */
+    public function withResolutions(array $decisions): array
+    {
+        $resolutions = $this->resolutions();
+
+        return array_map(
+            static fn (array $decision): array => $decision + ['resolution' => $resolutions[$decision['id']] ?? null],
+            $decisions,
+        );
+    }
+
+    public function exists(string $id): bool
+    {
+        return in_array($id, array_column(self::DECISIONS, 'id'), true);
     }
 }

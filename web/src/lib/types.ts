@@ -55,6 +55,20 @@ export type JournalEntry = {
   lines?: JournalLine[]
   reversal_of_id?: string | null
   reversed_by_id?: string | null
+  created_by_id?: string | null
+  source_type?: string | null
+}
+
+export type Refund = {
+  id: string
+  number: string
+  payment_id: string | null
+  booking_id: string | null
+  amount_minor: number
+  currency: string
+  reason: string
+  status: string
+  approved_at: string | null
 }
 
 export type Customer = {

@@ -142,6 +142,17 @@ class SupplierSettlementController extends ApiController
         return $this->ok($payment->toApiArray());
     }
 
+    public function cancel(Request $request, SupplierPayment $supplierPayment, SupplierSettlementService $settlements): JsonResponse
+    {
+        $this->assertBranch($supplierPayment->branch_id);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        return $this->ok($settlements->cancel($supplierPayment, $data['reason'], $this->actorId())->toApiArray());
+    }
+
     private function assertBranch(int $branchId): void
     {
         $branch = $this->branchOrFail();
