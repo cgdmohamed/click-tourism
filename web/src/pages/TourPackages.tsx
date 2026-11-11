@@ -31,7 +31,7 @@ const categories = [
   ['other', 'أخرى', 'Other'],
 ]
 const emptyForm = {
-  code: '', name: '', category: 'domestic', execution_type: 'fixed',
+  name: '', category: 'domestic', execution_type: 'fixed',
   destination: '', description: '', currency: 'EGP', base_price: '', estimated_cost: '',
 }
 export default function TourPackages() {
@@ -56,7 +56,7 @@ export default function TourPackages() {
   const save = useMutation({
     mutationFn: async () => {
       await api.post('/tour-packages', {
-        code: form.code.trim(), name: form.name.trim(), category: form.category,
+        name: form.name.trim(), category: form.category,
         execution_type: form.execution_type, destination: form.destination || null,
         description: form.description || null, currency: form.currency,
         base_price_minor: toMinor(form.base_price || '0', form.currency),
@@ -160,13 +160,13 @@ export default function TourPackages() {
         onClose={() => setOpen(false)}
         footer={<>
           <Button variant="secondary" onClick={() => setOpen(false)}>{L('إلغاء', 'Cancel')}</Button>
-          <Button disabled={save.isPending || !form.code.trim() || !form.name.trim()} onClick={() => save.mutate()}>
+          <Button disabled={save.isPending || !form.name.trim()} onClick={() => save.mutate()}>
             {L('حفظ البرنامج', 'Save program')}
           </Button>
         </>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={L('كود البرنامج', 'Program code')} required><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}/></Field>
+          <div className="text-small text-text-subtle sm:col-span-2">{L('كود البرنامج يتولد تلقائيًا عند الحفظ ولا يحتاج إدخالًا.', 'The program code is generated automatically when saved.')}</div>
           <Field label={L('اسم البرنامج', 'Program name')} required><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}/></Field>
           <Field label={L('التصنيف', 'Category')}><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
             {categories.map((c) => <option key={c[0]} value={c[0]}>{locale === 'ar' ? c[1] : c[2]}</option>)}
