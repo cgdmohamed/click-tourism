@@ -1,0 +1,42 @@
+name: One-time npm security lockfile repair
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/security-lockfile-repair.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  repair-web-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Refresh vulnerable npm transitive dependencies
+        working-directory: web
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit
+          npm audit fix --package-lock-only --ignore-scripts --no-fund
+      - name: Validate fresh lockfile against tests and build
+        working-directory: web
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+          npm audit --audit-level=moderate
+      - name: Commit only audited lockfile
+        run: |
+          git add web/package-lock.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(security): refresh audited web npm dependency lockfile'
+            git push origin HEAD:main
+          fi
