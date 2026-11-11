@@ -547,8 +547,8 @@ class ReportService
             ->whereDate('je.entry_date', '<=', $asOf)
             ->whereIn('a.type', ['asset', 'liability', 'equity'])
             ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
-            ->groupBy('a.id', 'a.code', 'a.name_ar', 'a.name_en', 'a.type')
-            ->selectRaw('a.code, a.name_ar, a.name_en, a.type')
+            ->groupBy('a.id', 'a.code', 'a.name_ar', 'a.name_en', 'a.type', 'a.classification')
+            ->selectRaw('a.code, a.name_ar, a.name_en, a.type, a.classification')
             ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit_minor')
             ->selectRaw('COALESCE(SUM(jl.base_credit_minor), 0) as credit_minor')
             ->orderBy('a.code')
@@ -568,9 +568,9 @@ class ReportService
             }
 
             match ($row->type) {
-                'asset' => $assets[] = $this->line($row, $amount),
-                'liability' => $liabilities[] = $this->line($row, $amount),
-                'equity' => $equity[] = $this->line($row, $amount),
+                'asset' => $assets[] = $this->line($row, $amount) + ['classification' => $row->classification],
+                'liability' => $liabilities[] = $this->line($row, $amount) + ['classification' => $row->classification],
+                'equity' => $equity[] = $this->line($row, $amount) + ['classification' => $row->classification],
             };
         }
 
@@ -589,15 +589,36 @@ class ReportService
         $totalLiabilities = array_sum(array_column($liabilities, 'amount_minor'));
         $totalEquity = array_sum(array_column($equity, 'amount_minor'));
 
-        $currentAssets = array_values(array_filter($assets, fn ($l) => $this->isCurrentAsset($l['code'])));
-        $nonCurrentAssets = array_values(array_filter($assets, fn ($l) => ! $this->isCurrentAsset($l['code'])));
-        $currentLiabilities = array_values(array_filter($liabilities, fn ($l) => $this->isCurrentLiability($l['code'])));
-        $nonCurrentLiabilities = array_values(array_filter($liabilities, fn ($l) => ! $this->isCurrentLiability($l['code'])));
+        // Grouping follows each account's explicit `classification`. An asset or
+        // liability without a valid one falls back to the legacy code-prefix rule
+        // and is listed in `unclassified_accounts` so the accountant can fix it.
+        $unclassified = [];
+        $assets = array_map(function ($l) use (&$unclassified) {
+            return $this->withEffectiveClassification($l, 'asset', $unclassified);
+        }, $assets);
+        $liabilities = array_map(function ($l) use (&$unclassified) {
+            return $this->withEffectiveClassification($l, 'liability', $unclassified);
+        }, $liabilities);
+
+        // Odoo-style presentation: prepayments are current, fixed assets are
+        // non-current. The finer value stays on each line (`classification`), and
+        // the subtotals below are informational parts of the two totals, so
+        // current + non-current always equals the total.
+        $isCurrentAsset = fn ($l) => in_array($l['classification'], ['current_asset', 'prepayment'], true);
+        $currentAssets = array_values(array_filter($assets, $isCurrentAsset));
+        $nonCurrentAssets = array_values(array_filter($assets, fn ($l) => ! $isCurrentAsset($l)));
+        $currentLiabilities = array_values(array_filter($liabilities, fn ($l) => $l['classification'] === 'current_liability'));
+        $nonCurrentLiabilities = array_values(array_filter($liabilities, fn ($l) => $l['classification'] !== 'current_liability'));
+        $sumOf = fn (array $lines, string $classification) => array_sum(array_column(
+            array_filter($lines, fn ($l) => $l['classification'] === $classification),
+            'amount_minor',
+        ));
 
         return [
             'currency' => $currency,
             'as_of' => $asOf,
-            'classification' => 'provisional_by_code',
+            'classification' => $unclassified === [] ? 'by_account' : 'mixed',
+            'unclassified_accounts' => array_values(array_unique($unclassified)),
             'assets' => $assets,
             'liabilities' => $liabilities,
             'current_assets' => $currentAssets,
@@ -608,6 +629,8 @@ class ReportService
             'non_current_assets_minor' => array_sum(array_column($nonCurrentAssets, 'amount_minor')),
             'current_liabilities_minor' => array_sum(array_column($currentLiabilities, 'amount_minor')),
             'non_current_liabilities_minor' => array_sum(array_column($nonCurrentLiabilities, 'amount_minor')),
+            'prepayments_minor' => $sumOf($assets, 'prepayment'),
+            'fixed_assets_minor' => $sumOf($assets, 'fixed_asset'),
             'equity' => $equity,
             'current_earnings_minor' => (int) $earnings,
             'total_assets_minor' => $totalAssets,
@@ -619,28 +642,21 @@ class ReportService
     }
 
     /**
-     * Current vs non-current split of the balance sheet.
+     * Resolve the balance-sheet class of a line: the account's own valid
+     * `classification`, else the legacy code-prefix rule (recorded in $unclassified).
      *
-     * PENDING ACCOUNTANT APPROVAL: provisional classification by account code
-     * (reported as classification = 'provisional_by_code'). Assets starting
-     * '11' are current; '12', '13' and everything else are non-current.
-     * Liabilities starting '21'-'24' are current; the rest are non-current.
-     * To be replaced by an explicit per-account flag once approved.
+     * @param  array<string, mixed>  $line
+     * @param  list<string>  $unclassified
+     * @return array<string, mixed>
      */
-    private function isCurrentAsset(string $code): bool
+    private function withEffectiveClassification(array $line, string $type, array &$unclassified): array
     {
-        return str_starts_with($code, '11');
-    }
-
-    private function isCurrentLiability(string $code): bool
-    {
-        foreach (['21', '22', '23', '24'] as $prefix) {
-            if (str_starts_with($code, $prefix)) {
-                return true;
-            }
+        if (! in_array($line['classification'] ?? null, Account::classificationsFor($type), true)) {
+            $unclassified[] = $line['code'];
+            $line['classification'] = Account::defaultClassification($type, (string) $line['code']);
         }
 
-        return false;
+        return $line;
     }
 
     private function costAccountCode(): string

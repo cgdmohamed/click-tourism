@@ -23,6 +23,15 @@ export type User = {
   branches: Branch[]
 }
 
+export type AccountClassification =
+  | 'current_asset'
+  | 'non_current_asset'
+  | 'fixed_asset'
+  | 'prepayment'
+  | 'current_liability'
+  | 'non_current_liability'
+  | 'equity'
+
 export type Account = {
   id: string
   code: string
@@ -32,6 +41,8 @@ export type Account = {
   parent_id: string | null
   is_postable: boolean
   is_active: boolean
+  /** Balance-sheet class; null = unclassified. Only for asset/liability/equity. */
+  classification?: AccountClassification | null
   balance_minor?: number
   /** Set when the account is the receivable/payable control account. */
   control_party_type?: 'customer' | 'supplier' | null

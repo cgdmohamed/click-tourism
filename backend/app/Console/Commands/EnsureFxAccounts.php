@@ -59,6 +59,7 @@ class EnsureFxAccounts extends Command
             Account::query()->create([
                 'code' => $code, 'name_ar' => $nameAr, 'name_en' => $nameEn, 'type' => $type,
                 'is_postable' => true, 'is_active' => true,
+                'classification' => Account::defaultClassification($type, $code),
             ]);
             $this->info("Created account {$code} {$nameEn}.");
         }

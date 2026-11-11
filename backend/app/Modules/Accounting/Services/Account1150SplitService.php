@@ -95,6 +95,7 @@ class Account1150SplitService
                     Account::query()->create([
                         'code' => $code, 'name_ar' => $meta['name_ar'], 'name_en' => $meta['name_en'],
                         'type' => $parent->type, 'parent_id' => $parent->id, 'is_postable' => true, 'is_active' => true,
+                        'classification' => Account::defaultClassification((string) $parent->type, $code),
                     ]);
                     $result['created_accounts'][] = $code;
                 }

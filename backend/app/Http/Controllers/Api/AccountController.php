@@ -14,7 +14,7 @@ use Illuminate\Validation\Rule;
 class AccountController extends ApiController
 {
     /** Export/import column order. */
-    private const IMPORT_COLUMNS = ['code', 'name_ar', 'name_en', 'type', 'parent_code', 'is_postable', 'is_active', 'currency_code'];
+    private const IMPORT_COLUMNS = ['code', 'name_ar', 'name_en', 'type', 'parent_code', 'is_postable', 'is_active', 'currency_code', 'classification'];
 
     /** Legacy human-readable headers accepted on import (lower-cased). */
     private const HEADER_ALIASES = [
@@ -25,6 +25,12 @@ class AccountController extends ApiController
         'active' => 'is_active',
         'currency' => 'currency_code',
     ];
+
+    /** @return list<string> every classification value (type compatibility is checked separately) */
+    private function allClassifications(): array
+    {
+        return array_merge(...array_values(Account::CLASSIFICATIONS));
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -59,7 +65,12 @@ class AccountController extends ApiController
             'parent_id' => ['nullable', 'string'],
             'is_postable' => ['nullable', 'boolean'],
             'currency_code' => ['nullable', 'string', 'size:3'],
+            'classification' => ['nullable', 'string', Rule::in($this->allClassifications())],
         ]);
+
+        if (! $this->classificationFitsType($data['classification'] ?? null, $data['type'])) {
+            return $this->errorResponse("Classification '{$data['classification']}' is not valid for type {$data['type']}.", 'invalid_classification', 422);
+        }
 
         $parent = ! empty($data['parent_id'])
             ? Account::query()->where('public_id', $data['parent_id'])->first()
@@ -77,6 +88,7 @@ class AccountController extends ApiController
             'parent_id' => $parent?->id,
             'is_postable' => (bool) ($data['is_postable'] ?? true),
             'currency_code' => isset($data['currency_code']) ? strtoupper($data['currency_code']) : null,
+            'classification' => $data['classification'] ?? null,
             'is_active' => true,
         ]);
 
@@ -100,7 +112,18 @@ class AccountController extends ApiController
             'is_postable' => $hasHistory ? ['sometimes', 'boolean', 'accepted'] : ['sometimes', 'boolean'],
             'currency_code' => ['sometimes', 'string', 'size:3'],
             'is_active' => ['sometimes', 'boolean'],
+            'classification' => ['sometimes', 'nullable', 'string', Rule::in($this->allClassifications())],
         ]);
+
+        // Classification is a reporting attribute: editable even with postings.
+        $classificationProvided = array_key_exists('classification', $data);
+        $classification = $data['classification'] ?? null;
+        unset($data['classification']);
+        $effectiveType = $data['type'] ?? $account->type;
+
+        if ($classificationProvided && ! $this->classificationFitsType($classification, $effectiveType)) {
+            return $this->errorResponse("Classification '{$classification}' is not valid for type {$effectiveType}.", 'invalid_classification', 422);
+        }
 
         if ($hasHistory) {
             foreach (['code', 'type'] as $locked) {
@@ -151,8 +174,15 @@ class AccountController extends ApiController
             }
         }
 
-        $before = $account->only(array_keys($data));
-        $account->update(array_filter($data, fn ($v) => $v !== null, ARRAY_FILTER_USE_BOTH));
+        $before = $account->only(array_keys($data) + ['classification']);
+        $update = array_filter($data, fn ($v) => $v !== null, ARRAY_FILTER_USE_BOTH);
+        if ($classificationProvided) {
+            $update['classification'] = $classification;
+        } elseif (! $this->classificationFitsType($account->classification, $effectiveType)) {
+            // The type changed (only possible without postings): drop the stale classification.
+            $update['classification'] = null;
+        }
+        $account->update($update);
         $audit->log('account.updated', $account, $before, $account->toApiArray(), $this->actorId());
 
         return $this->ok($account->refresh()->toApiArray());
@@ -176,6 +206,7 @@ class AccountController extends ApiController
                 $account->is_postable ? 'true' : 'false',
                 $account->is_active ? 'true' : 'false',
                 $account->currency_code ?? '',
+                $account->classification ?? '',
             ];
         }
 
@@ -225,11 +256,13 @@ class AccountController extends ApiController
                     'name_en' => $item['name_en'],
                     'type' => $item['type'],
                 ];
-                foreach (['is_postable', 'is_active', 'currency_code'] as $optional) {
+                foreach (['is_postable', 'is_active', 'currency_code', 'classification'] as $optional) {
                     if ($item['provided'][$optional]) {
                         $values[$optional] = $item[$optional];
                     }
                 }
+                // A new account, or one whose type changed, takes the previewed (validated) value.
+                $values['classification'] = $item['classification'];
 
                 if ($item['action'] === 'create') {
                     $values += ['code' => $item['code'], 'is_postable' => true, 'is_active' => true];
@@ -379,6 +412,11 @@ class AccountController extends ApiController
             if ($currency !== null && ! in_array($currency, $currencies, true)) {
                 $error($n, 'invalid_currency', "unknown currency '{$currency}'.", ['currency' => $currency]);
             }
+            $provided['classification'] = array_key_exists('classification', $d);
+            $classification = $provided['classification'] && $d['classification'] !== '' ? strtolower($d['classification']) : null;
+            if ($classification !== null && ! in_array($classification, Account::classificationsFor($type), true)) {
+                $error($n, 'invalid_classification', "classification '{$classification}' is not valid for type '{$type}'.", ['classification' => $classification, 'type' => $type]);
+            }
             $provided['parent_code'] = array_key_exists('parent_code', $d);
             $parentCode = $d['parent_code'] ?? '';
             if ($parentCode !== '') {
@@ -431,6 +469,7 @@ class AccountController extends ApiController
                 'is_postable' => $values['is_postable'] ?? ($account ? (bool) $account->is_postable : true),
                 'is_active' => $values['is_active'] ?? ($account ? (bool) $account->is_active : true),
                 'currency_code' => $provided['currency_code'] ? $currency : $account?->currency_code,
+                'classification' => $provided['classification'] ? $classification : ($this->classificationFitsType($account?->classification, $type) ? $account?->classification : null),
                 'action' => $account ? 'update' : 'create',
                 'existing' => $account ? $account->toApiArray() : null,
                 'provided' => $provided,
@@ -438,6 +477,11 @@ class AccountController extends ApiController
         }
 
         return [$preview, $errors];
+    }
+
+    private function classificationFitsType(?string $classification, string $type): bool
+    {
+        return $classification === null || in_array($classification, Account::classificationsFor($type), true);
     }
 
     private function parseBool(string $value): ?bool

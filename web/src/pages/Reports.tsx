@@ -139,8 +139,9 @@ type BalanceSheet = {
   assets: StatementLine[]
   liabilities: StatementLine[]
   equity: StatementLine[]
-  // PENDING ACCOUNTANT APPROVAL: current/non-current split is provisional, by account code.
-  classification: 'provisional_by_code'
+  // 'by_account' when every balance-sheet account is classified, else 'mixed' (code-prefix fallback).
+  classification: 'by_account' | 'mixed'
+  unclassified_accounts?: string[]
   current_assets: StatementLine[]
   non_current_assets: StatementLine[]
   current_liabilities: StatementLine[]
@@ -1052,13 +1053,15 @@ export default function Reports() {
                       <Money amountMinor={data.total_liabilities_and_equity_minor} currency={data.currency} />
                     </span>
                   </div>
-                  <div className="px-5 pt-3">
-                    <InlineNotice tone="warning">
-                      {locale === 'ar'
-                        ? 'تصنيف المتداول وغير المتداول مبدئي حسب رمز الحساب وبانتظار اعتماد المحاسب'
-                        : 'Current / non-current classification is provisional (by account code) and pending accountant approval'}
-                    </InlineNotice>
-                  </div>
+                  {data.unclassified_accounts && data.unclassified_accounts.length > 0 ? (
+                    <div className="px-5 pt-3">
+                      <InlineNotice tone="warning">
+                        {locale === 'ar'
+                          ? `حسابات بدون تصنيف (تم تصنيفها مؤقتًا حسب الرمز): ${data.unclassified_accounts.join('، ')}. حدد تصنيفها من صفحة الحسابات.`
+                          : `Unclassified accounts (grouped by code for now): ${data.unclassified_accounts.join(', ')}. Set their classification on the Accounts page.`}
+                      </InlineNotice>
+                    </div>
+                  ) : null}
                   <div className="px-5 py-3">
                     <InlineNotice tone={data.balanced ? 'positive' : 'negative'}>
                       {data.balanced

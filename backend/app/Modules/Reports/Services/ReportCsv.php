@@ -321,6 +321,9 @@ class ReportCsv
                 $rows[] = [$label, '', '', '', $this->amount($report[$key], $exp), $currency];
             }
             $rows[] = ['Classification', $report['classification'] ?? ''];
+            if (! empty($report['unclassified_accounts'])) {
+                $rows[] = ['Unclassified accounts', implode(' ', $report['unclassified_accounts'])];
+            }
         }
 
         $rows[] = ['Current earnings', '', '', '', $this->amount($report['current_earnings_minor'], $exp), $currency];
