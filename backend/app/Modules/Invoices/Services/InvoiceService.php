@@ -86,6 +86,17 @@ class InvoiceService
                 ? '1'
                 : ((string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $issueDate)));
 
+            $linkedBookingId = $this->resolveBookingId($data['booking_id'] ?? null);
+            if ($linkedBookingId !== null) {
+                $linkedBooking = Booking::query()->findOrFail($linkedBookingId);
+                if ($linkedBooking->branch_id !== $branch->id) {
+                    throw new DomainException('The linked booking belongs to a different branch.');
+                }
+                if ($partyType === 'customer' && $linkedBooking->customer_id !== $partyId) {
+                    throw new DomainException('The invoice customer must match the linked booking customer.');
+                }
+            }
+
             $lines = $this->prepareLines($data, $currency, $branch);
 
             $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
@@ -102,7 +113,7 @@ class InvoiceService
                 'party_type' => $partyType,
                 'party_id' => $partyId,
                 'branch_id' => $branch->id,
-                'booking_id' => $this->resolveBookingId($data['booking_id'] ?? null),
+                'booking_id' => $linkedBookingId,
                 'issue_date' => $issueDate,
                 'due_date' => $dueDate,
                 'currency_code' => $currency,
