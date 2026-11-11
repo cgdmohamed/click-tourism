@@ -114,8 +114,27 @@ export type BookingItem = {
   cost_currency: string
   sell_currency: string
   tax_profile_id?: string | null
+  tax_profile_name?: string | null
+  tax_rate?: string
+  tax_minor?: number
+  supplier_name_ar?: string | null
+  supplier_name_en?: string | null
   total_sell_minor?: number
   total_cost_minor?: number
+}
+
+export type TaxProfile = {
+  id: string
+  name: string
+  rate: string
+  is_inclusive: boolean
+}
+
+export type BookingStatusHistoryRow = {
+  from: string | null
+  to: string
+  reason: string | null
+  at: string | null
 }
 
 export type Booking = {
@@ -136,6 +155,19 @@ export type Booking = {
   total_sell_minor: number
   total_cost_minor: number
   margin_minor: number
+  tax_minor?: number
+  paid_minor?: number
+  balance_minor?: number
+  notes?: string | null
+  cancellation_reason?: string | null
+  cancellation_fee_minor?: number
+  margin_approval_status?: 'pending' | 'approved' | null
+  margin_approval_reason?: string | null
+  margin_requested_by?: string | null
+  allowed_transitions?: string[]
+  status_history?: BookingStatusHistoryRow[]
+  payments_count?: number
+  invoices_count?: number
   items?: BookingItem[]
 }
 
