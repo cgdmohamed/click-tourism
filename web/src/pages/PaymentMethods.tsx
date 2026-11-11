@@ -13,7 +13,6 @@ type Account = { id: string; name_ar: string; name_en: string; currency: string 
 type Kind = 'cash' | 'bank_transfer' | 'card' | 'wallet' | 'other'
 
 const blank = {
-  code: '',
   name_ar: '',
   name_en: '',
   type: 'bank_transfer' as Kind,
@@ -90,7 +89,6 @@ export default function PaymentMethods() {
   const startEdit = (item: PaymentMethod) => {
     setEditId(item.id)
     setForm({
-      code: item.code,
       name_ar: item.name_ar,
       name_en: item.name_en,
       type: item.type as Kind,
@@ -156,15 +154,15 @@ export default function PaymentMethods() {
         onClose={() => setOpen(false)}
         footer={<>
           <Button variant="secondary" onClick={() => setOpen(false)}>{L('إلغاء', 'Cancel')}</Button>
-          <Button disabled={save.isPending || !form.code || !form.name_ar || !form.name_en} onClick={() => save.mutate()}>
+          <Button disabled={save.isPending || !form.name_ar || !form.name_en} onClick={() => save.mutate()}>
             {save.isPending ? L('جار الحفظ', 'Saving') : L('حفظ', 'Save')}
           </Button>
         </>}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={L('الكود', 'Code')} required>
-            <Input dir="ltr" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
-          </Field>
+          <p className="sm:col-span-2 text-small text-text-subtle">{editId
+            ? L('كود طريقة الدفع يُنشأ تلقائيًا ولا يمكن تعديله.', 'Payment method code is generated automatically and cannot be changed.')
+            : L('سيُنشئ النظام كودًا فريدًا للطريقة تلقائيًا عند الحفظ.', 'A unique payment method code is generated automatically when saved.')}</p>
           <Field label={L('النوع', 'Type')} required>
             <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Kind })}>
               {kinds.map((kind) => <option value={kind.value} key={kind.value}>{locale === 'ar' ? kind.ar : kind.en}</option>)}
