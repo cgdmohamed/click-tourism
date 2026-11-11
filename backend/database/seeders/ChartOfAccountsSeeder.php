@@ -42,8 +42,10 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '4100', 'name_ar' => 'إيرادات الخدمات', 'name_en' => 'Service Revenue', 'type' => 'revenue'],
             ['code' => '5100', 'name_ar' => 'تكلفة الخدمات', 'name_en' => 'Cost of Services', 'type' => 'expense'],
             ['code' => '6900', 'name_ar' => 'خسائر فروق العملة', 'name_en' => 'FX Loss', 'type' => 'expense'],
+            ['code' => '6901', 'name_ar' => 'خسائر فروق العملة غير المحققة', 'name_en' => 'Unrealized FX Loss', 'type' => 'expense'],
             ['code' => '6999', 'name_ar' => 'فروق تقريب العملة', 'name_en' => 'FX Rounding Difference', 'type' => 'expense'],
             ['code' => '7900', 'name_ar' => 'أرباح فروق العملة', 'name_en' => 'FX Gain', 'type' => 'revenue'],
+            ['code' => '7901', 'name_ar' => 'أرباح فروق العملة غير المحققة', 'name_en' => 'Unrealized FX Gain', 'type' => 'revenue'],
             ['code' => '7910', 'name_ar' => 'أرباح استبعاد الأصول', 'name_en' => 'Gain on Asset Disposal', 'type' => 'revenue'],
         ];
 

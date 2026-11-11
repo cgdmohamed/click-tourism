@@ -44,6 +44,10 @@ class SettingService
             'tax_payable_account_code' => '2200',
             'fx_gain_account_code' => '7900',
             'fx_loss_account_code' => '6900',
+            // Unrealized FX (period-end revaluation, DEC-008); existing installs
+            // create these with `php artisan accounting:ensure-fx-accounts`.
+            'fx_unrealized_gain_account_code' => '7901',
+            'fx_unrealized_loss_account_code' => '6901',
             // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
             'bank_charges_account_code' => '6500',
             // PENDING ACCOUNTANT APPROVAL (DEC-037): interest earned credited on reconciliation.
