@@ -10,7 +10,7 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
-use App\Modules\Payments\Models\SupplierObligation;
+use App\Modules\Payments\Models\Refund;
 use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Treasury\Models\CashAccount;
 use App\Modules\Treasury\Services\TreasuryService;
@@ -94,6 +94,11 @@ class ReportService
                 continue;
             }
 
+            // Abnormal = closing balance sits on the opposite side of the
+            // account's normal side (assets/expenses debit; others credit).
+            $debitNormal = in_array($account->type, ['asset', 'expense'], true);
+            $abnormal = $debitNormal ? $closingNet < 0 : $closingNet > 0;
+
             $rows[] = (object) [
                 'account_id' => $account->public_id,
                 'public_id' => $account->public_id,
@@ -111,6 +116,7 @@ class ReportService
                 'closing_credit_minor' => max(-$closingNet, 0),
                 'closing_balance_minor' => $closingNet,
                 'balance_minor' => $closingNet,
+                'abnormal' => $abnormal,
             ];
         }
 
@@ -412,6 +418,10 @@ class ReportService
             $current['variance'] = [
                 'total_revenue_minor' => $current['total_revenue_minor'] - $prior['total_revenue_minor'],
                 'total_expense_minor' => $current['total_expense_minor'] - $prior['total_expense_minor'],
+                'total_cost_of_services_minor' => $current['total_cost_of_services_minor'] - $prior['total_cost_of_services_minor'],
+                'total_operating_expenses_minor' => $current['total_operating_expenses_minor'] - $prior['total_operating_expenses_minor'],
+                'gross_profit_minor' => $current['gross_profit_minor'] - $prior['gross_profit_minor'],
+                'operating_profit_minor' => $current['operating_profit_minor'] - $prior['operating_profit_minor'],
                 'net_profit_minor' => $current['net_profit_minor'] - $prior['net_profit_minor'],
             ];
         } else {
@@ -436,14 +446,19 @@ class ReportService
             ->whereDate('je.entry_date', '<=', $to)
             ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
             ->groupBy('a.id', 'a.code', 'a.name_ar', 'a.name_en', 'a.type')
-            ->selectRaw('a.code, a.name_ar, a.name_en, a.type')
+            ->selectRaw('a.id, a.code, a.name_ar, a.name_en, a.type')
             ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit_minor')
             ->selectRaw('COALESCE(SUM(jl.base_credit_minor), 0) as credit_minor')
             ->orderBy('a.code')
             ->get();
 
+        $costIds = $this->costOfServicesAccountIds();
+        $costCode = $this->costAccountCode();
+
         $revenue = [];
         $expenses = [];
+        $costOfServices = [];
+        $operatingExpenses = [];
 
         foreach ($rows as $row) {
             $debit = (int) $row->debit_minor;
@@ -457,13 +472,22 @@ class ReportService
             } else {
                 $amount = $debit - $credit;
                 if ($amount !== 0) {
-                    $expenses[] = $this->line($row, $amount);
+                    $line = $this->line($row, $amount);
+                    $expenses[] = $line;
+                    if (isset($costIds[(int) $row->id]) || str_starts_with((string) $row->code, $costCode)) {
+                        $costOfServices[] = $line;
+                    } else {
+                        $operatingExpenses[] = $line;
+                    }
                 }
             }
         }
 
         $totalRevenue = array_sum(array_column($revenue, 'amount_minor'));
         $totalExpense = array_sum(array_column($expenses, 'amount_minor'));
+        $totalCost = array_sum(array_column($costOfServices, 'amount_minor'));
+        $totalOpex = array_sum(array_column($operatingExpenses, 'amount_minor'));
+        $grossProfit = $totalRevenue - $totalCost;
 
         return [
             'currency' => $currency,
@@ -471,8 +495,16 @@ class ReportService
             'to' => $to,
             'revenue' => $revenue,
             'expenses' => $expenses,
+            // Cost of services = the configured accounting.cost_account_code
+            // account, its descendants and any code starting with it.
+            'cost_of_services' => $costOfServices,
+            'operating_expenses' => $operatingExpenses,
             'total_revenue_minor' => $totalRevenue,
             'total_expense_minor' => $totalExpense,
+            'total_cost_of_services_minor' => $totalCost,
+            'total_operating_expenses_minor' => $totalOpex,
+            'gross_profit_minor' => $grossProfit,
+            'operating_profit_minor' => $grossProfit - $totalOpex,
             'net_profit_minor' => $totalRevenue - $totalExpense,
         ];
     }
@@ -488,6 +520,10 @@ class ReportService
                 'total_assets_minor' => $current['total_assets_minor'] - $prior['total_assets_minor'],
                 'total_liabilities_minor' => $current['total_liabilities_minor'] - $prior['total_liabilities_minor'],
                 'total_equity_minor' => $current['total_equity_minor'] - $prior['total_equity_minor'],
+                'current_assets_minor' => $current['current_assets_minor'] - $prior['current_assets_minor'],
+                'non_current_assets_minor' => $current['non_current_assets_minor'] - $prior['non_current_assets_minor'],
+                'current_liabilities_minor' => $current['current_liabilities_minor'] - $prior['current_liabilities_minor'],
+                'non_current_liabilities_minor' => $current['non_current_liabilities_minor'] - $prior['non_current_liabilities_minor'],
                 'current_earnings_minor' => $current['current_earnings_minor'] - $prior['current_earnings_minor'],
             ];
         } else {
@@ -551,11 +587,25 @@ class ReportService
         $totalLiabilities = array_sum(array_column($liabilities, 'amount_minor'));
         $totalEquity = array_sum(array_column($equity, 'amount_minor'));
 
+        $currentAssets = array_values(array_filter($assets, fn ($l) => $this->isCurrentAsset($l['code'])));
+        $nonCurrentAssets = array_values(array_filter($assets, fn ($l) => ! $this->isCurrentAsset($l['code'])));
+        $currentLiabilities = array_values(array_filter($liabilities, fn ($l) => $this->isCurrentLiability($l['code'])));
+        $nonCurrentLiabilities = array_values(array_filter($liabilities, fn ($l) => ! $this->isCurrentLiability($l['code'])));
+
         return [
             'currency' => $currency,
             'as_of' => $asOf,
+            'classification' => 'provisional_by_code',
             'assets' => $assets,
             'liabilities' => $liabilities,
+            'current_assets' => $currentAssets,
+            'non_current_assets' => $nonCurrentAssets,
+            'current_liabilities' => $currentLiabilities,
+            'non_current_liabilities' => $nonCurrentLiabilities,
+            'current_assets_minor' => array_sum(array_column($currentAssets, 'amount_minor')),
+            'non_current_assets_minor' => array_sum(array_column($nonCurrentAssets, 'amount_minor')),
+            'current_liabilities_minor' => array_sum(array_column($currentLiabilities, 'amount_minor')),
+            'non_current_liabilities_minor' => array_sum(array_column($nonCurrentLiabilities, 'amount_minor')),
             'equity' => $equity,
             'current_earnings_minor' => (int) $earnings,
             'total_assets_minor' => $totalAssets,
@@ -566,6 +616,44 @@ class ReportService
         ];
     }
 
+    /**
+     * Current vs non-current split of the balance sheet.
+     *
+     * PENDING ACCOUNTANT APPROVAL: provisional classification by account code
+     * (reported as classification = 'provisional_by_code'). Assets starting
+     * '11' are current; '12', '13' and everything else are non-current.
+     * Liabilities starting '21'-'24' are current; the rest are non-current.
+     * To be replaced by an explicit per-account flag once approved.
+     */
+    private function isCurrentAsset(string $code): bool
+    {
+        return str_starts_with($code, '11');
+    }
+
+    private function isCurrentLiability(string $code): bool
+    {
+        foreach (['21', '22', '23', '24'] as $prefix) {
+            if (str_starts_with($code, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function costAccountCode(): string
+    {
+        return (string) $this->settings->get('accounting', 'cost_account_code', '5100');
+    }
+
+    /** @return array<int, true> ids of the cost account and its descendants */
+    private function costOfServicesAccountIds(): array
+    {
+        $account = Account::query()->where('code', $this->costAccountCode())->first();
+
+        return $account ? array_fill_keys($this->descendantIds($account), true) : [];
+    }
+
     /** Hide year-end closing entries (and their reversals) so a closed year still shows its profit. */
     private function excludeClosing($query)
     {
@@ -574,6 +662,15 @@ class ReportService
         });
     }
 
+    /**
+     * Invoice-based AR/AP aging. Customers ('ar') are issued customer invoices
+     * with an open balance, suppliers ('ap') issued supplier invoices; issued
+     * credit notes with remaining outstanding reduce their own bucket. Age is
+     * measured from the due date (issue date when none) to $asOf; not-yet-due
+     * items fall in 0-30. Operational supplier obligations that have no
+     * invoice are off-ledger and deliberately excluded. Shares its definition
+     * with AgingReconciliationService via openDocuments().
+     */
     public function aging(string $type, string $asOf, ?Branch $branch): array
     {
         $currency = $this->settings->baseCurrency();
@@ -584,43 +681,15 @@ class ReportService
             '90+' => 0,
         ];
 
-        if ($type === 'ar') {
-            $bookings = Booking::query()
-                ->withSum('allocations', 'amount_minor')
-                ->whereNotIn('status', ['cancelled', 'closed', 'no_show'])
-                ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
-                ->get();
+        foreach (self::openDocuments($type === 'ar' ? 'customer' : 'supplier', $asOf, $branch) as $invoice) {
+            $amount = $invoice->type === Invoice::TYPE_CREDIT_NOTE
+                ? -(int) $invoice->outstanding_minor
+                : (int) $invoice->outstanding_minor;
 
-            foreach ($bookings as $booking) {
-                $paid = (int) ($booking->allocations_sum_amount_minor ?? 0);
-                $balance = $booking->total_sell_minor - $paid;
-                if ($balance <= 0) {
-                    continue;
-                }
+            $base = (new Money($amount, $invoice->currency_code))
+                ->convertTo($currency, (string) $invoice->fx_rate)->amountMinor;
 
-                $base = (new Money($balance, $booking->currency_code))
-                    ->convertTo($currency, (string) $booking->fx_rate)->amountMinor;
-
-                $age = max(0, (int) floor((strtotime($asOf) - $booking->start_date->timestamp) / 86400));
-                $buckets[$this->bucket($age)] += $base;
-            }
-        } else {
-            $obligations = SupplierObligation::query()
-                ->where('status', 'open')
-                ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
-                ->get();
-
-            foreach ($obligations as $obligation) {
-                $rate = strtoupper($obligation->currency_code) === $currency
-                    ? '1'
-                    : $this->fx->rateFor($obligation->currency_code, $asOf);
-
-                $base = (new Money($obligation->amount_minor, $obligation->currency_code))
-                    ->convertTo($currency, $rate)->amountMinor;
-
-                $age = max(0, (int) floor((strtotime($asOf) - $obligation->created_at->timestamp) / 86400));
-                $buckets[$this->bucket($age)] += $base;
-            }
+            $buckets[self::bucketFor(self::ageInDays($invoice, $asOf))] += $base;
         }
 
         $labels = [
@@ -680,15 +749,7 @@ class ReportService
         $open = $bookingScope()->whereIn('status', ['draft', 'quoted', 'confirmed', 'in_progress'])->count();
         $confirmed = $bookingScope()->whereIn('status', ['confirmed', 'in_progress'])->count();
 
-        $collected = 0;
-        Payment::query()
-            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
-            ->where('status', 'posted')
-            ->get()
-            ->each(function (Payment $payment) use (&$collected, $currency) {
-                $collected += (new Money($payment->amount_minor, $payment->currency_code))
-                    ->convertTo($currency, (string) $payment->fx_rate)->amountMinor;
-            });
+        $collected = $this->netReceiptsMinor($branch, $currency);
 
         $overdue = 0;
         $bookingScope()
@@ -811,12 +872,7 @@ class ReportService
             $at = now()->subMonthsNoOverflow($i);
             $from = $at->copy()->startOfMonth()->toDateString();
             $to = min($at->copy()->endOfMonth()->toDateString(), $today);
-            $inflow = Payment::query()
-                ->where('status', 'posted')
-                ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
-                ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
-                ->get()->sum(fn (Payment $p) => (new Money($p->amount_minor, $p->currency_code))
-                ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+            $inflow = $this->netReceiptsMinor($branch, $currency, $from, $to);
             $outflow = SupplierPayment::query()
                 ->where('status', 'posted')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
@@ -830,18 +886,9 @@ class ReportService
                 'net_minor' => $inflow - $outflow,
             ];
 
-            $glTotals = DB::table('journal_lines as jl')
-                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
-                ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-                ->where('je.status', 'posted')->whereIn('a.type', ['revenue', 'expense'])
-                ->whereBetween('je.entry_date', [$from, $to])
-                ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
-                ->selectRaw('a.type, SUM(jl.base_debit_minor) AS debits, SUM(jl.base_credit_minor) AS credits')
-                ->groupBy('a.type')->get()->keyBy('type');
-            $revenue = (int) ($glTotals->get('revenue')?->credits ?? 0)
-                - (int) ($glTotals->get('revenue')?->debits ?? 0);
-            $expenses = (int) ($glTotals->get('expense')?->debits ?? 0)
-                - (int) ($glTotals->get('expense')?->credits ?? 0);
+            $glTotals = $this->glTotalsByType($from, $to, $branch);
+            $revenue = $glTotals['revenue']['credits'] - $glTotals['revenue']['debits'];
+            $expenses = $glTotals['expense']['debits'] - $glTotals['expense']['credits'];
             $monthlyProfitLoss[] = [
                 'month' => $at->format('Y-m'),
                 'revenue_minor' => $revenue,
@@ -924,45 +971,67 @@ class ReportService
      */
     private function netProfitMinor(string $from, string $to, ?Branch $branch, string $currency): int
     {
-        $revenue = (int) DB::table('journal_lines as jl')
+        $totals = $this->glTotalsByType($from, $to, $branch);
+
+        return ($totals['revenue']['credits'] - $totals['revenue']['debits'])
+            - ($totals['expense']['debits'] - $totals['expense']['credits']);
+    }
+
+    /**
+     * Posted revenue/expense debit and credit totals, excluding year-end
+     * closing entries exactly like the income statement.
+     *
+     * @return array{revenue: array{debits: int, credits: int}, expense: array{debits: int, credits: int}}
+     */
+    private function glTotalsByType(string $from, string $to, ?Branch $branch): array
+    {
+        $rows = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
             ->where('je.status', 'posted')
-            ->where('a.type', 'revenue')
+            ->whereIn('a.type', ['revenue', 'expense'])
             ->whereDate('je.entry_date', '>=', $from)
             ->whereDate('je.entry_date', '<=', $to)
+            ->tap(fn ($query) => $this->excludeClosing($query))
             ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
-            ->sum('jl.base_credit_minor')
-            - (int) DB::table('journal_lines as jl')
-                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
-                ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-                ->where('je.status', 'posted')
-                ->where('a.type', 'revenue')
-                ->whereDate('je.entry_date', '>=', $from)
-                ->whereDate('je.entry_date', '<=', $to)
-                ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
-                ->sum('jl.base_debit_minor');
+            ->selectRaw('a.type, SUM(jl.base_debit_minor) AS debits, SUM(jl.base_credit_minor) AS credits')
+            ->groupBy('a.type')->get()->keyBy('type');
 
-        $expense = (int) DB::table('journal_lines as jl')
-            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
-            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-            ->where('je.status', 'posted')
-            ->where('a.type', 'expense')
-            ->whereDate('je.entry_date', '>=', $from)
-            ->whereDate('je.entry_date', '<=', $to)
-            ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
-            ->sum('jl.base_debit_minor')
-            - (int) DB::table('journal_lines as jl')
-                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
-                ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-                ->where('je.status', 'posted')
-                ->where('a.type', 'expense')
-                ->whereDate('je.entry_date', '>=', $from)
-                ->whereDate('je.entry_date', '<=', $to)
-                ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
-                ->sum('jl.base_credit_minor');
+        $pick = fn (string $type) => [
+            'debits' => (int) ($rows->get($type)?->debits ?? 0),
+            'credits' => (int) ($rows->get($type)?->credits ?? 0),
+        ];
 
-        return $revenue - $expense;
+        return ['revenue' => $pick('revenue'), 'expense' => $pick('expense')];
+    }
+
+    /**
+     * Money actually collected from customers in base currency: posted
+     * receipts (cancelled/reversed ones are not 'posted') minus approved
+     * refunds of those receipts, each converted with the receipt's FX snapshot.
+     * Refunds are dated by approval.
+     */
+    private function netReceiptsMinor(?Branch $branch, string $currency, ?string $from = null, ?string $to = null): int
+    {
+        $received = Payment::query()
+            ->where('status', 'posted')
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
+            ->when($from, fn ($q) => $q->whereDate('paid_at', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('paid_at', '<=', $to))
+            ->get()->sum(fn (Payment $p) => (new Money($p->amount_minor, $p->currency_code))
+            ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+
+        $refunded = Refund::query()
+            ->where('status', 'approved')
+            ->whereHas('payment', fn ($q) => $q->where('status', 'posted'))
+            ->with('payment')
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
+            ->when($from, fn ($q) => $q->whereDate('approved_at', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('approved_at', '<=', $to))
+            ->get()->sum(fn (Refund $r) => (new Money($r->amount_minor, $r->currency_code))
+            ->convertTo($currency, (string) $r->payment->fx_rate)->amountMinor);
+
+        return (int) $received - (int) $refunded;
     }
 
     private function line(object $row, int $amount): array
@@ -975,7 +1044,35 @@ class ReportService
         ];
     }
 
-    private function bucket(int $age): string
+    /**
+     * Issued invoices and credit notes of a party type that still carry an
+     * outstanding balance as of the date (the shared AR/AP aging definition).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, Invoice>
+     */
+    public static function openDocuments(string $partyType, string $asOf, ?Branch $branch)
+    {
+        return Invoice::query()
+            ->where('party_type', $partyType)
+            ->whereIn('type', [
+                $partyType === 'customer' ? Invoice::TYPE_CUSTOMER_INVOICE : Invoice::TYPE_SUPPLIER_INVOICE,
+                Invoice::TYPE_CREDIT_NOTE,
+            ])
+            ->where('status', Invoice::STATUS_ISSUED)
+            ->where('outstanding_minor', '>', 0)
+            ->whereDate('issue_date', '<=', $asOf)
+            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->get();
+    }
+
+    public static function ageInDays(Invoice $invoice, string $asOf): int
+    {
+        $due = $invoice->due_date?->toDateString() ?? $invoice->issue_date->toDateString();
+
+        return max(0, (int) floor((strtotime($asOf) - strtotime($due)) / 86400));
+    }
+
+    public static function bucketFor(int $age): string
     {
         return match (true) {
             $age <= 30 => '0-30',

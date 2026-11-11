@@ -3,6 +3,7 @@
 namespace App\Modules\Bookings\Models;
 
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Tax\Models\TaxProfile;
 use Illuminate\Database\Eloquent\Model;
 
 class BookingItem extends Model
@@ -51,12 +52,22 @@ class BookingItem extends Model
         return $this->belongsTo(Supplier::class);
     }
 
+    public function taxProfile()
+    {
+        return $this->belongsTo(TaxProfile::class);
+    }
+
     public function toApiArray(): array
     {
         return [
             'id' => (string) $this->id,
             'service_type' => $this->service_type,
             'supplier_id' => $this->supplier?->public_id,
+            'supplier_name_ar' => $this->supplier?->name_ar,
+            'supplier_name_en' => $this->supplier?->name_en,
+            'tax_profile_id' => $this->taxProfile?->public_id,
+            'tax_profile_name' => $this->taxProfile?->name,
+            'tax_rate' => (string) ($this->tax_rate_snapshot ?? '0'),
             'description' => $this->description,
             'starts_on' => $this->starts_on?->toDateString(),
             'ends_on' => $this->ends_on?->toDateString(),

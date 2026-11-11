@@ -44,6 +44,17 @@ class BookingService
         'no_show' => [],
     ];
 
+    /**
+     * Statuses a booking may move to from $status. Single source of truth for
+     * the transition guard, the API payload and the UI.
+     *
+     * @return string[]
+     */
+    public static function allowedTransitionsFor(?string $status): array
+    {
+        return self::TRANSITIONS[$status ?? ''] ?? [];
+    }
+
     public function __construct(
         private readonly SettingService $settings,
         private readonly SequenceService $sequences,
@@ -131,7 +142,7 @@ class BookingService
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $from = $booking->status;
 
-            $allowed = self::TRANSITIONS[$from] ?? [];
+            $allowed = self::allowedTransitionsFor($from);
             if (! in_array($toStatus, $allowed, true)) {
                 throw new DomainException("Cannot move a booking from {$from} to {$toStatus}.");
             }
@@ -366,6 +377,12 @@ class BookingService
             return;
         }
 
+        // Same policy as the revenue guard: skip silently when an issued
+        // supplier invoice linked to this booking already recognized the cost.
+        if ($this->costAlreadyRecognizedBySupplierInvoice($booking)) {
+            return;
+        }
+
         $cost = $this->posting->account((string) $this->settings->get('accounting', 'cost_account_code', '5100'));
         // Credit each supplier's own payable subaccount; items without a
         // supplier stay on the payables control account.
@@ -399,6 +416,31 @@ class BookingService
             fxRateSource: $booking->fx_rate_source,
             actorId: $actorId,
         ));
+    }
+
+    /**
+     * True when an issued, un-reversed supplier invoice linked to this booking
+     * already posted the supplier cost (Dr expense / Cr payable).
+     */
+    private function costAlreadyRecognizedBySupplierInvoice(Booking $booking): bool
+    {
+        return JournalEntry::query()
+            ->where('source_type', 'invoice')
+            ->where('event', 'issued')
+            ->whereNull('reversal_of_id')
+            ->whereNotExists(function ($query) {
+                $query->select('id')
+                    ->from('journal_entries as reversals')
+                    ->whereColumn('reversals.reversal_of_id', 'journal_entries.id');
+            })
+            ->whereExists(function ($query) use ($booking) {
+                $query->select('id')
+                    ->from('invoices')
+                    ->whereColumn('invoices.id', 'journal_entries.source_id')
+                    ->where('invoices.booking_id', $booking->id)
+                    ->where('invoices.type', 'supplier_invoice');
+            })
+            ->exists();
     }
 
     private function postCancellationFee(Booking $booking, ?int $actorId): void
@@ -454,9 +496,17 @@ class BookingService
         $grossSell = $quantity * $unitSell;
         $grossCost = $quantity * $unitCost;
 
-        $taxProfile = ! empty($item['tax_profile_id'])
-            ? TaxProfile::query()->find($item['tax_profile_id'])
-            : null;
+        $taxProfile = null;
+        if (! empty($item['tax_profile_id'])) {
+            // Accepts the public id (preferred) or the legacy internal numeric id.
+            $ref = (string) $item['tax_profile_id'];
+            $taxProfile = TaxProfile::query()
+                ->where(fn ($query) => $query->where('public_id', $ref)->orWhere('id', ctype_digit($ref) ? (int) $ref : 0))
+                ->first();
+            if (! $taxProfile) {
+                throw new DomainException('Tax profile not found.');
+            }
+        }
 
         $rate = $taxProfile ? (string) $taxProfile->rate : '0';
         $inclusive = $taxProfile?->is_inclusive ?? false;

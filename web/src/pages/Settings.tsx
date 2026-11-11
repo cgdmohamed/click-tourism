@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Branch } from '../lib/types'
 import { DecisionsPanel } from '../components/DecisionsPanel'
+import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
 
 type Setting = { group: string; key: string; value: string | null; is_secret: boolean }
@@ -229,6 +230,8 @@ export default function Settings() {
           ) : null}
         </Card>
       </div>
+
+      <AccountingPolicyPanel />
 
       <Card className="mt-6">
         <CardHeader
