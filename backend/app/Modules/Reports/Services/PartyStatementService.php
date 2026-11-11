@@ -4,6 +4,7 @@ namespace App\Modules\Reports\Services;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
@@ -30,6 +31,7 @@ class PartyStatementService
 {
     public function __construct(
         private readonly SettingService $settings,
+        private readonly RoundingPolicy $rounding,
         private readonly ReportReferences $references,
     ) {}
 
@@ -216,7 +218,7 @@ class PartyStatementService
         $code = match ($partyType) {
             'customer' => (string) $this->settings->get('accounting', 'ar_account_code', '1100'),
             'supplier' => (string) $this->settings->get('accounting', 'ap_account_code', '2100'),
-            'employee' => (string) $this->settings->get('accounting', 'employee_advance_account_code', '1150'),
+            'employee' => (string) $this->settings->get('accounting', 'employee_advance_account_code', '1151'),
             default => throw new DomainException("Unsupported party type: {$partyType}"),
         };
 
@@ -228,8 +230,8 @@ class PartyStatementService
     {
         $codes = match ($partyType) {
             'employee' => array_values(array_unique([
-                (string) $this->settings->get('accounting', 'employee_advance_account_code', '1150'),
-                (string) $this->settings->get('accounting', 'employee_custody_account_code', '1150'),
+                (string) $this->settings->get('accounting', 'employee_advance_account_code', '1151'),
+                (string) $this->settings->get('accounting', 'employee_custody_account_code', '1152'),
             ])),
             default => [$this->controlAccount($partyType)->code],
         };
@@ -326,7 +328,7 @@ class PartyStatementService
                 : (int) $invoice->outstanding_minor;
 
             $total += (new Money($amount, $invoice->currency_code))
-                ->convertTo($currency, (string) $invoice->fx_rate)->amountMinor;
+                ->convertTo($currency, (string) $invoice->fx_rate, $this->rounding->mode())->amountMinor;
         }
 
         return $total;
@@ -346,7 +348,7 @@ class PartyStatementService
 
             foreach ($payments as $payment) {
                 $total += (new Money((int) $payment->unallocated_minor, $payment->currency_code))
-                    ->convertTo($currency, (string) $payment->fx_rate)->amountMinor;
+                    ->convertTo($currency, (string) $payment->fx_rate, $this->rounding->mode())->amountMinor;
             }
         }
 
@@ -359,7 +361,7 @@ class PartyStatementService
 
             foreach ($payments as $payment) {
                 $total += (new Money($payment->unallocatedMinor(), $payment->currency_code))
-                    ->convertTo($currency, (string) $payment->fx_rate)->amountMinor;
+                    ->convertTo($currency, (string) $payment->fx_rate, $this->rounding->mode())->amountMinor;
             }
         }
 

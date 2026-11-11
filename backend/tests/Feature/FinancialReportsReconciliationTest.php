@@ -298,7 +298,7 @@ class FinancialReportsReconciliationTest extends TestCase
         $this->issueCustomerInvoice($customer, 100000);
 
         // A receipt applied to the control account but not to the invoice itself.
-        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->id]);
+        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->public_id]);
 
         $response = $this->withHeaders($this->headers())
             ->getJson('/api/v1/reports/party-statement?'.http_build_query([
@@ -338,8 +338,13 @@ class FinancialReportsReconciliationTest extends TestCase
         ]);
 
         $this->entry(
-            $this->currentDate, '1150', '1110', 50000,
-            debitParty: ['employee', $employee->id],
+            $this->currentDate, '1151', '1110', 50000,
+            debitParty: ['employee', $employee->public_id],
+        );
+        // The statement control family covers employee advances (1151) and custody (1152).
+        $this->entry(
+            $this->currentDate, '1152', '1110', 20000,
+            debitParty: ['employee', $employee->public_id],
         );
 
         $this->withHeaders($this->headers())
@@ -352,9 +357,9 @@ class FinancialReportsReconciliationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.party_type', 'employee')
             ->assertJsonPath('data.party.name_en', 'Employee One')
-            ->assertJsonPath('data.closing_minor', 50000)
+            ->assertJsonPath('data.closing_minor', 70000)
             ->assertJsonPath('data.reconciliation.reconciled', false)
-            ->assertJsonPath('data.reconciliation.difference_minor', 50000);
+            ->assertJsonPath('data.reconciliation.difference_minor', 70000);
     }
 
     public function test_aging_reconciliation_compares_control_ledger_to_open_invoices(): void
@@ -363,7 +368,7 @@ class FinancialReportsReconciliationTest extends TestCase
         $this->issueCustomerInvoice($customer, 100000);
 
         // A receipt applied to AR in the ledger but not reflected on the invoice.
-        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->id]);
+        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->public_id]);
 
         $response = $this->withHeaders($this->headers())
             ->getJson('/api/v1/reports/aging-reconciliation?'.http_build_query([
@@ -602,7 +607,7 @@ class FinancialReportsReconciliationTest extends TestCase
 
         $customer = $this->customer();
         $this->issueCustomerInvoice($customer, 100000);
-        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->id]);
+        $this->entry($this->currentDate, '1110', '1100', 40000, creditParty: ['customer', $customer->public_id]);
 
         $range = [
             'from' => now()->startOfMonth()->toDateString(),

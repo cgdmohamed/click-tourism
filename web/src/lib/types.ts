@@ -33,6 +33,8 @@ export type Account = {
   is_postable: boolean
   is_active: boolean
   balance_minor?: number
+  /** Set when the account is the receivable/payable control account. */
+  control_party_type?: 'customer' | 'supplier' | null
 }
 
 export type JournalLine = {

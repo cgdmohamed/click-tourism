@@ -2,6 +2,7 @@
 
 namespace App\Modules\Money\Services;
 
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Models\FxRate;
 use App\Support\Money;
@@ -17,7 +18,7 @@ use Illuminate\Support\Carbon;
  */
 class FxService
 {
-    public function __construct(private readonly SettingService $settings) {}
+    public function __construct(private readonly SettingService $settings, private readonly RoundingPolicy $rounding) {}
 
     public function baseCurrency(): string
     {
@@ -87,7 +88,7 @@ class FxService
 
     public function convert(Money $money, string $baseCurrency, string $rate): Money
     {
-        return $money->convertTo($baseCurrency, $rate);
+        return $money->convertTo($baseCurrency, $rate, $this->rounding->mode());
     }
 
     public function upsertRate(string $currency, string $rate, string $date, string $source = 'manual'): FxRate

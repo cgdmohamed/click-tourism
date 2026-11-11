@@ -2,6 +2,7 @@
 
 namespace App\Modules\Accounting\Services;
 
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SettingService;
 use App\Support\Money;
 
@@ -12,7 +13,7 @@ use App\Support\Money;
  */
 class RealizedFxService
 {
-    public function __construct(private readonly PostingService $posting, private readonly SettingService $settings) {}
+    public function __construct(private readonly PostingService $posting, private readonly SettingService $settings, private readonly RoundingPolicy $rounding) {}
 
     /**
      * @param  array<int, PostingLine>  $lines  Each monetary line has its own currency/rate.
@@ -33,8 +34,8 @@ class RealizedFxService
             if ($rate === null) {
                 throw new \DomainException('Historical and settlement FX rates are required for realized FX calculation.');
             }
-            $debitBase += (new Money($line->debitMinor, $currency))->convertTo($base, $rate)->amountMinor;
-            $creditBase += (new Money($line->creditMinor, $currency))->convertTo($base, $rate)->amountMinor;
+            $debitBase += (new Money($line->debitMinor, $currency))->convertTo($base, $rate, $this->rounding->mode())->amountMinor;
+            $creditBase += (new Money($line->creditMinor, $currency))->convertTo($base, $rate, $this->rounding->mode())->amountMinor;
         }
 
         $difference = $debitBase - $creditBase;

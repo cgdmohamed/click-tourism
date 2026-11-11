@@ -4,7 +4,9 @@ namespace App\Modules\Core\Services;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Setting;
+use DomainException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Typed access to installation settings. Values are stored in the `settings`
@@ -41,10 +43,14 @@ class SettingService
             'ap_account_code' => '2100',
             // PENDING ACCOUNTANT APPROVAL: supplier advances (AC-PAY-009) are
             // an asset until applied to an obligation. Configurable per install.
-            'supplier_advance_account_code' => '1150',
+            'supplier_advance_account_code' => '1153',
             'tax_payable_account_code' => '2200',
             'fx_gain_account_code' => '7900',
             'fx_loss_account_code' => '6900',
+            // Unrealized FX (period-end revaluation, DEC-008); existing installs
+            // create these with `php artisan accounting:ensure-fx-accounts`.
+            'fx_unrealized_gain_account_code' => '7901',
+            'fx_unrealized_loss_account_code' => '6901',
             // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
             'bank_charges_account_code' => '6500',
             // PENDING ACCOUNTANT APPROVAL (DEC-037): interest earned credited on reconciliation.
@@ -54,8 +60,8 @@ class SettingService
             'output_tax_account_code' => '2200',
             'retained_earnings_account_code' => '3100',
             // PENDING ACCOUNTANT APPROVAL (DEC-035): employee advances/custody accounts.
-            'employee_advance_account_code' => '1150',
-            'employee_custody_account_code' => '1150',
+            'employee_advance_account_code' => '1151',
+            'employee_custody_account_code' => '1152',
             // PENDING ACCOUNTANT APPROVAL (DEC-038): accrual and prepayment policy.
             // Auto-post due recognition events from the daily scheduler; the
             // period-end checklist reports anything that could not post. Disabled
@@ -69,7 +75,7 @@ class SettingService
             'approved_at' => '',
             // Days after a recognition date that an accrual reversal is dated.
             'accrual_reversal_offset_days' => '1',
-            'prepaid_expense_account_code' => '1150',
+            'prepaid_expense_account_code' => '1154',
             'deferred_revenue_account_code' => '2400',
             'accrued_liability_account_code' => '2100',
             'accrued_revenue_account_code' => '1100',
@@ -277,6 +283,15 @@ class SettingService
         return strtoupper((string) $this->get('general', 'base_currency', 'EGP'));
     }
 
+    /**
+     * The base currency is fixed once any journal entry has been posted:
+     * converted base amounts of posted entries must never be reinterpreted.
+     */
+    public function baseCurrencyLocked(): bool
+    {
+        return DB::table('journal_entries')->where('status', 'posted')->exists();
+    }
+
     /** @return array<int, array{group: string, key: string, value: ?string, is_secret: bool}> */
     public function all(): array
     {
@@ -308,12 +323,32 @@ class SettingService
             }
         }
 
+        $result[] = [
+            'group' => 'general',
+            'key' => 'base_currency_locked',
+            'value' => $this->baseCurrencyLocked() ? 'true' : 'false',
+            'is_secret' => false,
+        ];
+
         return $result;
     }
 
     public function set(string $group, string $key, ?string $value, bool $secret = false): Setting
     {
+        if ($group === 'general' && $key === 'base_currency_locked') {
+            throw new DomainException('base_currency_locked is computed and cannot be written.');
+        }
+
+        if ($group === 'general' && $key === 'base_currency'
+            && strtoupper((string) $value) !== $this->baseCurrency()
+            && $this->baseCurrencyLocked()) {
+            throw new DomainException('The base currency cannot be changed after the first journal entry has been posted. / لا يمكن تغيير العملة الأساسية بعد ترحيل أول قيد يومية.');
+        }
+
         Cache::forget("settings.{$group}.{$key}");
+        if ($group === 'accounting' && $key === 'rounding_policy') {
+            app(RoundingPolicy::class)->flush();
+        }
 
         return Setting::query()->updateOrCreate(
             ['group' => $group, 'key' => $key],

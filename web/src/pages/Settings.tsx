@@ -165,11 +165,16 @@ export default function Settings() {
                   )
                 }
                 if (field.type === 'select') {
+                  const locked = id === 'general.base_currency' && values['general.base_currency_locked'] === 'true'
                   return (
-                    <Field key={id} label={label}>
+                    <Field
+                      key={id}
+                      label={label}
+                      hint={locked ? (locale === 'ar' ? 'مقفلة: لا يمكن تغيير العملة الأساسية بعد ترحيل أول قيد يومية.' : 'Locked: the base currency cannot be changed after the first journal entry is posted.') : undefined}
+                    >
                       <Select
                         value={draft[id] ?? ''}
-                        disabled={readOnly}
+                        disabled={readOnly || locked}
                         onChange={(event) => setDraft({ ...draft, [id]: event.target.value })}
                       >
                         <option value="">—</option>
