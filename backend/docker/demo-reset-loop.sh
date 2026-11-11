@@ -20,9 +20,9 @@ test -s "${SNAPSHOT}" || { echo "FATAL: immutable demo snapshot missing." >&2; e
 pg_restore --list "${SNAPSHOT}" >/dev/null || exit 1
 
 restore_baseline() {
-    # Restore never mutates the saved archive. Fail closed until all stages pass.
-    psql -X -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' || return 1
-    pg_restore --exit-on-error --no-owner --no-acl --dbname="${PGDATABASE}" "${SNAPSHOT}" || return 1
+    # Restore never mutates the saved archive. It runs in one transaction, so a
+    # failure keeps the previous data. Fail closed until all stages pass.
+    /bin/sh /usr/local/bin/demo-restore-db "${SNAPSHOT}" || return 1
     php artisan demo:ensure-users --verify-only || return 1
     find storage/app -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
     mkdir -p storage/app/public || return 1
