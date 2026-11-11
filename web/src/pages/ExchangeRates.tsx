@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
-import { useSetting } from '../lib/useSetting'
+import { useBaseCurrency } from '../lib/useSetting'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
 
 type FxRate = {
@@ -28,7 +28,7 @@ export default function ExchangeRates() {
   const { t, locale } = useI18n()
   const { can } = useAuth()
   const queryClient = useQueryClient()
-  const { value: baseCurrency } = useSetting('general', 'base_currency', 'EGP')
+  const baseCurrency = useBaseCurrency()
   const [currencyFilter, setCurrencyFilter] = useState('')
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
