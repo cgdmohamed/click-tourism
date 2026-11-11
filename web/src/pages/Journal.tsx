@@ -43,7 +43,7 @@ function isDocumentEntry(sourceType?: string | null): boolean {
 
 export default function Journal() {
   const { t, locale } = useI18n()
-  const { activeBranch } = useAuth()
+  const { activeBranch, user, can } = useAuth()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -122,6 +122,23 @@ export default function Journal() {
       return data.data
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['journal'] })
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+
+  const deleteDraft = useMutation({
+    mutationFn: async (entry: JournalEntry) => {
+      const message =
+        locale === 'ar'
+          ? `حذف المسودة ${entry.number} نهائيًا؟ لا يمكن التراجع عن هذا الإجراء.`
+          : `Permanently delete draft ${entry.number}? This cannot be undone.`
+      if (!window.confirm(message)) return null
+      await api.delete(`/journal-entries/${entry.id}`)
+      return entry.id
+    },
+    onSuccess: async () => {
+      setError('')
       await queryClient.invalidateQueries({ queryKey: ['journal'] })
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -206,9 +223,16 @@ export default function Journal() {
                         </Button>
                       )
                     ) : (
-                      <Button variant="ghost" disabled={postDraft.isPending} onClick={() => postDraft.mutate(entry)}>
-                        {t('post')}
-                      </Button>
+                      <>
+                        <Button variant="ghost" disabled={postDraft.isPending} onClick={() => postDraft.mutate(entry)}>
+                          {t('post')}
+                        </Button>
+                        {(can('journal.delete_drafts') || (entry.created_by_id === user?.id && can('journal.create'))) && (
+                          <Button variant="ghost" disabled={deleteDraft.isPending} onClick={() => deleteDraft.mutate(entry)}>
+                            {locale === 'ar' ? 'حذف' : 'Delete'}
+                          </Button>
+                        )}
+                      </>
                     )}
                     </div>
                   </Td>

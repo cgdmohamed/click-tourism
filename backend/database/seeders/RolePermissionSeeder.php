@@ -47,6 +47,13 @@ class RolePermissionSeeder extends Seeder
             'customers.create',
             'suppliers.create',
         ],
+        // Senior accountant: everything the accountant has plus the right to
+        // post (maker-checker override, audited) and delete own/branch drafts.
+        'senior_accountant' => [
+            '@accountant',
+            'journal.post_own_drafts',
+            'journal.delete_drafts',
+        ],
         'sales' => [
             'expenses.view', 'expenses.create',
             'branches.view',
@@ -85,6 +92,8 @@ class RolePermissionSeeder extends Seeder
         'accounts.view', 'accounts.create', 'accounts.update', 'accounts.post',
         'periods.view', 'periods.manage', 'periods.post_soft_closed',
         'journal.view', 'journal.create', 'journal.reverse',
+        'journal.post_own_drafts',
+        'journal.delete_drafts',
         'customers.view', 'customers.create', 'customers.update',
         'suppliers.view', 'suppliers.create', 'suppliers.update',
         'supplier_obligations.view', 'supplier_obligations.create',
@@ -107,6 +116,26 @@ class RolePermissionSeeder extends Seeder
         'assets.view', 'assets.manage', 'assets.approve',
     ];
 
+    /**
+     * Expands "@role" references to that role's permission list.
+     *
+     * @param  string[]  $permissions
+     * @return string[]
+     */
+    private function expand(array $permissions): array
+    {
+        $expanded = [];
+        foreach ($permissions as $permission) {
+            if (str_starts_with($permission, '@')) {
+                array_push($expanded, ...self::ROLES[substr($permission, 1)]);
+            } else {
+                $expanded[] = $permission;
+            }
+        }
+
+        return array_values(array_unique($expanded));
+    }
+
     public function run(): void
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -124,7 +153,7 @@ class RolePermissionSeeder extends Seeder
                 continue;
             }
 
-            $role->syncPermissions($permissions);
+            $role->syncPermissions($this->expand($permissions));
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
