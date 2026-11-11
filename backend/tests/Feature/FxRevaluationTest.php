@@ -322,11 +322,23 @@ class FxRevaluationTest extends TestCase
         $this->assertSame(0, JournalEntry::query()->where('source_type', 'fx_revaluation')->count());
 
         app(SettingService::class)->set('accounting', 'fx_revaluation_enabled', 'false');
+        // A disabled setting must hide the dry-run preview too, so the command
+        // never shows entries that --apply would refuse.
+        $this->artisan('accounting:revalue', ['--period' => '2026-03'])
+            ->expectsOutputToContain('nothing previewed or posted')
+            ->doesntExpectOutputToContain('Dry run only')
+            ->assertSuccessful();
         $this->artisan('accounting:revalue', ['--period' => '2026-03', '--apply' => true])
-            ->expectsOutputToContain('nothing posted')->assertSuccessful();
+            ->expectsOutputToContain('nothing previewed or posted')->assertSuccessful();
         $this->assertSame(0, JournalEntry::query()->where('source_type', 'fx_revaluation')->count());
 
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'false');
         app(SettingService::class)->set('accounting', 'fx_revaluation_enabled', 'true');
+        $this->artisan('accounting:revalue', ['--period' => '2026-03'])
+            ->expectsOutputToContain('nothing previewed or posted')->assertSuccessful();
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'fx_revaluation')->count());
+
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
         $this->artisan('accounting:revalue', ['--period' => '2026-03', '--apply' => true])->assertSuccessful();
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'fx_revaluation')->count());
     }
@@ -362,8 +374,16 @@ class FxRevaluationTest extends TestCase
         }
 
         $this->artisan('accounting:ensure-fx-accounts')->assertSuccessful();
+        // Dry run by default: nothing is created until --apply.
+        $this->assertSame(0, Account::query()->where('code', '7901')->count());
+
+        $this->artisan('accounting:ensure-fx-accounts')
+            ->expectsOutputToContain('Would create account 7901')->assertSuccessful();
+        $this->assertSame(0, Account::query()->where('code', '7901')->count());
+
+        $this->artisan('accounting:ensure-fx-accounts', ['--apply' => true])->assertSuccessful();
         $this->assertSame('revenue', $this->account('7901')->type);
-        $this->artisan('accounting:ensure-fx-accounts')->assertSuccessful();
+        $this->artisan('accounting:ensure-fx-accounts', ['--apply' => true])->assertSuccessful();
         $this->assertSame(1, Account::query()->where('code', '7901')->count());
 
         $this->assertSame('posted', $this->service()->revalue($this->period, $this->branch)['status']);

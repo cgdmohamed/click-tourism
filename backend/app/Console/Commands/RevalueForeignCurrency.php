@@ -13,8 +13,9 @@ use Illuminate\Support\Carbon;
 
 /**
  * Period-end unrealized FX revaluation (DEC-008). Dry-run by default; --apply
- * posts the entry (and its automatic reversal when due). Both are no-ops
- * unless the setting is enabled and the accounting policy is approved.
+ * posts the entry (and its automatic reversal when due). Both the preview and
+ * the post are no-ops unless the setting is enabled and the accounting policy
+ * is approved, so the dry run never shows entries that --apply would refuse.
  */
 class RevalueForeignCurrency extends Command
 {
@@ -33,8 +34,8 @@ class RevalueForeignCurrency extends Command
         $apply = (bool) $this->option('apply') && ! $this->option('dry-run');
         $actor = $this->option('actor') !== null ? (int) $this->option('actor') : null;
 
-        if ($apply && (! $service->enabled() || ! $service->policyApproved())) {
-            $this->info('FX revaluation is disabled or the accounting policy is not approved; nothing posted.');
+        if (! $service->enabled() || ! $service->policyApproved()) {
+            $this->info('FX revaluation is disabled or the accounting policy is not approved; nothing previewed or posted.');
 
             return self::SUCCESS;
         }

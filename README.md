@@ -44,8 +44,8 @@ Working end to end against the seeded demo data:
   (`/reports/trial-balance/export`, `/reports/general-ledger/export`),
   requiring the new `reports.export` permission (admin and accountant). Exports
   are audited (`report.exported`), capped at 50,000 rows, and neutralise
-  spreadsheet formulas. Run `php artisan db:seed --class=RolePermissionSeeder`
-  after upgrading so the permission exists.
+  spreadsheet formulas. Run `php artisan roles:sync` after upgrading so the
+  permission exists.
 - Record-level branch scope: reading or changing a booking, payment, customer,
   supplier, lead or journal entry of a branch the user is not assigned to
   returns 403.
@@ -272,10 +272,19 @@ sync.
   third party, confirm that the license covers the intended self-hosted use and
   distribution. Replace the files in `web/src/assets/fonts/` if the license does
   not permit public distribution.
-- When upgrading an existing installation, run
-  `php artisan db:seed --class=RolePermissionSeeder` after `php artisan migrate`
-  so newly introduced permissions are created and attached to roles. The seeder
-  is idempotent.
+- When upgrading an existing installation, run `php artisan roles:sync` after
+  `php artisan migrate` so newly introduced permissions are created and
+  attached to roles. It is idempotent and never touches users.
+- Accounting repair commands are dry-run by default. Review the printed plan,
+  then re-run with `--apply`:
+  `php artisan accounting:split-1150`,
+  `php artisan accounting:repair-foreign-transfers`,
+  `php artisan accounting:ensure-fx-accounts`.
+- `php artisan accounting:audit-document-numbers` is a read-only check for
+  duplicate document numbers (journal entries, refunds, transfers, expenses and
+  accounting documents). It exits non-zero when it finds duplicates and never
+  renumbers anything; see the index checklist in
+  [`docs/architecture/migration-order.md`](docs/architecture/migration-order.md).
 - Do not run `migrate:fresh` against production. Use `php artisan migrate` and
   verify the migration order and rollback plan in
   [`docs/architecture/migration-order.md`](docs/architecture/migration-order.md).
