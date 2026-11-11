@@ -323,4 +323,15 @@ class ExpenseTest extends TestCase
 
         $this->getJson('/api/v1/expense-categories')->assertOk()->assertJsonCount(7, 'data');
     }
+
+    public function test_expense_tax_is_rejected_when_tax_is_disabled(): void
+    {
+        app(SettingService::class)->set('tax', 'enabled', 'false');
+
+        $this->create()->assertStatus(422)->assertJsonPath('message', 'Tax is disabled in settings.');
+        $this->create(['tax_minor' => 0])->assertCreated();
+
+        app(SettingService::class)->set('tax', 'enabled', 'true');
+        $this->create()->assertCreated();
+    }
 }

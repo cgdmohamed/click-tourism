@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Support\CarriesWarnings;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  */
 class Invoice extends Model
 {
+    use CarriesWarnings;
     use HasPublicId;
 
     protected $fillable = [
@@ -168,6 +170,10 @@ class Invoice extends Model
                 ->map(fn (InvoiceApplication $application) => $application->toApiArray() + [
                     'payment_number' => $application->payment?->number,
                 ])->values()->all();
+        }
+
+        if ($this->warnings() !== []) {
+            $payload['warnings'] = $this->warnings();
         }
 
         return $payload;

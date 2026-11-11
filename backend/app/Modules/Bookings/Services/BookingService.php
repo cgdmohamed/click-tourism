@@ -19,8 +19,10 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\CreditLimitService;
 use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Tax\Models\TaxProfile;
+use App\Modules\Tax\Services\TaxPolicy;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -52,6 +54,8 @@ class BookingService
         private readonly PostingService $posting,
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
+        private readonly CreditLimitService $creditLimits,
+        private readonly TaxPolicy $taxPolicy,
     ) {}
 
     public function create(array $data, ?int $actorId = null): Booking
@@ -125,9 +129,9 @@ class BookingService
         });
     }
 
-    public function transition(Booking $booking, string $toStatus, ?string $reason, ?int $actorId = null): Booking
+    public function transition(Booking $booking, string $toStatus, ?string $reason, ?int $actorId = null, ?string $overrideReason = null, bool $canOverrideCreditLimit = false): Booking
     {
-        return DB::transaction(function () use ($booking, $toStatus, $reason, $actorId) {
+        return DB::transaction(function () use ($booking, $toStatus, $reason, $actorId, $overrideReason, $canOverrideCreditLimit) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $from = $booking->status;
 
@@ -146,6 +150,20 @@ class BookingService
                 && $this->settings->bool('accounting', 'negative_margin_requires_approval', true)
                 && $booking->margin_approval_status !== 'approved') {
                 throw new DomainException('Negative-margin booking requires manager approval before confirmation.');
+            }
+
+            $warnings = [];
+            if ($toStatus === 'confirmed') {
+                $warnings = $this->creditLimits->enforce(
+                    $booking->customer,
+                    $this->creditLimits->toBase((int) $booking->total_sell_minor, $booking->currency_code, (string) $booking->fx_rate),
+                    $booking,
+                    'booking confirmation',
+                    $actorId,
+                    $booking->id,
+                    $canOverrideCreditLimit,
+                    $overrideReason,
+                );
             }
 
             $attributes = ['status' => $toStatus];
@@ -182,7 +200,7 @@ class BookingService
 
             $this->audit->log('booking.transitioned', $booking, ['status' => $from], ['status' => $toStatus, 'reason' => $reason], $actorId);
 
-            return $booking->refresh()->load('items', 'customer');
+            return $booking->refresh()->load('items', 'customer')->withWarnings($warnings);
         });
     }
 
@@ -454,11 +472,19 @@ class BookingService
         $grossSell = $quantity * $unitSell;
         $grossCost = $quantity * $unitCost;
 
-        $taxProfile = ! empty($item['tax_profile_id'])
+        // Settings `tax.enabled`: when off, items never carry tax (the profile
+        // is ignored). When on, a missing profile falls back to `tax.default_rate`
+        // (percent, exclusive); an explicit profile always wins.
+        $taxProfile = $this->taxPolicy->enabled() && ! empty($item['tax_profile_id'])
             ? TaxProfile::query()->find($item['tax_profile_id'])
             : null;
 
-        $rate = $taxProfile ? (string) $taxProfile->rate : '0';
+        $rate = '0';
+        if ($taxProfile) {
+            $rate = (string) $taxProfile->rate;
+        } elseif ($this->taxPolicy->enabled() && empty($item['tax_profile_id'])) {
+            $rate = $this->taxPolicy->defaultRate();
+        }
         $inclusive = $taxProfile?->is_inclusive ?? false;
         $tax = $this->taxFor($grossSell, $rate, $inclusive);
 

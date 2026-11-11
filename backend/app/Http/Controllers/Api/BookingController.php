@@ -80,9 +80,14 @@ class BookingController extends ApiController
         $data = $request->validate([
             'status' => ['required', 'in:quoted,confirmed,in_progress,completed,closed,cancelled,no_show'],
             'reason' => ['nullable', 'string', 'max:255'],
+            'override_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $booking = $bookings->transition($booking, $data['status'], $data['reason'] ?? null, $this->actorId());
+        $booking = $bookings->transition(
+            $booking, $data['status'], $data['reason'] ?? null, $this->actorId(),
+            $data['override_reason'] ?? null,
+            (bool) $request->user()?->can('bookings.override_credit_limit'),
+        );
 
         return $this->ok($booking->toApiArray(true));
     }

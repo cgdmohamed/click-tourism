@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
+import { useTaxEnabled } from '../lib/useSetting'
 import type { Paginated, Supplier } from '../lib/types'
 import {
   Badge,
@@ -66,6 +67,7 @@ export default function Expenses() {
   const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
   const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
+  const { enabled: taxEnabled } = useTaxEnabled()
 
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
@@ -131,7 +133,7 @@ export default function Expenses() {
           category_id: form.category_id,
           expense_date: form.expense_date,
           amount_minor: toMinor(form.amount, form.currency),
-          tax_minor: form.tax ? toMinor(form.tax, form.currency) : 0,
+          tax_minor: taxEnabled && form.tax ? toMinor(form.tax, form.currency) : 0,
           currency: form.currency,
           fx_rate: form.fx_rate || undefined,
           description: form.description,
@@ -323,8 +325,8 @@ export default function Expenses() {
           <Field label={`${L('الإجمالي شامل الضريبة', 'Total incl. tax')} (${form.currency})`} required>
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
-          <Field label={L('منها ضريبة مدخلات', 'Of which input tax')}>
-            <Input value={form.tax} onChange={(event) => setForm({ ...form, tax: event.target.value })} inputMode="decimal" dir="ltr" />
+          <Field label={L('منها ضريبة مدخلات', 'Of which input tax')} hint={!taxEnabled ? L('الضريبة معطّلة في الإعدادات.', 'Tax is disabled in settings.') : undefined}>
+            <Input value={taxEnabled ? form.tax : ''} onChange={(event) => setForm({ ...form, tax: event.target.value })} inputMode="decimal" dir="ltr" disabled={!taxEnabled} />
           </Field>
           <Field label={L('الدفع', 'Paid')} required>
             <Select value={form.paid_from} onChange={(event) => setForm({ ...form, paid_from: event.target.value as 'cash' | 'supplier' })}>

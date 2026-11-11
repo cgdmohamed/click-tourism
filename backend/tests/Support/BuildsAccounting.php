@@ -38,6 +38,8 @@ trait BuildsAccounting
         app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
         app(SettingService::class)->set('accounting', 'auto_post_bookings', 'true');
         app(SettingService::class)->set('accounting', 'schedule_auto_post', 'true');
+        // Tax is opt-in per installation; tests that use tax enable it deliberately.
+        app(SettingService::class)->set('tax', 'enabled', 'true');
 
         foreach (['EGP' => 2, 'USD' => 2, 'SAR' => 2, 'KWD' => 3] as $code => $exponent) {
             Currency::query()->firstOrCreate(

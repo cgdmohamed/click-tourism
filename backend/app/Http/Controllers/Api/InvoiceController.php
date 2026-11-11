@@ -144,11 +144,17 @@ class InvoiceController extends ApiController
         return $this->ok($invoices->approve($invoice, $this->actorId())->toApiArray(true));
     }
 
-    public function issue(Invoice $invoice, InvoiceService $invoices): JsonResponse
+    public function issue(Request $request, Invoice $invoice, InvoiceService $invoices): JsonResponse
     {
         $this->authorizeBranchId($invoice->branch_id);
 
-        return $this->ok($invoices->issue($invoice, $this->actorId())->toApiArray(true));
+        $data = $request->validate(['override_reason' => ['nullable', 'string', 'max:500']]);
+        $issued = $invoices->issue(
+            $invoice, $this->actorId(), $data['override_reason'] ?? null,
+            (bool) $request->user()?->can('bookings.override_credit_limit'),
+        );
+
+        return $this->ok($issued->toApiArray(true));
     }
 
     public function void(Invoice $invoice, InvoiceService $invoices): JsonResponse

@@ -82,6 +82,10 @@ class SettingService
             // guarded product policy; zero margin warns but does not auto-post.
             'negative_margin_requires_approval' => 'true',
             'zero_margin_policy' => 'warn',
+            // PENDING ACCOUNTANT APPROVAL: customer credit limit enforcement.
+            // off = ignore, warn = allow + audit + warning, block = refuse
+            // unless a permitted user overrides with a reason.
+            'credit_limit_policy' => 'warn',
         ],
         'treasury' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.

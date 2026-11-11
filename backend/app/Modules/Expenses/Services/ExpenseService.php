@@ -14,6 +14,7 @@ use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\PartyLedgerService;
+use App\Modules\Tax\Services\TaxPolicy;
 use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Support\Carbon;
@@ -33,6 +34,7 @@ class ExpenseService
         private readonly SequenceService $sequences,
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
+        private readonly TaxPolicy $taxPolicy,
     ) {}
 
     /**
@@ -240,6 +242,7 @@ class ExpenseService
         if ($amount <= 0) {
             throw new DomainException('The expense amount must be greater than zero.');
         }
+        $this->taxPolicy->assertTaxAllowed($tax);
         if ($tax < 0 || $tax >= $amount) {
             throw new DomainException('Tax must be zero or less than the total amount (tax is included in the amount).');
         }
