@@ -14,9 +14,16 @@ use Illuminate\Database\Seeder;
  */
 class ChartOfAccountsSeeder extends Seeder
 {
-    public function run(): void
+    /**
+     * The default chart of accounts (code, name_ar, name_en, type, optionally
+     * is_postable / parent_code). Shared with `accounting:ensure-accounts` so
+     * the seeder and the repair command have one source of truth.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function accounts(): array
     {
-        $accounts = [
+        return [
             ['code' => '1100', 'name_ar' => 'مدينون - عملاء', 'name_en' => 'Accounts Receivable', 'type' => 'asset'],
             ['code' => '1110', 'name_ar' => 'نقدية بالصندوق', 'name_en' => 'Cash on Hand', 'type' => 'asset'],
             ['code' => '1120', 'name_ar' => 'النقدية بالبنك', 'name_en' => 'Bank Account', 'type' => 'asset'],
@@ -53,8 +60,11 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '7920', 'name_ar' => 'إيرادات فوائد بنكية', 'name_en' => 'Bank Interest Income', 'type' => 'revenue'],
             ['code' => '7910', 'name_ar' => 'أرباح استبعاد الأصول', 'name_en' => 'Gain on Asset Disposal', 'type' => 'revenue'],
         ];
+    }
 
-        foreach ($accounts as $account) {
+    public function run(): void
+    {
+        foreach (self::accounts() as $account) {
             $parentCode = $account['parent_code'] ?? null;
             unset($account['parent_code']);
 
