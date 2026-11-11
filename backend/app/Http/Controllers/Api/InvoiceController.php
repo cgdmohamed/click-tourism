@@ -25,6 +25,7 @@ class InvoiceController extends ApiController
             ->when($request->query('booking_id'), function ($query, $reference) {
                 $bookingId = Booking::query()
                     ->where('public_id', $reference)->value('id');
+
                 return $query->where('booking_id', $bookingId ?? 0);
             })
             ->when($request->query('party_type'), fn ($query, $partyType) => $query->where('party_type', $partyType))
