@@ -16,7 +16,7 @@ final class Like
     /** Escapes LIKE wildcards in a user supplied term. */
     public static function escape(string $term): string
     {
-        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
+        return str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term);
     }
 
     /** Normalised term, or null when the request carries no usable search text. */
@@ -43,7 +43,7 @@ final class Like
         $query->where(function (Builder $query) use ($columns, $pattern) {
             $grammar = $query->getQuery()->getGrammar();
             foreach ($columns as $column) {
-                $query->orWhereRaw($grammar->wrap($column)." like ? escape '\\'", [$pattern]);
+                $query->orWhereRaw('lower('.$grammar->wrap($column).") like lower(?) escape '!'", [$pattern]);
             }
         });
     }

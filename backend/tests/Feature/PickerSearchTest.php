@@ -61,7 +61,7 @@ class PickerSearchTest extends TestCase
 
     public function test_like_escape_neutralises_wildcards(): void
     {
-        $this->assertSame('100\\%\\_a\\\\b', Like::escape('100%_a\\b'));
+        $this->assertSame('100!%!_a\\b', Like::escape('100%_a\\b'));
         $this->assertNull(Like::term('   '));
         $this->assertNull(Like::term(['x']));
         $this->assertSame('abc', Like::term('  abc '));
