@@ -27,16 +27,16 @@ Run in this order on every existing installation after deploying the new code. T
 | # | Step | Command | Needs approved policy? | Writes? |
 |---|---|---|---|---|
 | 1 | Sync roles and permissions (`bookings.update` and the rest of the additive set) | `php artisan roles:sync` | no | permissions only |
-| 2 | Check the unrealized FX accounts 7901/6901 exist | `php artisan accounting:ensure-fx-accounts` | no | no |
+| 2 | Check the accounts 7901/6901 (unrealized FX) and 7920 (bank interest) exist | `php artisan accounting:ensure-accounts` | no | no |
 | 3 | Audit duplicate document numbers (read-only, safe any time) | `php artisan accounting:audit-document-numbers` | no | no |
 | 4 | **Approve the accounting policy** in Settings (needs `accounting.approve_policy`) | UI / `PUT /api/v1/settings` | — | yes, audited |
 | 5 | Preview the 1150 split (employee advances 1151, custody 1152, supplier advances 1153, prepaid 1154) | `php artisan accounting:split-1150` | yes | no |
 | 6 | Post the reclassification and update the account mappings | `php artisan accounting:split-1150 --apply` | yes | journal entries |
 | 7 | Preview repairs of legacy cross-currency transfers booked entirely in the base currency | `php artisan accounting:repair-foreign-transfers` | yes | no |
 | 8 | Write the repairs | `php artisan accounting:repair-foreign-transfers --apply` | yes | journal entries |
-| 9 | Create the FX accounts if step 2 reported them missing | `php artisan accounting:ensure-fx-accounts --apply` | no | chart of accounts |
+| 9 | Create the accounts step 2 reported missing (7901/6901 unrealized FX, 7920 bank interest income; `accounting:ensure-fx-accounts` remains as an alias for 7901/6901 only) | `php artisan accounting:ensure-accounts --apply` | no | chart of accounts |
 
-**The order is forced by the policy guard.** Both `accounting:split-1150` and `accounting:repair-foreign-transfers` refuse to run — including their dry runs — while `accounting.accounting_policy_approved` is `false`, because both post or reverse journals. So the policy must be approved before you can even preview the fixes. `accounting:ensure-fx-accounts` and `accounting:audit-document-numbers` are not posting commands and run before approval.
+**The order is forced by the policy guard.** Both `accounting:split-1150` and `accounting:repair-foreign-transfers` refuse to run — including their dry runs — while `accounting.accounting_policy_approved` is `false`, because both post or reverse journals. So the policy must be approved before you can even preview the fixes. `accounting:ensure-accounts` and `accounting:audit-document-numbers` are not posting commands and run before approval.
 
 Step 6 changes `accounting.supplier_advance_account_code` to `1153`; step 8 must run after it so repairs use the final mapping. Step 9 must run before the first revaluation, otherwise `RevaluationService` stops with "FX revaluation account 7901 does not exist".
 
