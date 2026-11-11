@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Models\FixedAsset;
+use App\Modules\Accounting\Models\FixedAssetTransfer;
 use App\Modules\Accounting\Services\FixedAssetReportService;
 use App\Modules\Accounting\Services\FixedAssetService;
 use Illuminate\Http\JsonResponse;
@@ -14,8 +15,8 @@ use Illuminate\Validation\Rule;
  * Fixed-asset register, lifecycle events and audit trail (Prompt 25).
  *
  * Draft assets are editable; capitalization and disposal are approval steps
- * that post through FixedAssetService. Transfers are operational and create no
- * journal, and impairment only ever becomes effective through an approved and
+ * that post through FixedAssetService. A transfer between branches posts two balanced journals
+ * (one per branch, via the inter-branch clearing accounts), and impairment only ever becomes effective through an approved and
  * posted accounting document.
  */
 class FixedAssetController extends ApiController
@@ -99,6 +100,20 @@ class FixedAssetController extends ApiController
         return $this->created([
             'transfer' => $transfer->toApiArray(),
             'asset' => $this->payload($service->load($transfer->asset)),
+        ]);
+    }
+
+    public function reverseTransfer(Request $request, FixedAssetTransfer $transfer, FixedAssetService $service): JsonResponse
+    {
+        $this->authorizeBranchId($transfer->from_branch_id);
+        $this->authorizeBranchId($transfer->to_branch_id);
+
+        $data = $request->validate(['reason' => ['required', 'string', 'max:255']]);
+        $reversed = $service->reverseTransfer($transfer, $data['reason'], $this->actorId());
+
+        return $this->ok([
+            'transfer' => $reversed->toApiArray(),
+            'asset' => $this->payload($service->load($reversed->asset)),
         ]);
     }
 

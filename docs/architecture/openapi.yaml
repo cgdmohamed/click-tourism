@@ -1237,7 +1237,7 @@ paths:
         - { name: cost_center_id, in: query, description: 'Limit to the analytical portion allocated to this cost center (public id)', schema: { type: string } }
         - { name: adjustments, in: query, description: 'Period-end adjustment voucher scope: include, exclude, or only', schema: { type: string, enum: [include, exclude, only], default: include } }
       responses:
-        '200': { description: 'Trial balance with opening, period movements, closing balances and balance totals' }
+        '200': { description: 'Trial balance with opening, period movements, closing balances and balance totals. `interbranch` carries the inter-branch clearing check: this branch closing receivable/payable, and (for users with branches.view_all) the global figures as of the period end, which must net to zero (`balanced`).' }
   /reports/trial-balance/export:
     get:
       tags: [Reports]
@@ -2296,7 +2296,18 @@ paths:
   /fixed-assets/{asset}/transfer:
     post:
       tags: [Fixed Assets]
-      summary: Transfer an asset between branches, cost centers or custodians without rewriting the GL
+      summary: Transfer an asset between branches, cost centers or custodians
+      description: >-
+        A change of branch posts two balanced journals at net book value, one
+        per branch (events `transfer_out` and `transfer_in` of source
+        `fixed_asset_transfer`), through the inter-branch clearing accounts
+        (`accounting.interbranch_receivable_account_code` /
+        `interbranch_payable_account_code`): source Dr accumulated depreciation,
+        Dr inter-branch receivable, Cr cost; destination Dr cost, Cr accumulated
+        depreciation, Cr inter-branch payable. Amounts are base-currency register
+        figures. Both branches must be in the actor's branch scope (403
+        otherwise) and the transfer date must fall in an open period (422).
+        Cost-center or custodian changes within a branch post nothing.
       parameters:
         - { name: asset, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -2305,7 +2316,27 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/FixedAssetTransferInput' }
       responses:
-        '201': { description: Transfer recorded and asset attribution updated }
+        '201': { description: 'Transfer recorded (with cost, accumulated depreciation, NBV and the two journal references) and asset attribution updated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /fixed-asset-transfers/{transfer}/reverse:
+    post:
+      tags: [Fixed Assets]
+      summary: Reverse an inter-branch transfer (both journals reversed, asset returns to its previous branch)
+      description: >-
+        Only the latest transfer of an asset, while nothing was depreciated or
+        impaired since and the asset is not disposed. Requires assets.approve
+        and journal.reverse.
+      parameters:
+        - { name: transfer, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Transfer with is_reversed true and the restored asset }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
         '422': { $ref: '#/components/responses/Validation' }

@@ -41,6 +41,10 @@ class SettingService
             'unearned_account_code' => '2400',
             'cost_account_code' => '5100',
             'ap_account_code' => '2100',
+            // Inter-branch clearing (Odoo-style due-from / due-to). Used by fixed-asset
+            // transfers between branches; they net to zero installation-wide.
+            'interbranch_receivable_account_code' => '1180',
+            'interbranch_payable_account_code' => '2160',
             // PENDING ACCOUNTANT APPROVAL: supplier advances (AC-PAY-009) are
             // an asset until applied to an obligation. Configurable per install.
             'supplier_advance_account_code' => '1153',
@@ -189,6 +193,8 @@ class SettingService
         'accounting' => [
             'ar_account_code' => 'asset',
             'ap_account_code' => 'liability',
+            'interbranch_receivable_account_code' => 'asset',
+            'interbranch_payable_account_code' => 'liability',
             'advance_account_code' => 'liability',
             'supplier_advance_account_code' => 'asset',
             'revenue_account_code' => 'revenue',
