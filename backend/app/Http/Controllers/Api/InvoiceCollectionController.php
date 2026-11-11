@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
-use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Services\PaymentService;
 use DomainException;
