@@ -92,7 +92,7 @@ class JournalEntry extends Model
     public const DOCUMENT_SOURCE_TYPES = [
         'payment', 'payment_allocation', 'refund', 'supplier_payment', 'supplier_payment_application',
         'invoice', 'invoice_application', 'accounting_document', 'expense', 'transfer', 'booking',
-        'employee_advance', 'employee_custody', 'opening_balance', 'accounting_schedule', 'fiscal_year',
+        'employee_advance', 'employee_custody', 'opening_balance', 'opening_balance_backfill', 'accounting_schedule', 'fiscal_year',
     ];
 
     public function isDocumentEntry(): bool

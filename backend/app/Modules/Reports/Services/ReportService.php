@@ -792,6 +792,7 @@ class ReportService
             ->all();
 
         $recentPayments = Payment::query()
+            ->where('is_opening', false)
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->latest('id')
             ->limit(5)
@@ -893,6 +894,7 @@ class ReportService
             $inflow = $this->netReceiptsMinor($branch, $currency, $from, $to);
             $outflow = SupplierPayment::query()
                 ->where('status', 'posted')
+                ->where('is_opening', false)
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
                 ->get()->sum(fn ($p) => (new Money($p->amount_minor, $p->currency_code))
@@ -1031,8 +1033,10 @@ class ReportService
      */
     private function netReceiptsMinor(?Branch $branch, string $currency, ?string $from = null, ?string $to = null): int
     {
+        // Opening credit moved no cash: it never counts as a receipt.
         $received = Payment::query()
             ->where('status', 'posted')
+            ->where('is_opening', false)
             ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
             ->when($from, fn ($q) => $q->whereDate('paid_at', '>=', $from))
             ->when($to, fn ($q) => $q->whereDate('paid_at', '<=', $to))
