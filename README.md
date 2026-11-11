@@ -280,11 +280,19 @@ sync.
   `php artisan accounting:split-1150`,
   `php artisan accounting:repair-foreign-transfers`,
   `php artisan accounting:ensure-fx-accounts`.
+  `split-1150` and `repair-foreign-transfers` refuse to run, even as a dry run,
+  until an accountant approves the accounting policy in Settings
+  (`accounting.accounting_policy_approved`), because they post journals.
 - `php artisan accounting:audit-document-numbers` is a read-only check for
   duplicate document numbers (journal entries, refunds, transfers, expenses and
   accounting documents). It exits non-zero when it finds duplicates and never
   renumbers anything; see the index checklist in
   [`docs/architecture/migration-order.md`](docs/architecture/migration-order.md).
+- The go-live order, every accounting default the system currently applies, and
+  what needs the accountant's signature are collected in
+  [`docs/product/accountant-signoff-packet-2026-11-11.md`](docs/product/accountant-signoff-packet-2026-11-11.md).
+  The year-end close/reopen review is in
+  [`docs/audits/year-end-close-review-2026-11-11.md`](docs/audits/year-end-close-review-2026-11-11.md).
 - Do not run `migrate:fresh` against production. Use `php artisan migrate` and
   verify the migration order and rollback plan in
   [`docs/architecture/migration-order.md`](docs/architecture/migration-order.md).
