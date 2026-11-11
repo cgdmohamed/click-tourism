@@ -138,6 +138,7 @@ Route::prefix('v1')->group(function () {
         Route::get('journal-entries', [JournalEntryController::class, 'index'])->middleware('permission:journal.view');
         Route::post('journal-entries', [JournalEntryController::class, 'store'])->middleware('permission:journal.create');
         Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->middleware('permission:journal.view');
+        Route::delete('journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy'])->middleware('permission:journal.create|journal.delete_drafts');
         Route::post('journal-entries/{journalEntry}/post', [JournalEntryController::class, 'post'])->middleware('permission:journal.create');
         Route::post('journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->middleware('permission:journal.reverse');
 
