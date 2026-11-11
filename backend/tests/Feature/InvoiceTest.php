@@ -126,6 +126,30 @@ class InvoiceTest extends TestCase
         $this->assertNotEmpty($response->json('data.1.party.id'));
     }
 
+    public function test_invoice_tax_toggle_uses_configured_rate_and_ignores_submitted_tax_amount(): void
+    {
+        $settings = app(SettingService::class);
+        $settings->set('tax', 'enabled', 'true');
+        $settings->set('tax', 'default_rate', '15');
+
+        $withTax = $this->customerInvoicePayload();
+        $withTax['lines'][0]['tax_applied'] = true;
+        $withTax['lines'][0]['tax_minor'] = 99999;
+
+        $this->create($withTax)->assertCreated()
+            ->assertJsonPath('data.tax_minor', 15000)
+            ->assertJsonPath('data.total_minor', 115000)
+            ->assertJsonPath('data.lines.0.tax_minor', 15000);
+
+        $withoutTax = $this->customerInvoicePayload();
+        $withoutTax['lines'][0]['tax_applied'] = false;
+        $withoutTax['lines'][0]['tax_minor'] = 99999;
+
+        $this->create($withoutTax)->assertCreated()
+            ->assertJsonPath('data.tax_minor', 0)
+            ->assertJsonPath('data.total_minor', 100000);
+    }
+
     public function test_customer_invoice_lifecycle_posts_to_customer_subaccount(): void
     {
         $payload = $this->customerInvoicePayload();
