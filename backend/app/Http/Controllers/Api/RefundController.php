@@ -38,9 +38,10 @@ class RefundController extends ApiController
         return $this->created($this->payload($refund));
     }
 
-    public function approve(Refund $refund, PaymentService $payments): JsonResponse
+    public function approve(Request $request, Refund $refund, PaymentService $payments): JsonResponse
     {
-        $refund = $payments->approveRefund($refund, (int) $this->actorId());
+        $data = $request->validate(['fx_rate' => ['nullable', 'numeric', 'gt:0']]);
+        $refund = $payments->approveRefund($refund, (int) $this->actorId(), isset($data['fx_rate']) ? (string) $data['fx_rate'] : null);
 
         return $this->ok($this->payload($refund));
     }

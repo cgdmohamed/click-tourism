@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ class BookingController extends ApiController
         $branch = $this->branch();
 
         $bookings = Booking::query()
-            ->with(['customer', 'items'])
+            ->with(['customer', 'items.supplier', 'items.taxProfile'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('customer_id'), function ($query, $customerId) {
@@ -39,9 +40,13 @@ class BookingController extends ApiController
     public function show(Booking $booking): JsonResponse
     {
         $this->authorizeBranchId($booking->branch_id);
-        $booking->load('customer', 'items', 'statusHistory', 'allocations');
+        $booking->load('customer', 'items.supplier', 'items.taxProfile', 'statusHistory');
 
-        return $this->ok($booking->toApiArray(true));
+        $payload = $booking->toApiArray(true);
+        $payload['payments_count'] = (int) $booking->allocations()->distinct()->count('payment_id');
+        $payload['invoices_count'] = Invoice::query()->where('booking_id', $booking->id)->count();
+
+        return $this->ok($payload);
     }
 
     public function store(Request $request, BookingService $bookings): JsonResponse
@@ -67,7 +72,7 @@ class BookingController extends ApiController
             'items.*.cost_currency' => ['nullable', 'string', 'size:3'],
             'items.*.sell_currency' => ['nullable', 'string', 'size:3'],
             'items.*.supplier_id' => ['nullable', 'string'],
-            'items.*.tax_profile_id' => ['nullable', 'integer'],
+            'items.*.tax_profile_id' => ['nullable', 'regex:/^[0-9A-Za-z]+$/'],
         ]);
 
         $booking = $bookings->create($data, $this->actorId());

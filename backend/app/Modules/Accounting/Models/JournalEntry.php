@@ -82,6 +82,20 @@ class JournalEntry extends Model
         return $this->hasOne(self::class, 'reversal_of_id');
     }
 
+    /** Source types owned by a business document with its own cancel/reverse action. */
+    public const DOCUMENT_SOURCE_TYPES = [
+        'payment', 'payment_allocation', 'refund', 'supplier_payment', 'supplier_payment_application',
+        'invoice', 'invoice_application', 'accounting_document', 'expense', 'transfer', 'booking',
+        'employee_advance', 'employee_custody', 'opening_balance', 'accounting_schedule', 'fiscal_year',
+    ];
+
+    public function isDocumentEntry(): bool
+    {
+        $type = (string) $this->source_type;
+
+        return in_array($type, self::DOCUMENT_SOURCE_TYPES, true) || str_starts_with($type, 'fixed_asset');
+    }
+
     public function scopePosted($query)
     {
         return $query->where('status', 'posted');
