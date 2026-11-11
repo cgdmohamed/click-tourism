@@ -1973,12 +1973,33 @@ paths:
       description: >-
         Refused while unrecorded bank items remain or the adjusted balances do
         not agree within tolerance. Approved sessions store a JSON snapshot and
-        cannot be reopened; corrections require a new session.
+        stay locked until reopened (see reopen) or corrected by a new session.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - { name: reconciliation, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: Approved session with snapshot }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reconciliations/{reconciliation}/reopen:
+    post:
+      tags: [Treasury]
+      summary: Reopen the newest approved session of an account (requires reconciliation.approve)
+      description: Requires a reason; audited. Only the newest approved session per account can be reopened.
+      parameters:
+        - { name: reconciliation, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Reopened session }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
         '422': { $ref: '#/components/responses/Validation' }
