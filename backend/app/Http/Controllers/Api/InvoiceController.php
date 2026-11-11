@@ -21,6 +21,11 @@ class InvoiceController extends ApiController
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            ->when($request->query('booking_id'), function ($query, $reference) {
+                $bookingId = \App\Modules\Bookings\Models\Booking::query()
+                    ->where('public_id', $reference)->value('id');
+                return $query->where('booking_id', $bookingId ?? 0);
+            })
             ->when($request->query('party_type'), fn ($query, $partyType) => $query->where('party_type', $partyType))
             ->when($request->query('party_id'), function ($query, $partyId) use ($request) {
                 // Accept the public id as well as the internal one.
