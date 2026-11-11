@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
@@ -12,6 +13,7 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
+use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\PaymentMethod;
@@ -116,7 +118,7 @@ class InvoiceTest extends TestCase
 
     public function test_invoice_index_filters_by_booking_and_rejects_mismatched_customer(): void
     {
-        $booking = app(\App\Modules\Bookings\Services\BookingService::class)->create([
+        $booking = app(BookingService::class)->create([
             'customer_id' => $this->customer()->public_id,
             'branch_id' => $this->branch->public_id,
             'start_date' => now()->toDateString(),
@@ -141,7 +143,7 @@ class InvoiceTest extends TestCase
 
         $unrelated = $this->customerInvoicePayload();
         $unrelated['booking_id'] = $booking->public_id;
-        $other = \App\Modules\Parties\Models\Customer::query()->create([
+        $other = Customer::query()->create([
             'name_ar' => 'عميل آخر', 'name_en' => 'Other customer',
             'type' => 'individual', 'branch_id' => $this->branch->id, 'is_active' => true,
         ]);
