@@ -156,22 +156,15 @@ class BankReconciliationService
                 throw new DomainException('The statement period start must be on or before its end.');
             }
 
-            $movement = (int) array_sum(array_column($newLines, 'amount_minor'));
-            $opening = isset($data['opening_balance_minor']) && $data['opening_balance_minor'] !== null
-                ? (int) $data['opening_balance_minor']
-                : null;
-            $closing = isset($data['closing_balance_minor']) && $data['closing_balance_minor'] !== null
-                ? (int) $data['closing_balance_minor']
-                : null;
-
-            if ($opening === null && $closing === null) {
-                $opening = 0;
-                $closing = $movement;
-            } elseif ($opening === null) {
-                $opening = $closing - $movement;
-            } elseif ($closing === null) {
-                $closing = $opening + $movement;
-            }
+            // Balances are never guessed: they must be entered, read from the
+            // file's running-balance column, or (opening only) carried over
+            // from the previous approved reconciliation of the account.
+            [$opening, $closing, $balanceSource] = $this->resolveImportBalances(
+                $data,
+                $parsed,
+                $cashAccount,
+                $from,
+            );
 
             $statement = BankStatement::query()->create([
                 'cash_account_id' => $cashAccount->id,
@@ -184,6 +177,7 @@ class BankReconciliationService
                 'period_to' => $to,
                 'opening_balance_minor' => $opening,
                 'closing_balance_minor' => $closing,
+                'balance_source' => $balanceSource,
                 'currency_code' => $currency,
                 'line_count' => count($newLines),
                 'mapping' => $mapping,
@@ -211,6 +205,7 @@ class BankReconciliationService
                 'skipped_duplicates' => $skipped,
                 'opening_balance_minor' => $opening,
                 'closing_balance_minor' => $closing,
+                'balance_source' => $balanceSource,
             ], $actorId);
 
             return [
@@ -263,18 +258,13 @@ class BankReconciliationService
 
             $openingBook = $this->bookOpeningBalance($cashAccount, $from);
 
-            $statementMovement = (int) BankStatementLine::query()
-                ->where('cash_account_id', $cashAccount->id)
-                ->whereDate('line_date', '>=', $from)
-                ->whereDate('line_date', '<=', $to)
-                ->sum('amount_minor');
-
-            $openingBank = isset($data['opening_bank_balance_minor']) && $data['opening_bank_balance_minor'] !== null
-                ? (int) $data['opening_bank_balance_minor']
-                : (int) ($statement?->opening_balance_minor ?? 0);
-            $closingBank = isset($data['closing_bank_balance_minor']) && $data['closing_bank_balance_minor'] !== null
-                ? (int) $data['closing_bank_balance_minor']
-                : (int) ($statement?->closing_balance_minor ?? ($openingBank + $statementMovement));
+            [$openingBank, $closingBank, $balanceSource] = $this->resolveSessionBalances(
+                $data,
+                $cashAccount,
+                $statement,
+                $from,
+                $to,
+            );
 
             $reconciliation = BankReconciliation::query()->create([
                 'cash_account_id' => $cashAccount->id,
@@ -286,6 +276,7 @@ class BankReconciliationService
                 'opening_book_balance_minor' => $openingBook,
                 'opening_bank_balance_minor' => $openingBank,
                 'closing_bank_balance_minor' => $closingBank,
+                'balance_source' => $balanceSource,
                 'closing_book_balance_minor' => $openingBook,
                 'status' => BankReconciliation::STATUS_OPEN,
                 'notes' => $data['notes'] ?? null,
@@ -297,10 +288,171 @@ class BankReconciliationService
                 'period_to' => $to,
                 'opening_book_balance_minor' => $openingBook,
                 'closing_bank_balance_minor' => $closingBank,
+                'balance_source' => $balanceSource,
             ], $actorId);
 
             return $reconciliation->refresh()->load('cashAccount.account', 'branch');
         });
+    }
+
+    // ------------------------------------------------------------------
+    // Statement balances (never defaulted silently)
+    // ------------------------------------------------------------------
+
+    /**
+     * Opening/closing balance of an imported statement. Order of preference:
+     * the value the user entered, the file's running-balance column, and for
+     * the opening balance only, the closing balance of the previous approved
+     * reconciliation (Odoo carries the last reconciled balance forward).
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $parsed  all parsed rows in file order
+     * @return array{0: int, 1: int, 2: array{opening: string, closing: string}}
+     */
+    private function resolveImportBalances(array $data, array $parsed, CashAccount $cashAccount, string $from): array
+    {
+        $explicitOpening = isset($data['opening_balance_minor']) && $data['opening_balance_minor'] !== null
+            ? (int) $data['opening_balance_minor']
+            : null;
+        $explicitClosing = isset($data['closing_balance_minor']) && $data['closing_balance_minor'] !== null
+            ? (int) $data['closing_balance_minor']
+            : null;
+
+        $lineOpening = null;
+        $lineClosing = null;
+        if ($parsed !== [] && ! in_array(null, array_column($parsed, 'balance_after_minor'), true)) {
+            $ordered = $parsed;
+            if ((string) $ordered[0]['line_date'] > (string) $ordered[count($ordered) - 1]['line_date']) {
+                $ordered = array_reverse($ordered);
+            }
+            $first = $ordered[0];
+            $last = $ordered[count($ordered) - 1];
+            $lineOpening = (int) $first['balance_after_minor'] - (int) $first['amount_minor'];
+            $lineClosing = (int) $last['balance_after_minor'];
+        }
+
+        $source = ['opening' => 'explicit', 'closing' => 'explicit'];
+        $opening = $explicitOpening;
+        if ($opening === null && $lineOpening !== null) {
+            $opening = $lineOpening;
+            $source['opening'] = 'line_balance';
+        }
+        if ($opening === null) {
+            $previous = $this->previousApprovedClosing($cashAccount, $from);
+            if ($previous !== null) {
+                $opening = $previous;
+                $source['opening'] = 'previous_session';
+            }
+        }
+        if ($opening === null) {
+            throw new DomainException('The statement opening balance is required: enter it, map a balance column, or approve an earlier reconciliation of this account to carry its closing balance forward.');
+        }
+
+        $closing = $explicitClosing;
+        if ($closing === null && $lineClosing !== null) {
+            $closing = $lineClosing;
+            $source['closing'] = 'line_balance';
+        }
+        if ($closing === null) {
+            throw new DomainException('The statement closing balance is required: enter it or map a balance column.');
+        }
+
+        return [$opening, $closing, $source];
+    }
+
+    /**
+     * Bank-side balances of a session, with the same rule: explicit values,
+     * the statement's balances when the session covers the whole statement,
+     * the previous approved session's closing (opening) or the running balance
+     * of the statement lines. Anything else is refused.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{0: int, 1: int, 2: array{opening: string, closing: string}}
+     */
+    private function resolveSessionBalances(array $data, CashAccount $cashAccount, ?BankStatement $statement, string $from, string $to): array
+    {
+        $explicitOpening = isset($data['opening_bank_balance_minor']) && $data['opening_bank_balance_minor'] !== null
+            ? (int) $data['opening_bank_balance_minor']
+            : null;
+        $explicitClosing = isset($data['closing_bank_balance_minor']) && $data['closing_bank_balance_minor'] !== null
+            ? (int) $data['closing_bank_balance_minor']
+            : null;
+
+        $samePeriod = $statement !== null
+            && $statement->period_from?->toDateString() === $from
+            && $statement->period_to?->toDateString() === $to;
+        $statementSource = $statement !== null && $statement->balance_source === null ? 'statement_unverified' : 'statement';
+
+        $source = ['opening' => 'explicit', 'closing' => 'explicit'];
+
+        $opening = $explicitOpening;
+        if ($opening === null && $samePeriod) {
+            $opening = (int) $statement->opening_balance_minor;
+            $source['opening'] = $statementSource;
+        }
+        if ($opening === null) {
+            $previous = $this->previousApprovedClosing($cashAccount, $from);
+            if ($previous !== null) {
+                $opening = $previous;
+                $source['opening'] = 'previous_session';
+            }
+        }
+        if ($opening === null) {
+            $balance = $this->lineBalance($cashAccount, $from, '<');
+            if ($balance !== null) {
+                $opening = $balance;
+                $source['opening'] = 'line_balance';
+            }
+        }
+        if ($opening === null) {
+            throw new DomainException('The bank opening balance is required: enter it, pick a statement that covers this period, or approve an earlier reconciliation of this account.');
+        }
+
+        $closing = $explicitClosing;
+        if ($closing === null && $samePeriod) {
+            $closing = (int) $statement->closing_balance_minor;
+            $source['closing'] = $statementSource;
+        }
+        if ($closing === null) {
+            $balance = $this->lineBalance($cashAccount, $to, '<=', $from);
+            if ($balance !== null) {
+                $closing = $balance;
+                $source['closing'] = 'line_balance';
+            }
+        }
+        if ($closing === null) {
+            throw new DomainException('The bank closing balance is required: enter it or pick a statement that covers this period.');
+        }
+
+        return [$opening, $closing, $source];
+    }
+
+    private function previousApprovedClosing(CashAccount $cashAccount, string $before): ?int
+    {
+        $previous = BankReconciliation::query()
+            ->where('cash_account_id', $cashAccount->id)
+            ->where('status', BankReconciliation::STATUS_APPROVED)
+            ->whereDate('period_to', '<', $before)
+            ->orderByDesc('period_to')
+            ->orderByDesc('id')
+            ->first();
+
+        return $previous?->closing_bank_balance_minor;
+    }
+
+    /** Running balance of the latest statement line dated before / up to a day. */
+    private function lineBalance(CashAccount $cashAccount, string $date, string $operator, ?string $notBefore = null): ?int
+    {
+        $line = BankStatementLine::query()
+            ->where('cash_account_id', $cashAccount->id)
+            ->whereNotNull('balance_after_minor')
+            ->whereDate('line_date', $operator, $date)
+            ->when($notBefore !== null, fn ($query) => $query->whereDate('line_date', '>=', $notBefore))
+            ->orderByDesc('line_date')
+            ->orderByDesc('id')
+            ->first();
+
+        return $line?->balance_after_minor;
     }
 
     // ------------------------------------------------------------------
@@ -405,7 +557,7 @@ class BankReconciliationService
             $journalConsumed = $this->consumedJournal($journalLines->pluck('id')->all());
             $tolerance = $this->tolerance();
             $foreign = $this->isForeign($reconciliation->cashAccount);
-            $voided = $this->voidedLineIds($journalLines->values(), $foreign, $journalConsumed);
+            $voided = $this->voidedLineIds($journalLines->values(), $foreign, $journalConsumed, $reconciliation->period_to->toDateString());
 
             $rows = [];
             $totals = [];
@@ -775,6 +927,18 @@ class BankReconciliationService
                 throw new DomainException('Post or cancel the proposed adjustment vouchers before approving the reconciliation.');
             }
 
+            // The bank balances must be known, not defaulted: a session whose
+            // balances were never confirmed (created before sources were
+            // recorded, or taken from an unverified legacy statement) can only
+            // be approved when its statement is internally consistent.
+            $source = $reconciliation->balance_source;
+            $unverified = ! is_array($source)
+                || empty($source['opening']) || empty($source['closing'])
+                || in_array('statement_unverified', [$source['opening'], $source['closing']], true);
+            if ($unverified && ! $summary['statement_balanced']) {
+                throw new DomainException('The bank opening/closing balances of this reconciliation were never confirmed and do not agree with the statement movement. Create a new reconciliation with explicit balances.');
+            }
+
             if (! $summary['reconciled']) {
                 throw new DomainException(sprintf(
                     'The reconciliation is not balanced: the unexplained difference is %s %s (tolerance %s). Match or explain the remaining items first.',
@@ -891,9 +1055,17 @@ class BankReconciliationService
         $foreign = $this->isForeign($reconciliation->cashAccount);
         $lines = $this->bookLineQuery($reconciliation)->orderBy('journal_entry_id')->orderBy('id')->get();
         $consumed = $this->consumedJournal($lines->pluck('id')->all());
-        $voided = $this->voidedLineIds($lines, $foreign, $consumed);
+        $voided = $this->voidedLineIds($lines, $foreign, $consumed, $reconciliation->period_to->toDateString());
+        $periodEnd = $reconciliation->period_to->toDateString();
+        $matchedHere = $lines->isEmpty() ? [] : BankReconciliationMatch::query()
+            ->where('bank_reconciliation_id', $reconciliation->id)
+            ->groupBy('journal_line_id')
+            ->selectRaw('journal_line_id, SUM(amount_minor) as total')
+            ->pluck('total', 'journal_line_id')
+            ->map(fn ($total) => (int) $total)
+            ->all();
 
-        return $lines->map(function (JournalLine $line) use ($consumed, $voided, $foreign) {
+        return $lines->map(function (JournalLine $line) use ($consumed, $voided, $foreign, $periodEnd, $matchedHere) {
             [$debit, $credit] = $this->nativeAmounts($line, $foreign);
             $matched = (int) ($consumed[$line->id] ?? 0);
             $amount = $debit > 0 ? $debit : $credit;
@@ -903,6 +1075,11 @@ class BankReconciliationService
                 'journal_entry_id' => $line->entry?->public_id,
                 'entry_number' => $line->entry?->number,
                 'entry_date' => $line->entry?->entry_date?->toDateString(),
+                'entry_memo' => $line->entry?->memo,
+                // Posted after the period end: loaded by the look-ahead window
+                // for matching only, never part of this period's balances.
+                'after_period_end' => (string) $line->entry?->entry_date?->toDateString() > $periodEnd,
+                'matched_here_minor' => (int) ($matchedHere[$line->id] ?? 0),
                 'description' => $line->description ?? $line->entry?->memo,
                 'source_type' => $line->entry?->source_type,
                 'branch_id' => $line->branch?->public_id,
@@ -956,6 +1133,8 @@ class BankReconciliationService
         $depositsInTransit = 0;
         $outstandingPayments = 0;
         $toleranceDifference = 0;
+        $recordedAfterPeriod = 0;
+        $afterPeriodMatched = 0;
         $from = $reconciliation->period_from->toDateString();
         $to = $reconciliation->period_to->toDateString();
 
@@ -969,6 +1148,22 @@ class BankReconciliationService
             $residual = $line['remaining_minor'];
 
             if (! empty($line['reversed'])) {
+                continue;
+            }
+
+            if (! empty($line['after_period_end'])) {
+                // Look-ahead item: not in the period's book balance, so an
+                // unmatched one is neither a deposit in transit nor an
+                // unpresented payment. One matched in THIS session is a bank
+                // item the ledger only recorded after period end (cleared).
+                if ($line['matched_here_minor'] > 0) {
+                    $afterPeriodMatched++;
+                    $recordedAfterPeriod += ($line['debit_minor'] > 0 ? 1 : -1) * $line['matched_here_minor'];
+                }
+                if ($line['matched_minor'] > 0) {
+                    $toleranceDifference += abs($residual);
+                }
+
                 continue;
             }
 
@@ -1003,7 +1198,7 @@ class BankReconciliationService
         $bookClosing = $reconciliation->opening_book_balance_minor + $bookMovement;
 
         $adjustedBank = $reconciliation->closing_bank_balance_minor + $depositsInTransit - $outstandingPayments;
-        $adjustedBook = $bookClosing + $unrecordedBankCredits - $unrecordedBankDebits;
+        $adjustedBook = $bookClosing + $unrecordedBankCredits - $unrecordedBankDebits + $recordedAfterPeriod;
         $difference = $adjustedBank - $adjustedBook;
 
         return [
@@ -1026,6 +1221,12 @@ class BankReconciliationService
             'difference_minor' => $difference,
             'tolerance_minor' => $tolerance,
             'window_days' => $this->windowDays(),
+            'lookahead_days' => $this->lookaheadDays(),
+            // Net ledger amount posted after period_to that clears bank lines of this
+            // period. Added to the adjusted book side only; book_closing stays the
+            // ledger balance at period end.
+            'recorded_after_period_minor' => $recordedAfterPeriod,
+            'after_period_matched_lines' => $afterPeriodMatched,
             // Reconciled means the adjusted balances agree AND no bank line is
             // still unrecorded. Outstanding book items (deposits in transit,
             // unpresented checks) may legitimately remain open.
@@ -1074,6 +1275,9 @@ class BankReconciliationService
         foreach ($bookLines as $line) {
             $residual = $line['remaining_minor'];
             if ($residual <= 0 || ! empty($line['reversed'])) {
+                continue;
+            }
+            if (! empty($line['after_period_end']) && $line['matched_minor'] === 0) {
                 continue;
             }
 
@@ -1158,6 +1362,9 @@ class BankReconciliationService
                     'difference_minor' => $difference,
                     'days_apart' => $days,
                     'reference_match' => $this->referenceMatches($bank['bank_reference'], $book),
+                    'evidence' => $this->evidenceScore($bank, $book),
+                    'after_period_end' => ! empty($book['after_period_end']),
+                    'disambiguated' => false,
                     'ambiguous' => false,
                 ];
             }
@@ -1170,6 +1377,8 @@ class BankReconciliationService
             $pairs[$position]['ambiguous'] = $bankCount[$pair['bank_line_id']] > 1 || $bookCount[$pair['journal_line_id']] > 1;
         }
 
+        $pairs = $this->disambiguate($pairs);
+
         // Fully ordered (ids last) so the outcome never depends on sort stability.
         usort($pairs, function (array $a, array $b) {
             return [$a['ambiguous'], ! $a['reference_match'], $a['days_apart'], $a['difference_minor'], $a['line_date'], $a['bank_line_id'], $a['journal_line_id']]
@@ -1177,6 +1386,113 @@ class BankReconciliationService
         });
 
         return $pairs;
+    }
+
+    /**
+     * Among equal-amount candidates, prefer the pair whose bank reference /
+     * description matches the entry number, memo or line description (Odoo
+     * prefers the reference). A pair wins only when its evidence is strictly
+     * the best for BOTH its bank line and its ledger line; the competing pairs
+     * of those two lines are then dropped. Anything still tied stays
+     * ambiguous and is left for manual matching.
+     *
+     * @param  array<int, array<string, mixed>>  $pairs
+     * @return array<int, array<string, mixed>>
+     */
+    private function disambiguate(array $pairs): array
+    {
+        $byBank = [];
+        $byBook = [];
+        foreach ($pairs as $position => $pair) {
+            $byBank[$pair['bank_line_id']][] = $position;
+            $byBook[$pair['journal_line_id']][] = $position;
+        }
+
+        $top = function (array $positions) use ($pairs): array {
+            $max = max(array_map(fn (int $position) => $pairs[$position]['evidence'], $positions));
+
+            return [$max, count(array_filter($positions, fn (int $position) => $pairs[$position]['evidence'] === $max))];
+        };
+
+        $drop = [];
+        foreach ($pairs as $position => $pair) {
+            if (! $pair['ambiguous'] || $pair['evidence'] <= 0) {
+                continue;
+            }
+            [$bankMax, $bankTies] = $top($byBank[$pair['bank_line_id']]);
+            [$bookMax, $bookTies] = $top($byBook[$pair['journal_line_id']]);
+            if ($pair['evidence'] !== $bankMax || $pair['evidence'] !== $bookMax || $bankTies !== 1 || $bookTies !== 1) {
+                continue;
+            }
+
+            $pairs[$position]['ambiguous'] = false;
+            $pairs[$position]['disambiguated'] = true;
+            foreach (array_merge($byBank[$pair['bank_line_id']], $byBook[$pair['journal_line_id']]) as $other) {
+                if ($other !== $position) {
+                    $drop[$other] = true;
+                }
+            }
+        }
+
+        $kept = [];
+        foreach ($pairs as $position => $pair) {
+            if (! isset($drop[$position])) {
+                $kept[] = $pair;
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
+     * 4 bank reference matches the entry number, 3 it matches the memo or line
+     * description, 2 the bank description contains the entry number, 1 they
+     * share a word of 4+ characters, 0 no evidence.
+     *
+     * @param  array<string, mixed>  $bank
+     * @param  array<string, mixed>  $book
+     */
+    private function evidenceScore(array $bank, array $book): int
+    {
+        $reference = $this->normalizeReference($bank['bank_reference'] ?? null);
+        $number = $this->normalizeReference($book['entry_number'] ?? null);
+        $texts = [
+            $this->normalizeReference($book['entry_memo'] ?? null),
+            $this->normalizeReference($book['description'] ?? null),
+        ];
+        $related = fn (string $a, string $b): bool => $a !== '' && $b !== '' && (str_contains($a, $b) || str_contains($b, $a));
+
+        if (strlen($reference) >= 3) {
+            if ($related($number, $reference)) {
+                return 4;
+            }
+            foreach ($texts as $text) {
+                if ($related($text, $reference)) {
+                    return 3;
+                }
+            }
+        }
+
+        $description = $this->normalizeReference(($bank['description'] ?? '').' '.($bank['party_name'] ?? ''));
+        if (strlen($number) >= 4 && str_contains($description, $number)) {
+            return 2;
+        }
+
+        $bankWords = $this->words(($bank['description'] ?? '').' '.($bank['bank_reference'] ?? '').' '.($bank['party_name'] ?? ''));
+        $bookWords = $this->words(($book['entry_memo'] ?? '').' '.($book['description'] ?? '').' '.($book['entry_number'] ?? ''));
+        if (array_intersect($bankWords, $bookWords) !== []) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    /** @return array<int, string> distinct lowercase words of 4+ characters (Latin or Arabic) */
+    private function words(string $text): array
+    {
+        $parts = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($text)) ?: [];
+
+        return array_values(array_unique(array_filter($parts, fn (string $word) => mb_strlen($word) >= 4)));
     }
 
     private function daysBetween(string $a, string $b): int
@@ -1267,15 +1583,23 @@ class BankReconciliationService
         // Postings up to the period end, not only inside it: an unpresented
         // check or deposit in transit from an earlier period still affects the
         // bank statement and must stay visible so it can be matched when it
-        // clears, or shown as an outstanding item.
+        // clears, or shown as an outstanding item. Postings up to the look-ahead
+        // window AFTER the period end are loaded too, for matching only (Odoo
+        // matches regardless of period); they never enter the period balance.
         return JournalLine::query()
             ->with(['entry', 'account', 'branch'])
             ->where('account_id', $cashAccount->account_id)
             ->whereHas('entry', function (Builder $query) use ($reconciliation) {
                 $query->where('status', 'posted')
-                    ->whereDate('entry_date', '<=', $reconciliation->period_to->toDateString());
+                    ->whereDate('entry_date', '<=', $this->bookWindowEnd($reconciliation));
             })
             ->when($cashAccount->branch_id !== null, fn (Builder $query) => $query->where('branch_id', $cashAccount->branch_id));
+    }
+
+    /** Last ledger date loaded for matching: period end plus the look-ahead window. */
+    private function bookWindowEnd(BankReconciliation $reconciliation): string
+    {
+        return $reconciliation->period_to->copy()->addDays($this->lookaheadDays())->toDateString();
     }
 
     private function bookLineQuery(BankReconciliation $reconciliation): Builder
@@ -1337,7 +1661,7 @@ class BankReconciliationService
      * @param  array<int, int>  $consumed
      * @return array<int, true>
      */
-    private function voidedLineIds($lines, bool $foreign, array $consumed): array
+    private function voidedLineIds($lines, bool $foreign, array $consumed, string $periodEnd): array
     {
         $byEntry = $lines->groupBy('journal_entry_id');
         $voided = [];
@@ -1345,6 +1669,12 @@ class BankReconciliationService
         foreach ($lines as $reversalLine) {
             $originalEntryId = $reversalLine->entry?->reversal_of_id;
             if ($originalEntryId === null || isset($voided[$reversalLine->id]) || ($consumed[$reversalLine->id] ?? 0) > 0) {
+                continue;
+            }
+            // A reversal posted after the period end (look-ahead) does not
+            // exist yet at period end: the original is a genuine outstanding
+            // item of this period and is paired out in the later session.
+            if ((string) $reversalLine->entry?->entry_date?->toDateString() > $periodEnd) {
                 continue;
             }
 
@@ -1428,6 +1758,11 @@ class BankReconciliationService
     private function tolerance(): int
     {
         return max(0, $this->settings->int('treasury', 'reconciliation_tolerance_minor', 0));
+    }
+
+    private function lookaheadDays(): int
+    {
+        return min(366, max(0, $this->settings->int('treasury', 'reconciliation_lookahead_days', 31)));
     }
 
     private function windowDays(): int

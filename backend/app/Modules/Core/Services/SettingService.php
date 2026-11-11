@@ -108,6 +108,10 @@ class SettingService
             // PENDING ACCOUNTANT APPROVAL (DEC-037): bank reconciliation matching rules.
             'reconciliation_tolerance_minor' => '0',
             'reconciliation_date_window_days' => '5',
+            // Ledger lines posted up to this many days AFTER the period end may be matched to a bank
+            // line of the period (Odoo matches regardless of period). Matching only: they never
+            // change the period's book balance. 0 disables the look-ahead; maximum 366.
+            'reconciliation_lookahead_days' => '31',
             'reconciliation_auto_match' => 'false',
         ],
         'expenses' => [

@@ -12,6 +12,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Expenses\Models\Expense;
 use App\Modules\Treasury\Models\BankReconciliation;
+use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -64,6 +65,8 @@ class PeriodEndChecklistService
             ->whereDate('period_from', '<=', $end)
             ->whereDate('period_to', '>=', $start)
             ->count();
+
+        $unreconciledBanks = $this->unreconciledBankAccounts($branchId, $start, $end);
 
         $draftSchedules = AccountingSchedule::query()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
@@ -133,6 +136,16 @@ class PeriodEndChecklistService
                 $reconciliations === 0,
                 $reconciliations > 0 ? "{$reconciliations} bank reconciliations for this period are not approved." : null,
                 $reconciliations,
+            ),
+            $this->check(
+                'unreconciled_bank_accounts',
+                'كل حساب بنكي له مطابقة في الفترة',
+                'Every bank account has a reconciliation for the period',
+                $unreconciledBanks === [],
+                $unreconciledBanks === [] ? null : count($unreconciledBanks).' bank accounts have no reconciliation session for this period.',
+                count($unreconciledBanks),
+                $unreconciledBanks,
+                false,
             ),
             $this->check(
                 'draft_schedules',
@@ -258,6 +271,49 @@ class PeriodEndChecklistService
             ['branches' => $missing],
             false,
         );
+    }
+
+    /**
+     * Active bank accounts (not cash boxes) that have ledger activity up to
+     * the period end but no reconciliation session of any status overlapping
+     * the period. Advisory only (non-blocking): a bank without movement does
+     * not need a session.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function unreconciledBankAccounts(?int $branchId, string $start, string $end): array
+    {
+        $reconciled = BankReconciliation::query()
+            ->whereDate('period_from', '<=', $end)
+            ->whereDate('period_to', '>=', $start)
+            ->pluck('cash_account_id')
+            ->all();
+
+        return CashAccount::query()
+            ->where('kind', 'bank')
+            ->where('is_active', true)
+            ->when($branchId, fn ($query) => $query->where(
+                fn ($inner) => $inner->where('branch_id', $branchId)->orWhereNull('branch_id'),
+            ))
+            ->whereNotIn('id', $reconciled === [] ? [0] : $reconciled)
+            ->whereExists(function ($query) use ($end) {
+                $query->selectRaw('1')
+                    ->from('journal_lines as jl')
+                    ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+                    ->whereColumn('jl.account_id', 'cash_accounts.account_id')
+                    ->where('je.status', 'posted')
+                    ->whereDate('je.entry_date', '<=', $end);
+            })
+            ->orderBy('id')
+            ->get()
+            ->map(fn (CashAccount $account) => [
+                'id' => $account->public_id,
+                'name_en' => $account->name_en,
+                'name_ar' => $account->name_ar,
+                'currency' => $account->currency_code,
+            ])
+            ->values()
+            ->all();
     }
 
     /** @return array<int, array<string, mixed>> */

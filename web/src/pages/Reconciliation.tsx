@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, formatDateTime, toMinor, todayISO } from '../lib/format'
 import { allocateMatch } from '../lib/reconciliationAllocation'
+import { balanceSourceLabel, balancesUnconfirmed, type BalanceSource } from '../lib/reconciliationBalance'
 import {
   Badge,
   Button,
@@ -46,6 +47,7 @@ type Statement = {
   period_to: string | null
   opening_balance_minor: number | null
   closing_balance_minor: number | null
+  balance_source?: BalanceSource
   currency: string
   line_count: number
   imported_at: string
@@ -76,6 +78,7 @@ type Session = {
   opening_bank_balance_minor: number
   closing_bank_balance_minor: number
   closing_book_balance_minor: number
+  balance_source?: BalanceSource
   notes: string | null
   adjustment_document_ids: string[]
   approved_at: string | null
@@ -101,6 +104,9 @@ type Summary = {
   difference_minor: number
   tolerance_minor: number
   window_days: number
+  lookahead_days?: number
+  recorded_after_period_minor?: number
+  after_period_matched_lines?: number
   reconciled: boolean
   bank_lines: number
   book_lines: number
@@ -135,6 +141,7 @@ type BookLine = {
   matched_minor: number
   remaining_minor: number
   reversed?: boolean
+  after_period_end?: boolean
 }
 
 type MatchRow = {
@@ -164,6 +171,8 @@ type Candidate = {
   difference_minor: number
   days_apart: number
   ambiguous: boolean
+  disambiguated?: boolean
+  after_period_end?: boolean
 }
 
 type Difference = {
@@ -650,6 +659,9 @@ export default function Reconciliation() {
                 {summaryValue(L('دائن بنكي غير مسجل', 'Unrecorded bank credits'), detail.summary.unrecorded_bank_credits_minor)}
                 {summaryValue(L('البنك المعدّل', 'Adjusted bank'), adjustedBank)}
                 {summaryValue(L('الدفاتر المعدّلة', 'Adjusted book'), adjustedBook)}
+                {(detail.summary.recorded_after_period_minor ?? 0) !== 0
+                  ? summaryValue(L('مسجّل بعد نهاية الفترة (مطابق)', 'Recorded after period end (matched)'), detail.summary.recorded_after_period_minor ?? 0)
+                  : null}
                 {summaryValue(L('الفرق', 'Difference'), detail.summary.difference_minor)}
                 <div>
                   <p className="text-small text-text-subtle">{L('السماحية / نافذة التاريخ', 'Tolerance / date window')}</p>
@@ -659,6 +671,30 @@ export default function Reconciliation() {
                   </p>
                 </div>
               </div>
+              <p className="text-small border-t border-border-subtle px-5 py-3 text-text-subtle">
+                {L('مصدر أرصدة البنك: ', 'Bank balances source: ')}
+                {!balancesUnconfirmed(detail.balance_source) ? (
+                  <>
+                    {L('افتتاحي — ', 'opening — ')}
+                    {balanceSourceLabel(detail.balance_source, 'opening', locale)}
+                    {' · '}
+                    {L('ختامي — ', 'closing — ')}
+                    {balanceSourceLabel(detail.balance_source, 'closing', locale)}
+                  </>
+                ) : (
+                  <span className="text-warning-text">
+                    {L('غير مؤكدة (جلسة أو كشف قديم): لا يمكن الاعتماد إلا إذا طابقت الأرصدة حركة الكشف.', 'unconfirmed (older session or statement): approval needs the balances to agree with the statement movement.')}
+                  </span>
+                )}
+              </p>
+              {(detail.summary.lookahead_days ?? 0) > 0 ? (
+                <p className="text-small border-t border-border-subtle px-5 py-3 text-text-subtle">
+                  {L(
+                    `قيود مؤرخة حتى ${detail.summary.lookahead_days} يومًا بعد نهاية الفترة تظهر للمطابقة فقط ولا تدخل في رصيد الفترة.`,
+                    `Ledger entries dated up to ${detail.summary.lookahead_days} days after the period end are shown for matching only and never change the period balance.`,
+                  )}
+                </p>
+              ) : null}
               {(detail.summary.excluded_non_native_lines ?? 0) > 0 ? (
                 <p className="text-small border-t border-border-subtle px-5 py-3 text-text-subtle">
                   {L(
@@ -751,7 +787,15 @@ export default function Reconciliation() {
                       <tr key={`${candidate.bank_line_id}-${candidate.journal_line_id}`}>
                         <Td className="tabular">{formatDate(candidate.line_date, locale)}</Td>
                         <Td>{detail.bank_lines.find((line) => line.id === candidate.bank_line_id)?.description ?? '—'}</Td>
-                        <Td>{detail.book_lines.find((line) => line.id === candidate.journal_line_id)?.description ?? '—'}</Td>
+                        <Td>
+                          {detail.book_lines.find((line) => line.id === candidate.journal_line_id)?.description ?? '—'}
+                          {candidate.after_period_end ? (
+                            <div><Badge tone="brand">{L('مؤرخ بعد نهاية الفترة', 'Dated after period end')}</Badge></div>
+                          ) : null}
+                          {candidate.disambiguated ? (
+                            <div><Badge tone="positive">{L('رُجّح بالمرجع/الوصف', 'Chosen by reference/description')}</Badge></div>
+                          ) : null}
+                        </Td>
                         <Td className="text-end">
                           <Money amountMinor={candidate.amount_minor} currency={detail.currency} />
                         </Td>
@@ -877,6 +921,7 @@ export default function Reconciliation() {
                         {line.description ?? '—'}
                         {line.source_type ? <div className="text-small text-text-subtle">{line.source_type}</div> : null}
                         {line.reversed ? <Badge tone="neutral">{L('معكوس ومُقاصّ', 'Reversed & paired out')}</Badge> : null}
+                        {line.after_period_end ? <Badge tone="brand">{L('مؤرخ بعد نهاية الفترة', 'Dated after period end')}</Badge> : null}
                       </Td>
                       <Td className="text-end"><Money amountMinor={line.amount_minor} currency={detail.currency} /></Td>
                       <Td className={`text-end ${line.remaining_minor > 0 ? 'text-warning-text' : ''}`}>
@@ -1196,6 +1241,9 @@ export default function Reconciliation() {
                       ) : (
                         '—'
                       )}
+                      <div className="text-small text-text-subtle">
+                        {balanceSourceLabel(statement.balance_source, 'opening', locale)}
+                      </div>
                     </Td>
                     <Td className="text-end">
                       {statement.closing_balance_minor !== null ? (
@@ -1203,6 +1251,9 @@ export default function Reconciliation() {
                       ) : (
                         '—'
                       )}
+                      <div className="text-small text-text-subtle">
+                        {balanceSourceLabel(statement.balance_source, 'closing', locale)}
+                      </div>
                     </Td>
                     <Td className="tabular">{formatDateTime(statement.imported_at, locale)}</Td>
                     <Td className="text-end">
@@ -1320,10 +1371,16 @@ export default function Reconciliation() {
           <Field label={L('عمود السحب', 'Money out column')}>
             <Input value={importForm.money_out} onChange={(event) => setImportForm({ ...importForm, money_out: event.target.value })} dir="ltr" />
           </Field>
-          <Field label={L('الرصيد الافتتاحي', 'Opening balance')}>
+          <Field
+            label={L('الرصيد الافتتاحي', 'Opening balance')}
+            hint={L('مطلوب ما لم يحتوِ الملف على عمود رصيد أو وُجدت مطابقة معتمدة سابقة', 'Required unless the file has a balance column or an earlier reconciliation is approved')}
+          >
             <Input value={importForm.opening_balance_minor} onChange={(event) => setImportForm({ ...importForm, opening_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
-          <Field label={L('الرصيد الختامي', 'Closing balance')}>
+          <Field
+            label={L('الرصيد الختامي', 'Closing balance')}
+            hint={L('مطلوب ما لم يحتوِ الملف على عمود رصيد', 'Required unless the file has a balance column')}
+          >
             <Input value={importForm.closing_balance_minor} onChange={(event) => setImportForm({ ...importForm, closing_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={L('من تاريخ', 'Period from')}>
@@ -1378,10 +1435,10 @@ export default function Reconciliation() {
           <Field label={L('إلى تاريخ', 'Period to')} required>
             <Input type="date" value={sessionForm.period_to} onChange={(event) => setSessionForm({ ...sessionForm, period_to: event.target.value })} dir="ltr" />
           </Field>
-          <Field label={L('رصيد البنك الافتتاحي', 'Opening bank balance')} hint={L('اتركه فارغًا لاستخدام رصيد الكشف', 'Leave blank to use the statement balance')}>
+          <Field label={L('رصيد البنك الافتتاحي', 'Opening bank balance')} hint={L('اتركه فارغًا لاستخدام رصيد الكشف أو ختام المطابقة المعتمدة السابقة', 'Leave blank to use the statement balance or the previous approved reconciliation')}>
             <Input value={sessionForm.opening_bank_balance_minor} onChange={(event) => setSessionForm({ ...sessionForm, opening_bank_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
-          <Field label={L('رصيد البنك الختامي', 'Closing bank balance')}>
+          <Field label={L('رصيد البنك الختامي', 'Closing bank balance')} hint={L('مطلوب ما لم يغطِّ الكشف الفترة نفسها', 'Required unless a statement covers exactly this period')}>
             <Input value={sessionForm.closing_bank_balance_minor} onChange={(event) => setSessionForm({ ...sessionForm, closing_bank_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={L('ملاحظات', 'Notes')}>
