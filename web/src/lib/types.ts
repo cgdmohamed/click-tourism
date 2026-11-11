@@ -167,6 +167,7 @@ export type BookingStatusHistoryRow = {
 export type Booking = {
   id: string
   number: string
+  tour_departure_id?: string | null
   customer_id: string
   customer?: Customer
   branch_id: string
