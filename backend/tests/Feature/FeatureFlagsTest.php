@@ -28,6 +28,7 @@ class FeatureFlagsTest extends TestCase
         $this->getJson('/api/v1/feature-flags')->assertOk()
             ->assertExactJson(['data' => [
                 'tax_enabled' => false,
+                'tax_default_rate' => '0',
                 'credit_limit_policy' => 'warn',
                 'base_currency' => 'EGP',
                 'refund_segregation' => false,
@@ -35,11 +36,13 @@ class FeatureFlagsTest extends TestCase
 
         $settings = app(SettingService::class);
         $settings->set('tax', 'enabled', 'true');
+        $settings->set('tax', 'default_rate', '15');
         $settings->set('accounting', 'credit_limit_policy', 'block');
         $settings->set('accounting', 'refund_segregation', 'true');
 
         $this->getJson('/api/v1/feature-flags')->assertOk()
             ->assertJsonPath('data.tax_enabled', true)
+            ->assertJsonPath('data.tax_default_rate', '15')
             ->assertJsonPath('data.credit_limit_policy', 'block')
             ->assertJsonPath('data.refund_segregation', true);
     }
