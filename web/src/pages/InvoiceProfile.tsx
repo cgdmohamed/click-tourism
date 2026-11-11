@@ -124,6 +124,37 @@ export default function InvoiceProfile() {
           </DetailGrid>
         </Card>
 
+        {invoice.status === 'issued' && invoice.outstanding_minor > 0 ? (
+          <Card>
+            <CardHeader
+              title={locale === 'ar' ? 'تحصيل / سداد الفاتورة' : 'Settle this invoice'}
+              icon="creditCard"
+            />
+            <p className="text-medium text-text-subtle">
+              {invoice.type === 'customer_invoice'
+                ? locale === 'ar'
+                  ? 'سجّل سند قبض للعميل من شاشة التحصيلات، ثم اضغط «تطبيق على فاتورة» على السند واختر رقم الفاتورة الحالي. بدون خطوة التطبيق يظل المبلغ دفعة مقدمة ولا يخفض المستحق على الفاتورة.'
+                  : 'Record a customer receipt in Payments, then choose “Apply to invoice” on the receipt and select this invoice. Until applied, the payment remains an advance and does not reduce invoice outstanding.'
+                : locale === 'ar'
+                  ? 'سجّل دفعة المورد من شاشة مدفوعات الموردين، ثم طبّقها على فاتورة المورد المعتمدة بالطريقة المتاحة.'
+                  : 'Record a supplier payment, then apply it to the approved supplier invoice.'}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                to={invoice.type === 'customer_invoice' ? '/payments' : '/supplier-settlements'}
+                className="inline-flex items-center rounded-8 bg-brand-1 px-4 py-2 text-small font-semibold text-white"
+              >
+                {invoice.type === 'customer_invoice'
+                  ? locale === 'ar' ? 'الذهاب إلى سندات القبض' : 'Open customer receipts'
+                  : locale === 'ar' ? 'الذهاب إلى مدفوعات الموردين' : 'Open supplier payments'}
+              </Link>
+              <span className="self-center text-small text-text-subtle">
+                {locale === 'ar' ? 'رقم الفاتورة:' : 'Invoice:'} <strong dir="ltr">{invoice.number}</strong>
+              </span>
+            </div>
+          </Card>
+        ) : null}
+
         <Card>
           <CardHeader title={t('lineItems')} icon="listChecks" actions={<Badge tone="neutral">{invoice.lines?.length ?? 0}</Badge>} />
           {!invoice.lines || invoice.lines.length === 0 ? (
@@ -134,6 +165,8 @@ export default function InvoiceProfile() {
                 <tr>
                   <Th>{t('account')}</Th>
                   <Th>{t('description')}</Th>
+                  <Th className="text-end">{locale === 'ar' ? 'الكمية' : 'Qty'}</Th>
+                  <Th className="text-end">{locale === 'ar' ? 'سعر الوحدة' : 'Unit price'}</Th>
                   <Th className="text-end">{t('debit')}</Th>
                   <Th className="text-end">{t('credit')}</Th>
                   <Th className="text-end">{t('tax')}</Th>
@@ -156,6 +189,8 @@ export default function InvoiceProfile() {
                       )}
                     </Td>
                     <Td>{line.description || '—'}</Td>
+                    <Td className="text-end tabular">{line.quantity ?? '—'}</Td>
+                    <Td className="text-end">{line.unit_price_minor != null ? <Money amountMinor={line.unit_price_minor} currency={invoice.currency} /> : '—'}</Td>
                     <Td className="text-end">{line.debit_minor ? <Money amountMinor={line.debit_minor} currency={invoice.currency} /> : '—'}</Td>
                     <Td className="text-end">{line.credit_minor ? <Money amountMinor={line.credit_minor} currency={invoice.currency} /> : '—'}</Td>
                     <Td className="text-end">{line.tax_minor ? <Money amountMinor={line.tax_minor} currency={invoice.currency} /> : '—'}</Td>
