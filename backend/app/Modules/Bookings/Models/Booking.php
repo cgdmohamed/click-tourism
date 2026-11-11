@@ -24,6 +24,7 @@ class Booking extends Model
         'number',
         'customer_id',
         'branch_id',
+        'tour_departure_id',
         'owner_user_id',
         'status',
         'currency_code',
@@ -84,6 +85,11 @@ class Booking extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function tourDeparture()
+    {
+        return $this->belongsTo(TourDeparture::class);
+    }
+
     public function owner()
     {
         return $this->belongsTo(User::class, 'owner_user_id');
@@ -127,6 +133,7 @@ class Booking extends Model
             'customer_id' => $this->customer?->public_id,
             'customer' => $this->customer?->toApiArray(),
             'branch_id' => $this->branch?->public_id,
+            'tour_departure_id' => $this->tourDeparture?->public_id,
             'owner_user_id' => $this->owner?->public_id,
             'status' => $this->status,
             'start_date' => $this->start_date?->toDateString(),
