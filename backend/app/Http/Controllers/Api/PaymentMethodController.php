@@ -7,8 +7,8 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Payments\Models\PaymentMethod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class PaymentMethodController extends ApiController
 {
