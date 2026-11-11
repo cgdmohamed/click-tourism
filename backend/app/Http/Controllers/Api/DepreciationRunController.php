@@ -67,6 +67,15 @@ class DepreciationRunController extends ApiController
         return $this->ok($this->payload($service->postDepreciationRun($run, $this->actorId())));
     }
 
+    public function reverse(Request $request, FixedAssetDepreciationRun $run, FixedAssetService $service): JsonResponse
+    {
+        $this->authorizeBranchId($run->branch_id);
+
+        $data = $request->validate(['reason' => ['required', 'string', 'max:255']]);
+
+        return $this->ok($this->payload($service->reverseDepreciationRun($run, $data['reason'], $this->actorId())));
+    }
+
     public function destroy(FixedAssetDepreciationRun $run, FixedAssetService $service): JsonResponse
     {
         $this->authorizeBranchId($run->branch_id);

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Accounting\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Models\FixedAsset;
 use App\Modules\Accounting\Models\FixedAssetCategory;
@@ -38,6 +39,7 @@ class FixedAssetReportService
         [$fromPeriod, $toPeriod, $fromDate, $toDate] = $this->range($from, $to);
 
         $assets = FixedAsset::query()
+            ->where('status', '!=', FixedAsset::STATUS_DRAFT)
             ->with(['category', 'depreciationItems'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->get();
@@ -128,10 +130,10 @@ class FixedAssetReportService
     public function carryingValues(?Branch $branch, ?string $asOf = null, bool $includeDisposed = false): array
     {
         $date = $asOf !== null ? $this->assertDate($asOf) : Carbon::now()->toDateString();
-        $period = Carbon::parse($date)->format('Y-m');
-        $next = $this->nextPeriod($period);
+        $next = $this->beforePeriodFor($date);
 
         $assets = FixedAsset::query()
+            ->where('status', '!=', FixedAsset::STATUS_DRAFT)
             ->with(['branch', 'category'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when(! $includeDisposed, fn ($query) => $query->where(function ($query) use ($date) {
@@ -190,6 +192,7 @@ class FixedAssetReportService
         [$fromPeriod, $toPeriod, $fromDate, $toDate] = $this->range($from, $to);
 
         $base = FixedAsset::query()
+            ->where('status', '!=', FixedAsset::STATUS_DRAFT)
             ->with(['branch', 'category'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id));
 
@@ -262,8 +265,10 @@ class FixedAssetReportService
             ->orderBy('code')
             ->get();
 
+        // Draft assets are not in the ledger yet and are never compared.
         $assets = FixedAsset::query()
-            ->with('category')
+            ->with(['category', 'depreciationItems'])
+            ->where('status', '!=', FixedAsset::STATUS_DRAFT)
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($date !== null, fn ($query) => $query->whereDate('capitalization_date', '<=', $date))
             ->when($date !== null, fn ($query) => $query->where(function ($query) use ($date) {
@@ -278,29 +283,96 @@ class FixedAssetReportService
         foreach ($assets as $asset) {
             $categoryId = $asset->fixed_asset_category_id;
             $registerCost[$categoryId] = ($registerCost[$categoryId] ?? 0) + $asset->acquisition_value_base_minor;
-            $registerAccumulated[$categoryId] = ($registerAccumulated[$categoryId] ?? 0) + $asset->totalAccumulatedMinor();
+            // As of a date the register only counts what the ledger had by then.
+            $registerAccumulated[$categoryId] = ($registerAccumulated[$categoryId] ?? 0) + ($date !== null
+                ? $this->accumulatedAsOf($asset, $this->beforePeriodFor($date), $date)
+                : $asset->totalAccumulatedMinor());
+        }
+
+        // Categories may share GL accounts (the defaults do), so the control
+        // comparison is made once per distinct account, never per category.
+        $accountRows = [];
+        foreach ($categories as $category) {
+            $pairs = [
+                ['cost', $category->assetAccount, false, $registerCost],
+                ['accumulated', $category->accumulatedDepreciationAccount, true, $registerAccumulated],
+            ];
+            foreach ($pairs as [$role, $account, $creditNormal, $register]) {
+                if (! $account) {
+                    continue;
+                }
+                $key = $role.':'.$account->id;
+                $accountRows[$key] ??= [
+                    'role' => $role,
+                    'account' => $account,
+                    'credit_normal' => $creditNormal,
+                    'register_minor' => 0,
+                    'category_codes' => [],
+                ];
+                $accountRows[$key]['register_minor'] += $register[$category->id] ?? 0;
+                $accountRows[$key]['category_codes'][] = $category->code;
+            }
+        }
+
+        $accounts = [];
+        $totalCostDifference = 0;
+        $totalAccumulatedDifference = 0;
+        $byAccount = [];
+
+        foreach ($accountRows as $key => $row) {
+            $gl = $this->glBalance($row['account']->id, $branch, $date, $row['credit_normal']);
+            $difference = $row['register_minor'] - $gl;
+            $byAccount[$key] = ['gl' => $gl, 'difference' => $difference, 'shared' => count($row['category_codes']) > 1];
+
+            if ($row['role'] === 'cost') {
+                $totalCostDifference += $difference;
+            } else {
+                $totalAccumulatedDifference += $difference;
+            }
+
+            $accounts[] = [
+                'role' => $row['role'],
+                'account' => $row['account']->toApiArray(),
+                'category_codes' => $row['category_codes'],
+                'register_minor' => $row['register_minor'],
+                'gl_minor' => $gl,
+                'difference_minor' => $difference,
+                'is_reconciled' => $difference === 0,
+                'is_classified_fixed_asset' => $row['account']->classification === 'fixed_asset',
+            ];
+        }
+
+        // Ledger balances on fixed-asset accounts that no category maps to
+        // (a bill or opening balance booked straight to a cost account, party-less
+        // lines included) have no register counterpart: show them as a difference.
+        $mappedIds = array_values(array_unique(array_map(fn (array $row) => $row['account']->id, $accountRows)));
+        $unregistered = [];
+        $candidates = Account::query()
+            ->where('classification', 'fixed_asset')
+            ->where('type', 'asset')
+            ->whereNotIn('id', $mappedIds)
+            ->orderBy('code')
+            ->get();
+        foreach ($candidates as $account) {
+            $gl = $this->glBalance($account->id, $branch, $date, false);
+            if ($gl === 0) {
+                continue;
+            }
+            $totalCostDifference -= $gl;
+            $unregistered[] = [
+                'account' => $account->toApiArray(),
+                'gl_minor' => $gl,
+                'difference_minor' => -$gl,
+            ];
         }
 
         $rows = [];
-        $totalCostDifference = 0;
-        $totalAccumulatedDifference = 0;
-
         foreach ($categories as $category) {
-            $costBalance = $category->assetAccount
-                ? $this->glBalance($category->assetAccount->id, $branch, $date, false)
-                : 0;
-            $accumulatedBalance = $category->accumulatedDepreciationAccount
-                ? $this->glBalance($category->accumulatedDepreciationAccount->id, $branch, $date, true)
-                : 0;
+            $cost = $category->assetAccount ? $byAccount['cost:'.$category->assetAccount->id] : null;
+            $acc = $category->accumulatedDepreciationAccount ? $byAccount['accumulated:'.$category->accumulatedDepreciationAccount->id] : null;
 
-            $costRegister = $registerCost[$category->id] ?? 0;
-            $accumulatedRegister = $registerAccumulated[$category->id] ?? 0;
-            $costDifference = $costRegister - $costBalance;
-            $accumulatedDifference = $accumulatedRegister - $accumulatedBalance;
-
-            $totalCostDifference += $costDifference;
-            $totalAccumulatedDifference += $accumulatedDifference;
-
+            // A shared account has one ledger balance for several categories:
+            // those figures stay null on the row and live in `accounts`.
             $rows[] = [
                 'category_id' => $category->public_id,
                 'category_code' => $category->code,
@@ -308,13 +380,14 @@ class FixedAssetReportService
                 'asset_account' => $category->assetAccount?->toApiArray(),
                 'accumulated_depreciation_account' => $category->accumulatedDepreciationAccount?->toApiArray(),
                 'depreciation_expense_account' => $category->depreciationExpenseAccount?->toApiArray(),
-                'register_cost_minor' => $costRegister,
-                'gl_cost_minor' => $costBalance,
-                'cost_difference_minor' => $costDifference,
-                'register_accumulated_minor' => $accumulatedRegister,
-                'gl_accumulated_minor' => $accumulatedBalance,
-                'accumulated_difference_minor' => $accumulatedDifference,
-                'is_reconciled' => $costDifference === 0 && $accumulatedDifference === 0,
+                'register_cost_minor' => $registerCost[$category->id] ?? 0,
+                'gl_cost_minor' => $cost && ! $cost['shared'] ? $cost['gl'] : null,
+                'cost_difference_minor' => $cost && ! $cost['shared'] ? $cost['difference'] : null,
+                'register_accumulated_minor' => $registerAccumulated[$category->id] ?? 0,
+                'gl_accumulated_minor' => $acc && ! $acc['shared'] ? $acc['gl'] : null,
+                'accumulated_difference_minor' => $acc && ! $acc['shared'] ? $acc['difference'] : null,
+                'shared_accounts' => ($cost['shared'] ?? false) || ($acc['shared'] ?? false),
+                'is_reconciled' => ($cost['difference'] ?? 0) === 0 && ($acc['difference'] ?? 0) === 0,
             ];
         }
 
@@ -330,6 +403,8 @@ class FixedAssetReportService
                 ? 'Branch figures can differ by the cost of assets operationally transferred between branches; the GL control accounts are global.'
                 : 'Register and GL control accounts must agree at installation level.',
             'categories' => $rows,
+            'accounts' => $accounts,
+            'unregistered_accounts' => $unregistered,
         ];
     }
 
@@ -418,7 +493,25 @@ class FixedAssetReportService
             ->filter(fn (FixedAssetDepreciationItem $item) => $item->period < $beforePeriod)
             ->sum('amount_minor');
 
-        return (int) $depreciation + $this->impairmentAsOf($asset, $asOfDate);
+        // Depreciation charged inside the disposal entry counts from the disposal date.
+        $atDisposal = $asset->disposed_on !== null && ($asOfDate === null || $asset->disposed_on->toDateString() <= $asOfDate)
+            ? $asset->disposal_depreciation_minor
+            : 0;
+
+        return (int) $depreciation + $atDisposal + $this->impairmentAsOf($asset, $asOfDate);
+    }
+
+    /**
+     * Items whose month-end run date is on or before the date: a mid-month
+     * date does not yet include that month's depreciation (the GL doesn't).
+     */
+    private function beforePeriodFor(string $date): string
+    {
+        $day = Carbon::parse($date);
+
+        return $day->isSameDay($day->copy()->endOfMonth())
+            ? $this->nextPeriod($day->format('Y-m'))
+            : $day->format('Y-m');
     }
 
     private function impairmentAsOf(FixedAsset $asset, ?string $asOfDate): int
@@ -436,15 +529,9 @@ class FixedAssetReportService
 
     private function accumulatedAtDisposal(FixedAsset $asset): int
     {
-        if (! $asset->disposed_on) {
-            return $asset->totalAccumulatedMinor();
-        }
-
-        return $this->accumulatedAsOf(
-            $asset,
-            $asset->disposed_on->format('Y-m'),
-            $asset->disposed_on->toDateString(),
-        );
+        // The disposal entry removes everything accumulated to the disposal
+        // date (posted months, charge to date and applied impairments).
+        return $asset->totalAccumulatedMinor();
     }
 
     private function depreciationInRange(FixedAsset $asset, string $fromPeriod, string $toPeriod): int
@@ -453,7 +540,13 @@ class FixedAssetReportService
             ? $asset->depreciationItems
             : $asset->depreciationItems()->get();
 
-        return (int) $items
+        $inDisposalMonth = $asset->disposed_on !== null
+            && $asset->disposed_on->format('Y-m') >= $fromPeriod
+            && $asset->disposed_on->format('Y-m') <= $toPeriod
+                ? $asset->disposal_depreciation_minor
+                : 0;
+
+        return $inDisposalMonth + (int) $items
             ->where('status', FixedAssetDepreciationItem::STATUS_POSTED)
             ->filter(fn (FixedAssetDepreciationItem $item) => $item->period >= $fromPeriod && $item->period <= $toPeriod)
             ->sum('amount_minor');

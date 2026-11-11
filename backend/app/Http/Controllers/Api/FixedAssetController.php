@@ -180,6 +180,7 @@ class FixedAssetController extends ApiController
             'supplier_id' => ['nullable', 'string', 'max:40'],
             'cost_center_id' => ['nullable', 'string', 'max:40'],
             'employee_id' => ['nullable', 'string', 'max:40'],
+            'acquisition_journal_entry_id' => ['nullable', 'string', 'max:40'],
             'purchase_date' => ['nullable', 'date'],
             'capitalization_date' => [$presence, 'date'],
             'in_service_date' => ['nullable', 'date'],
