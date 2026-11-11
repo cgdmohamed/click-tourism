@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\DemoStatusController;
 use App\Http\Controllers\Api\DepreciationRunController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\FeatureFlagController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FixedAssetCategoryController;
 use App\Http\Controllers\Api\FixedAssetController;
@@ -55,6 +56,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('auth/me', [AuthController::class, 'me']);
         Route::post('auth/logout', [AuthController::class, 'logout']);
+        Route::get('feature-flags', [FeatureFlagController::class, 'show']);
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');
         Route::post('branches', [BranchController::class, 'store'])->middleware('permission:branches.create');
@@ -134,6 +136,7 @@ Route::prefix('v1')->group(function () {
         Route::post('fiscal-periods', [FiscalPeriodController::class, 'store'])->middleware('permission:periods.manage');
         Route::get('fiscal-years/suggested', [FiscalPeriodController::class, 'suggested'])->middleware('permission:periods.view');
         Route::get('fiscal-years/{fiscalYear}/close-checks', [FiscalPeriodController::class, 'closeChecks'])->middleware('permission:periods.view');
+        Route::get('fiscal-years/{fiscalYear}/close-preview', [FiscalPeriodController::class, 'closePreview'])->middleware('permission:periods.view');
         Route::post('fiscal-years/{fiscalYear}/close', [FiscalPeriodController::class, 'close'])->middleware('permission:periods.close');
         Route::post('fiscal-years/{fiscalYear}/reopen', [FiscalPeriodController::class, 'reopen'])->middleware('permission:periods.reopen');
         Route::patch('fiscal-periods/{period}/status', [FiscalPeriodController::class, 'updateStatus'])->middleware('permission:periods.manage');

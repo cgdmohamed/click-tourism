@@ -2,6 +2,7 @@
 
 namespace App\Modules\Treasury\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Accounting\Services\AccountingDocumentService;
@@ -598,6 +599,11 @@ class BankReconciliationService
                 if ($offset === $bankAccount || $offset === (string) $cashAccount->account->code) {
                     throw new DomainException('The charges/interest account cannot be the bank account itself.');
                 }
+            }
+
+            if (in_array('in', array_column($items, 'direction'), true)
+                && ! Account::query()->where('code', $interest)->exists()) {
+                throw new DomainException("Bank interest account {$interest} does not exist; run accounting:ensure-accounts --apply");
             }
 
             $lines = [];

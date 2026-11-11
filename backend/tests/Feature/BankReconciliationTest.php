@@ -841,6 +841,28 @@ class BankReconciliationTest extends TestCase
         $this->assertTrue($detail['summary']['reconciled']);
     }
 
+    public function test_missing_interest_account_gives_actionable_message(): void
+    {
+        $this->importStatement("Date,Description,Reference,Amount\n"
+            .$this->day(3).",Interest,INT-001,12.00\n")->assertCreated();
+        $session = $this->createSession([
+            'period_from' => $this->day(2),
+            'period_to' => $this->day(9),
+            'opening_bank_balance_minor' => 0,
+            'closing_bank_balance_minor' => 1200,
+        ])->assertCreated()->json('data.id');
+
+        Account::query()->where('code', '7920')->delete();
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson("/api/v1/reconciliations/{$session}/adjustment-voucher");
+        $response->assertStatus(422);
+        $this->assertStringContainsString(
+            'Bank interest account 7920 does not exist; run accounting:ensure-accounts --apply',
+            $response->getContent(),
+        );
+    }
+
     public function test_adjustment_voucher_is_draft_until_posted_and_approval_locks_session(): void
     {
         $this->importStatement("Date,Description,Reference,Amount\n"
