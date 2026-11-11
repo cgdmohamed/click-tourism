@@ -331,13 +331,13 @@ class UserManagementTest extends TestCase
 
         $this->postJson('/api/v1/users', $payload)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'One or more requested branches do not exist.');
+            ->assertJsonValidationErrors(['branch_ids.1']);
 
         $payload['branch_ids'] = [$this->branch->public_id];
         $payload['primary_branch_id'] = '01AAAAAAAAAAAAAAAAAAAAAAAA';
         $this->postJson('/api/v1/users', $payload)
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Requested primary branch does not exist.');
+            ->assertJsonValidationErrors(['primary_branch_id']);
 
         $this->assertDatabaseMissing('users', ['email' => 'unknown-branch@example.test']);
     }
