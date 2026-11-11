@@ -37,7 +37,7 @@ class AccountEditExportTest extends TestCase
         $this->withHeaders(['X-Branch-Id' => $this->branch->public_id])
             ->get('/api/v1/accounts/export')
             ->assertOk()
-            ->assertSee('code,name_ar,name_en,type,parent_code,is_postable,is_active,currency_code');
+            ->assertSee('code,name_ar,name_en,type,parent_code,is_postable,is_active,currency_code,classification');
     }
 
     public function test_account_with_history_can_be_renamed_but_not_retyped(): void

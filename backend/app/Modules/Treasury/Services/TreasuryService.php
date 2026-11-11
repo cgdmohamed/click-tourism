@@ -63,6 +63,7 @@ class TreasuryService
                         'is_postable' => true,
                         'is_active' => true,
                         'currency_code' => null,
+                        'classification' => Account::defaultClassification('asset', $code),
                     ]);
             }
 

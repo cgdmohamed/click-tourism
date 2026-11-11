@@ -518,7 +518,7 @@ class FinancialReportsReconciliationTest extends TestCase
                 'compare_as_of' => Carbon::now()->subMonth()->endOfMonth()->toDateString(),
             ]))
             ->assertOk()
-            ->assertJsonPath('data.classification', 'provisional_by_code')
+            ->assertJsonPath('data.classification', 'by_account')
             ->assertJsonPath('data.balanced', true);
 
         $data = $sheet->json('data');
@@ -572,7 +572,7 @@ class FinancialReportsReconciliationTest extends TestCase
         $bs = $this->withHeaders($this->headers())->get('/api/v1/reports/balance-sheet/export?'.http_build_query(['as_of' => $range['to']]))->assertOk()->getContent();
         $this->assertStringContainsString('"Current asset",1110', $bs);
         $this->assertStringContainsString('Total current assets', $bs);
-        $this->assertStringContainsString('provisional_by_code', $bs);
+        $this->assertStringContainsString('Classification,by_account', $bs);
     }
 
     public function test_reports_cannot_leak_other_branch_data(): void

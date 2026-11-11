@@ -67,6 +67,10 @@ class ChartOfAccountsSeeder extends Seeder
             }
 
             $attributes = $account + ['is_postable' => true, 'is_active' => true];
+            // Do not overwrite a classification the accountant already set.
+            if (! Account::query()->where('code', $account['code'])->whereNotNull('classification')->exists()) {
+                $attributes['classification'] = Account::defaultClassification($account['type'], $account['code']);
+            }
             if ($parentCode !== null) {
                 $attributes['parent_id'] = Account::query()->where('code', $parentCode)->value('id');
             }

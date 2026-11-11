@@ -81,6 +81,7 @@ class PartyLedgerService
                 'is_postable' => true,
                 'is_active' => true,
                 'currency_code' => null,
+                'classification' => $isReceivable ? 'current_asset' : 'current_liability',
             ]);
 
             $partyAccount = PartyAccount::query()->create([

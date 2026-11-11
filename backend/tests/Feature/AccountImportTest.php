@@ -122,7 +122,7 @@ class AccountImportTest extends TestCase
         $content = $export->getContent();
         $count = Account::query()->count();
         $snapshot = fn () => Account::query()->orderBy('code')->get()
-            ->map->only(['code', 'type', 'parent_id', 'is_postable', 'is_active', 'currency_code'])->all();
+            ->map->only(['code', 'type', 'parent_id', 'is_postable', 'is_active', 'currency_code', 'classification'])->all();
         $before = $snapshot();
 
         $this->assertStringContainsString('true', $content);

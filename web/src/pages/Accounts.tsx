@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import type { Account } from '../lib/types'
+import type { Account, AccountClassification } from '../lib/types'
 import {
   Badge,
   Button,
@@ -25,6 +25,23 @@ import { Icon } from '../components/icons'
 
 const accountTypes: Account['type'][] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
+/** Classifications allowed per account type (mirrors the backend). */
+const classificationsByType: Partial<Record<Account['type'], AccountClassification[]>> = {
+  asset: ['current_asset', 'non_current_asset', 'fixed_asset', 'prepayment'],
+  liability: ['current_liability', 'non_current_liability'],
+  equity: ['equity'],
+}
+
+const classificationLabels: Record<AccountClassification, { ar: string; en: string }> = {
+  current_asset: { ar: 'أصول متداولة', en: 'Current asset' },
+  non_current_asset: { ar: 'أصول غير متداولة', en: 'Non-current asset' },
+  fixed_asset: { ar: 'أصول ثابتة', en: 'Fixed asset' },
+  prepayment: { ar: 'مدفوعات مقدمة', en: 'Prepayment' },
+  current_liability: { ar: 'التزامات متداولة', en: 'Current liability' },
+  non_current_liability: { ar: 'التزامات غير متداولة', en: 'Non-current liability' },
+  equity: { ar: 'حقوق ملكية', en: 'Equity' },
+}
+
 type ImportRowError = { row: number; code: string; message: string; params?: Record<string, string> }
 
 const arImportErrors: Record<string, (p: Record<string, string>) => string> = {
@@ -33,6 +50,7 @@ const arImportErrors: Record<string, (p: Record<string, string>) => string> = {
   duplicate_code: (p) => `الكود '${p.code}' مكرر (ظهر أولًا في الصف ${p.first}).`,
   invalid_type: (p) => `نوع غير صالح '${p.type}'.`,
   invalid_boolean: (p) => `القيمة في العمود ${p.field} يجب أن تكون true أو false.`,
+  invalid_classification: (p) => `التصنيف '${p.classification}' غير صالح لنوع الحساب '${p.type}'.`,
   invalid_currency: (p) => `عملة غير معروفة '${p.currency}'.`,
   self_parent: () => 'لا يمكن أن يكون الحساب أبًا لنفسه.',
   parent_not_found: (p) => `الحساب الأب '${p.parent}' غير موجود.`,
@@ -64,6 +82,7 @@ export default function Accounts() {
     name_ar: '',
     name_en: '',
     type: 'asset' as Account['type'],
+    classification: '',
     parent_id: '',
     is_postable: true,
     is_active: true,
@@ -83,6 +102,7 @@ export default function Accounts() {
       const payload = {
         ...form,
         parent_id: form.parent_id || null,
+        classification: classificationsByType[form.type] ? form.classification || null : null,
       }
       if (editId) {
         const { data } = await api.patch<{ data: Account }>(`/accounts/${editId}`, payload)
@@ -100,6 +120,7 @@ export default function Accounts() {
         name_ar: '',
         name_en: '',
         type: 'asset',
+        classification: '',
         parent_id: '',
         is_postable: true,
         is_active: true,
@@ -167,6 +188,7 @@ export default function Accounts() {
       name_ar: account.name_ar,
       name_en: account.name_en,
       type: account.type,
+      classification: account.classification ?? '',
       parent_id: account.parent_id ?? '',
       is_postable: account.is_postable,
       is_active: account.is_active,
@@ -217,6 +239,7 @@ export default function Accounts() {
                 <Th>{t('code')}</Th>
                 <Th>{t('name')}</Th>
                 <Th>{t('accountType')}</Th>
+                <Th>{locale === 'ar' ? 'التصنيف' : 'Classification'}</Th>
                 <Th>{t('postable')}</Th>
                 <Th>{t('status')}</Th>
                 <Th className="text-end">{t('actions')}</Th>
@@ -231,6 +254,15 @@ export default function Accounts() {
                     <span className="ms-2 text-xs text-text-subtle">{locale === 'ar' ? account.name_en : account.name_ar}</span>
                   </Td>
                   <Td>{typeLabel(account.type)}</Td>
+                  <Td>
+                    {account.classification ? (
+                      classificationLabels[account.classification][locale === 'ar' ? 'ar' : 'en']
+                    ) : classificationsByType[account.type] ? (
+                      <Badge tone="warning">{locale === 'ar' ? 'غير مصنف' : 'Unclassified'}</Badge>
+                    ) : (
+                      <span className="text-text-subtlest">—</span>
+                    )}
+                  </Td>
                   <Td>
                     {account.is_postable ? (
                       <>
@@ -281,12 +313,25 @@ export default function Accounts() {
             />
           </Field>
           <Field label={t('accountType')} required>
-            <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as Account['type'] })}>
+            <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as Account['type'], classification: '' })}>
               {accountTypes.map((type) => (
                 <option key={type} value={type}>{typeLabel(type)}</option>
               ))}
             </Select>
           </Field>
+          {classificationsByType[form.type] ? (
+            <Field label={locale === 'ar' ? 'التصنيف في الميزانية' : 'Balance sheet classification'}>
+              <Select
+                value={form.classification}
+                onChange={(event) => setForm({ ...form, classification: event.target.value })}
+              >
+                <option value="">{locale === 'ar' ? 'غير مصنف' : 'Unclassified'}</option>
+                {(classificationsByType[form.type] ?? []).map((value) => (
+                  <option key={value} value={value}>{classificationLabels[value][locale === 'ar' ? 'ar' : 'en']}</option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
           <Field label={t('nameAr')} required>
             <Input value={form.name_ar} onChange={(event) => setForm({ ...form, name_ar: event.target.value })} />
           </Field>
