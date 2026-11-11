@@ -570,6 +570,7 @@ export default function Reports() {
                       setStatementPage(1)
                     }}
                     onSearch={partyPicker.setSearch}
+                    hasMore={partyPicker.hasMore}
                     options={partyPicker.options}
                   />
                 </Field>
@@ -689,6 +690,7 @@ export default function Reports() {
                     }}
                     clearLabel={t('allParties')}
                     onSearch={partyPicker.setSearch}
+                    hasMore={partyPicker.hasMore}
                     options={partyPicker.options}
                   />
                 </Field>

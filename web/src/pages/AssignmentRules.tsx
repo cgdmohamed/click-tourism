@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import type { AssignmentRule, User } from '../lib/types'
+import { useRemoteOptions } from '../lib/useRemoteOptions'
+import type { AssignmentRule } from '../lib/types'
 import {
   Badge,
   Button,
@@ -16,6 +17,7 @@ import {
   Modal,
   PageHeader,
   SearchableSelect,
+  type SelectOption,
   Select,
   Table,
   Td,
@@ -23,6 +25,12 @@ import {
 } from '../components/ui'
 
 type Strategy = 'least_loaded' | 'round_robin' | 'manual'
+
+const userToOption = (user: { id: string; name: string; email?: string }): SelectOption => ({
+  value: user.id,
+  label: user.name,
+  hint: user.email,
+})
 
 export default function AssignmentRules() {
   const { t, locale } = useI18n()
@@ -51,14 +59,17 @@ export default function AssignmentRules() {
 
   const rules = rulesQuery.data ?? []
 
-  const usersQuery = useQuery({
-    queryKey: ['users-for-rules'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: User[] }>('/users', {
-        params: { per_page: 100 },
-      })
-      return data.data
-    },
+  // The saved target of the rule being edited stays labelled even if the search no longer lists it.
+  const knownTargets = useMemo(
+    () => rules.flatMap((rule) => (rule.target_user ? [{ value: rule.target_user.id, label: rule.target_user.name }] : [])),
+    [rules],
+  )
+  const userPicker = useRemoteOptions<{ id: string; name: string; email?: string }>({
+    endpoint: '/users',
+    keyPrefix: 'users-for-rules',
+    toOption: userToOption,
+    value: form.target_user_id,
+    known: knownTargets,
   })
 
   const createOrUpdate = useMutation({
@@ -119,7 +130,7 @@ export default function AssignmentRules() {
       source_id: rule.source_id ?? '',
       service_category: rule.service_category ?? '',
       strategy: (rule.strategy as Strategy) ?? 'least_loaded',
-      target_user_id: rule.target_user_id ?? '',
+      target_user_id: rule.target_user?.id ?? '',
       max_leads_per_user: rule.max_leads_per_user ? String(rule.max_leads_per_user) : '',
       is_active: rule.is_active,
     })
@@ -127,8 +138,6 @@ export default function AssignmentRules() {
     setError('')
     setOpen(true)
   }
-
-  const users = usersQuery.data ?? []
 
   return (
     <div>
@@ -171,7 +180,7 @@ export default function AssignmentRules() {
                   <Td>{rule.source_id ?? locale === 'ar' ? 'أي مصدر' : 'Any Source'}</Td>
                   <Td>{rule.service_category ?? locale === 'ar' ? 'أي فئة' : 'Any Category'}</Td>
                   <Td>{strategyLabel(rule.strategy)}</Td>
-                  <Td>{rule.target_user_id ? users.find((u) => u.id === rule.target_user_id)?.name ?? rule.target_user_id : locale === 'ar' ? 'أي موظف متاح' : 'Any Available'}</Td>
+                  <Td>{rule.target_user_id ? rule.target_user?.name ?? rule.target_user_id : locale === 'ar' ? 'أي موظف متاح' : 'Any Available'}</Td>
                   <Td>{rule.max_leads_per_user ?? locale === 'ar' ? 'غير محدود' : 'Unlimited'}</Td>
                   <Td>
                     <Badge tone={rule.is_active ? 'positive' : 'neutral'}>
@@ -254,10 +263,9 @@ export default function AssignmentRules() {
               onChange={(target_user_id) => setForm({ ...form, target_user_id })}
               placeholder={locale === 'ar' ? 'أي موظف' : 'Any User'}
               clearLabel={locale === 'ar' ? 'أي موظف' : 'Any User'}
-              options={users.map((user) => ({
-                value: user.id,
-                label: user.name,
-              }))}
+              options={userPicker.options}
+              onSearch={userPicker.setSearch}
+              hasMore={userPicker.hasMore}
             />
           </Field>
           <Field label={locale === 'ar' ? 'الحد الأقصى لكل مستخدم' : 'Max Leads per User'}>

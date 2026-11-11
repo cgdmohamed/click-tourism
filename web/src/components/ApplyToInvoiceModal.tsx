@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor } from '../lib/format'
-import { Button, Field, Input, Modal, Select } from './ui'
+import { useRemoteOptions } from '../lib/useRemoteOptions'
+import { Button, Field, Input, Modal, SearchableSelect } from './ui'
 
 type OpenInvoice = {
   id: string
@@ -37,24 +38,36 @@ export function ApplyToInvoiceModal({ target, onClose }: { target: ApplyTarget |
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
 
-  const invoicesQuery = useQuery({
-    queryKey: ['open-invoices', target?.kind, target?.partyId],
+  // Open invoices of the party in the payment's currency, searchable by number on
+  // the server; a party with more than one page of open invoices stays reachable.
+  const params = useMemo(
+    () => ({
+      party_type: target?.kind,
+      party_id: target?.partyId,
+      type: target?.kind === 'customer' ? 'customer_invoice' : 'supplier_invoice',
+      currency: target?.currency,
+      open: 1,
+    }),
+    [target?.kind, target?.partyId, target?.currency],
+  )
+  const toOption = useCallback(
+    (invoice: OpenInvoice) => ({
+      value: invoice.id,
+      label: `${invoice.number} · ${formatDate(invoice.issue_date, locale)} · ${L('المستحق', 'Due')} ${toDecimal(invoice.outstanding_minor, invoice.currency)}`,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locale],
+  )
+  const picker = useRemoteOptions<OpenInvoice>({
+    endpoint: '/invoices',
+    keyPrefix: 'open-invoices',
+    params,
+    toOption,
+    value: invoiceId,
     enabled: target !== null,
-    queryFn: async () => {
-      const { data } = await api.get<{ data: OpenInvoice[] }>('/invoices', {
-        params: {
-          party_type: target?.kind,
-          party_id: target?.partyId,
-          type: target?.kind === 'customer' ? 'customer_invoice' : 'supplier_invoice',
-          open: 1,
-          per_page: 100,
-        },
-      })
-      return data.data.filter((invoice) => invoice.currency === target?.currency)
-    },
   })
 
-  const invoices = invoicesQuery.data ?? []
+  const invoices = picker.rows
   const selected = invoices.find((invoice) => invoice.id === invoiceId)
 
   useEffect(() => {
@@ -121,17 +134,16 @@ export function ApplyToInvoiceModal({ target, onClose }: { target: ApplyTarget |
             </span>
           </p>
           <Field label={L('الفاتورة', 'Invoice')} required>
-            <Select value={invoiceId} onChange={(event) => choose(event.target.value)}>
-              <option value="">{invoicesQuery.isLoading ? L('جارٍ التحميل…', 'Loading…') : L('اختر فاتورة', 'Choose an invoice')}</option>
-              {invoices.map((invoice) => (
-                <option key={invoice.id} value={invoice.id}>
-                  {invoice.number} · {formatDate(invoice.issue_date, locale)} · {L('المستحق', 'Due')}{' '}
-                  {toDecimal(invoice.outstanding_minor, invoice.currency)}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={invoiceId}
+              onChange={choose}
+              options={picker.options}
+              onSearch={picker.setSearch}
+              hasMore={picker.hasMore}
+              placeholder={picker.loading ? L('جارٍ التحميل…', 'Loading…') : L('اختر فاتورة أو ابحث بالرقم', 'Choose an invoice or search by number')}
+            />
           </Field>
-          {invoicesQuery.data && invoices.length === 0 ? (
+          {!picker.loading && invoices.length === 0 ? (
             <p className="text-small text-text-subtle">
               {L(`لا توجد فواتير مفتوحة بعملة ${target.currency} لهذا الطرف.`, `No open ${target.currency} invoices for this party.`)}
             </p>

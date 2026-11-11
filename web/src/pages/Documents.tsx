@@ -470,6 +470,7 @@ export default function Documents() {
               onChange={(value) => setForm({ ...form, party_type: expectedParty, party_id: value })}
               options={partyOptions}
               onSearch={partyPicker.setSearch}
+              hasMore={partyPicker.hasMore}
               placeholder={L('اختر', 'Select')}
             />
           </Field> : null}
@@ -481,6 +482,7 @@ export default function Documents() {
                 placeholder={L('اختر الطرف', 'Select party')}
                 options={partyOptions}
                 onSearch={partyPicker.setSearch}
+                hasMore={partyPicker.hasMore}
               />
             </Field>
           ) : null}

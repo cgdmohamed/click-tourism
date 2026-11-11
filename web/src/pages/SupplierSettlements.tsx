@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import { usePartyOptions } from '../lib/usePartyOptions'
+import { useRemoteOptions } from '../lib/useRemoteOptions'
 import type { Paginated, Supplier, SupplierObligation, SupplierPayment } from '../lib/types'
+import type { SelectOption } from '../components/ui'
 import {
   Badge,
   Button,
@@ -32,6 +34,15 @@ import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvo
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
 type Tab = 'obligations' | 'payments'
+
+type IssuedInvoice = { id: string; number: string; currency: string; total_minor: number; outstanding_minor: number }
+
+const invoiceToOption = (invoice: IssuedInvoice): SelectOption => ({ value: invoice.id, label: invoice.number })
+
+const obligationToOption = (obligation: SupplierObligation): SelectOption => ({
+  value: obligation.id,
+  label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
+})
 
 const emptyObligationForm = {
   supplier_id: '',
@@ -86,23 +97,6 @@ export default function SupplierSettlements() {
     },
   })
 
-  const issuedInvoicesQuery = useQuery({
-    queryKey: ['issued-supplier-invoices', activeBranch?.id],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Array<{ id: string; number: string; party?: { id: string }; currency: string; total_minor: number; outstanding_minor: number }> }>('/invoices', {
-        params: { type: 'supplier_invoice', status: 'issued', per_page: 100 },
-      })
-      return data.data
-    },
-    enabled: obligationOpen || recognizeTarget !== null,
-  })
-
-  const invoiceOptions = (supplierId: string, currency: string, amountMinor: number) =>
-    (issuedInvoicesQuery.data ?? [])
-      .filter((invoice) => invoice.party?.id === supplierId && invoice.currency === currency
-        && invoice.total_minor === amountMinor && invoice.outstanding_minor === amountMinor)
-      .map((invoice) => ({ value: invoice.id, label: invoice.number }))
-
   const paymentsQuery = useQuery({
     queryKey: ['supplier-payments', 'list', paymentPage, activeBranch?.id],
     queryFn: async () => {
@@ -110,36 +104,6 @@ export default function SupplierSettlements() {
         params: { page: paymentPage, per_page: 20 },
       })
       return data
-    },
-  })
-
-  const paymentObligationsQuery = useQuery({
-    queryKey: ['supplier-obligations', 'payment-picker', paymentForm.supplier_id],
-    enabled: paymentForm.supplier_id !== '',
-    queryFn: async () => {
-      const { data } = await api.get<Paginated<SupplierObligation>>('/supplier-obligations', {
-        params: { supplier_id: paymentForm.supplier_id, per_page: 100 },
-      })
-      return data.data
-    },
-  })
-
-  const applyObligationsQuery = useQuery({
-    queryKey: ['supplier-obligations', 'apply-picker', applyPayment?.supplier_id],
-    enabled: Boolean(applyPayment?.supplier_id),
-    queryFn: async () => {
-      const { data } = await api.get<Paginated<SupplierObligation>>('/supplier-obligations', {
-        params: { supplier_id: applyPayment?.supplier_id, per_page: 100 },
-      })
-      return data.data
-    },
-  })
-
-  const suppliersQuery = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Supplier[] }>('/suppliers')
-      return data.data
     },
   })
 
@@ -151,7 +115,6 @@ export default function SupplierSettlements() {
     },
   })
 
-  const suppliers = suppliersQuery.data ?? []
   const obligations = obligationsQuery.data?.data ?? []
   const payments = paymentsQuery.data?.data ?? []
 
@@ -160,6 +123,75 @@ export default function SupplierSettlements() {
   const obligationSupplierPicker = usePartyOptions('supplier', { value: obligationForm.supplier_id, locale })
   const paymentSupplierPicker = usePartyOptions('supplier', { value: paymentForm.supplier_id, locale })
 
+  // Issued supplier invoices of the chosen supplier, found by number on the server
+  // (the amount must match the obligation exactly, as before).
+  const obligationAmountMinor = toMinor(obligationForm.amount || '0', obligationForm.currency)
+  const createInvoiceParams = useMemo(
+    () => ({ type: 'supplier_invoice', status: 'issued', party_type: 'supplier', party_id: obligationForm.supplier_id, currency: obligationForm.currency }),
+    [obligationForm.supplier_id, obligationForm.currency],
+  )
+  const matchesCreateAmount = useCallback(
+    (invoice: IssuedInvoice) => invoice.total_minor === obligationAmountMinor && invoice.outstanding_minor === obligationAmountMinor,
+    [obligationAmountMinor],
+  )
+  const createInvoicePicker = useRemoteOptions<IssuedInvoice>({
+    endpoint: '/invoices',
+    keyPrefix: 'issued-supplier-invoices',
+    params: createInvoiceParams,
+    toOption: invoiceToOption,
+    select: matchesCreateAmount,
+    value: obligationForm.invoice_id,
+    enabled: obligationOpen && obligationForm.supplier_id !== '',
+  })
+
+  const recognizeInvoiceParams = useMemo(
+    () => ({ type: 'supplier_invoice', status: 'issued', party_type: 'supplier', party_id: recognizeTarget?.supplier_id ?? '', currency: recognizeTarget?.currency }),
+    [recognizeTarget?.supplier_id, recognizeTarget?.currency],
+  )
+  const recognizeAmountMinor = recognizeTarget?.amount_minor
+  const matchesRecognizeAmount = useCallback(
+    (invoice: IssuedInvoice) => invoice.total_minor === recognizeAmountMinor && invoice.outstanding_minor === recognizeAmountMinor,
+    [recognizeAmountMinor],
+  )
+  const recognizeInvoicePicker = useRemoteOptions<IssuedInvoice>({
+    endpoint: '/invoices',
+    keyPrefix: 'issued-supplier-invoices',
+    params: recognizeInvoiceParams,
+    toOption: invoiceToOption,
+    select: matchesRecognizeAmount,
+    value: recognizeInvoiceId,
+    enabled: recognizeTarget !== null && Boolean(recognizeTarget.supplier_id),
+  })
+
+  // Unpaid, recognized obligations of the chosen supplier (server-filtered, searchable).
+  const paymentObligationParams = useMemo(
+    () => ({ supplier_id: paymentForm.supplier_id, payable: 1 }),
+    [paymentForm.supplier_id],
+  )
+  const paymentObligationPicker = useRemoteOptions<SupplierObligation>({
+    endpoint: '/supplier-obligations',
+    keyPrefix: 'supplier-obligations',
+    params: paymentObligationParams,
+    toOption: obligationToOption,
+    value: paymentForm.supplier_obligation_id,
+    enabled: paymentForm.supplier_id !== '',
+  })
+  const paymentObligations = paymentObligationPicker.rows
+
+  const applyObligationParams = useMemo(
+    () => ({ supplier_id: applyPayment?.supplier_id, payable: 1, currency: applyPayment?.currency }),
+    [applyPayment?.supplier_id, applyPayment?.currency],
+  )
+  const applyObligationPicker = useRemoteOptions<SupplierObligation>({
+    endpoint: '/supplier-obligations',
+    keyPrefix: 'supplier-obligations',
+    params: applyObligationParams,
+    toOption: obligationToOption,
+    value: applyForm.supplier_obligation_id,
+    enabled: Boolean(applyPayment?.supplier_id),
+  })
+  const openObligations = applyObligationPicker.rows
+
   const supplierName = (supplier?: Supplier | null) =>
     supplier ? (locale === 'ar' ? supplier.name_ar : supplier.name_en) : '—'
 
@@ -167,21 +199,6 @@ export default function SupplierSettlements() {
     if (status === 'partially_paid') return t('partiallyPaid')
     return status
   }
-
-  const openObligations = useMemo(
-    () =>
-      (applyObligationsQuery.data ?? []).filter(
-        (obligation) =>
-          obligation.status !== 'paid' && obligation.accounting_status === 'recognized' &&
-          (!applyPayment || obligation.currency === applyPayment.currency),
-      ),
-    [applyObligationsQuery.data, applyPayment],
-  )
-
-  const paymentObligations = useMemo(
-    () => (paymentObligationsQuery.data ?? []).filter((obligation) => obligation.status !== 'paid' && obligation.accounting_status === 'recognized'),
-    [paymentObligationsQuery.data],
-  )
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['supplier-obligations'] })
@@ -314,8 +331,8 @@ export default function SupplierSettlements() {
   }
 
   const onSupplierChange = (supplierId: string, target: 'obligation' | 'payment') => {
-    const supplier = suppliers.find((item) => item.id === supplierId)
-    const currency = supplier?.settlement_currency ?? 'EGP'
+    const picker = target === 'obligation' ? obligationSupplierPicker : paymentSupplierPicker
+    const currency = picker.rows.find((item) => item.id === supplierId)?.settlement_currency ?? 'EGP'
 
     if (target === 'obligation') {
       setObligationForm({ ...obligationForm, supplier_id: supplierId, currency })
@@ -546,6 +563,7 @@ export default function SupplierSettlements() {
               placeholder={t('selectSupplier')}
               options={obligationSupplierPicker.options}
               onSearch={obligationSupplierPicker.setSearch}
+              hasMore={obligationSupplierPicker.hasMore}
             />
           </Field>
           <Field label={t('currency')} required>
@@ -569,7 +587,9 @@ export default function SupplierSettlements() {
             <SearchableSelect
               value={obligationForm.invoice_id}
               onChange={(invoice_id) => setObligationForm({ ...obligationForm, invoice_id })}
-              options={invoiceOptions(obligationForm.supplier_id, obligationForm.currency, toMinor(obligationForm.amount || '0', obligationForm.currency))}
+              options={createInvoicePicker.options}
+              onSearch={createInvoicePicker.setSearch}
+              hasMore={createInvoicePicker.hasMore}
               placeholder={L('بدون ربط — التزام تشغيلي فقط', 'Unlinked — operational only')}
             />
           </Field>
@@ -594,7 +614,9 @@ export default function SupplierSettlements() {
           <SearchableSelect
             value={recognizeInvoiceId}
             onChange={setRecognizeInvoiceId}
-            options={recognizeTarget ? invoiceOptions(recognizeTarget.supplier_id ?? '', recognizeTarget.currency, recognizeTarget.amount_minor) : []}
+            options={recognizeInvoicePicker.options}
+            onSearch={recognizeInvoicePicker.setSearch}
+            hasMore={recognizeInvoicePicker.hasMore}
             placeholder={L('اختر فاتورة مطابقة', 'Choose matching invoice')}
           />
         </Field>
@@ -627,6 +649,7 @@ export default function SupplierSettlements() {
               placeholder={t('selectSupplier')}
               options={paymentSupplierPicker.options}
               onSearch={paymentSupplierPicker.setSearch}
+              hasMore={paymentSupplierPicker.hasMore}
             />
           </Field>
           <Field label={t('obligation')} hint={paymentForm.supplier_id && paymentObligations.length === 0 ? t('noOpenObligations') : undefined}>
@@ -643,10 +666,9 @@ export default function SupplierSettlements() {
               }}
               placeholder={t('advance')}
               clearLabel={t('advance')}
-              options={paymentObligations.map((obligation) => ({
-                value: obligation.id,
-                label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
-              }))}
+              options={paymentObligationPicker.options}
+              onSearch={paymentObligationPicker.setSearch}
+              hasMore={paymentObligationPicker.hasMore}
             />
           </Field>
           <Field label={locale === 'ar' ? 'حساب الخزينة/البنك' : 'Cash / bank account'} required>
@@ -720,10 +742,9 @@ export default function SupplierSettlements() {
                   })
                 }}
                 placeholder={t('selectObligation')}
-                options={openObligations.map((obligation) => ({
-                  value: obligation.id,
-                  label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
-                }))}
+                options={applyObligationPicker.options}
+                onSearch={applyObligationPicker.setSearch}
+                hasMore={applyObligationPicker.hasMore}
               />
             </Field>
             <Field label={t('amount')} required>

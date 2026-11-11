@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AccountingScheduleController;
+use App\Http\Controllers\Api\AssignmentRuleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
 use App\Http\Controllers\Api\TaxProfileController;
 use App\Http\Controllers\Api\TransferController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -303,5 +305,8 @@ Route::prefix('v1')->group(function () {
         Route::post('assignment-rules', [AssignmentRuleController::class, 'store'])->middleware('permission:leads.update');
         Route::patch('assignment-rules/{rule}', [AssignmentRuleController::class, 'update'])->middleware('permission:leads.update');
         Route::delete('assignment-rules/{rule}', [AssignmentRuleController::class, 'destroy'])->middleware('permission:leads.update');
+
+        // Users that leads can be assigned to (assignment-rule target picker).
+        Route::get('users', [UserController::class, 'index'])->middleware('permission:leads.update');
     });
 });

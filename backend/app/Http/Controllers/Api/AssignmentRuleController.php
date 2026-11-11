@@ -16,7 +16,7 @@ class AssignmentRuleController extends ApiController
     {
         $branch = $this->branch();
 
-        $rules = AssignmentRule::query()
+        $rules = AssignmentRule::query()->with('targetUser')
             ->when($branch, fn ($query) => $query->where(function ($query) use ($branch) {
                 $query->whereNull('branch_id')->orWhere('branch_id', $branch->id);
             }))
