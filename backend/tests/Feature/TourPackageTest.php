@@ -6,7 +6,6 @@ use App\Modules\Bookings\Models\TourDeparture;
 use App\Modules\Bookings\Models\TourPackage;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
-use App\Modules\Core\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
