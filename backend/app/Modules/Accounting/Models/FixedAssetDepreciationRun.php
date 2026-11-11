@@ -24,11 +24,14 @@ class FixedAssetDepreciationRun extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    public const STATUS_REVERSED = 'reversed';
+
     /** @var array<int, string> */
     public const STATUSES = [
         self::STATUS_DRAFT,
         self::STATUS_POSTED,
         self::STATUS_FAILED,
+        self::STATUS_REVERSED,
     ];
 
     protected $fillable = [

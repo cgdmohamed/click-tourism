@@ -208,6 +208,7 @@ Route::prefix('v1')->group(function () {
         Route::post('depreciation-runs', [DepreciationRunController::class, 'store'])->middleware('permission:assets.manage');
         Route::get('depreciation-runs/{run}', [DepreciationRunController::class, 'show'])->middleware('permission:assets.view');
         Route::post('depreciation-runs/{run}/post', [DepreciationRunController::class, 'post'])->middleware('permission:assets.approve');
+        Route::post('depreciation-runs/{run}/reverse', [DepreciationRunController::class, 'reverse'])->middleware('permission:assets.approve');
         Route::delete('depreciation-runs/{run}', [DepreciationRunController::class, 'destroy'])->middleware('permission:assets.manage');
 
         Route::get('reports/fixed-assets/roll-forward', [FixedAssetReportController::class, 'rollForward'])->middleware('permission:assets.view');

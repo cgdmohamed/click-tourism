@@ -131,6 +131,35 @@ final class Money
         return new self((int) $rounded, $baseCurrency);
     }
 
+    /**
+     * Integer division of minor units rounded by the configured policy
+     * (half-up or bankers), for splitting an amount across periods. Pure
+     * integer arithmetic, so no float ever touches money.
+     */
+    public static function divideRounded(int $numerator, int $denominator, string $rounding = self::ROUND_HALF_UP): int
+    {
+        if ($denominator <= 0) {
+            throw new InvalidArgumentException('The divisor must be greater than zero.');
+        }
+        if ($numerator < 0) {
+            return -self::divideRounded(-$numerator, $denominator, $rounding);
+        }
+
+        $quotient = intdiv($numerator, $denominator);
+        $twiceRemainder = 2 * ($numerator - $quotient * $denominator);
+
+        if ($twiceRemainder > $denominator) {
+            return $quotient + 1;
+        }
+        if ($twiceRemainder === $denominator) {
+            return $rounding === self::ROUND_BANKERS
+                ? $quotient + ($quotient % 2)
+                : $quotient + 1;
+        }
+
+        return $quotient;
+    }
+
     /** @return array{amount: string, amountMinor: int, currency: string} */
     public function toArray(): array
     {

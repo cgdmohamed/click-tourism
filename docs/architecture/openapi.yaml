@@ -2353,7 +2353,7 @@ paths:
       summary: List depreciation runs
       parameters:
         - { name: period, in: query, schema: { type: string } }
-        - { name: status, in: query, schema: { type: string, enum: [draft, posted, failed] } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, posted, failed, reversed] } }
       responses:
         '200': { description: Runs with items }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2377,6 +2377,21 @@ paths:
         - { name: period, in: query, required: true, schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
       responses:
         '200': { description: Preview rows and total }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /depreciation-runs/{run}/reverse:
+    post:
+      tags: [Fixed Assets]
+      summary: Reverse a posted depreciation run (journal reversed, register restored, period can be run again)
+      parameters:
+        - { name: run, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Run with status reversed }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
   /depreciation-runs/{run}:

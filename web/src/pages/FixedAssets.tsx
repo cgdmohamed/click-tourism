@@ -79,6 +79,8 @@ type Asset = {
   disposal_proceeds_minor: number
   disposal_gain_loss_minor: number
   capitalization_journal_entry_id: string | null
+  acquisition_journal_entry_id?: string | null
+  disposal_depreciation_minor?: number
   disposal_journal_entry_id: string | null
   attachments: Array<{ name?: string; url?: string }>
   impairment_document_ids: string[]
@@ -114,7 +116,7 @@ type DepreciationRun = {
   number: string
   period: string
   run_date: string
-  status: 'draft' | 'posted' | 'failed'
+  status: 'draft' | 'posted' | 'failed' | 'reversed'
   assets_count: number
   total_amount_minor: number
   currency?: string
@@ -147,12 +149,30 @@ type ReconciliationRow = {
   category_code: string
   category_name: string
   register_cost_minor: number
-  gl_cost_minor: number
-  cost_difference_minor: number
+  gl_cost_minor: number | null
+  cost_difference_minor: number | null
   register_accumulated_minor: number
-  gl_accumulated_minor: number
-  accumulated_difference_minor: number
+  gl_accumulated_minor: number | null
+  accumulated_difference_minor: number | null
+  shared_accounts?: boolean
   is_reconciled: boolean
+}
+
+type ReconciliationAccount = {
+  role: 'cost' | 'accumulated'
+  account: AccountRef
+  category_codes: string[]
+  register_minor: number
+  gl_minor: number
+  difference_minor: number
+  is_reconciled: boolean
+  is_classified_fixed_asset: boolean
+}
+
+type UnregisteredAccount = {
+  account: AccountRef
+  gl_minor: number
+  difference_minor: number
 }
 
 type Reconciliation = {
@@ -164,6 +184,8 @@ type Reconciliation = {
   accumulated_difference_minor: number
   note: string
   categories: ReconciliationRow[]
+  accounts?: ReconciliationAccount[]
+  unregistered_accounts?: UnregisteredAccount[]
 }
 
 type AuditEvent = {
@@ -220,6 +242,8 @@ const emptyAssetForm = {
   capitalization_date: todayISO(),
   in_service_date: todayISO(),
   currency: 'EGP',
+  fx_rate: '',
+  acquisition_journal_entry_id: '',
   acquisition_value: '',
   residual_value: '0',
   useful_life_months: '60',
@@ -275,7 +299,8 @@ export default function FixedAssets() {
     scheduled: { ar: 'مجدول', en: 'Scheduled' },
     sale: { ar: 'بيع', en: 'Sale' },
     retirement: { ar: 'إخراج من الخدمة', en: 'Retirement' },
-    scrap: { ar: 'تشريد', en: 'Scrap' },
+    scrap: { ar: 'تخريد', en: 'Scrap' },
+    reversed: { ar: 'مُعكَس', en: 'Reversed' },
     month_of_purchase: { ar: 'شهر الشراء', en: 'Month of purchase' },
     next_month: { ar: 'الشهر التالي', en: 'Next month' },
     prorate_days: { ar: 'تناسب أيام الشهر', en: 'Prorate days' },
@@ -363,6 +388,21 @@ export default function FixedAssets() {
     },
   })
 
+  const assetBase = (assetsQuery.data ?? [])[0]?.base_currency ?? 'EGP'
+
+  const assetFormError = (() => {
+    const life = Number(assetForm.useful_life_months)
+    if (!Number.isInteger(life) || life < 1 || life > 600) return L('العمر الإنتاجي بين 1 و600 شهر.', 'Useful life must be between 1 and 600 months.')
+    if (assetForm.currency.length !== 3) return L('رمز العملة من ثلاثة أحرف.', 'Currency must be a 3-letter code.')
+    if (assetForm.currency !== assetBase && assetForm.fx_rate && !(Number(assetForm.fx_rate) > 0))
+      return L('سعر الصرف يجب أن يكون أكبر من صفر.', 'The exchange rate must be greater than zero.')
+    if (assetForm.in_service_date && assetForm.in_service_date < assetForm.capitalization_date)
+      return L('تاريخ بدء الخدمة لا يسبق تاريخ الرسملة.', 'The in-service date cannot be before the capitalization date.')
+    if (assetForm.acquisition_value && Number(assetForm.residual_value || '0') >= Number(assetForm.acquisition_value))
+      return L('القيمة المتبقية يجب أن تقل عن قيمة الاقتناء.', 'Residual value must be lower than the acquisition value.')
+    return ''
+  })()
+
   const createAsset = useMutation({
     mutationFn: async () => {
       const { data } = await api.post<{ data: Asset }>('/fixed-assets', {
@@ -372,6 +412,8 @@ export default function FixedAssets() {
         capitalization_date: assetForm.capitalization_date,
         in_service_date: assetForm.in_service_date || undefined,
         currency: assetForm.currency,
+        fx_rate: assetForm.currency !== assetBase && assetForm.fx_rate ? assetForm.fx_rate : undefined,
+        acquisition_journal_entry_id: assetForm.acquisition_journal_entry_id.trim() || undefined,
         acquisition_value_minor: toMinor(assetForm.acquisition_value, assetForm.currency),
         residual_value_minor: toMinor(assetForm.residual_value || '0', assetForm.currency),
         useful_life_months: Number(assetForm.useful_life_months),
@@ -502,7 +544,7 @@ export default function FixedAssets() {
       setError('')
       setNotice(
         L(
-          `أُنشئت مسودة تشغيل الإهلاك ${run.number} لفترة ${run.period} بمبلغ إجمالي ${run.assets_count} أصل. راجعها ثم اعتمد الترحيل.`,
+          `أُنشئت مسودة تشغيل الإهلاك ${run.number} لفترة ${run.period} وتشمل ${run.assets_count} أصلاً. راجعها ثم اعتمد الترحيل.`,
           `Draft depreciation run ${run.number} for ${run.period} covers ${run.assets_count} assets. Review it, then approve posting.`,
         ),
       )
@@ -522,6 +564,29 @@ export default function FixedAssets() {
         L(
           `رُحّل تشغيل الإهلاك ${run.number} بقيد واحد. لا يمكن تكرار الترحيل لنفس الفترة.`,
           `Depreciation run ${run.number} posted as one journal. The same period cannot be posted twice.`,
+        ),
+      )
+      await refresh()
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+
+  const [reverseTarget, setReverseTarget] = useState<DepreciationRun | null>(null)
+  const [reverseReason, setReverseReason] = useState('')
+
+  const reverseRun = useMutation({
+    mutationFn: async ({ run, reason }: { run: DepreciationRun; reason: string }) => {
+      const { data } = await api.post<{ data: DepreciationRun }>(`/depreciation-runs/${run.id}/reverse`, { reason })
+      return data.data
+    },
+    onSuccess: async (run) => {
+      setReverseTarget(null)
+      setReverseReason('')
+      setError('')
+      setNotice(
+        L(
+          `عُكس تشغيل الإهلاك ${run.number}. يمكن إعادة تشغيل الفترة ${run.period}.`,
+          `Depreciation run ${run.number} reversed. Period ${run.period} can be run again.`,
         ),
       )
       await refresh()
@@ -850,12 +915,23 @@ export default function FixedAssets() {
                       <Td className="text-small text-text-subtle">{run.failure_reason ?? run.notes ?? '—'}</Td>
                       <Td>
                         <div className="flex justify-end gap-2">
-                          {run.status !== 'posted' && approve ? (
+                          {run.status === 'posted' && approve ? (
+                            <Button
+                              variant="danger"
+                              onClick={() => {
+                                setError('')
+                                setReverseTarget(run)
+                              }}
+                            >
+                              {L('عكس', 'Reverse')}
+                            </Button>
+                          ) : null}
+                          {(run.status === 'draft' || run.status === 'failed') && approve ? (
                             <Button variant="secondary" onClick={() => postRun.mutate(run)} disabled={postRun.isPending}>
                               {L('اعتماد وترحيل', 'Approve & post')}
                             </Button>
                           ) : null}
-                          {run.status !== 'posted' && manage ? (
+                          {(run.status === 'draft' || run.status === 'failed') && manage ? (
                             <Button variant="danger" onClick={() => deleteRun.mutate(run)} disabled={deleteRun.isPending}>
                               {L('حذف', 'Delete')}
                             </Button>
@@ -944,19 +1020,19 @@ export default function FixedAssets() {
                         <Money amountMinor={row.register_cost_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
                       </Td>
                       <Td>
-                        <Money amountMinor={row.gl_cost_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                        {row.gl_cost_minor === null ? '—' : <Money amountMinor={row.gl_cost_minor} currency={reconQuery.data?.currency ?? 'EGP'} />}
                       </Td>
                       <Td>
-                        <Money amountMinor={row.cost_difference_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                        {row.cost_difference_minor === null ? '—' : <Money amountMinor={row.cost_difference_minor} currency={reconQuery.data?.currency ?? 'EGP'} />}
                       </Td>
                       <Td>
                         <Money amountMinor={row.register_accumulated_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
                       </Td>
                       <Td>
-                        <Money amountMinor={row.gl_accumulated_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                        {row.gl_accumulated_minor === null ? '—' : <Money amountMinor={row.gl_accumulated_minor} currency={reconQuery.data?.currency ?? 'EGP'} />}
                       </Td>
                       <Td>
-                        <Money amountMinor={row.accumulated_difference_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                        {row.accumulated_difference_minor === null ? '—' : <Money amountMinor={row.accumulated_difference_minor} currency={reconQuery.data?.currency ?? 'EGP'} />}
                       </Td>
                       <Td>
                         <Badge tone={row.is_reconciled ? 'positive' : 'negative'}>
@@ -967,6 +1043,81 @@ export default function FixedAssets() {
                   ))}
                 </tbody>
               </Table>
+
+              {(reconQuery.data.accounts ?? []).length > 0 ? (
+                <div>
+                  <p className="mb-2 text-medium font-medium text-text-default">{L('حسابات الأستاذ', 'Ledger accounts')}</p>
+                  <p className="mb-2 text-small text-text-subtle">
+                    {L(
+                      'تُقارن كل حسابات الأستاذ مرة واحدة حتى لو شاركتها عدة تصنيفات.',
+                      'Each ledger account is compared once, even when several categories share it.',
+                    )}
+                  </p>
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>{L('الحساب', 'Account')}</Th>
+                        <Th>{L('النوع', 'Role')}</Th>
+                        <Th>{L('السجل', 'Register')}</Th>
+                        <Th>{L('الأستاذ', 'Ledger')}</Th>
+                        <Th>{L('الفرق', 'Difference')}</Th>
+                        <Th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(reconQuery.data.accounts ?? []).map((row) => (
+                        <tr key={`${row.role}-${row.account.code}`}>
+                          <Td>
+                            {accountLabel(row.account)}
+                            <div className="text-small text-text-subtle">{row.category_codes.join(', ')}</div>
+                          </Td>
+                          <Td>{row.role === 'cost' ? L('التكلفة', 'Cost') : L('مجمع الإهلاك', 'Accumulated')}</Td>
+                          <Td>
+                            <Money amountMinor={row.register_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                          </Td>
+                          <Td>
+                            <Money amountMinor={row.gl_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                          </Td>
+                          <Td>
+                            <Money amountMinor={row.difference_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                          </Td>
+                          <Td>
+                            <Badge tone={row.is_reconciled ? 'positive' : 'negative'}>
+                              {row.is_reconciled ? L('متوازن', 'OK') : L('فرق', 'Diff')}
+                            </Badge>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              ) : null}
+
+              {(reconQuery.data.unregistered_accounts ?? []).length > 0 ? (
+                <div>
+                  <p className="mb-2 text-medium font-medium text-text-default">
+                    {L('أرصدة أصول ثابتة غير مسجلة في السجل', 'Fixed-asset balances without a register category')}
+                  </p>
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>{L('الحساب', 'Account')}</Th>
+                        <Th>{L('رصيد الأستاذ', 'Ledger balance')}</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(reconQuery.data.unregistered_accounts ?? []).map((row) => (
+                        <tr key={row.account.code}>
+                          <Td>{accountLabel(row.account)}</Td>
+                          <Td>
+                            <Money amountMinor={row.gl_minor} currency={reconQuery.data?.currency ?? 'EGP'} />
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </Card>
@@ -1080,13 +1231,15 @@ export default function FixedAssets() {
             </Button>
             <Button
               onClick={() => createAsset.mutate()}
-              disabled={createAsset.isPending || !assetForm.category_id || !assetForm.description || !assetForm.acquisition_value}
+              disabled={createAsset.isPending || !assetForm.category_id || !assetForm.description || !assetForm.acquisition_value || assetFormError !== ''}
             >
               {L('حفظ كمسودة', 'Save as draft')}
             </Button>
           </>
         }
       >
+        {error ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+        {assetFormError && assetForm.acquisition_value ? <p className="mb-4 text-small text-danger-text">{assetFormError}</p> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={L('التصنيف', 'Category')} required>
             <Select
@@ -1116,6 +1269,20 @@ export default function FixedAssets() {
           </Field>
           <Field label={L('العملة', 'Currency')} hint={L('تُحوّل القيمة إلى العملة الأساسية عند الحفظ.', 'The value is converted to base currency on save.')}>
             <Input value={assetForm.currency} onChange={(event) => setAssetForm({ ...assetForm, currency: event.target.value.toUpperCase().slice(0, 3) })} maxLength={3} />
+          </Field>
+          {assetForm.currency !== assetBase ? (
+            <Field label={L('سعر الصرف', 'Exchange rate')} hint={L('اتركه فارغاً لاستخدام سعر السوق في تاريخ الرسملة.', 'Leave empty to use the market rate on the capitalization date.')}>
+              <Input inputMode="decimal" value={assetForm.fx_rate} onChange={(event) => setAssetForm({ ...assetForm, fx_rate: event.target.value })} />
+            </Field>
+          ) : null}
+          <Field
+            label={L('قيد التكلفة المسجل', 'Booked cost journal')}
+            hint={L(
+              'اختياري: معرّف قيد مرحّل سبق أن حمّل حساب التكلفة (فاتورة مورد/مصروف). عندها لا يُرحَّل قيد رسملة ثانٍ.',
+              'Optional: id of a posted journal that already debited the cost account (supplier bill / expense). No second capitalization entry is posted.',
+            )}
+          >
+            <Input value={assetForm.acquisition_journal_entry_id} onChange={(event) => setAssetForm({ ...assetForm, acquisition_journal_entry_id: event.target.value })} maxLength={40} />
           </Field>
           <Field label={L('تاريخ الرسملة', 'Capitalization date')} required>
             <Input type="date" value={assetForm.capitalization_date} onChange={(event) => setAssetForm({ ...assetForm, capitalization_date: event.target.value })} />
@@ -1226,6 +1393,7 @@ export default function FixedAssets() {
       >
         {lifecycle ? (
           <div className="space-y-4">
+            {error ? <p className="rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
             <p className="text-medium text-text-subtle">
               {lifecycle.asset.code} · {lifecycle.asset.description} ·{' '}
               {L('القيمة الدفترية', 'Carrying value')}{' '}
@@ -1279,6 +1447,15 @@ export default function FixedAssets() {
               </div>
             ) : null}
 
+            {lifecycle.mode === 'dispose' ? (
+              <p className="text-small text-text-subtle">
+                {L(
+                  'يُحتسب الإهلاك حتى تاريخ الاستبعاد داخل قيد الاستبعاد. يجب ترحيل الأشهر السابقة أولاً، ولا يسبق التاريخ نهاية آخر شهر مرحّل.',
+                  'Depreciation runs to the disposal date inside the disposal entry. Earlier months must be posted first, and the date cannot precede the end of the last posted month.',
+                )}
+              </p>
+            ) : null}
+
             {lifecycle.mode === 'impair' ? (
               <div className="space-y-4">
                 <p className="text-medium text-text-subtle">
@@ -1315,6 +1492,38 @@ export default function FixedAssets() {
             ) : null}
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={reverseTarget !== null}
+        title={L('عكس تشغيل الإهلاك', 'Reverse depreciation run')}
+        onClose={() => setReverseTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setReverseTarget(null)}>
+              {L('رجوع', 'Back')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => reverseTarget && reverseRun.mutate({ run: reverseTarget, reason: reverseReason.trim() })}
+              disabled={reverseRun.isPending || reverseReason.trim() === ''}
+            >
+              {L('تأكيد العكس', 'Confirm reversal')}
+            </Button>
+          </>
+        }
+      >
+        {error ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+        <p className="mb-4 text-medium text-text-subtle">
+          {reverseTarget ? `${reverseTarget.number} · ${reverseTarget.period}. ` : ''}
+          {L(
+            'يُنشأ قيد عكسي ويُعاد السجل إلى ما قبل التشغيل، ثم يمكن إعادة تشغيل الفترة. لا يُعكس إلا آخر فترة لكل أصل.',
+            'A reversing journal is posted and the register returns to its state before the run, so the period can be run again. Only the latest period of each asset can be reversed.',
+          )}
+        </p>
+        <Field label={L('سبب العكس', 'Reason')} required>
+          <Input value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} maxLength={255} />
+        </Field>
       </Modal>
 
       <Modal open={detail !== null} title={detail ? `${detail.code} · ${detail.description}` : ''} onClose={() => setDetailId(null)}>

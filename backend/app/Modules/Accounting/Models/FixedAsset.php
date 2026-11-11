@@ -3,9 +3,11 @@
 namespace App\Modules\Accounting\Models;
 
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
 use App\Support\HasPublicId;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -99,6 +101,8 @@ class FixedAsset extends Model
         'disposal_gain_loss_minor',
         'capitalization_journal_entry_id',
         'disposal_journal_entry_id',
+        'acquisition_journal_entry_id',
+        'disposal_depreciation_minor',
         'attachments',
         'impairment_document_ids',
         'applied_impairment_document_ids',
@@ -126,6 +130,7 @@ class FixedAsset extends Model
             'disposed_on' => 'date',
             'disposal_proceeds_minor' => 'integer',
             'disposal_gain_loss_minor' => 'integer',
+            'disposal_depreciation_minor' => 'integer',
             'attachments' => 'array',
             'impairment_document_ids' => 'array',
             'applied_impairment_document_ids' => 'array',
@@ -168,6 +173,12 @@ class FixedAsset extends Model
         return $this->belongsTo(JournalEntry::class, 'disposal_journal_entry_id');
     }
 
+    /** Posted entry that already recognised the cost (supplier bill, expense, opening balance). */
+    public function acquisitionJournalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class, 'acquisition_journal_entry_id');
+    }
+
     public function depreciationItems(): HasMany
     {
         return $this->hasMany(FixedAssetDepreciationItem::class);
@@ -202,13 +213,18 @@ class FixedAsset extends Model
         return max(0, $this->depreciableMinor() - $this->totalAccumulatedMinor());
     }
 
-    public function monthlyDepreciationMinor(): int
+    /** Monthly straight-line amount, rounded by the installation rounding policy. */
+    public function monthlyDepreciationMinor(?string $rounding = null): int
     {
         if ($this->useful_life_months < 1) {
             return 0;
         }
 
-        return intdiv($this->depreciableMinor(), $this->useful_life_months);
+        return Money::divideRounded(
+            $this->depreciableMinor(),
+            $this->useful_life_months,
+            $rounding ?? app(RoundingPolicy::class)->mode(),
+        );
     }
 
     public function isOpen(): bool
@@ -271,6 +287,8 @@ class FixedAsset extends Model
             'disposal_gain_loss_minor' => $this->disposal_gain_loss_minor,
             'capitalization_journal_entry_id' => $this->capitalizationJournalEntry?->public_id,
             'disposal_journal_entry_id' => $this->disposalJournalEntry?->public_id,
+            'acquisition_journal_entry_id' => $this->acquisitionJournalEntry?->public_id,
+            'disposal_depreciation_minor' => $this->disposal_depreciation_minor,
             'attachments' => $this->attachments ?? [],
             'impairment_document_ids' => $this->impairment_document_ids ?? [],
             'applied_impairment_document_ids' => $this->applied_impairment_document_ids ?? [],

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Accounting\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Models\CostCenter;
 use App\Modules\Accounting\Models\FixedAsset;
@@ -10,6 +11,7 @@ use App\Modules\Accounting\Models\FixedAssetDepreciationItem;
 use App\Modules\Accounting\Models\FixedAssetDepreciationRun;
 use App\Modules\Accounting\Models\FixedAssetTransfer;
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
@@ -19,6 +21,7 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyLedgerService;
 use App\Support\Money;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -50,6 +53,7 @@ class FixedAssetService
         private readonly SequenceService $sequences,
         private readonly FxService $fx,
         private readonly AuditService $audit,
+        private readonly PartyLedgerService $ledger,
     ) {}
 
     // ------------------------------------------------------------------
@@ -60,6 +64,10 @@ class FixedAssetService
     public function createCategory(array $data, ?int $actorId): FixedAssetCategory
     {
         $attributes = $this->categoryAttributes($data);
+
+        if (FixedAssetCategory::query()->where('code', $attributes['code'])->exists()) {
+            throw new DomainException('A category with this code already exists.');
+        }
 
         $category = FixedAssetCategory::query()->create($attributes + ['created_by' => $actorId]);
 
@@ -118,6 +126,11 @@ class FixedAssetService
         return DB::transaction(function () use ($data, $branch, $actorId) {
             $attributes = $this->assetAttributes($data, $branch);
 
+            if (isset($data['code']) && trim((string) $data['code']) !== ''
+                && FixedAsset::query()->where('code', trim((string) $data['code']))->exists()) {
+                throw new DomainException('An asset with this code already exists.');
+            }
+
             $asset = FixedAsset::query()->create($attributes + [
                 'code' => isset($data['code']) && trim((string) $data['code']) !== ''
                     ? trim((string) $data['code'])
@@ -147,8 +160,13 @@ class FixedAssetService
                 throw new DomainException('Only draft assets can be edited. Posted capitalization is immutable.');
             }
 
-            $merged = array_merge($this->editableAsset($asset), $data);
-            $asset->update($this->assetAttributes($merged, $asset->branch));
+            $editable = $this->editableAsset($asset);
+            // A rate snapshotted for the old currency must not be reused for a new one.
+            if (isset($data['currency']) && strtoupper((string) $data['currency']) !== $asset->currency_code && ! isset($data['fx_rate'])) {
+                unset($editable['fx_rate']);
+            }
+            $merged = array_merge($editable, $data);
+            $asset->update($this->assetAttributes($merged, $asset->branch, $asset->id));
 
             $this->audit->log('fixed_asset.updated', $asset, null, ['code' => $asset->code], $actorId);
 
@@ -180,7 +198,11 @@ class FixedAssetService
                 ->where('event', 'capitalization')
                 ->first();
 
-            if (! $existing) {
+            if (! $existing && $asset->acquisition_journal_entry_id) {
+                // The cost is already in the ledger (supplier bill, expense or
+                // opening balance): link it and never recognise it a second time.
+                $existing = $this->assertAcquisitionEntry($asset, $asset->category->assetAccount);
+            } elseif (! $existing) {
                 $assetAccount = $asset->category->assetAccount;
                 $offsetAccount = $this->posting->account(
                     (string) $this->settings->get('assets', 'acquisition_offset_account_code', '2100'),
@@ -193,13 +215,36 @@ class FixedAssetService
                     throw new DomainException('The acquisition offset account must differ from the asset cost account.');
                 }
 
+                $base = $this->settings->baseCurrency();
+                $description = 'Capitalize '.$asset->code;
+
+                // ADR-0015: a payable to a known supplier lives on that
+                // supplier's own subaccount, like every other payable.
+                $partyType = null;
+                $partyId = null;
+                $creditAccount = $offsetAccount;
+                $apCode = (string) $this->settings->get('accounting', 'ap_account_code', '2100');
+                if ($asset->supplier_id !== null && $offsetAccount->code === $apCode) {
+                    $creditAccount = $this->ledger->payable($asset->supplier_id);
+                    $partyType = 'supplier';
+                    $partyId = $asset->supplier_id;
+                }
+
+                // Cost is a non-monetary item kept at the historical base
+                // amount. The offset is monetary and keeps the acquisition
+                // currency, so settlement (realized FX) and revaluation work.
+                $credit = $asset->currency_code === $base
+                    ? PostingLine::credit($creditAccount, $asset->acquisition_value_base_minor, $partyType, $partyId, $description)
+                    : PostingLine::credit($creditAccount, $asset->acquisition_value_minor, $partyType, $partyId, $description)
+                        ->in($asset->currency_code, (string) $asset->fx_rate);
+
                 $existing = $this->posting->post(PostingRequest::make(
                     entryDate: $asset->capitalization_date->toDateString(),
                     branch: $asset->branch,
-                    currency: $this->settings->baseCurrency(),
+                    currency: $base,
                     lines: [
-                        PostingLine::debit($assetAccount, $asset->acquisition_value_base_minor, null, null, 'Capitalize '.$asset->code),
-                        PostingLine::credit($offsetAccount, $asset->acquisition_value_base_minor, null, null, 'Capitalize '.$asset->code),
+                        PostingLine::debit($assetAccount, $asset->acquisition_value_base_minor, null, null, $description),
+                        $credit,
                     ],
                     memo: Str::limit('Capitalization '.$asset->code.' · '.$asset->description, 250, ''),
                     sourceType: self::SOURCE_TYPE,
@@ -373,6 +418,10 @@ class FixedAssetService
      */
     public function postDepreciationRun(FixedAssetDepreciationRun $run, ?int $actorId): FixedAssetDepreciationRun
     {
+        if ($run->status === FixedAssetDepreciationRun::STATUS_REVERSED) {
+            throw new DomainException('A reversed depreciation run cannot be posted again; create a new run for the period.');
+        }
+
         try {
             return DB::transaction(function () use ($run, $actorId) {
                 $run = FixedAssetDepreciationRun::query()->with('branch')->lockForUpdate()->findOrFail($run->id);
@@ -393,7 +442,9 @@ class FixedAssetService
                 foreach ($items as $item) {
                     $asset = FixedAsset::query()->with('category')->lockForUpdate()->find($item->fixed_asset_id);
 
-                    if (! $asset || ! $asset->isOpen()) {
+                    // An asset transferred to another branch after the draft was
+                    // created belongs to that branch's run, not to this journal.
+                    if (! $asset || ! $asset->isOpen() || $asset->branch_id !== $run->branch_id) {
                         $item->delete();
 
                         continue;
@@ -525,8 +576,8 @@ class FixedAssetService
         DB::transaction(function () use ($run, $actorId) {
             $run = FixedAssetDepreciationRun::query()->lockForUpdate()->findOrFail($run->id);
 
-            if ($run->status === FixedAssetDepreciationRun::STATUS_POSTED) {
-                throw new DomainException('A posted depreciation run cannot be deleted.');
+            if (in_array($run->status, [FixedAssetDepreciationRun::STATUS_POSTED, FixedAssetDepreciationRun::STATUS_REVERSED], true)) {
+                throw new DomainException('A posted depreciation run cannot be deleted; reverse it instead.');
             }
 
             $run->items()->delete();
@@ -535,6 +586,69 @@ class FixedAssetService
                 'period' => $run->period,
             ], null, $actorId);
             $run->delete();
+        });
+    }
+
+    /**
+     * Correct a posted run. The journal is reversed through PostingService
+     * (dated today when its period is closed, ADR-0004), the register is
+     * rolled back and the asset-month claims are released so the period can
+     * be run again. Only the latest posted period of each asset can be undone.
+     */
+    public function reverseDepreciationRun(FixedAssetDepreciationRun $run, string $reason, ?int $actorId): FixedAssetDepreciationRun
+    {
+        return DB::transaction(function () use ($run, $reason, $actorId) {
+            $run = FixedAssetDepreciationRun::query()->with('journalEntry')->lockForUpdate()->findOrFail($run->id);
+
+            if ($run->status !== FixedAssetDepreciationRun::STATUS_POSTED || ! $run->journalEntry) {
+                throw new DomainException('Only a posted depreciation run can be reversed.');
+            }
+            if (trim($reason) === '') {
+                throw new DomainException('A reversal reason is required.');
+            }
+
+            $items = $run->items()->get();
+            $assets = [];
+            foreach ($items as $item) {
+                $asset = FixedAsset::query()->lockForUpdate()->findOrFail($item->fixed_asset_id);
+
+                if ($asset->status === FixedAsset::STATUS_DISPOSED) {
+                    throw new DomainException("Asset {$asset->code} has been disposed; this run can no longer be reversed.");
+                }
+                if ($asset->last_depreciated_period !== $run->period) {
+                    throw new DomainException("Asset {$asset->code} was depreciated in a later period; reverse the later run first.");
+                }
+                $assets[$item->id] = $asset;
+            }
+
+            $this->posting->reverse($run->journalEntry, $reason, $actorId);
+
+            foreach ($items as $item) {
+                $asset = $assets[$item->id];
+                $previous = FixedAssetDepreciationItem::query()
+                    ->where('fixed_asset_id', $asset->id)
+                    ->where('status', FixedAssetDepreciationItem::STATUS_POSTED)
+                    ->where('id', '!=', $item->id)
+                    ->max('period');
+
+                $asset->update([
+                    'accumulated_depreciation_minor' => max(0, $asset->accumulated_depreciation_minor - $item->amount_minor),
+                    'last_depreciated_period' => $previous,
+                    'status' => FixedAsset::STATUS_ACTIVE,
+                ]);
+                $item->delete();
+            }
+
+            $run->update(['status' => FixedAssetDepreciationRun::STATUS_REVERSED, 'failure_reason' => Str::limit($reason, 250, '')]);
+
+            $this->audit->log('fixed_asset.depreciation_run.reversed', $run, ['status' => FixedAssetDepreciationRun::STATUS_POSTED], [
+                'status' => FixedAssetDepreciationRun::STATUS_REVERSED,
+                'reason' => $reason,
+                'assets' => $items->count(),
+                'total_minor' => $run->total_amount_minor,
+            ], $actorId);
+
+            return $this->loadRun($run);
         });
     }
 
@@ -555,6 +669,10 @@ class FixedAssetService
             $toBranch = isset($data['to_branch_id']) && $data['to_branch_id'] !== ''
                 ? Branch::query()->where('public_id', $data['to_branch_id'])->firstOrFail()
                 : $asset->branch;
+
+            if (! $toBranch->is_active) {
+                throw new DomainException('The destination branch is inactive.');
+            }
 
             $toCostCenterId = array_key_exists('to_cost_center_id', $data)
                 ? $this->resolveCostCenterId($data['to_cost_center_id'])
@@ -661,14 +779,52 @@ class FixedAssetService
             $proceedsAccount = $this->posting->account(
                 (string) ($data['proceeds_account_code'] ?? $this->settings->get('assets', 'disposal_proceeds_account_code', '1120')),
             );
+            if ($proceeds > 0 && ($proceedsAccount->type !== 'asset' || ! $proceedsAccount->is_active || ! $proceedsAccount->is_postable
+                || in_array($proceedsAccount->id, [$assetAccount->id, $accumulatedAccount->id], true))) {
+                throw new DomainException('The proceeds account must be an active, postable cash, bank or receivable account.');
+            }
 
-            $accumulated = $asset->totalAccumulatedMinor();
-            $carrying = $asset->carryingValueMinor();
+            // Depreciation runs to the disposal date (Odoo / Zoho). Earlier
+            // months must already be posted; the disposal month is charged
+            // pro rata inside the disposal entry. A month-end run that is
+            // already posted must not be undone by an earlier disposal date.
+            $disposalPeriod = $date->format('Y-m');
+            if ($asset->last_depreciated_period !== null) {
+                if ($date->lt($this->periodEnd($asset->last_depreciated_period))) {
+                    throw new DomainException("Depreciation is already posted through {$asset->last_depreciated_period}; the disposal date cannot be earlier than the end of that period.");
+                }
+                $nextUnposted = Carbon::createFromFormat('!Y-m', $asset->last_depreciated_period)->addMonthNoOverflow()->format('Y-m');
+            } else {
+                $nextUnposted = $asset->firstDepreciationPeriod();
+            }
+            if ($nextUnposted < $disposalPeriod && ($this->amountForPeriod($asset, $nextUnposted)['amount'] ?? 0) > 0) {
+                throw new DomainException("Post the depreciation run for {$nextUnposted} before disposing this asset.");
+            }
+
+            $catchUp = 0;
+            if ($nextUnposted <= $disposalPeriod) {
+                $full = $this->amountForPeriod($asset, $disposalPeriod)['amount'] ?? 0;
+                $catchUp = min(
+                    $asset->remainingDepreciableMinor(),
+                    Money::divideRounded($full * $date->day, $date->daysInMonth, $this->rounding->mode()),
+                );
+            }
+            $expenseAccount = $category?->depreciationExpenseAccount;
+            if ($catchUp > 0 && ! $expenseAccount) {
+                throw new DomainException('The asset category has no depreciation expense account configured.');
+            }
+
+            $accumulated = $asset->totalAccumulatedMinor() + $catchUp;
+            $carrying = max(0, $asset->acquisition_value_base_minor - $accumulated);
             $difference = $proceeds - $carrying;
 
             $lines = [];
             $description = Str::limit('Disposal '.$asset->code.' · '.$asset->description, 250, '');
 
+            if ($catchUp > 0) {
+                $lines[] = PostingLine::debit($expenseAccount, $catchUp, null, null, $description);
+                $lines[] = PostingLine::credit($accumulatedAccount, $catchUp, null, null, $description);
+            }
             if ($accumulated > 0) {
                 $lines[] = PostingLine::debit($accumulatedAccount, $accumulated, null, null, $description);
             }
@@ -703,6 +859,8 @@ class FixedAssetService
                 'disposal_type' => $type,
                 'disposal_proceeds_minor' => $proceeds,
                 'disposal_gain_loss_minor' => $difference,
+                'disposal_depreciation_minor' => $catchUp,
+                'accumulated_depreciation_minor' => $asset->accumulated_depreciation_minor + $catchUp,
                 'disposal_journal_entry_id' => $entry->id,
             ]);
 
@@ -710,6 +868,7 @@ class FixedAssetService
                 'type' => $type,
                 'proceeds_minor' => $proceeds,
                 'carrying_minor' => $carrying,
+                'depreciation_to_date_minor' => $catchUp,
                 'gain_loss_minor' => $difference,
                 'journal' => $entry->number,
             ], $actorId);
@@ -832,36 +991,44 @@ class FixedAssetService
     {
         $first = Carbon::createFromFormat('!Y-m', $asset->firstDepreciationPeriod())->startOfMonth();
         $depreciable = $asset->depreciableMinor();
-        $monthly = $asset->monthlyDepreciationMinor();
         $accumulated = 0;
         $rows = [];
         $life = $asset->useful_life_months;
-        $posted = $asset->depreciationItems()->get()->keyBy('period');
+        $posted = $asset->depreciationItems()->with('run')->get()->keyBy('period');
+        $disposed = $asset->status === FixedAsset::STATUS_DISPOSED;
 
         for ($index = 1; $index <= $life; $index++) {
             $period = $first->copy()->addMonthsNoOverflow($index - 1)->format('Y-m');
-            $remaining = max(0, $depreciable - $accumulated);
+            $item = $posted->get($period);
 
+            if ($item !== null && $item->status === FixedAssetDepreciationItem::STATUS_POSTED) {
+                // Posted months show what was actually booked (incl. any impairment at the time).
+                $accumulated += $item->amount_minor;
+                $rows[] = [
+                    'period' => $period,
+                    'amount_minor' => $item->amount_minor,
+                    'accumulated_minor' => $accumulated,
+                    'carrying_value_minor' => $item->carrying_after_minor,
+                    'status' => $item->status,
+                    'run_id' => $item->run?->public_id,
+                ];
+
+                continue;
+            }
+
+            if ($disposed) {
+                break;
+            }
+
+            // Projection from the current state: an applied impairment has
+            // already lowered the remaining depreciable amount.
+            $remaining = max(0, $depreciable - $asset->impairment_minor - $accumulated);
             if ($remaining === 0) {
                 break;
             }
 
-            if ($index === $life) {
-                $amount = $remaining;
-            } elseif ($index === 1 && $asset->depreciation_convention === FixedAsset::CONVENTION_PRORATE_DAYS) {
-                $daysInMonth = $asset->in_service_date->daysInMonth;
-                $activeDays = $daysInMonth - $asset->in_service_date->day + 1;
-                $amount = intdiv($monthly * $activeDays + intdiv($daysInMonth, 2), $daysInMonth);
-                $amount = max(1, min($amount, $remaining));
-            } else {
-                $amount = min($monthly, $remaining);
-                if ($amount <= 0) {
-                    $amount = 1;
-                }
-            }
-
-            $accumulated = min($depreciable, $accumulated + $amount);
-            $item = $posted->get($period);
+            $amount = $this->amountAt($asset, $index, $remaining);
+            $accumulated += $amount;
 
             $rows[] = [
                 'period' => $period,
@@ -925,6 +1092,7 @@ class FixedAssetService
             'employee',
             'capitalizationJournalEntry',
             'disposalJournalEntry',
+            'acquisitionJournalEntry',
             'transfers',
         );
     }
@@ -969,28 +1137,43 @@ class FixedAssetService
             return null;
         }
 
-        $life = max(1, $asset->useful_life_months);
-        $monthly = $asset->monthlyDepreciationMinor();
+        return ['index' => $index, 'amount' => $this->amountAt($asset, $index, $remaining)];
+    }
 
-        if ($index >= $life) {
-            // Final-period correction, and a catch-up if the final month was
-            // skipped entirely. The remaining balance can only be taken once.
-            return ['index' => $index, 'amount' => $remaining];
+    /**
+     * Amount for the index-th month given what is still depreciable.
+     *
+     * Rounded by the installation rounding policy (DEC-010). The final period
+     * (or a catch-up past it) takes the remainder. After an applied
+     * impairment the remaining amount is re-spread over the remaining months,
+     * as Odoo recomputes the plan after a revaluation, so the schedule never
+     * keeps charging the pre-impairment rate.
+     */
+    private function amountAt(FixedAsset $asset, int $index, int $remaining): int
+    {
+        if ($remaining <= 0) {
+            return 0;
         }
+
+        $life = max(1, $asset->useful_life_months);
+        if ($index >= $life) {
+            return $remaining;
+        }
+
+        $mode = $this->rounding->mode();
+        $monthly = $asset->monthlyDepreciationMinor($mode);
 
         if ($index === 1 && $asset->depreciation_convention === FixedAsset::CONVENTION_PRORATE_DAYS) {
             $daysInMonth = $asset->in_service_date->daysInMonth;
             $activeDays = $daysInMonth - $asset->in_service_date->day + 1;
-            $amount = intdiv($monthly * $activeDays + intdiv($daysInMonth, 2), $daysInMonth);
+            $amount = Money::divideRounded($monthly * $activeDays, $daysInMonth, $mode);
+        } elseif ($asset->impairment_minor > 0 && $index > 1) {
+            $amount = Money::divideRounded($remaining, $life - $index + 1, $mode);
         } else {
             $amount = $monthly;
         }
 
-        if ($amount <= 0) {
-            $amount = 1;
-        }
-
-        return ['index' => $index, 'amount' => max(0, min($amount, $remaining))];
+        return max(0, min(max(1, $amount), $remaining));
     }
 
     // ------------------------------------------------------------------
@@ -1011,6 +1194,11 @@ class FixedAssetService
 
         if (count(array_unique([$asset->id, $accumulated->id, $expense->id])) < 3) {
             throw new DomainException('Cost, accumulated depreciation and depreciation expense accounts must be different.');
+        }
+        foreach ([[$asset, 'asset', 'cost'], [$accumulated, 'asset', 'accumulated depreciation'], [$expense, 'expense', 'depreciation expense']] as [$account, $type, $label]) {
+            if ($account->type !== $type || ! $account->is_active || ! $account->is_postable) {
+                throw new DomainException("The {$label} account {$account->code} must be an active, postable {$type} account.");
+            }
         }
 
         $gainCode = trim((string) ($data['disposal_gain_account_code'] ?? $this->settings->get('assets', 'disposal_gain_account_code', '7910')));
@@ -1039,7 +1227,7 @@ class FixedAssetService
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function assetAttributes(array $data, Branch $branch): array
+    private function assetAttributes(array $data, Branch $branch, ?int $assetId = null): array
     {
         $category = FixedAssetCategory::query()
             ->where('public_id', (string) ($data['category_id'] ?? ''))
@@ -1078,7 +1266,7 @@ class FixedAssetService
             ? '1'
             : (isset($data['fx_rate']) && $data['fx_rate'] !== '' ? (string) $data['fx_rate'] : $this->fx->rateFor($currency, $capitalization->toDateString()));
 
-        if (! is_numeric($rate) || (float) $rate <= 0) {
+        if (! is_numeric($rate) || bccomp((string) $rate, '0', 12) <= 0) {
             throw new DomainException('The FX rate must be greater than zero.');
         }
 
@@ -1117,7 +1305,15 @@ class FixedAssetService
             'currency_code' => $currency,
             'fx_rate' => $rate,
             'fx_rate_date' => $capitalization->toDateString(),
-            'fx_rate_source' => $currency === $base ? 'base' : 'market',
+            'fx_rate_source' => $currency === $base
+                ? 'base'
+                : (isset($data['fx_rate']) && $data['fx_rate'] !== '' ? 'manual' : 'market'),
+            'acquisition_journal_entry_id' => $this->resolveAcquisitionEntryId(
+                $data['acquisition_journal_entry_id'] ?? null,
+                $category,
+                $valueBase,
+                $assetId,
+            ),
             'acquisition_value_minor' => $value,
             'acquisition_value_base_minor' => $valueBase,
             'residual_value_minor' => $residual,
@@ -1144,7 +1340,9 @@ class FixedAssetService
             'capitalization_date' => $asset->capitalization_date->toDateString(),
             'in_service_date' => $asset->in_service_date->toDateString(),
             'currency' => $asset->currency_code,
-            'fx_rate' => (string) $asset->fx_rate,
+            // A market rate is re-read for the (possibly changed) date; a manual one is kept.
+            'fx_rate' => $asset->fx_rate_source === 'manual' ? (string) $asset->fx_rate : null,
+            'acquisition_journal_entry_id' => $asset->acquisitionJournalEntry?->public_id,
             'acquisition_value_minor' => $asset->acquisition_value_minor,
             'residual_value_minor' => $asset->residual_value_minor,
             'useful_life_months' => $asset->useful_life_months,
@@ -1152,6 +1350,61 @@ class FixedAssetService
             'attachments' => $asset->attachments,
             'notes' => $asset->notes,
         ];
+    }
+
+    /**
+     * A posted, un-reversed entry that already debited the category's cost
+     * account for at least this asset (and the assets already linked to it).
+     */
+    private function resolveAcquisitionEntryId(mixed $reference, FixedAssetCategory $category, int $valueBase, ?int $assetId): ?int
+    {
+        if ($reference === null || $reference === '') {
+            return null;
+        }
+
+        $entry = JournalEntry::query()->where('public_id', (string) $reference)->first();
+        if (! $entry) {
+            throw new DomainException('The acquisition journal entry does not exist.');
+        }
+
+        $this->assertEntryCoversCost($entry, $category->assetAccount, $valueBase, $assetId);
+
+        return $entry->id;
+    }
+
+    private function assertAcquisitionEntry(FixedAsset $asset, ?Account $costAccount): JournalEntry
+    {
+        $entry = JournalEntry::query()->findOrFail($asset->acquisition_journal_entry_id);
+        $this->assertEntryCoversCost($entry, $costAccount, $asset->acquisition_value_base_minor, $asset->id);
+
+        return $entry;
+    }
+
+    private function assertEntryCoversCost(JournalEntry $entry, ?Account $costAccount, int $valueBase, ?int $assetId): void
+    {
+        if ($entry->status !== 'posted' || $entry->reversal_of_id !== null
+            || JournalEntry::query()->where('reversal_of_id', $entry->id)->exists()) {
+            throw new DomainException('The acquisition journal entry must be posted and not reversed.');
+        }
+        if (! $costAccount) {
+            throw new DomainException('The asset category has no cost account configured.');
+        }
+
+        $debited = (int) JournalLine::query()
+            ->where('journal_entry_id', $entry->id)
+            ->where('account_id', $costAccount->id)
+            ->sum('base_debit_minor');
+
+        $alreadyLinked = (int) FixedAsset::query()
+            ->where('acquisition_journal_entry_id', $entry->id)
+            ->when($assetId, fn ($query) => $query->where('id', '!=', $assetId))
+            ->sum('acquisition_value_base_minor');
+
+        if ($debited - $alreadyLinked < $valueBase) {
+            throw new DomainException(
+                "Journal {$entry->number} did not debit {$costAccount->code} for this asset's cost (or the amount is already assigned to other assets).",
+            );
+        }
     }
 
     private function resolveSupplierId(mixed $reference): ?int
