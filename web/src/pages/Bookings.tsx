@@ -69,7 +69,7 @@ export default function Bookings() {
   const urlSearch = searchParams.get('search') ?? ''
   const requestedCustomerId = searchParams.get('customer_id') ?? ''
   const requestedDepartureId = searchParams.get('departure_id') ?? ''
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(Boolean(requestedDepartureId))
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState(urlSearch)
@@ -261,6 +261,15 @@ export default function Bookings() {
       setItems([emptyItem(form.currency)])
     }
   }
+
+  useEffect(() => {
+    if (requestedDepartureId && departureOptions.some((option) => option.id === requestedDepartureId)
+      && form.tour_departure_id !== requestedDepartureId && !editTarget) {
+      selectDeparture(requestedDepartureId)
+    }
+    // Apply the incoming deep link once the asynchronous departure list is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedDepartureId, toursQuery.data])
 
   const startEdit = (booking: Booking) => {
     setError('')
