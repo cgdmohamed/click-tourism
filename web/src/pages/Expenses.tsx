@@ -156,7 +156,7 @@ export default function Expenses() {
   })
 
   const step = useMutation({
-    mutationFn: async ({ expense, path }: { expense: Expense; path: 'submit' | 'approve' | 'cancel' }) => {
+    mutationFn: async ({ expense, path }: { expense: Expense; path: 'submit' | 'approve' | 'cancel' | 'reopen' }) => {
       await api.post(`/expenses/${expense.id}/${path}`, undefined, path === 'approve' ? { headers: { 'Idempotency-Key': idempotencyKey() } } : undefined)
     },
     onSuccess: async () => {
@@ -263,6 +263,9 @@ export default function Expenses() {
                       <div className="flex flex-wrap justify-end gap-1">
                         {expense.status === 'draft' && can('expenses.create') ? (
                           <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
+                        ) : null}
+                        {expense.status === 'rejected' && can('expenses.create') ? (
+                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'reopen' })}>{L('إعادة فتح', 'Reopen')}</Button>
                         ) : null}
                         {expense.status === 'submitted' && can('expenses.approve') ? (
                           <>

@@ -55,6 +55,7 @@ export type JournalEntry = {
   lines?: JournalLine[]
   reversal_of_id?: string | null
   reversed_by_id?: string | null
+  created_by_id?: string | null
   source_type?: string | null
 }
 

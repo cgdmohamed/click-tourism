@@ -311,7 +311,7 @@ export default function Documents() {
   })
 
   const step = useMutation({
-    mutationFn: async ({ id, path }: { id: string; path: 'submit' | 'approve' | 'post' | 'cancel' }) => {
+    mutationFn: async ({ id, path }: { id: string; path: 'submit' | 'approve' | 'post' | 'cancel' | 'reopen' }) => {
       await api.post(`/accounting-documents/${id}/${path}`, undefined, {
         headers: path === 'approve' || path === 'post' ? { 'Idempotency-Key': idempotencyKey() } : undefined,
       })
@@ -621,6 +621,9 @@ export default function Documents() {
                     <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
                     <Button variant="ghost" onClick={() => { setError(''); setRejectId(detail.id) }}>{L('رفض', 'Reject')}</Button>
                   </>
+                ) : null}
+                {detail.status === 'rejected' && can('documents.create') ? (
+                  <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'reopen' })}>{L('إعادة فتح', 'Reopen')}</Button>
                 ) : null}
                 {detail.status === 'approved' && can('documents.approve') ? (
                   <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'post' })}>{t('post')}</Button>

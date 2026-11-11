@@ -161,6 +161,24 @@ class ExpenseService
         });
     }
 
+    /** Move a rejected expense back to draft; the rejection reason is kept in the audit log. */
+    public function reopen(Expense $expense, ?int $actorId): Expense
+    {
+        return DB::transaction(function () use ($expense, $actorId) {
+            $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
+
+            if ($expense->status !== 'rejected') {
+                throw new DomainException('Only rejected expenses can be reopened.');
+            }
+
+            $reason = $expense->rejection_reason;
+            $expense->update(['status' => 'draft', 'rejection_reason' => null]);
+            $this->audit->log('expense.reopened', $expense, ['status' => 'rejected', 'rejection_reason' => $reason], ['status' => 'draft'], $actorId);
+
+            return $expense->refresh()->load('category.account', 'cashAccount');
+        });
+    }
+
     public function cancel(Expense $expense, ?int $actorId): Expense
     {
         return DB::transaction(function () use ($expense, $actorId) {

@@ -372,6 +372,25 @@ class AccountingDocumentService
         });
     }
 
+    /** Move a rejected document back to draft so it can be edited and resubmitted. */
+    public function reopen(AccountingDocument $document, ?int $actorId): AccountingDocument
+    {
+        return DB::transaction(function () use ($document, $actorId) {
+            $document = AccountingDocument::query()->lockForUpdate()->findOrFail($document->id);
+
+            if ($document->status !== AccountingDocument::STATUS_REJECTED) {
+                throw new DomainException('Only rejected documents can be reopened.');
+            }
+
+            $document->update(['status' => AccountingDocument::STATUS_DRAFT]);
+            $this->audit->log('accounting_document.reopened', $document, ['status' => AccountingDocument::STATUS_REJECTED], [
+                'status' => AccountingDocument::STATUS_DRAFT,
+            ], $actorId);
+
+            return $document->refresh()->load('lines.account');
+        });
+    }
+
     /**
      * Create the linked reversal document for a posted document. The reversal
      * swaps every line's debit/credit, keeps the original trail via

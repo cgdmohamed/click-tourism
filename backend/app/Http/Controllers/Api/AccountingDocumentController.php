@@ -144,6 +144,16 @@ class AccountingDocumentController extends ApiController
         return $this->ok($service->reject($document, $data['reason'], $this->actorId())->toApiArray(true));
     }
 
+    public function reopen(AccountingDocument $document, AccountingDocumentService $service): JsonResponse
+    {
+        $this->authorizeBranchId($document->branch_id);
+
+        $user = request()->user();
+        abort_unless($document->created_by === $user?->id || $user?->can('documents.approve'), 403, 'Only the creator or an approver can reopen this document.');
+
+        return $this->ok($service->reopen($document, $this->actorId())->toApiArray(true));
+    }
+
     public function correct(Request $request, AccountingDocument $document, AccountingDocumentService $service): JsonResponse
     {
         $this->authorizeBranchId($document->branch_id);

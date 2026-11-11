@@ -4,12 +4,12 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Branch } from '../lib/types'
+import { DecisionsPanel } from '../components/DecisionsPanel'
 import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
 
 type Setting = { group: string; key: string; value: string | null; is_secret: boolean }
 type Currency = { code: string; name: string; symbol: string; exponent: number; is_active: boolean }
-type Decision = { id: string; type: string; title_en: string; title_ar: string; blocks: string; status: string }
 
 const editable: Array<{ group: string; key: string; ar: string; en: string; type?: 'text' | 'select' | 'toggle'; options?: string[] }> = [
   { group: 'general', key: 'company_name_ar', ar: 'اسم الشركة (عربي)', en: 'Company name (Arabic)' },
@@ -62,15 +62,6 @@ export default function Settings() {
       const { data } = await api.get<{ data: Currency[] }>('/currencies')
       return data.data
     },
-  })
-
-  const decisionsQuery = useQuery({
-    queryKey: ['decisions'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Decision[] }>('/decisions')
-      return data.data
-    },
-    enabled: can('settings.view'),
   })
 
   const values = useMemo(() => {
@@ -143,36 +134,7 @@ export default function Settings() {
         <p className="mb-4 rounded-12 border border-warning-border bg-warning-background px-3 py-2 text-medium text-warning-text">{t('permissionDenied')}</p>
       ) : null}
 
-      {decisionsQuery.isError ? (
-        <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">
-          {t('decisionsLoadError')}
-        </p>
-      ) : null}
-
-      {decisionsQuery.data && decisionsQuery.data.length > 0 ? (
-        <Card className="mb-6 border-warning-border">
-          <CardHeader title={t('unresolvedDecisions')} subtitle={t('unresolvedDecisionsHint')} />
-          <ul>
-            {decisionsQuery.data.map((decision) => (
-              <li
-                key={decision.id}
-                className="flex flex-wrap items-start gap-2 border-b border-border-subtle px-5 py-3 last:border-b-0"
-              >
-                <Badge tone="warning">{decision.id}</Badge>
-                <div className="min-w-0 flex-1">
-                  <p className="text-medium font-medium text-text-default">
-                    {locale === 'ar' ? decision.title_ar : decision.title_en}
-                  </p>
-                  <p className="text-small text-text-subtle">
-                    {t('blocks')}: <span className="tabular">{decision.blocks}</span>
-                  </p>
-                </div>
-                <Badge tone="neutral">{t('decisionOpen')}</Badge>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
+      <DecisionsPanel />
 
       <div className="grid gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
