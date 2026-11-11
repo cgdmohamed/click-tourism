@@ -24,7 +24,7 @@ jobs:
         working-directory: web
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit
-          npm audit fix --package-lock-only --ignore-scripts --no-fund
+          npm audit fix --package-lock-only --ignore-scripts --no-fund --legacy-peer-deps
       - name: Validate fresh lockfile against tests and build
         working-directory: web
         run: |
