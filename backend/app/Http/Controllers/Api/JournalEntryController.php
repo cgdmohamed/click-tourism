@@ -8,6 +8,7 @@ use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Money\Services\FxService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,7 +19,7 @@ class JournalEntryController extends ApiController
         $branch = $this->branch();
 
         $entries = JournalEntry::query()
-            ->with(['lines.account', 'reversalOf', 'reversal'])
+            ->with(['lines.account', 'reversalOf', 'reversal', 'creator'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('entry_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('entry_date', '<=', $to))
@@ -40,7 +41,7 @@ class JournalEntryController extends ApiController
     public function show(JournalEntry $journalEntry): JsonResponse
     {
         $this->authorizeBranch($journalEntry);
-        $journalEntry->load('lines.account', 'reversalOf', 'reversal');
+        $journalEntry->load('lines.account', 'reversalOf', 'reversal', 'creator');
 
         return $this->ok($journalEntry->toApiArray(true));
     }
@@ -128,6 +129,22 @@ class JournalEntryController extends ApiController
         $this->authorizeBranch($journalEntry);
 
         return $this->ok($posting->postDraft($journalEntry, $this->actorId())->toApiArray(true));
+    }
+
+    public function destroy(Request $request, JournalEntry $journalEntry, PostingService $posting): JsonResponse
+    {
+        $this->authorizeBranch($journalEntry);
+
+        $user = $request->user();
+        $isCreator = $journalEntry->created_by !== null && $journalEntry->created_by === $user->id;
+
+        if (! $user->can('journal.delete_drafts') && ! ($isCreator && $user->can('journal.create'))) {
+            throw new AuthorizationException('You may only delete your own drafts unless you hold journal.delete_drafts.');
+        }
+
+        $posting->deleteDraft($journalEntry, $this->actorId());
+
+        return $this->ok(['deleted' => true]);
     }
 
     public function reverse(Request $request, JournalEntry $journalEntry, PostingService $posting): JsonResponse

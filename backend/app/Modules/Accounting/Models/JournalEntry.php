@@ -3,6 +3,7 @@
 namespace App\Modules\Accounting\Models;
 
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
 use App\Support\HasPublicId;
 use DomainException;
 use Illuminate\Database\Eloquent\Model;
@@ -62,6 +63,11 @@ class JournalEntry extends Model
         return $this->hasMany(JournalLine::class);
     }
 
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function branch()
     {
         return $this->belongsTo(Branch::class);
@@ -115,6 +121,7 @@ class JournalEntry extends Model
             'source_type' => $this->source_type,
             'event' => $this->event,
             'posted_at' => $this->posted_at?->toIso8601String(),
+            'created_by_id' => $this->creator?->public_id,
         ];
 
         if ($withLines) {
