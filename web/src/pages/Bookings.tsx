@@ -30,6 +30,9 @@ import { taxMinor } from '../lib/tax'
 import { useTaxEnabled } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
+type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
+type TourOption = { id: string; name: string; currency: string; execution_type: string; departures: DepartureOption[] | null }
+
 type DraftItem = {
   service_type: string
   supplier_id: string
@@ -72,6 +75,7 @@ export default function Bookings() {
   const [editTarget, setEditTarget] = useState<Booking | null>(null)
   const [form, setForm] = useState({
     customer_id: '',
+    tour_departure_id: '',
     start_date: todayISO(),
     end_date: '',
     pax_adults: '1',
@@ -140,6 +144,7 @@ export default function Bookings() {
       if (!activeBranch) throw new Error(t('branchRequired'))
       const payload = {
         customer_id: form.customer_id,
+        ...(!editTarget && form.tour_departure_id ? { tour_departure_id: form.tour_departure_id } : {}),
         start_date: form.start_date,
         end_date: form.end_date || null,
         pax_adults: Number(form.pax_adults),
@@ -205,6 +210,7 @@ export default function Bookings() {
     setEditTarget(booking)
     setForm({
       customer_id: booking.customer_id,
+      tour_departure_id: booking.tour_departure_id ?? '',
       start_date: booking.start_date,
       end_date: booking.end_date ?? '',
       pax_adults: String(booking.pax_adults),
@@ -375,6 +381,26 @@ export default function Bookings() {
               placeholder={t('selectCustomer')}
             />
           </Field>
+          {!editTarget ? (
+            <Field label={locale === 'ar' ? 'موعد برنامج سياحي (اختياري)' : 'Tour departure (optional)'}>
+              <Select
+                value={form.tour_departure_id}
+                onChange={(event) => {
+                  const selected = departureOptions.find((option) => option.id === event.target.value)
+                  setForm((current) => ({
+                    ...current,
+                    tour_departure_id: event.target.value,
+                    start_date: selected?.start ?? current.start_date,
+                    end_date: selected?.end ?? current.end_date,
+                    currency: selected?.currency ?? current.currency,
+                  }))
+                }}
+              >
+                <option value="">{locale === 'ar' ? 'حجز مستقل / خدمة منفصلة' : 'Independent booking / standalone service'}</option>
+                {departureOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </Select>
+            </Field>
+          ) : null}
           <Field label={t('startDate')} required>
             <Input type="date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} dir="ltr" />
           </Field>
