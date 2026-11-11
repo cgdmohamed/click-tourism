@@ -9,6 +9,7 @@ use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Models\BookingItem;
 use App\Modules\Bookings\Models\BookingStatusHistory;
+use App\Modules\Bookings\Models\TourDeparture;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -88,6 +89,17 @@ class BookingService
                 ? User::query()->where('public_id', $data['owner_user_id'])->first()
                 : null;
 
+            $departure = null;
+            if (! empty($data['tour_departure_id'])) {
+                $departure = TourDeparture::query()->where('public_id', $data['tour_departure_id'])->first();
+                if (! $departure || $departure->branch_id !== $branch->id || $departure->status !== 'open') {
+                    throw new DomainException('The selected tour departure is not available for this branch.');
+                }
+                if ($departure->starts_on->toDateString() !== ($data['start_date'] ?? null)) {
+                    throw new DomainException('Booking start date must match the selected departure.');
+                }
+            }
+
             $currency = strtoupper($data['currency'] ?? $this->settings->baseCurrency());
             $startDate = $data['start_date'] ?? now()->toDateString();
             $fxRate = (string) ($data['fx_rate'] ?? $this->fx->rateFor($currency, $startDate));
@@ -101,6 +113,7 @@ class BookingService
                 'number' => $this->sequences->next('booking', $branch),
                 'customer_id' => $customer->id,
                 'branch_id' => $branch->id,
+                'tour_departure_id' => $departure?->id,
                 'owner_user_id' => $owner?->id,
                 'status' => 'draft',
                 'currency_code' => $currency,
@@ -292,6 +305,18 @@ class BookingService
                 && $this->settings->bool('accounting', 'negative_margin_requires_approval', true)
                 && $booking->margin_approval_status !== 'approved') {
                 throw new DomainException('Negative-margin booking requires manager approval before confirmation.');
+            }
+
+            if ($toStatus === 'confirmed' && $booking->tour_departure_id !== null) {
+                // Lock the common departure row to serialize concurrent confirmations.
+                $departure = TourDeparture::query()->lockForUpdate()->findOrFail($booking->tour_departure_id);
+                if ($departure->status !== 'open') {
+                    throw new DomainException('This departure is closed for new bookings.');
+                }
+                $seats = (int) $booking->pax_adults + (int) $booking->pax_children + (int) $booking->pax_infants;
+                if ($departure->capacity !== null && $departure->occupiedSeats() + $seats > $departure->capacity) {
+                    throw new DomainException('Not enough seats remain on the selected departure.');
+                }
             }
 
             $warnings = [];
