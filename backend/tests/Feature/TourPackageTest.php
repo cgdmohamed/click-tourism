@@ -48,7 +48,6 @@ class TourPackageTest extends TestCase
     {
         $response = $this->withHeaders(['X-Branch-Id' => $this->branch->public_id])
             ->postJson('/api/v1/tour-packages', [
-                'code' => 'WINTER-27',
                 'name' => 'Egypt winter trip',
                 'category' => 'domestic',
                 'execution_type' => 'fixed',
@@ -56,6 +55,7 @@ class TourPackageTest extends TestCase
                 'base_price_minor' => 150000,
                 'estimated_cost_minor' => 100000,
             ])->assertCreated()->assertJsonPath('data.name', 'Egypt winter trip');
+        $this->assertStringStartsWith('TOUR-', $response->json('data.code'));
         $id = $response->json('data.id');
         $this->postJson("/api/v1/tour-packages/{$id}/departures", [
             'starts_on' => now()->addWeek()->toDateString(),
@@ -64,6 +64,25 @@ class TourPackageTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.available_seats', 4);
         $this->getJson("/api/v1/tour-packages/{$id}")
             ->assertOk()->assertJsonCount(1, 'data.departures');
+    }
+
+    public function test_package_code_is_generated_unique_and_cannot_be_supplied_by_client(): void
+    {
+        $payload = [
+            'code' => 'USER-SUPPLIED-CODE',
+            'name' => 'Custom trip',
+            'category' => 'international',
+            'execution_type' => 'private',
+            'currency' => 'EGP',
+            'base_price_minor' => 50000,
+            'estimated_cost_minor' => 40000,
+        ];
+
+        $first = $this->postJson('/api/v1/tour-packages', $payload)->assertCreated()->json('data');
+        $second = $this->postJson('/api/v1/tour-packages', $payload)->assertCreated()->json('data');
+        $this->assertStringStartsWith('TOUR-', $first['code']);
+        $this->assertNotSame($first['code'], $second['code']);
+        $this->assertDatabaseMissing('tour_packages', ['code' => 'USER-SUPPLIED-CODE']);
     }
 
     public function test_confirmed_seats_are_counted_and_overbooking_is_rejected(): void
