@@ -43,6 +43,9 @@ class RolePermissionSeeder extends Seeder
             'reconciliation.view', 'reconciliation.manage', 'reconciliation.approve',
             'schedules.view', 'schedules.manage', 'schedules.approve',
             'assets.view', 'assets.manage', 'assets.approve',
+            'employees.view', 'employees.manage',
+            'customers.create',
+            'suppliers.create',
         ],
         'sales' => [
             'expenses.view', 'expenses.create',
