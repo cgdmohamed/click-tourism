@@ -30,6 +30,7 @@ import {
 import { statusLabel } from '../lib/labels'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
+import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -98,6 +99,7 @@ export default function Invoices() {
   const [open, setOpen] = useState(false)
   const [simpleMode, setSimpleMode] = useState(true)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [collectOpen, setCollectOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [creditId, setCreditId] = useState<string | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
@@ -644,6 +646,11 @@ export default function Invoices() {
                     {L('إلغاء', 'Void')}
                   </Button>
                 ) : null}
+                {detailQuery.data.type === 'customer_invoice' && detailQuery.data.status === 'issued' && detailQuery.data.outstanding_minor > 0 && can('payments.create') ? (
+                  <Button onClick={() => setCollectOpen(true)}>
+                    {L('تحصيل الفاتورة', 'Collect invoice')}
+                  </Button>
+                ) : null}
                 {detailQuery.data.status === 'issued' && can('invoices.approve') ? (
                   <Button
                     variant="ghost"
@@ -733,6 +740,11 @@ export default function Invoices() {
           </div>
         ) : null}
       </Modal>
+
+      <InvoiceCollectionModal
+        invoice={collectOpen && detailQuery.data && detailQuery.data.type === 'customer_invoice' ? detailQuery.data : null}
+        onClose={() => setCollectOpen(false)}
+      />
 
       <Modal
         open={creditId !== null}
