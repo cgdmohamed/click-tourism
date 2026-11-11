@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\FiscalPeriod;
 use App\Modules\Accounting\Models\FiscalYear;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\FiscalCloseService;
+use App\Modules\Accounting\Services\FiscalYearSuggestionService;
 use App\Modules\Accounting\Services\PeriodEndChecklistService;
 use App\Modules\Core\Services\AuditService;
 use DomainException;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class FiscalPeriodController extends ApiController
 {
@@ -41,6 +43,11 @@ class FiscalPeriodController extends ApiController
         return $this->ok($years);
     }
 
+    public function suggested(FiscalYearSuggestionService $suggestions): JsonResponse
+    {
+        return $this->ok($suggestions->suggest());
+    }
+
     public function closeChecks(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
     {
         return $this->ok($closing->checks($fiscalYear));
@@ -63,14 +70,31 @@ class FiscalPeriodController extends ApiController
         return $this->ok($closing->present($closing->reopen($fiscalYear, $data['reason'], $this->actorId())));
     }
 
-    public function store(Request $request, AuditService $audit): JsonResponse
+    public function store(Request $request, AuditService $audit, FiscalYearSuggestionService $suggestions): JsonResponse
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:50'],
-            'starts_on' => ['required', 'date'],
-            'ends_on' => ['required', 'date', 'after:starts_on'],
+            'name' => ['nullable', 'string', 'max:50'],
+            'starts_on' => ['nullable', 'date'],
+            'ends_on' => ['nullable', 'date', 'after:starts_on'],
             'months' => ['nullable', 'integer', 'min:1', 'max:12'],
+            'confirm_custom_start' => ['nullable', 'boolean'],
         ]);
+
+        // Missing values default from the configured fiscal year start.
+        $suggestion = $suggestions->suggest();
+        $data['starts_on'] = Carbon::parse($data['starts_on'] ?? $suggestion['starts_on'])->toDateString();
+        $data['ends_on'] = isset($data['ends_on'])
+            ? Carbon::parse($data['ends_on'])->toDateString()
+            : $suggestions->endFor($data['starts_on']);
+        if ($data['ends_on'] <= $data['starts_on']) {
+            throw ValidationException::withMessages(['ends_on' => 'The end date must be after the start date.']);
+        }
+        $data['name'] = ($data['name'] ?? null) ?: $suggestions->nameFor($data['starts_on'], $data['ends_on']);
+
+        $configured = $suggestions->configuredStart();
+        if (substr($data['starts_on'], 5) !== $configured && ! ($data['confirm_custom_start'] ?? false)) {
+            throw new DomainException("The start date does not match the configured fiscal year start ({$configured}). Send confirm_custom_start to create it anyway.");
+        }
 
         $overlap = FiscalYear::query()
             ->whereDate('starts_on', '<=', $data['ends_on'])

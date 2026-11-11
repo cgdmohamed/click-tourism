@@ -5,6 +5,7 @@ namespace App\Modules\Reports\Services;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
@@ -26,6 +27,7 @@ class ReportService
 {
     public function __construct(
         private readonly SettingService $settings,
+        private readonly RoundingPolicy $rounding,
         private readonly FxService $fx,
         private readonly ReportReferences $references,
         private readonly TreasuryService $treasury,
@@ -599,7 +601,7 @@ class ReportService
                 }
 
                 $base = (new Money($balance, $booking->currency_code))
-                    ->convertTo($currency, (string) $booking->fx_rate)->amountMinor;
+                    ->convertTo($currency, (string) $booking->fx_rate, $this->rounding->mode())->amountMinor;
 
                 $age = max(0, (int) floor((strtotime($asOf) - $booking->start_date->timestamp) / 86400));
                 $buckets[$this->bucket($age)] += $base;
@@ -616,7 +618,7 @@ class ReportService
                     : $this->fx->rateFor($obligation->currency_code, $asOf);
 
                 $base = (new Money($obligation->amount_minor, $obligation->currency_code))
-                    ->convertTo($currency, $rate)->amountMinor;
+                    ->convertTo($currency, $rate, $this->rounding->mode())->amountMinor;
 
                 $age = max(0, (int) floor((strtotime($asOf) - $obligation->created_at->timestamp) / 86400));
                 $buckets[$this->bucket($age)] += $base;
@@ -687,7 +689,7 @@ class ReportService
             ->get()
             ->each(function (Payment $payment) use (&$collected, $currency) {
                 $collected += (new Money($payment->amount_minor, $payment->currency_code))
-                    ->convertTo($currency, (string) $payment->fx_rate)->amountMinor;
+                    ->convertTo($currency, (string) $payment->fx_rate, $this->rounding->mode())->amountMinor;
             });
 
         $overdue = 0;
@@ -700,7 +702,7 @@ class ReportService
                 $balance = $booking->total_sell_minor - (int) ($booking->allocations_sum_amount_minor ?? 0);
                 if ($balance > 0) {
                     $overdue += (new Money($balance, $booking->currency_code))
-                        ->convertTo($currency, (string) $booking->fx_rate)->amountMinor;
+                        ->convertTo($currency, (string) $booking->fx_rate, $this->rounding->mode())->amountMinor;
                 }
             });
 
@@ -750,7 +752,7 @@ class ReportService
 
         $convertInvoice = fn (Invoice $invoice) => (new Money(
             $invoice->outstanding_minor, $invoice->currency_code,
-        ))->convertTo($currency, (string) $invoice->fx_rate)->amountMinor;
+        ))->convertTo($currency, (string) $invoice->fx_rate, $this->rounding->mode())->amountMinor;
 
         $arOutstandingMinor = $invoiceScope(Invoice::TYPE_CUSTOMER_INVOICE)->get()->sum($convertInvoice);
         $apOutstandingMinor = $invoiceScope(Invoice::TYPE_SUPPLIER_INVOICE)->get()->sum($convertInvoice);
@@ -763,7 +765,7 @@ class ReportService
             ->where('status', 'posted')->where('unallocated_minor', '>', 0)
             ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
             ->get()->sum(fn (Payment $p) => (new Money($p->unallocated_minor, $p->currency_code))
-            ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+            ->convertTo($currency, (string) $p->fx_rate, $this->rounding->mode())->amountMinor);
 
         $unreconciledBankCount = DB::table('bank_statement_lines as bsl')
             ->leftJoin('bank_reconciliation_matches as brm', 'brm.bank_statement_line_id', '=', 'bsl.id')
@@ -816,13 +818,13 @@ class ReportService
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
                 ->get()->sum(fn (Payment $p) => (new Money($p->amount_minor, $p->currency_code))
-                ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+                ->convertTo($currency, (string) $p->fx_rate, $this->rounding->mode())->amountMinor);
             $outflow = SupplierPayment::query()
                 ->where('status', 'posted')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
                 ->whereDate('paid_at', '>=', $from)->whereDate('paid_at', '<=', $to)
                 ->get()->sum(fn ($p) => (new Money($p->amount_minor, $p->currency_code))
-                ->convertTo($currency, (string) $p->fx_rate)->amountMinor);
+                ->convertTo($currency, (string) $p->fx_rate, $this->rounding->mode())->amountMinor);
             $monthlyCashFlow[] = [
                 'month' => $at->format('Y-m'),
                 'inflow_minor' => $inflow,

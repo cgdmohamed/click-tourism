@@ -129,6 +129,7 @@ Route::prefix('v1')->group(function () {
         Route::get('fiscal-periods', [FiscalPeriodController::class, 'index'])->middleware('permission:periods.view');
         Route::get('fiscal-periods/{period}/checklist', [FiscalPeriodController::class, 'checklist'])->middleware('permission:periods.view');
         Route::post('fiscal-periods', [FiscalPeriodController::class, 'store'])->middleware('permission:periods.manage');
+        Route::get('fiscal-years/suggested', [FiscalPeriodController::class, 'suggested'])->middleware('permission:periods.view');
         Route::get('fiscal-years/{fiscalYear}/close-checks', [FiscalPeriodController::class, 'closeChecks'])->middleware('permission:periods.view');
         Route::post('fiscal-years/{fiscalYear}/close', [FiscalPeriodController::class, 'close'])->middleware('permission:periods.close');
         Route::post('fiscal-years/{fiscalYear}/reopen', [FiscalPeriodController::class, 'reopen'])->middleware('permission:periods.reopen');

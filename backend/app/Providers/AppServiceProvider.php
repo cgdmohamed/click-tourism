@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\EmployeeAdvance;
@@ -17,7 +18,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Resolved once per request/job; SettingService::set() flushes it.
+        $this->app->scoped(RoundingPolicy::class);
     }
 
     /**

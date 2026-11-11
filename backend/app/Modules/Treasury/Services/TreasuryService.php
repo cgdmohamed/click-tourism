@@ -8,6 +8,7 @@ use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Services\FxService;
@@ -30,6 +31,7 @@ class TreasuryService
     public function __construct(
         private readonly PostingService $posting,
         private readonly SettingService $settings,
+        private readonly RoundingPolicy $rounding,
         private readonly FxService $fx,
         private readonly SequenceService $sequences,
         private readonly AuditService $audit,
@@ -307,6 +309,6 @@ class TreasuryService
 
     private function toBase(int $minor, string $currency, string $base, string $rate): int
     {
-        return $currency === $base ? $minor : (new Money($minor, $currency))->convertTo($base, $rate)->amountMinor;
+        return $currency === $base ? $minor : (new Money($minor, $currency))->convertTo($base, $rate, $this->rounding->mode())->amountMinor;
     }
 }

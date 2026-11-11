@@ -4,6 +4,7 @@ namespace App\Modules\Reports\Services;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Payments\Models\Payment;
@@ -23,6 +24,7 @@ class AgingReconciliationService
 {
     public function __construct(
         private readonly SettingService $settings,
+        private readonly RoundingPolicy $rounding,
         private readonly ReportReferences $references,
     ) {}
 
@@ -202,7 +204,7 @@ class AgingReconciliationService
                 : (int) $invoice->outstanding_minor;
 
             $base = (new Money($amount, $invoice->currency_code))
-                ->convertTo($currency, (string) $invoice->fx_rate)->amountMinor;
+                ->convertTo($currency, (string) $invoice->fx_rate, $this->rounding->mode())->amountMinor;
 
             $total += $base;
 
@@ -285,7 +287,7 @@ class AgingReconciliationService
 
             foreach ($payments as $payment) {
                 $total += (new Money((int) $payment->unallocated_minor, $payment->currency_code))
-                    ->convertTo($currency, (string) $payment->fx_rate)->amountMinor;
+                    ->convertTo($currency, (string) $payment->fx_rate, $this->rounding->mode())->amountMinor;
             }
         } else {
             $payments = SupplierPayment::query()
@@ -297,7 +299,7 @@ class AgingReconciliationService
             foreach ($payments as $payment) {
                 $unallocated = max(0, (int) $payment->amount_minor - (int) ($payment->applications_sum_amount_minor ?? 0));
                 $total += (new Money($unallocated, $payment->currency_code))
-                    ->convertTo($currency, (string) $payment->fx_rate)->amountMinor;
+                    ->convertTo($currency, (string) $payment->fx_rate, $this->rounding->mode())->amountMinor;
             }
         }
 

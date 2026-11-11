@@ -55,4 +55,46 @@ class MoneyTest extends TestCase
 
         Money::fromDecimal('12.3.4', 'EGP');
     }
+
+    public function test_half_up_is_the_default_and_rounds_ties_away_from_zero(): void
+    {
+        // 1 USD cent at 0.5/1.5/2.5 -> 0.5/1.5/2.5 EGP minor units (tie cases)
+        $this->assertSame(1, (new Money(1, 'USD'))->convertTo('EGP', '0.5')->amountMinor);
+        $this->assertSame(2, (new Money(1, 'USD'))->convertTo('EGP', '1.5')->amountMinor);
+        $this->assertSame(3, (new Money(1, 'USD'))->convertTo('EGP', '2.5')->amountMinor);
+        $this->assertSame(-3, (new Money(-1, 'USD'))->convertTo('EGP', '2.5')->amountMinor);
+    }
+
+    public function test_bankers_rounding_rounds_ties_to_even(): void
+    {
+        $convert = fn (int $minor, string $rate) => (new Money($minor, 'USD'))->convertTo('EGP', $rate, Money::ROUND_BANKERS)->amountMinor;
+
+        $this->assertSame(0, $convert(1, '0.5'));
+        $this->assertSame(2, $convert(1, '1.5'));
+        $this->assertSame(2, $convert(1, '2.5'));
+        $this->assertSame(4, $convert(1, '3.5'));
+        $this->assertSame(0, $convert(-1, '0.5'));
+        $this->assertSame(-2, $convert(-1, '1.5'));
+        $this->assertSame(-2, $convert(-1, '2.5'));
+    }
+
+    public function test_bankers_rounding_matches_half_up_away_from_ties(): void
+    {
+        $convert = fn (int $minor, string $rate) => (new Money($minor, 'USD'))->convertTo('EGP', $rate, Money::ROUND_BANKERS)->amountMinor;
+
+        // 100 cents at 48.505 = 4850.5 (tie -> even 4850); at 48.515 = 4851.5 (tie -> even 4852)
+        $this->assertSame(4850, $convert(100, '48.505'));
+        $this->assertSame(4852, $convert(100, '48.515'));
+        $this->assertSame(3, $convert(1, '2.51'));
+        $this->assertSame(2, $convert(1, '2.49'));
+        $this->assertSame(-3, $convert(-1, '2.51'));
+        $this->assertSame(-2, $convert(-1, '2.49'));
+    }
+
+    public function test_an_unknown_rounding_mode_is_rejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new Money(1, 'USD'))->convertTo('EGP', '1', 'floor');
+    }
 }

@@ -99,12 +99,21 @@ final class Money
         return $this->currency === $other->currency && $this->amountMinor === $other->amountMinor;
     }
 
+    public const ROUND_HALF_UP = 'half_up';
+
+    public const ROUND_BANKERS = 'bankers';
+
     /**
      * Convert to base-currency minor units using a decimal FX rate string.
-     * Half-up rounding at the base currency exponent.
+     * Rounds at the base currency exponent: half-up (default) or bankers
+     * (round half to even). The mode is passed in so Money never reads settings.
      */
-    public function convertTo(string $baseCurrency, string $rate): self
+    public function convertTo(string $baseCurrency, string $rate, string $rounding = self::ROUND_HALF_UP): self
     {
+        if (! in_array($rounding, [self::ROUND_HALF_UP, self::ROUND_BANKERS], true)) {
+            throw new InvalidArgumentException("Unknown rounding mode: {$rounding}");
+        }
+
         $baseCurrency = strtoupper($baseCurrency);
         $sourceScale = self::exponent($this->currency);
         $baseScale = self::exponent($baseCurrency);
@@ -115,7 +124,11 @@ final class Money
             ? bcmul($raw, (string) (10 ** $shift), 12)
             : bcdiv($raw, (string) (10 ** -$shift), 12);
 
-        return new self((int) $this->roundHalfUp($scaled, 0), $baseCurrency);
+        $rounded = $rounding === self::ROUND_BANKERS
+            ? $this->roundBankers($scaled)
+            : $this->roundHalfUp($scaled, 0);
+
+        return new self((int) $rounded, $baseCurrency);
     }
 
     /** @return array{amount: string, amountMinor: int, currency: string} */
@@ -141,5 +154,21 @@ final class Money
         $scaled = bcmul($value, $factor, 12);
 
         return bcdiv(bcadd($scaled, $scaled >= 0 ? '0.5' : '-0.5', 12), '1', 0);
+    }
+
+    /** Round half to even; ties (exactly .5) go to the nearest even integer. */
+    private function roundBankers(string $value): string
+    {
+        $negative = str_starts_with($value, '-');
+        $absolute = ltrim($value, '-');
+        $whole = bcdiv($absolute, '1', 0);
+        $fraction = bcsub($absolute, $whole, 12);
+        $comparison = bccomp($fraction, '0.5', 12);
+
+        if ($comparison > 0 || ($comparison === 0 && bcmod($whole, '2') !== '0')) {
+            $whole = bcadd($whole, '1', 0);
+        }
+
+        return $negative && $whole !== '0' ? '-'.$whole : $whole;
     }
 }
