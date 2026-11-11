@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
+use App\Modules\Accounting\Services\RealizedFxService;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
@@ -38,6 +39,7 @@ class PaymentService
         private readonly PostingService $posting,
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
+        private readonly RealizedFxService $realizedFx,
     ) {}
 
     public function record(array $data, ?int $actorId = null, ?string $idempotencyKey = null): Payment
@@ -131,7 +133,7 @@ class PaymentService
                 ]);
             }
 
-            $this->postReceipt($payment, $cashAccount, $actorId);
+            $this->postReceipt($payment, $cashAccount, $actorId, $allocations);
             $this->audit->log('payment.recorded', $payment, null, $payment->toApiArray(), $actorId);
 
             return $payment->refresh()->load('allocations');
@@ -290,6 +292,20 @@ class PaymentService
                 PostingLine::credit($ar, $amountMinor, 'customer', $payment->customer_id, $label),
             ];
 
+        if ($this->isForeign($payment->currency_code)) {
+            // The advance is carried at the receipt rate, the receivable at the
+            // booking's rate snapshot; the base difference is realized FX.
+            $bookingRate = (string) Booking::query()->findOrFail($allocation->booking_id)->fx_rate;
+            $receiptRate = (string) $payment->fx_rate;
+            $lines = $this->realizedFx->balance(array_map(
+                fn (PostingLine $line) => $line->in(
+                    $payment->currency_code,
+                    $line->account->id === $ar->id ? $bookingRate : $receiptRate,
+                ),
+                $lines,
+            ), $payment->currency_code);
+        }
+
         $this->posting->post(PostingRequest::make(
             entryDate: now()->toDateString(),
             branch: $branch,
@@ -359,9 +375,9 @@ class PaymentService
         });
     }
 
-    public function approveRefund(Refund $refund, int $actorId): Refund
+    public function approveRefund(Refund $refund, int $actorId, ?string $fxRate = null): Refund
     {
-        return DB::transaction(function () use ($refund, $actorId) {
+        return DB::transaction(function () use ($refund, $actorId, $fxRate) {
             $refund = Refund::query()->lockForUpdate()->findOrFail($refund->id);
 
             if ($refund->status !== 'requested') {
@@ -394,6 +410,36 @@ class PaymentService
             }
             $lines[] = PostingLine::credit($cashAccount, $refund->amount_minor, null, null, 'Refund '.$refund->number);
 
+            $refundRate = (string) $payment->fx_rate;
+            $refundRateDate = $payment->fx_rate_date;
+            $refundRateSource = $payment->fx_rate_source;
+            if ($this->isForeign($refund->currency_code)) {
+                if ($fxRate !== null) {
+                    if (! is_numeric($fxRate) || bccomp($fxRate, '0', 10) <= 0) {
+                        throw new DomainException('Refund FX rate must be greater than zero.');
+                    }
+                    $refundRate = $fxRate;
+                    $refundRateDate = now()->toDateString();
+                    $refundRateSource = 'manual';
+                }
+                // Receivable released at the booking rate, advance at the receipt
+                // rate, cash leaves at the refund rate; the difference is realized.
+                $bookingRate = $allocatedPortion > 0
+                    ? (string) Booking::query()->findOrFail($refund->booking_id)->fx_rate
+                    : null;
+                $lines = $this->realizedFx->balance(array_map(
+                    fn (PostingLine $line) => $line->in(
+                        $refund->currency_code,
+                        match ($line->account->id) {
+                            $ar->id => $bookingRate ?? $refundRate,
+                            $advance->id => (string) $payment->fx_rate,
+                            default => $refundRate,
+                        },
+                    ),
+                    $lines,
+                ), $refund->currency_code);
+            }
+
             // The refunded money leaves the receipt: shrink the booking
             // allocation first, then the unallocated advance.
             if ($advancePortion > (int) $payment->unallocated_minor) {
@@ -424,9 +470,9 @@ class PaymentService
                 sourceType: 'refund',
                 sourceId: $refund->id,
                 event: 'refund',
-                fxRate: (string) $payment->fx_rate,
-                fxRateDate: $payment->fx_rate_date,
-                fxRateSource: $payment->fx_rate_source,
+                fxRate: $refundRate,
+                fxRateDate: $refundRateDate,
+                fxRateSource: $refundRateSource,
                 actorId: $actorId,
             ));
 
@@ -487,7 +533,10 @@ class PaymentService
         return $result;
     }
 
-    private function postReceipt(Payment $payment, Account $cashAccount, ?int $actorId): void
+    /**
+     * @param  array<int, array{booking: Booking, amount_minor: int}>  $allocations
+     */
+    private function postReceipt(Payment $payment, Account $cashAccount, ?int $actorId, array $allocations = []): void
     {
         $ar = $this->ledger->receivable($payment->customer_id);
         $advance = $this->posting->account((string) $this->settings->get('accounting', 'advance_account_code', '2300'));
@@ -500,6 +549,23 @@ class PaymentService
         }
         if ($payment->unallocated_minor > 0) {
             $lines[] = PostingLine::credit($advance, $payment->unallocated_minor, 'customer', $payment->customer_id, 'Advance '.$payment->number);
+        }
+
+        if ($this->isForeign($payment->currency_code)) {
+            // Cash and advance at the receipt rate; each allocated portion
+            // clears its booking receivable at that booking's rate.
+            $receiptRate = (string) $payment->fx_rate;
+            $lines = [PostingLine::debit($cashAccount, $payment->amount_minor, null, null, 'Receipt '.$payment->number)
+                ->in($payment->currency_code, $receiptRate)];
+            foreach ($allocations as $allocation) {
+                $lines[] = PostingLine::credit($ar, $allocation['amount_minor'], 'customer', $payment->customer_id, 'Receipt '.$payment->number)
+                    ->in($payment->currency_code, (string) $allocation['booking']->fx_rate);
+            }
+            if ($payment->unallocated_minor > 0) {
+                $lines[] = PostingLine::credit($advance, $payment->unallocated_minor, 'customer', $payment->customer_id, 'Advance '.$payment->number)
+                    ->in($payment->currency_code, $receiptRate);
+            }
+            $lines = $this->realizedFx->balance($lines, $payment->currency_code);
         }
 
         $this->posting->post(PostingRequest::make(
@@ -516,6 +582,11 @@ class PaymentService
             fxRateSource: $payment->fx_rate_source,
             actorId: $actorId,
         ));
+    }
+
+    private function isForeign(string $currency): bool
+    {
+        return strtoupper($currency) !== $this->settings->baseCurrency();
     }
 
     private function branch(?string $publicId): Branch
