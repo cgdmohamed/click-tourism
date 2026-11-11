@@ -231,15 +231,16 @@ class UserManagementTest extends TestCase
         $this->actAs($delegate);
 
         $this->postJson('/api/v1/users/'.$this->user->public_id.'/deactivate', ['reason' => 'Downgrade'])
-            ->assertStatus(422)
-            ->assertJsonPath('message', 'The last active administrator cannot be deactivated or demoted.');
+            ->assertForbidden()
+            ->assertJsonPath('message', 'You may not manage an account with privileges you do not hold.');
 
-        // With a second active administrator the deactivation is allowed.
+        // Even with multiple administrators, a less privileged delegate
+        // cannot disable administrators or reset their credentials.
         User::factory()->create()->assignRole('admin');
 
         $this->postJson('/api/v1/users/'.$this->user->public_id.'/deactivate', ['reason' => 'Downgrade'])
-            ->assertOk()
-            ->assertJsonPath('data.is_active', false);
+            ->assertForbidden()
+            ->assertJsonPath('message', 'You may not manage an account with privileges you do not hold.');
     }
 
     public function test_the_last_active_administrator_cannot_be_demoted(): void
@@ -299,6 +300,46 @@ class UserManagementTest extends TestCase
             'roles' => ['light_agent'],
             'branch_ids' => [$this->branch->public_id],
         ])->assertCreated()->assertJsonPath('data.roles.0', 'light_agent');
+    }
+
+    public function test_delegated_manager_cannot_take_over_an_admin_via_password_reset(): void
+    {
+        $manager = User::factory()->create();
+        $manager->branches()->attach($this->branch->id);
+        $this->grant($manager, ['users.view', 'users.manage']);
+        $oldHash = $this->user->password;
+        $this->actAs($manager);
+
+        $this->patchJson('/api/v1/users/'.$this->user->public_id, [
+            'password' => 'attacker-new-password-123',
+        ])->assertForbidden()->assertJsonPath(
+            'message', 'You may not manage an account with privileges you do not hold.'
+        );
+
+        $this->assertSame($oldHash, $this->user->fresh()->password);
+    }
+
+    public function test_unknown_branch_identifiers_are_rejected_instead_of_silently_ignored(): void
+    {
+        $payload = [
+            'name' => 'Unknown Branch User',
+            'email' => 'unknown-branch@example.test',
+            'password' => 'long-enough-password',
+            'locale' => 'ar',
+            'branch_ids' => [$this->branch->public_id, '01AAAAAAAAAAAAAAAAAAAAAAAA'],
+        ];
+
+        $this->postJson('/api/v1/users', $payload)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'One or more requested branches do not exist.');
+
+        $payload['branch_ids'] = [$this->branch->public_id];
+        $payload['primary_branch_id'] = '01AAAAAAAAAAAAAAAAAAAAAAAA';
+        $this->postJson('/api/v1/users', $payload)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Requested primary branch does not exist.');
+
+        $this->assertDatabaseMissing('users', ['email' => 'unknown-branch@example.test']);
     }
 
     public function test_a_manager_cannot_assign_a_branch_they_are_not_assigned_to(): void
