@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\DemoStatusController;
 use App\Http\Controllers\Api\DepreciationRunController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\FeatureFlagController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FixedAssetCategoryController;
 use App\Http\Controllers\Api\FixedAssetController;
@@ -56,6 +57,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('auth/me', [AuthController::class, 'me']);
         Route::post('auth/logout', [AuthController::class, 'logout']);
+        Route::get('feature-flags', [FeatureFlagController::class, 'show']);
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');
         Route::post('branches', [BranchController::class, 'store'])->middleware('permission:branches.create');

@@ -360,7 +360,7 @@ class RevaluationService
         $code = (string) $this->settings->get('accounting', $setting, $default);
         $account = Account::query()->where('code', $code)->first();
         if (! $account) {
-            throw new DomainException("FX revaluation account {$code} does not exist. Create or import it in the chart of accounts (or run `php artisan accounting:ensure-fx-accounts --apply`).");
+            throw new DomainException("FX revaluation account {$code} does not exist. Create or import it in the chart of accounts (or run `php artisan accounting:ensure-accounts --apply`).");
         }
 
         return $account;

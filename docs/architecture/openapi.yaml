@@ -118,6 +118,28 @@ paths:
         '200': { description: Updated }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /feature-flags:
+    get:
+      tags: [Platform]
+      summary: Non-sensitive installation flags (any authenticated user, no extra permission)
+      responses:
+        '200':
+          description: Flags derived from settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [tax_enabled, credit_limit_policy, base_currency, refund_segregation]
+                    properties:
+                      tax_enabled: { type: boolean }
+                      credit_limit_policy: { type: string, enum: [off, warn, block] }
+                      base_currency: { type: string, example: EGP }
+                      refund_segregation: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /decisions:
     get:
       tags: [Platform]
