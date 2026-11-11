@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -8,6 +9,7 @@ import { statusLabel } from '../lib/labels'
 import type { InvoiceRecord } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat } from '../components/profile'
+import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 
 function nameOf(party: { name_ar: string; name_en: string }, locale: 'ar' | 'en') {
   return (locale === 'ar' ? party.name_ar : party.name_en) || party.name_ar || party.name_en
@@ -30,6 +32,7 @@ export default function InvoiceProfile() {
   const { t, locale } = useI18n()
   const { can } = useAuth()
   const queryClient = useQueryClient()
+  const [collectOpen, setCollectOpen] = useState(false)
 
   const query = useQuery({
     queryKey: ['invoice-profile', id],
@@ -71,9 +74,16 @@ export default function InvoiceProfile() {
         backLabel={t('invoices')}
         badge={<Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge>}
         actions={
-          <Button variant="secondary" icon="printer" onClick={() => window.print()}>
-            {t('print')}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {invoice.type === 'customer_invoice' && invoice.status === 'issued' && invoice.outstanding_minor > 0 && can('payments.create') ? (
+              <Button icon="creditCard" onClick={() => setCollectOpen(true)}>
+                {locale === 'ar' ? 'تحصيل الفاتورة' : 'Collect invoice'}
+              </Button>
+            ) : null}
+            <Button variant="secondary" icon="printer" onClick={() => window.print()}>
+              {t('print')}
+            </Button>
+          </div>
         }
         meta={
           <>
@@ -90,6 +100,11 @@ export default function InvoiceProfile() {
             </MetaItem>
           </>
         }
+      />
+
+      <InvoiceCollectionModal
+        invoice={collectOpen && invoice.type === 'customer_invoice' ? invoice : null}
+        onClose={() => setCollectOpen(false)}
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -133,11 +148,11 @@ export default function InvoiceProfile() {
             <p className="text-medium text-text-subtle">
               {invoice.type === 'customer_invoice'
                 ? locale === 'ar'
-                  ? 'سجّل سند قبض للعميل من شاشة التحصيلات، ثم اضغط «تطبيق على فاتورة» على السند واختر رقم الفاتورة الحالي. بدون خطوة التطبيق يظل المبلغ دفعة مقدمة ولا يخفض المستحق على الفاتورة.'
-                  : 'Record a customer receipt in Payments, then choose “Apply to invoice” on the receipt and select this invoice. Until applied, the payment remains an advance and does not reduce invoice outstanding.'
+                  ? 'حصّل المبلغ كاملًا أو جزئيًا من الفاتورة مباشرة، ويمكن تقسيمه بين النقدي والتحويل والبطاقة. كل جزء يُسجل كسند قبض مرتبط بالفاتورة.'
+                  : 'Collect the full or partial amount directly, with multiple cash, bank or card receipts applied to this invoice.'
                 : locale === 'ar'
-                  ? 'سجّل دفعة المورد من شاشة مدفوعات الموردين، ثم طبّقها على فاتورة المورد المعتمدة بالطريقة المتاحة.'
-                  : 'Record a supplier payment, then apply it to the approved supplier invoice.'}
+                  ? 'سجّل دفعة المورد ثم طبّقها على فاتورة المورد المعتمدة.'
+                  : 'Record a supplier payment, then apply it to the approved invoice.'}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
