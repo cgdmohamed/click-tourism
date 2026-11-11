@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Booking, Customer, Paginated, Supplier, TaxProfile } from '../lib/types'
+import type { Booking, Paginated, TaxProfile } from '../lib/types'
 import {
   Badge,
   Button,
@@ -18,13 +18,13 @@ import {
   Modal,
   PageHeader,
   Pagination,
-  SearchableSelect,
   Select,
   Table,
   Td,
   Th,
   statusTone,
 } from '../components/ui'
+import PartyPicker from '../components/PartyPicker'
 import { statusLabel } from '../lib/labels'
 import { taxMinor } from '../lib/tax'
 import { useTaxEnabled } from '../lib/useSetting'
@@ -99,22 +99,6 @@ export default function Bookings() {
   })
 
   const bookings = bookingsQuery.data?.data ?? []
-
-  const customersQuery = useQuery({
-    queryKey: ['customers'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Customer[] }>('/customers')
-      return data.data
-    },
-  })
-
-  const suppliersQuery = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Supplier[] }>('/suppliers')
-      return data.data
-    },
-  })
 
   const taxProfilesQuery = useQuery({
     queryKey: ['tax-profiles'],
@@ -384,15 +368,11 @@ export default function Bookings() {
       >
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label={t('customer')} required>
-            <SearchableSelect
+            <PartyPicker
+              kind="customer"
               value={form.customer_id}
               onChange={(customer_id) => setForm({ ...form, customer_id })}
               placeholder={t('selectCustomer')}
-              options={(customersQuery.data ?? []).map((customer) => ({
-                value: customer.id,
-                label: locale === 'ar' ? customer.name_ar : customer.name_en,
-                hint: locale === 'ar' ? customer.name_en : customer.name_ar,
-              }))}
             />
           </Field>
           <Field label={t('startDate')} required>
@@ -439,16 +419,12 @@ export default function Bookings() {
                 </Select>
               </div>
               <div className="sm:col-span-3">
-                <SearchableSelect
+                <PartyPicker
+                  kind="supplier"
                   value={item.supplier_id}
                   onChange={(supplier_id) => updateItem(index, { supplier_id })}
                   placeholder={t('supplier')}
                   clearLabel={t('none')}
-                  options={(suppliersQuery.data ?? []).map((supplier) => ({
-                    value: supplier.id,
-                    label: locale === 'ar' ? supplier.name_ar : supplier.name_en,
-                    hint: locale === 'ar' ? supplier.name_en : supplier.name_ar,
-                  }))}
                 />
               </div>
               <div className="sm:col-span-3">

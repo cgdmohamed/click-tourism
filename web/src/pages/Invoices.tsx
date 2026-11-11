@@ -431,6 +431,7 @@ export default function Invoices() {
               placeholder={L('اختر الطرف', 'Select party')}
               options={partyOptions}
               onSearch={partyPicker.setSearch}
+              hasMore={partyPicker.hasMore}
             />
           </Field>
           <Field label={t('date')} required>

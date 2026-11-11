@@ -149,6 +149,7 @@ export function SearchableSelect({
   className,
   id,
   onSearch,
+  hasMore,
 }: {
   value: string
   onChange: (value: string) => void
@@ -160,6 +161,8 @@ export function SearchableSelect({
   id?: string
   /** Optional server-side search: called (debounced) with the typed query. */
   onSearch?: (query: string) => void
+  /** True when the server holds more rows than were loaded: shows "more results — refine the search". */
+  hasMore?: boolean
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -291,6 +294,7 @@ export function SearchableSelect({
               </button>
             ))
           )}
+          {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
         </div>
       ) : null}
     </div>

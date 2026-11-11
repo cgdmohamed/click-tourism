@@ -3343,6 +3343,16 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
+  /users:
+    get:
+      tags: [CRM]
+      summary: List branch users for assignment pickers (requires leads.update)
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Users in the caller's branch (id, name, email)
+        '403': { $ref: '#/components/responses/Forbidden' }
   /assignment-rules:
     get:
       tags: [CRM]

@@ -6,7 +6,9 @@ import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import { useBaseCurrency } from '../lib/useSetting'
-import type { Booking, Customer, Paginated, Payment, Refund } from '../lib/types'
+import { useRemoteOptions } from '../lib/useRemoteOptions'
+import PartyPicker from '../components/PartyPicker'
+import type { Booking, Paginated, Payment, Refund } from '../lib/types'
 import type { PaymentMethod } from '../lib/types'
 import {
   Badge,
@@ -26,12 +28,18 @@ import {
   Td,
   Th,
   statusTone,
+  type SelectOption,
 } from '../components/ui'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
 import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
+
+const bookingToOption = (booking: Booking): SelectOption => ({
+  value: booking.id,
+  label: `${booking.number} — ${toDecimal(booking.total_sell_minor, booking.currency)} ${booking.currency}`,
+})
 
 export default function Payments() {
   const { t, locale } = useI18n()
@@ -81,22 +89,6 @@ export default function Payments() {
   })
 
   const payments = paymentsQuery.data?.data ?? []
-
-  const customersQuery = useQuery({
-    queryKey: ['customers'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Customer[] }>('/customers')
-      return data.data
-    },
-  })
-
-  const bookingsQuery = useQuery({
-    queryKey: ['bookings'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Booking[] }>('/bookings')
-      return data.data
-    },
-  })
 
   const cashQuery = useQuery({
     queryKey: ['cash-accounts'],
@@ -186,10 +178,15 @@ export default function Payments() {
     onError: (cause) => setApproveError(errorMessage(cause)),
   })
 
-  const customerBookings = useMemo(
-    () => (bookingsQuery.data ?? []).filter((booking) => !form.customer_id || booking.customer_id === form.customer_id),
-    [bookingsQuery.data, form.customer_id],
-  )
+  // Bookings of the chosen customer, searchable by number on the server.
+  const bookingParams = useMemo(() => ({ customer_id: form.customer_id || undefined }), [form.customer_id])
+  const bookingPicker = useRemoteOptions<Booking>({
+    endpoint: '/bookings',
+    keyPrefix: 'bookings',
+    params: bookingParams,
+    toOption: bookingToOption,
+    value: form.booking_id,
+  })
 
   const create = useMutation({
     mutationFn: async () => {
@@ -375,15 +372,11 @@ export default function Payments() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('customer')} required>
-            <SearchableSelect
+            <PartyPicker
+              kind="customer"
               value={form.customer_id}
               onChange={(customer_id) => setForm({ ...form, customer_id, booking_id: '' })}
               placeholder={t('selectCustomer')}
-              options={(customersQuery.data ?? []).map((customer) => ({
-                value: customer.id,
-                label: locale === 'ar' ? customer.name_ar : customer.name_en,
-                hint: locale === 'ar' ? customer.name_en : customer.name_ar,
-              }))}
             />
           </Field>
           <Field label={t('bookings')}>
@@ -392,10 +385,9 @@ export default function Payments() {
               onChange={(booking_id) => setForm({ ...form, booking_id })}
               placeholder={locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}
               clearLabel={locale === 'ar' ? 'دفعة مقدمة' : 'Advance'}
-              options={customerBookings.map((booking) => ({
-                value: booking.id,
-                label: `${booking.number} — ${toDecimal(booking.total_sell_minor, booking.currency)} ${booking.currency}`,
-              }))}
+              options={bookingPicker.options}
+              onSearch={bookingPicker.setSearch}
+              hasMore={bookingPicker.hasMore}
             />
           </Field>
           <Field label={locale === 'ar' ? 'حساب الخزينة/البنك' : 'Cash / bank account'} required>
