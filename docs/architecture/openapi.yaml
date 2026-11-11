@@ -750,6 +750,54 @@ paths:
       summary: List fiscal periods and status
       responses:
         '200': { description: Periods }
+    post:
+      tags: [Accounting]
+      summary: Create a fiscal year with monthly periods (requires periods.manage)
+      description: >-
+        Despite the path, this creates a fiscal year and its monthly periods
+        (status open). Missing `starts_on`/`ends_on`/`name` default from
+        `GET /fiscal-years/suggested`. A start date that does not match the
+        configured fiscal year start needs `confirm_custom_start`; dates that
+        overlap an existing year are refused with 422. Audited as
+        `fiscal_year.created`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 50 }
+                starts_on: { type: string, format: date }
+                ends_on: { type: string, format: date, description: Must be after starts_on }
+                months: { type: integer, minimum: 1, maximum: 12 }
+                confirm_custom_start: { type: boolean }
+      responses:
+        '201':
+          description: Created year with its periods
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      periods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string }
+                            name: { type: string }
+                            starts_on: { type: string, format: date }
+                            ends_on: { type: string, format: date }
+                            status: { type: string, enum: [open, soft_closed, closed] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
   /journal-entries:
     get:
       tags: [Accounting]
@@ -843,6 +891,24 @@ paths:
         '201': { description: Created }
         '422': { $ref: '#/components/responses/Validation' }
   /bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Booking with customer, items, tax profiles and status history (requires bookings.view)
+      description: Adds `payments_count` (distinct receipts allocated to the booking) and `invoices_count` to the booking payload.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Booking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
     patch:
       tags: [Bookings]
       summary: Edit a draft or quoted booking (requires bookings.update)
@@ -959,7 +1025,7 @@ paths:
               properties:
                 reason: { type: string, maxLength: 255 }
       responses:
-        '200': { description: Cancelled (status cancelled, unallocated_minor 0) }
+        '200': { description: 'Cancelled (status cancelled, unallocated_minor 0)' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
   /supplier-payments/{id}/cancel:
@@ -983,6 +1049,27 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
   /refunds:
+    get:
+      tags: [Payments]
+      summary: List refunds (requires payments.view)
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Paginated refunds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Refund' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Payments]
       summary: Request a refund
@@ -1145,7 +1232,7 @@ paths:
           in: query
           description: Limit to lines posted in this transaction currency and sum original-currency amounts (`basis=original`). Omit for base-currency totals.
           schema: { type: string, minLength: 3, maxLength: 3 }
-        - { name: pre_closing, in: query, description: Exclude year-end closing entries and show pre-close balances, schema: { type: boolean, default: false } }
+        - { name: pre_closing, in: query, description: 'Exclude year-end closing entries and show pre-close balances', schema: { type: boolean, default: false } }
         - { name: max_level, in: query, description: 'Roll every posting up to this chart-of-accounts depth (root = 1) without double counting', schema: { type: integer, minimum: 1, maximum: 20 } }
         - { name: cost_center_id, in: query, description: 'Limit to the analytical portion allocated to this cost center (public id)', schema: { type: string } }
         - { name: adjustments, in: query, description: 'Period-end adjustment voucher scope: include, exclude, or only', schema: { type: string, enum: [include, exclude, only], default: include } }
@@ -1189,7 +1276,7 @@ paths:
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: currency, in: query, description: 'Original-currency view of one transaction currency', schema: { type: string, minLength: 3, maxLength: 3 } }
         - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier, employee] } }
-        - { name: party_id, in: query, description: Public id; required with party_type, schema: { type: string } }
+        - { name: party_id, in: query, description: 'Public id; required with party_type', schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
         - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
       responses:
@@ -1228,8 +1315,8 @@ paths:
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
-        - { name: compare_from, in: query, description: Prior-period start; required with compare_to, schema: { type: string, format: date } }
-        - { name: compare_to, in: query, description: Prior-period end; required with compare_from, schema: { type: string, format: date } }
+        - { name: compare_from, in: query, description: 'Prior-period start; required with compare_to', schema: { type: string, format: date } }
+        - { name: compare_to, in: query, description: 'Prior-period end; required with compare_from', schema: { type: string, format: date } }
       responses:
         '200': { description: 'Income statement plus comparison and variance when requested' }
   /reports/income-statement/export:
@@ -1250,7 +1337,7 @@ paths:
       summary: Balance sheet as of a date with optional comparison and balance check
       parameters:
         - { name: as_of, in: query, required: true, schema: { type: string, format: date } }
-        - { name: compare_as_of, in: query, description: Prior comparison date, schema: { type: string, format: date } }
+        - { name: compare_as_of, in: query, description: 'Prior comparison date', schema: { type: string, format: date } }
       responses:
         '200': { description: 'Balance sheet with balanced flag, comparison and variance when requested' }
   /reports/balance-sheet/export:
@@ -1317,7 +1404,7 @@ paths:
       description: Reads the party control-account family plus genuine subaccounts; reconciles closing balance to operational open invoices/advances and returns explicit differences.
       parameters:
         - { name: party_type, in: query, required: true, schema: { type: string, enum: [customer, supplier, employee] } }
-        - { name: party_id, in: query, required: true, description: Public id, schema: { type: string } }
+        - { name: party_id, in: query, required: true, description: 'Public id', schema: { type: string } }
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: currency, in: query, description: 'Original-currency view of one transaction currency', schema: { type: string, minLength: 3, maxLength: 3 } }
@@ -1796,7 +1883,7 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/BankReconciliationInput' }
       responses:
-        '201': { description: Session with computed summary, lines, candidates and differences }
+        '201': { description: 'Session with computed summary, lines, candidates and differences' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
   /reconciliations/{reconciliation}:
@@ -1820,7 +1907,7 @@ paths:
       parameters:
         - { name: reconciliation, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: Result with created, ambiguous, remaining and refreshed reconciliation }
+        '200': { description: 'Result with created, ambiguous, remaining and refreshed reconciliation' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
         '422': { $ref: '#/components/responses/Validation' }
@@ -2163,7 +2250,7 @@ paths:
         '200': { description: Capitalized asset }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
-        '422': { description: Below threshold, duplicate posting, or closed period }
+        '422': { description: 'Below threshold, duplicate posting, or closed period' }
   /fixed-assets/{asset}/transfer:
     post:
       tags: [Fixed Assets]
@@ -2218,7 +2305,7 @@ paths:
         '200': { description: Register updated with the impairment }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
-        '422': { description: Voucher not linked, not posted, or already applied }
+        '422': { description: 'Voucher not linked, not posted, or already applied' }
   /fixed-assets/{asset}/schedule:
     get:
       tags: [Fixed Assets]
@@ -2226,7 +2313,7 @@ paths:
       parameters:
         - { name: asset, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: Period rows with amount, accumulated and carrying value }
+        '200': { description: 'Period rows with amount, accumulated and carrying value' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
   /fixed-assets/{asset}/audit-trail:
@@ -2236,7 +2323,7 @@ paths:
       parameters:
         - { name: asset, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: Asset, events and transfers }
+        '200': { description: 'Asset, events and transfers' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
   /depreciation-runs:
@@ -2301,7 +2388,7 @@ paths:
         '200': { description: Posted run with its single journal entry }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
-        '422': { description: Closed period, no assets due, or missing account mapping }
+        '422': { description: 'Closed period, no assets due, or missing account mapping' }
   /reports/fixed-assets/roll-forward:
     get:
       tags: [Fixed Assets]
@@ -2355,6 +2442,989 @@ paths:
         '200': { description: Schedule }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
+
+  # ---------------------------------------------------------------------------
+  # Operations added by the OpenAPI sync (docs/architecture README, "Contract
+  # coverage"). OpenApiCoverageTest keeps this file and routes/api.php aligned.
+  # ---------------------------------------------------------------------------
+  /demo/status:
+    get:
+      tags: [Platform]
+      security: []
+      summary: Demo-mode status (public, throttled)
+      description: Reports whether the installation runs in demo mode and when the next scheduled reset happens. `reset_seconds`, `next_reset_at` and `generation` are null when demo mode is off.
+      responses:
+        '200':
+          description: Demo status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                      reset_seconds: { type: integer, nullable: true }
+                      next_reset_at: { type: string, nullable: true }
+                      generation: { type: [string, integer, 'null'] }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /search:
+    get:
+      tags: [Platform]
+      summary: Cross-entity quick search for the header (authenticated, throttled)
+      description: Results are branch-scoped and each group is returned only when the caller holds the matching `.view` permission. Queries shorter than 2 characters return no groups. Up to 5 items per group.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+      responses:
+        '200':
+          description: Result groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      groups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type: { type: string, example: customers }
+                            items:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id: { type: string }
+                                  title_ar: { type: string }
+                                  title_en: { type: string }
+                                  subtitle: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /decisions/{id}/resolve:
+    post:
+      tags: [Platform]
+      summary: Record the resolution of a product/accounting decision (requires settings.update)
+      description: Stored in the settings registry and audited as `decision.resolved`. Unknown decision ids return 404.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, note]
+              properties:
+                status: { type: string, enum: [approved, rejected, deferred] }
+                option: { type: string, maxLength: 100 }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Resolution recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      resolution:
+                        type: object
+                        properties:
+                          status: { type: string, enum: [approved, rejected, deferred] }
+                          option: { type: string }
+                          note: { type: string }
+                          decided_by: { type: string }
+                          decided_by_name: { type: string }
+                          decided_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Unknown decision }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounts/{account}:
+    patch:
+      tags: [Accounting]
+      summary: Update an account (requires accounts.update)
+      description: Fields are optional. Changes that would invalidate existing postings or system account mappings are refused with 422.
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountUpdateInput' }
+      responses:
+        '200':
+          description: Updated account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounts/export:
+    get:
+      tags: [Accounting]
+      summary: Export the chart of accounts as CSV (requires accounts.view)
+      description: UTF-8 CSV with a BOM, in the same column layout the import accepts, so an export can be re-imported.
+      responses:
+        '200':
+          description: chart-of-accounts.csv attachment
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /accounts/import:
+    post:
+      tags: [Accounting]
+      summary: Import or preview a chart of accounts from CSV (requires accounts.update)
+      description: Preview and real import share one validation pass; any row error rejects the whole file with 422 and `row_errors`. Parents are linked after all rows exist, so file order does not matter.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 'CSV file, max 10 MB' }
+                preview_only: { type: boolean, description: Validate and return the preview without writing }
+      responses:
+        '200':
+          description: Preview (`preview`, `total`) or import result (`imported`, `preview`)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      imported: { type: integer }
+                      preview: { type: array, items: { type: object, additionalProperties: true } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422':
+          description: Validation failed (`message`, `code` validation_failed, `row_errors`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /fiscal-years/suggested:
+    get:
+      tags: [Accounting]
+      summary: Suggested next fiscal year (requires periods.view)
+      description: Derived from the configured fiscal year start and the existing years; used as the default for `POST /fiscal-periods`.
+      responses:
+        '200':
+          description: Suggestion (starts_on, ends_on, name)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /fiscal-periods/{period}/status:
+    patch:
+      tags: [Accounting]
+      summary: Open, soft-close or close a fiscal period (requires periods.manage)
+      description: Refused with 422 for periods of a closed fiscal year (reopen the year instead) and when closing a period that still has draft journal entries.
+      parameters:
+        - { name: period, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [open, soft_closed, closed] }
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Period status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      status: { type: string, enum: [open, soft_closed, closed] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /journal-entries/{id}:
+    get:
+      tags: [Accounting]
+      summary: Journal entry with lines (requires journal.view)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/JournalEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    delete:
+      tags: [Accounting]
+      summary: Delete a draft journal entry (requires journal.create or journal.delete_drafts)
+      description: Without journal.delete_drafts a user may delete only drafts they created. Posted entries are reversed, never deleted.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /journal-entries/{id}/post:
+    post:
+      tags: [Accounting]
+      summary: Post a draft journal entry (requires journal.create)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Posted entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/JournalEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounting-documents/{id}/reopen:
+    post:
+      tags: [Accounting]
+      summary: Reopen a document back to draft (requires documents.create)
+      description: Only the creator or a user holding documents.approve may reopen; otherwise 403.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Reopened document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AccountingDocument' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /expenses/{expense}/reopen:
+    post:
+      tags: [Accounting]
+      summary: Reopen an expense back to draft (requires expenses.create)
+      description: Only the creator or a user holding expenses.approve may reopen; otherwise 403.
+      parameters:
+        - { name: expense, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Reopened expense
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Expense' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /dashboard/summary:
+    get:
+      tags: [Reports]
+      summary: Dashboard KPIs in the installation base currency (requires reports.view)
+      description: Only the base currency is supported; any other `currency` is refused with 422.
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [today, thisMonth, lastMonth, customRange] } }
+        - { name: from, in: query, description: 'Required with period=customRange', schema: { type: string, format: date } }
+        - { name: to, in: query, description: 'Required with period=customRange; on or after from', schema: { type: string, format: date } }
+        - { name: currency, in: query, schema: { type: string, minLength: 3, maxLength: 3 } }
+      responses:
+        '200':
+          description: Dashboard aggregates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /customers/{id}:
+    get:
+      tags: [Parties]
+      summary: Customer profile with balances and activity for a date range (requires customers.view)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, description: Defaults to the start of the current year, schema: { type: string, format: date } }
+        - { name: to, in: query, description: Defaults to today, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Customer profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Parties]
+      summary: Update a customer (requires customers.update)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerUpdateInput' }
+      responses:
+        '200':
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /suppliers/{id}:
+    get:
+      tags: [Parties]
+      summary: Supplier profile with balances and activity for a date range (requires suppliers.view)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, description: Defaults to the start of the current year, schema: { type: string, format: date } }
+        - { name: to, in: query, description: Defaults to today, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Supplier profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Parties]
+      summary: Update a supplier (requires suppliers.update)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierUpdateInput' }
+      responses:
+        '200':
+          description: Updated supplier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /tax-profiles:
+    get:
+      tags: [Bookings]
+      summary: Active tax profiles for booking item pickers (requires bookings.view)
+      description: Read-only. Returns active profiles whose `effective_to` is empty or not yet passed.
+      responses:
+        '200':
+          description: Tax profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TaxProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /payment-methods:
+    get:
+      tags: [Payments]
+      summary: List payment methods (requires payments.view)
+      parameters:
+        - { name: include_inactive, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Payment methods ordered by code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/PaymentMethod' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Payments]
+      summary: Create a payment method (requires payments.create)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentMethodInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PaymentMethod' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /payment-methods/{id}:
+    patch:
+      tags: [Payments]
+      summary: Update a payment method (requires payments.create)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentMethodUpdateInput' }
+      responses:
+        '200':
+          description: Updated payment method
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PaymentMethod' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Receipt with customer, booking and allocations (requires payments.view)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /payments/{id}/allocate:
+    post:
+      tags: [Payments]
+      summary: Allocate unallocated receipt balance to bookings (requires payments.create)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allocations]
+              properties:
+                allocations:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [booking_id, amount_minor]
+                    properties:
+                      booking_id: { type: string }
+                      amount_minor: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Allocation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /payments/{id}/unallocate:
+    post:
+      tags: [Payments]
+      summary: Release a receipt's allocation to one booking (requires payments.create)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_id]
+              properties:
+                booking_id: { type: string }
+      responses:
+        '200':
+          description: Allocation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /payments/{id}/invoice-applications:
+    post:
+      tags: [Payments]
+      summary: Apply a receipt to an issued customer invoice
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceApplicationInput' }
+      responses:
+        '201':
+          description: Application created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/InvoiceApplication' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /invoice-applications/{id}:
+    delete:
+      tags: [Payments]
+      summary: Unapply a receipt or supplier payment from an invoice
+      description: Reverses the application (sets `reversed_at`); the record is kept for traceability and a reason is required.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Reversed application
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/InvoiceApplication' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-obligations:
+    get:
+      tags: [Payments]
+      summary: List supplier obligations (requires supplier_obligations.view)
+      parameters:
+        - { name: supplier_id, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Paginated obligations for the active branch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SupplierObligation' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Payments]
+      summary: Create an operational supplier obligation (requires supplier_obligations.create)
+      description: Creates the operational obligation only (`accounting_status` unposted); the payable is recognized in the GL through `POST /supplier-obligations/{id}/recognize`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierObligationInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierObligation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-obligations/{id}:
+    get:
+      tags: [Payments]
+      summary: Supplier obligation with applications (requires supplier_obligations.view)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Obligation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierObligation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /supplier-obligations/{id}/recognize:
+    post:
+      tags: [Payments]
+      summary: Recognize an obligation against an issued supplier invoice (requires supplier_obligations.create)
+      description: Links the obligation to the invoice; `accounting_status` becomes `recognized` once that invoice is issued.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoice_id]
+              properties:
+                invoice_id: { type: string }
+      responses:
+        '200':
+          description: Recognized obligation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierObligation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-payments:
+    get:
+      tags: [Payments]
+      summary: List supplier payments (requires supplier_payments.view)
+      parameters:
+        - { name: supplier_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Paginated supplier payments for the active branch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SupplierPayment' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Payments]
+      summary: Record a supplier payment (requires supplier_payments.create; idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierPaymentInput' }
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierPayment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Supplier payment with applications (requires supplier_payments.view)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Supplier payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierPayment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /supplier-payments/{id}/apply:
+    post:
+      tags: [Payments]
+      summary: Apply an advance supplier payment to an obligation (requires supplier_payments.create; idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [supplier_obligation_id, amount_minor]
+              properties:
+                supplier_obligation_id: { type: string }
+                amount_minor: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Updated supplier payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierPayment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-payments/{id}/unapply:
+    post:
+      tags: [Payments]
+      summary: Release one application of a supplier payment (requires supplier_payments.create)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [application_id]
+              properties:
+                application_id: { type: string }
+      responses:
+        '200':
+          description: Updated supplier payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SupplierPayment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /supplier-payments/{id}/invoice-applications:
+    post:
+      tags: [Payments]
+      summary: Apply a supplier payment to an issued supplier invoice (requires supplier_payments.create; idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceApplicationInput' }
+      responses:
+        '201':
+          description: Application created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/InvoiceApplication' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /leads/{id}:
+    patch:
+      tags: [CRM]
+      summary: Update a lead (requires leads.update)
+      description: Sending `stage` moves the lead; `note` is recorded as a lead activity; `notes` replaces the lead notes field.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeadUpdateInput' }
+      responses:
+        '200':
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Lead' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /assignment-rules:
+    get:
+      tags: [CRM]
+      summary: List lead assignment rules (requires leads.view)
+      description: Returns branch-specific and global rules ordered by priority. Inactive rules are omitted unless `include_inactive` is true.
+      parameters:
+        - { name: include_inactive, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AssignmentRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [CRM]
+      summary: Create an assignment rule (requires leads.update)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentRuleInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AssignmentRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /assignment-rules/{id}:
+    patch:
+      tags: [CRM]
+      summary: Update an assignment rule (requires leads.update)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentRuleUpdateInput' }
+      responses:
+        '200':
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AssignmentRule' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [CRM]
+      summary: Delete an assignment rule (requires leads.update)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
 components:
   securitySchemes:
@@ -3018,7 +4088,7 @@ components:
         number: { type: string }
         party_type: { type: string, enum: [customer, supplier, employee], nullable: true }
         party_id: { type: integer, nullable: true }
-        party: { type: object, nullable: true, description: Resolved party with id (public id), name_ar and name_en }
+        party: { type: object, nullable: true, description: 'Resolved party with id (public id), name_ar and name_en' }
         branch_id: { type: string }
         booking_id: { type: integer, nullable: true }
         cash_account_id: { type: string, nullable: true }
@@ -3621,5 +4691,323 @@ components:
         carrying_after_minor: { type: integer }
         status: { type: string, enum: [pending, posted, failed] }
         failure_reason: { type: string, nullable: true }
-
-
+    PageMeta:
+      type: object
+      properties:
+        current_page: { type: integer }
+        last_page: { type: integer }
+        total: { type: integer }
+        per_page: { type: integer }
+    AccountUpdateInput:
+      type: object
+      description: All fields optional
+      properties:
+        code: { type: string, maxLength: 20 }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        type: { type: string, enum: [asset, liability, equity, revenue, expense] }
+        parent_id: { type: string, nullable: true }
+        is_postable: { type: boolean }
+        currency_code: { type: string, minLength: 3, maxLength: 3 }
+        is_active: { type: boolean }
+        classification: { type: string, nullable: true }
+    JournalEntry:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        entry_date: { type: string, format: date }
+        status: { type: string, enum: [draft, posted] }
+        memo: { type: string, nullable: true }
+        currency: { type: string }
+        fx_rate: { type: string }
+        total_minor: { type: integer }
+        reversal_of_id: { type: string, nullable: true }
+        reversal_reason: { type: string, nullable: true }
+        reversed_by_id: { type: string, nullable: true }
+        source_type: { type: string, nullable: true }
+        event: { type: string, nullable: true }
+        posted_at: { type: string, format: date-time, nullable: true }
+        created_by_id: { type: string, nullable: true }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              account_id: { type: string }
+              account: { $ref: '#/components/schemas/Account' }
+              debit_minor: { type: integer }
+              credit_minor: { type: integer }
+              description: { type: string, nullable: true }
+    Customer:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [individual, company] }
+        name_ar: { type: string }
+        name_en: { type: string }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        tax_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        credit_limit_minor: { type: integer }
+        currency: { type: string }
+        is_active: { type: boolean }
+    CustomerUpdateInput:
+      type: object
+      description: All fields optional
+      properties:
+        type: { type: string, enum: [individual, company] }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        phone: { type: string, maxLength: 30, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        tax_id: { type: string, maxLength: 50, nullable: true }
+        credit_limit_minor: { type: integer, minimum: 0 }
+        is_active: { type: boolean }
+    Supplier:
+      type: object
+      properties:
+        id: { type: string }
+        category: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        settlement_currency: { type: string }
+        branch_id: { type: string }
+        is_active: { type: boolean }
+    SupplierUpdateInput:
+      type: object
+      description: All fields optional
+      properties:
+        category: { type: string, maxLength: 30 }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        phone: { type: string, maxLength: 30, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        settlement_currency: { type: string, minLength: 3, maxLength: 3 }
+        is_active: { type: boolean }
+    TaxProfile:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        rate: { type: string, example: '14.0000' }
+        is_inclusive: { type: boolean }
+    PaymentMethod:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name_ar: { type: string }
+        name_en: { type: string }
+        type: { type: string, enum: [cash, bank_transfer, card, wallet, other] }
+        default_cash_account_id: { type: string, nullable: true }
+        default_cash_account: { allOf: [{ $ref: '#/components/schemas/Account' }], nullable: true }
+        provider_name: { type: string, nullable: true }
+        account_name: { type: string, nullable: true }
+        account_reference: { type: string, nullable: true }
+        iban: { type: string, nullable: true }
+        instructions: { type: string, nullable: true }
+        is_active: { type: boolean }
+    PaymentMethodInput:
+      type: object
+      required: [code, name_ar, name_en, type]
+      properties:
+        code: { type: string, maxLength: 40, description: Unique }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        type: { type: string, enum: [cash, bank_transfer, card, wallet, other] }
+        default_cash_account_id: { type: string, nullable: true, description: Account public id }
+        provider_name: { type: string, maxLength: 120 }
+        account_name: { type: string, maxLength: 160 }
+        account_reference: { type: string, maxLength: 80 }
+        iban: { type: string, maxLength: 34 }
+        instructions: { type: string, maxLength: 1000 }
+        is_active: { type: boolean, default: true }
+    PaymentMethodUpdateInput:
+      type: object
+      description: All fields optional; `code` must stay unique
+      properties:
+        code: { type: string, maxLength: 40 }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        type: { type: string, enum: [cash, bank_transfer, card, wallet, other] }
+        default_cash_account_id: { type: string, nullable: true }
+        provider_name: { type: string, maxLength: 120, nullable: true }
+        account_name: { type: string, maxLength: 160, nullable: true }
+        account_reference: { type: string, maxLength: 80, nullable: true }
+        iban: { type: string, maxLength: 34, nullable: true }
+        instructions: { type: string, maxLength: 1000, nullable: true }
+        is_active: { type: boolean }
+    Payment:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        customer_id: { type: string }
+        customer: { $ref: '#/components/schemas/Customer' }
+        booking_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        method: { type: string, nullable: true }
+        payment_method_id: { type: [string, integer, 'null'] }
+        payment_method: { allOf: [{ $ref: '#/components/schemas/PaymentMethod' }], nullable: true }
+        amount_minor: { type: integer }
+        unallocated_minor: { type: integer }
+        currency: { type: string }
+        paid_at: { type: string, format: date-time }
+        status: { type: string }
+    InvoiceApplicationInput:
+      type: object
+      required: [invoice_id, amount_minor]
+      properties:
+        invoice_id: { type: string }
+        amount_minor: { type: integer, minimum: 1 }
+    InvoiceApplication:
+      type: object
+      properties:
+        id: { type: string }
+        invoice_id: { type: string }
+        payment_id: { type: string, nullable: true }
+        supplier_payment_id: { type: string, nullable: true }
+        amount_minor: { type: integer }
+        reversed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    Refund:
+      type: object
+      properties:
+        id: { type: string }
+        number: { type: string }
+        payment_id: { type: string, nullable: true }
+        booking_id: { type: string, nullable: true }
+        amount_minor: { type: integer }
+        currency: { type: string }
+        reason: { type: string }
+        status: { type: string }
+        approved_at: { type: string, format: date-time, nullable: true }
+    SupplierObligationInput:
+      type: object
+      required: [supplier_id, branch_id, amount_minor, currency]
+      properties:
+        supplier_id: { type: string }
+        branch_id: { type: string }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        invoice_reference: { type: string, maxLength: 100 }
+        booking_item_id: { type: string, maxLength: 40 }
+        invoice_id: { type: string }
+    SupplierObligation:
+      type: object
+      properties:
+        id: { type: string }
+        supplier_id: { type: string }
+        supplier: { $ref: '#/components/schemas/Supplier' }
+        booking_item_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        amount_minor: { type: integer }
+        paid_minor: { type: integer }
+        balance_minor: { type: integer }
+        currency: { type: string }
+        invoice_reference: { type: string, nullable: true }
+        status: { type: string }
+        accounting_status: { type: string, enum: [unposted, recognized], description: recognized only when the linked invoice is issued }
+        invoice_id: { type: string, nullable: true }
+    SupplierPaymentInput:
+      type: object
+      required: [supplier_id, branch_id, cash_account_id, amount_minor, currency]
+      properties:
+        supplier_id: { type: string }
+        supplier_obligation_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        cash_account_id: { type: string }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        fx_rate: { type: string }
+        paid_at: { type: string, format: date-time }
+    SupplierPayment:
+      type: object
+      properties:
+        id: { type: string }
+        supplier_id: { type: string }
+        supplier: { $ref: '#/components/schemas/Supplier' }
+        supplier_obligation_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        amount_minor: { type: integer }
+        applied_minor: { type: integer }
+        unallocated_minor: { type: integer }
+        currency: { type: string }
+        cash_account_id: { type: string }
+        fx_rate: { type: string }
+        paid_at: { type: string, format: date-time }
+        status: { type: string }
+    LeadUpdateInput:
+      type: object
+      description: All fields optional
+      properties:
+        name: { type: string, maxLength: 255 }
+        phone: { type: string, maxLength: 30, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        stage: { type: string, maxLength: 40, nullable: true }
+        owner_user_id: { type: string, nullable: true }
+        consent: { type: boolean, nullable: true }
+        notes: { type: string, maxLength: 2000, nullable: true }
+        note: { type: string, maxLength: 2000, nullable: true, description: Recorded as a lead activity }
+        service_category: { type: string, maxLength: 40, nullable: true }
+    Lead:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        source: { type: string }
+        service_category: { type: string, nullable: true }
+        stage: { type: string }
+        owner_user_id: { type: string, nullable: true }
+        branch_id: { type: string }
+        status: { type: string, enum: [open, won, lost] }
+        consent: { type: boolean }
+        notes: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        last_activity_at: { type: string, format: date-time, nullable: true }
+        reassignment_attempts: { type: integer }
+        escalated_at: { type: string, format: date-time, nullable: true }
+        converted_customer_id: { type: string, nullable: true }
+        converted_booking_id: { type: string, nullable: true }
+    AssignmentRuleInput:
+      type: object
+      required: [strategy]
+      properties:
+        priority: { type: integer, minimum: 0, default: 0 }
+        branch_id: { type: string, nullable: true, description: Null makes the rule global }
+        source_id: { type: string, nullable: true }
+        service_category: { type: string, maxLength: 40, nullable: true }
+        strategy: { type: string, enum: [least_loaded, round_robin, manual] }
+        target_user_id: { type: string, nullable: true }
+        max_leads_per_user: { type: integer, minimum: 1, nullable: true }
+        is_active: { type: boolean, default: true }
+    AssignmentRuleUpdateInput:
+      type: object
+      description: All fields optional; `branch_id` cannot be changed
+      properties:
+        priority: { type: integer, minimum: 0 }
+        source_id: { type: string, nullable: true }
+        service_category: { type: string, maxLength: 40, nullable: true }
+        strategy: { type: string, enum: [least_loaded, round_robin, manual] }
+        target_user_id: { type: string, nullable: true }
+        max_leads_per_user: { type: integer, minimum: 1, nullable: true }
+        is_active: { type: boolean }
+    AssignmentRule:
+      type: object
+      properties:
+        id: { type: string }
+        priority: { type: integer }
+        branch_id: { type: string, nullable: true }
+        source_id: { type: string, nullable: true }
+        service_category: { type: string, nullable: true }
+        strategy: { type: string, enum: [least_loaded, round_robin, manual] }
+        target_user_id: { type: [string, integer, 'null'] }
+        max_leads_per_user: { type: integer, nullable: true }
+        is_active: { type: boolean }

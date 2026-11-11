@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AccountingScheduleController;
+use App\Http\Controllers\Api\AssignmentRuleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
