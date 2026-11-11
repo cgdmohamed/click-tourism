@@ -422,6 +422,154 @@ class FinancialReportsReconciliationTest extends TestCase
         );
     }
 
+    public function test_trial_balance_flags_abnormal_balances_for_leaf_and_rolled_up_rows(): void
+    {
+        // Cash overdrawn (credit balance on a debit-normal asset) and a
+        // revenue account with a net debit (credit-normal) are abnormal.
+        $this->entry($this->currentDate, '5100', '1110', 50000);
+        $this->entry($this->currentDate, '4100', '1110', 10000);
+        $this->entry($this->currentDate, '1110', '4100', 4000);
+
+        $rows = collect($this->trialBalance()->assertOk()->json('data.rows'));
+
+        $cash = $rows->firstWhere('code', '1110');
+        $this->assertSame(-56000, $cash['closing_balance_minor']);
+        $this->assertSame(56000, $cash['closing_credit_minor']);
+        $this->assertTrue($cash['abnormal']);
+
+        $revenue = $rows->firstWhere('code', '4100');
+        $this->assertSame(6000, $revenue['closing_debit_minor']);
+        $this->assertTrue($revenue['abnormal']);
+
+        $expense = $rows->firstWhere('code', '5100');
+        $this->assertSame(50000, $expense['closing_debit_minor']);
+        $this->assertFalse($expense['abnormal']);
+
+        // Rolled-up rows carry the flag as well.
+        foreach ($this->trialBalance(['max_level' => 1])->assertOk()->json('data.rows') as $row) {
+            $this->assertArrayHasKey('abnormal', $row);
+            $normalDebit = in_array($row['type'], ['asset', 'expense'], true);
+            $expected = $normalDebit ? $row['closing_balance_minor'] < 0 : $row['closing_balance_minor'] > 0;
+            $this->assertSame($expected, $row['abnormal']);
+        }
+    }
+
+    public function test_income_statement_splits_cost_of_services_and_reports_gross_profit_with_comparison(): void
+    {
+        $this->entry($this->previousDate, '1110', '4100', 100000);
+        $this->entry($this->previousDate, '5100', '1110', 40000);
+        $this->entry($this->currentDate, '1110', '4100', 300000);
+        $this->entry($this->currentDate, '5100', '1110', 120000);
+
+        $opex = Account::query()->where('type', 'expense')->where('code', '!=', '5100')
+            ->where('is_postable', true)->orderBy('code')->first();
+        if ($opex) {
+            $this->entry($this->currentDate, $opex->code, '1110', 20000);
+        }
+        $opexAmount = $opex ? 20000 : 0;
+
+        $response = $this->withHeaders($this->headers())
+            ->getJson('/api/v1/reports/income-statement?'.http_build_query([
+                'from' => now()->startOfMonth()->toDateString(),
+                'to' => now()->endOfMonth()->toDateString(),
+                'compare_from' => Carbon::now()->subMonth()->startOfMonth()->toDateString(),
+                'compare_to' => Carbon::now()->subMonth()->endOfMonth()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.total_revenue_minor', 300000)
+            ->assertJsonPath('data.total_cost_of_services_minor', 120000)
+            ->assertJsonPath('data.gross_profit_minor', 180000)
+            ->assertJsonPath('data.total_operating_expenses_minor', $opexAmount)
+            ->assertJsonPath('data.operating_profit_minor', 180000 - $opexAmount)
+            ->assertJsonPath('data.net_profit_minor', 180000 - $opexAmount)
+            ->assertJsonPath('data.total_expense_minor', 120000 + $opexAmount)
+            ->assertJsonPath('data.comparison.gross_profit_minor', 60000)
+            ->assertJsonPath('data.variance.gross_profit_minor', 120000)
+            ->assertJsonPath('data.variance.total_cost_of_services_minor', 80000);
+
+        $this->assertSame(['5100'], array_column($response->json('data.cost_of_services'), 'code'));
+        $this->assertNotContains('5100', array_column($response->json('data.operating_expenses'), 'code'));
+        // Existing consumers keep the combined list.
+        $this->assertContains('5100', array_column($response->json('data.expenses'), 'code'));
+    }
+
+    public function test_balance_sheet_classifies_current_and_non_current_and_still_balances(): void
+    {
+        $nonCurrent = Account::query()->where('type', 'asset')->where('is_postable', true)
+            ->where('code', 'not like', '11%')->orderBy('code')->first();
+        $liability = Account::query()->where('type', 'liability')->where('is_postable', true)->orderBy('code')->first();
+
+        $this->entry($this->currentDate, '1110', '4100', 100000);
+        if ($nonCurrent) {
+            $this->entry($this->currentDate, $nonCurrent->code, '1110', 30000);
+        }
+        if ($liability) {
+            $this->entry($this->currentDate, '1110', $liability->code, 25000);
+        }
+
+        $sheet = $this->withHeaders($this->headers())
+            ->getJson('/api/v1/reports/balance-sheet?'.http_build_query([
+                'as_of' => now()->endOfMonth()->toDateString(),
+                'compare_as_of' => Carbon::now()->subMonth()->endOfMonth()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.classification', 'provisional_by_code')
+            ->assertJsonPath('data.balanced', true);
+
+        $data = $sheet->json('data');
+        $this->assertSame(
+            $data['total_assets_minor'],
+            $data['current_assets_minor'] + $data['non_current_assets_minor'],
+        );
+        $this->assertSame(
+            $data['total_liabilities_minor'],
+            $data['current_liabilities_minor'] + $data['non_current_liabilities_minor'],
+        );
+        foreach ($data['current_assets'] as $line) {
+            $this->assertStringStartsWith('11', $line['code']);
+        }
+        foreach ($data['non_current_assets'] as $line) {
+            $this->assertStringStartsNotWith('11', $line['code']);
+        }
+        foreach ($data['current_liabilities'] as $line) {
+            $this->assertMatchesRegularExpression('/^2[1-4]/', $line['code']);
+        }
+        foreach ($data['non_current_liabilities'] as $line) {
+            $this->assertDoesNotMatchRegularExpression('/^2[1-4]/', $line['code']);
+        }
+        $this->assertGreaterThan(0, $data['current_assets_minor']);
+        $this->assertSame(
+            $data['total_assets_minor'],
+            $data['total_liabilities_and_equity_minor'],
+        );
+        $this->assertSame(
+            $data['current_assets_minor'] - $data['comparison']['current_assets_minor'],
+            $data['variance']['current_assets_minor'],
+        );
+    }
+
+    public function test_report_exports_include_the_new_columns_and_sections(): void
+    {
+        $this->user->givePermissionTo(Permission::query()->firstOrCreate(['name' => 'reports.export', 'guard_name' => 'web']));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->entry($this->currentDate, '1110', '4100', 90000);
+        $this->entry($this->currentDate, '5100', '1110', 30000);
+        $range = ['from' => now()->startOfMonth()->toDateString(), 'to' => now()->endOfMonth()->toDateString()];
+
+        $tb = $this->withHeaders($this->headers())->get('/api/v1/reports/trial-balance/export?'.http_build_query($range))->assertOk()->getContent();
+        $this->assertStringContainsString('"Closing debit","Closing credit",Abnormal', $tb);
+
+        $is = $this->withHeaders($this->headers())->get('/api/v1/reports/income-statement/export?'.http_build_query($range))->assertOk()->getContent();
+        $this->assertStringContainsString('"Cost of services",5100', $is);
+        $this->assertStringContainsString('"Gross profit",,,,600.00,EGP', $is);
+        $this->assertStringContainsString('Operating profit', $is);
+
+        $bs = $this->withHeaders($this->headers())->get('/api/v1/reports/balance-sheet/export?'.http_build_query(['as_of' => $range['to']]))->assertOk()->getContent();
+        $this->assertStringContainsString('"Current asset",1110', $bs);
+        $this->assertStringContainsString('Total current assets', $bs);
+        $this->assertStringContainsString('provisional_by_code', $bs);
+    }
+
     public function test_reports_cannot_leak_other_branch_data(): void
     {
         $other = Branch::query()->create([

@@ -277,7 +277,9 @@ class InvoiceService
             // recognized revenue (booking-sourced entry), do not post revenue
             // again through this invoice. The invoice should only record the
             // balance-sheet movement (AR/AP), not the P&L impact.
-            if ($invoice->booking_id !== null) {
+            // A supplier invoice never recognizes revenue, so this guard only
+            // applies to customer-side documents.
+            if ($invoice->booking_id !== null && $invoice->type !== Invoice::TYPE_SUPPLIER_INVOICE) {
                 $bookingRevenue = JournalEntry::query()
                     ->where('source_type', 'booking')
                     ->where('source_id', $invoice->booking_id)
@@ -291,6 +293,19 @@ class InvoiceService
                         .'Issue the invoice without revenue posting or reverse the booking revenue first.'
                     );
                 }
+            }
+
+            // Prevent double cost recognition: booking completion already
+            // posted the supplier cost (Dr cost / Cr supplier payable), so a
+            // supplier invoice for the same booking must not post it again.
+            if ($invoice->booking_id !== null
+                && $invoice->type === Invoice::TYPE_SUPPLIER_INVOICE
+                && $this->bookingCostRecognized((int) $invoice->booking_id)) {
+                throw new DomainException(
+                    "Cost was already recognized for booking {$invoice->booking_id}. "
+                    .'Reverse the booking cost entry (or cancel the booking) before issuing this supplier invoice, '
+                    .'or issue the invoice without linking it to the booking.'
+                );
             }
 
             $this->assertOpenPeriod($invoice->issue_date, $invoice->branch_id, $actorId);
@@ -357,6 +372,22 @@ class InvoiceService
         });
     }
 
+    /** True when a booking-sourced cost entry exists for the booking and has not been reversed. */
+    private function bookingCostRecognized(int $bookingId): bool
+    {
+        return JournalEntry::query()
+            ->where('source_type', 'booking')
+            ->where('source_id', $bookingId)
+            ->where('event', 'cost')
+            ->whereNull('reversal_of_id')
+            ->whereNotExists(function ($query) {
+                $query->select('id')
+                    ->from('journal_entries as reversals')
+                    ->whereColumn('reversals.reversal_of_id', 'journal_entries.id');
+            })
+            ->exists();
+    }
+
     public function void(Invoice $invoice, ?int $actorId): Invoice
     {
         return DB::transaction(function () use ($invoice, $actorId) {
@@ -364,6 +395,10 @@ class InvoiceService
 
             if (! in_array($invoice->status, ['draft', 'submitted'], true)) {
                 throw new DomainException('Only draft or submitted invoices can be voided.');
+            }
+
+            if ($invoice->is_opening) {
+                throw new DomainException('Opening balance documents cannot be voided; reverse the opening balance batch instead.');
             }
 
             $invoice->update(['status' => 'voided']);
@@ -384,6 +419,10 @@ class InvoiceService
 
             if ($invoice->status !== 'issued') {
                 throw new DomainException('Only issued invoices can be credited.');
+            }
+
+            if ($invoice->is_opening) {
+                throw new DomainException('Opening balance documents cannot be credited; reverse the opening balance batch instead.');
             }
 
             $creditNoteLines = $invoice->lines->map(fn (InvoiceLine $line) => [
