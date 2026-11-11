@@ -9,6 +9,7 @@ import {
   assignableBranches,
   assignableRoles,
   primaryBranchOptions,
+  userEditPayload,
   validateUserForm,
   type UserFormState,
 } from '../lib/iam'
@@ -161,6 +162,11 @@ export default function Users() {
 
   const saveUser = useMutation({
     mutationFn: async () => {
+      if (editId && editingAccount) {
+        // Assignment fields are omitted unless they changed (see userEditPayload).
+        const { data } = await api.patch<{ data: UserAccount }>(`/users/${editId}`, userEditPayload(form, editingAccount))
+        return data.data
+      }
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
         email: form.email.trim(),
@@ -171,10 +177,6 @@ export default function Users() {
         is_available_for_leads: form.is_available_for_leads,
       }
       if (form.password) payload.password = form.password
-      if (editId) {
-        const { data } = await api.patch<{ data: UserAccount }>(`/users/${editId}`, payload)
-        return data.data
-      }
       const { data } = await api.post<{ data: UserAccount }>('/users', payload)
       return data.data
     },

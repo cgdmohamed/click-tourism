@@ -105,6 +105,9 @@ class SettingService
         'treasury' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-031): refuse transfers that overdraw a cash/bank account.
             'block_negative_cash' => 'false',
+            // DEC-017 (work order 02): the person who prepared a bank
+            // reconciliation cannot approve it (preparer vs reviewer).
+            'reconciliation_segregation' => 'true',
             // PENDING ACCOUNTANT APPROVAL (DEC-037): bank reconciliation matching rules.
             'reconciliation_tolerance_minor' => '0',
             'reconciliation_date_window_days' => '5',
@@ -116,6 +119,19 @@ class SettingService
         ],
         'expenses' => [
             // PENDING ACCOUNTANT APPROVAL (DEC-032): the creator may not approve their own expense.
+            'segregation' => 'true',
+        ],
+        'invoices' => [
+            // DEC-017 (work order 02): the person who created or submitted an
+            // invoice cannot approve it, matching the expense and voucher
+            // rules. Odoo/Zoho approvals are per document type; this
+            // installation keeps the control on by default.
+            'segregation' => 'true',
+        ],
+        'employees' => [
+            // DEC-017 (work order 02): the person who requested an employee
+            // advance cannot approve it (money leaves the cash account on
+            // disbursement).
             'segregation' => 'true',
         ],
         'assets' => [
@@ -158,6 +174,10 @@ class SettingService
         ],
         'documents' => [
             'default_language' => 'bilingual',
+            // DEC-017 (work order 02): the person who submitted a voucher
+            // cannot approve it. Odoo/Zoho ship approval rules per document
+            // type; this installation keeps the control on by default.
+            'segregation' => 'true',
             // PENDING ACCOUNTANT APPROVAL (DEC-028): unified legal identity is
             // opt-in only after jurisdiction/template approval.
             'booking_invoice_mode' => 'separate',

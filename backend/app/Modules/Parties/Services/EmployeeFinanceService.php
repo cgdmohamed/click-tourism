@@ -231,6 +231,14 @@ class EmployeeFinanceService
                 throw new DomainException('Only requested advances can be approved.');
             }
 
+            // DEC-017 (work order 02): maker-checker. The person who requested
+            // the advance cannot approve it while employees.segregation is on.
+            if ($this->settings->bool('employees', 'segregation', true)
+                && $actorId !== null
+                && $actorId === $advance->created_by) {
+                throw new DomainException('The person who requested an employee advance cannot approve it.');
+            }
+
             $this->assertBranch($advance->branch_id, $actorId);
 
             $advance->update(['status' => EmployeeAdvance::STATUS_APPROVED, 'approved_by' => $actorId, 'approved_at' => now()]);

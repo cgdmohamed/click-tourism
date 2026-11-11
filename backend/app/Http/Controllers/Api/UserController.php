@@ -8,6 +8,7 @@ use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class UserController extends ApiController
 {
@@ -78,7 +79,12 @@ class UserController extends ApiController
     {
         $data = $this->validated($request, $user);
 
-        $user = $users->update($user, $data, $request->user());
+        // Keep the actor's own token alive when they change their own
+        // password here; every other token of the target is revoked.
+        $current = $request->user()->currentAccessToken();
+        $keepTokenId = $current instanceof PersonalAccessToken ? $current->getKey() : null;
+
+        $user = $users->update($user, $data, $request->user(), $keepTokenId);
 
         return $this->ok($users->toUserAccount($user));
     }

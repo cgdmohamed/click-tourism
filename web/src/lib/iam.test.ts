@@ -5,10 +5,11 @@ import {
   groupPermissionsByPrefix,
   primaryBranchOptions,
   roleSubsetOfActor,
+  userEditPayload,
   validateUserForm,
   type UserFormState,
 } from './iam'
-import type { Branch, RoleRecord } from './types'
+import type { Branch, RoleRecord, UserAccount } from './types'
 
 const branch = (id: string, name = id): Branch => ({
   id,
@@ -169,5 +170,75 @@ describe('primaryBranchOptions', () => {
 
   it('returns nothing when nothing is selected', () => {
     expect(primaryBranchOptions([branch('b1')], [], 'en')).toEqual([])
+  })
+})
+
+describe('userEditPayload', () => {
+  const account: UserAccount = {
+    id: 'u1',
+    name: 'Sara Hassan',
+    email: 'sara@example.com',
+    locale: 'ar',
+    is_active: true,
+    is_available_for_leads: true,
+    roles: ['cashier', 'viewer'],
+    branches: [branch('b1'), branch('b2')],
+    primary_branch_id: 'b2',
+    employee: null,
+    last_login_at: null,
+    created_at: '2026-01-01T00:00:00Z',
+  }
+
+  const form: UserFormState = {
+    name: 'Sara Hassan',
+    email: 'sara@example.com',
+    password: '',
+    locale: 'ar',
+    roles: ['cashier', 'viewer'],
+    branch_ids: ['b1', 'b2'],
+    primary_branch_id: 'b2',
+    is_available_for_leads: true,
+  }
+
+  it('omits every assignment field when nothing changed', () => {
+    expect(userEditPayload(form, account)).toEqual({
+      name: 'Sara Hassan',
+      email: 'sara@example.com',
+      locale: 'ar',
+      is_available_for_leads: true,
+    })
+  })
+
+  it('treats reordered roles and branches as unchanged', () => {
+    const shuffled: UserFormState = { ...form, roles: ['viewer', 'cashier'], branch_ids: ['b2', 'b1'] }
+    expect(userEditPayload(shuffled, account)).not.toHaveProperty('roles')
+    expect(userEditPayload(shuffled, account)).not.toHaveProperty('branch_ids')
+  })
+
+  it('sends roles and branches only when they actually differ', () => {
+    const addedRole = userEditPayload({ ...form, roles: ['cashier', 'viewer', 'sales'] }, account)
+    expect(addedRole.roles).toEqual(['cashier', 'viewer', 'sales'])
+
+    const removedBranch = userEditPayload({ ...form, branch_ids: ['b1'] }, account)
+    expect(removedBranch.branch_ids).toEqual(['b1'])
+  })
+
+  it('sends the primary branch when it moves or is cleared', () => {
+    const moved = userEditPayload({ ...form, primary_branch_id: 'b1' }, account)
+    expect(moved.primary_branch_id).toBe('b1')
+
+    const cleared = userEditPayload({ ...form, primary_branch_id: null }, account)
+    expect(cleared.primary_branch_id).toBeNull()
+  })
+
+  it('carries a password reset and profile changes but not untouched assignments', () => {
+    const payload = userEditPayload({ ...form, name: 'Sara H.', password: 'new-password-123' }, account)
+    expect(payload).toEqual({
+      name: 'Sara H.',
+      email: 'sara@example.com',
+      locale: 'ar',
+      is_available_for_leads: true,
+      password: 'new-password-123',
+    })
   })
 })

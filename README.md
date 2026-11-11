@@ -275,6 +275,20 @@ sync.
 - When upgrading an existing installation, run `php artisan roles:sync` after
   `php artisan migrate` so newly introduced permissions are created and
   attached to roles. It is idempotent and never touches users.
+- **API tokens expire after 30 days** by default (`SANCTUM_TOKEN_EXPIRATION`
+  in minutes; `43200`). The Sanctum guard rejects an expired token with 401;
+  the scheduler runs `sanctum:prune-expired --hours=168` daily (02:45) to
+  delete rows of tokens dead for over a week. A password reset through
+  `PATCH /users/{id}` revokes the target's tokens immediately (audited as
+  `user.tokens_revoked`); self-service password changes keep the current
+  session token.
+- **Separation of duties (maker ≠ approver) is on by default** for expenses,
+  vouchers, invoices, bank reconciliations and employee advances; refunds stay
+  off per the closed DEC-017 ruling. A single-person installation must turn
+  these off in Settings (`expenses.segregation`, `documents.segregation`,
+  `invoices.segregation`, `treasury.reconciliation_segregation`,
+  `employees.segregation`) or have a second account approve. Journal drafts
+  keep the permission-based `journal.post_own_drafts` override. See ADR-0006.
 - Accounting repair commands are dry-run by default. Review the printed plan,
   then re-run with `--apply`:
   `php artisan accounting:split-1150`,

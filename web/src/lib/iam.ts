@@ -1,4 +1,4 @@
-import type { Branch, RoleRecord } from './types'
+import type { Branch, RoleRecord, UserAccount } from './types'
 
 /**
  * Pure identity-and-access logic shared by the Users and Roles pages:
@@ -92,4 +92,34 @@ export function primaryBranchOptions(
   return branches
     .filter((branch) => chosen.has(branch.id))
     .map((branch) => ({ value: branch.id, label: locale === 'ar' ? branch.name_ar : branch.name_en }))
+}
+
+/**
+ * Payload for editing an account. Assignment fields (roles, branch_ids,
+ * primary_branch_id) are only sent when they actually changed, so a
+ * delegated manager can fix a profile (name, email, locale, password)
+ * without re-asserting assignments they may not be allowed to hand out —
+ * the server only guards the fields a request carries.
+ */
+export function userEditPayload(form: UserFormState, account: UserAccount): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: form.name.trim(),
+    email: form.email.trim(),
+    locale: form.locale,
+    is_available_for_leads: form.is_available_for_leads,
+  }
+  if (form.password) payload.password = form.password
+
+  const sameMembers = (a: string[], b: string[]) => a.length === b.length && a.every((item) => b.includes(item))
+
+  if (!sameMembers(form.roles, account.roles)) payload.roles = form.roles
+
+  const branchIds = account.branches.map((branch) => branch.id)
+  if (!sameMembers(form.branch_ids, branchIds)) payload.branch_ids = form.branch_ids
+
+  if ((form.primary_branch_id || null) !== account.primary_branch_id) {
+    payload.primary_branch_id = form.primary_branch_id || null
+  }
+
+  return payload
 }

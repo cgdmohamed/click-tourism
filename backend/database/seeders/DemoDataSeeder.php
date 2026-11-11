@@ -87,13 +87,17 @@ class DemoDataSeeder extends Seeder
         $this->seedFxRates();
 
         $owner = User::query()->where('email', 'accountant@example.com')->first();
+        // Work order 02: invoice approval is maker-checker by default, so the
+        // demo data needs a second person to approve what the accountant
+        // submits. Falls back to the owner only when no second user exists.
+        $approver = User::query()->where('email', 'admin@example.com')->first() ?? $owner;
         $taxProfile = TaxProfile::query()->where('name', 'VAT 14% (Egypt)')->first();
         $customers = $this->seedCustomers($branch);
         $suppliers = $this->seedSuppliers($branch);
         $this->seedEmployees($branch);
         $bookings = $this->seedBookings($branch, $owner, $taxProfile, $customers, $suppliers);
         $this->seedPayments($branch, $owner, $customers, $bookings);
-        $this->seedInvoices($branch, $owner, $customers, $suppliers, $bookings);
+        $this->seedInvoices($branch, $owner, $approver, $customers, $suppliers, $bookings);
         $this->seedLeads($branch, $owner);
     }
 
@@ -290,7 +294,7 @@ class DemoDataSeeder extends Seeder
      * @param  array<int, Supplier>  $suppliers
      * @param  array<int, Booking>  $bookings
      */
-    private function seedInvoices(Branch $branch, ?User $owner, array $customers, array $suppliers, array $bookings): void
+    private function seedInvoices(Branch $branch, ?User $owner, ?User $approver, array $customers, array $suppliers, array $bookings): void
     {
         $service = app(InvoiceService::class);
         $today = today()->toDateString();
@@ -310,7 +314,7 @@ class DemoDataSeeder extends Seeder
             ]],
         ], $branch, $owner?->id);
         $service->submit($issuedCustomer, $owner?->id);
-        $service->approve($issuedCustomer, $owner?->id);
+        $service->approve($issuedCustomer, $approver?->id);
         $service->issue($issuedCustomer, $owner?->id);
 
         $service->create([
@@ -341,7 +345,7 @@ class DemoDataSeeder extends Seeder
             ]],
         ], $branch, $owner?->id);
         $service->submit($issuedSupplier, $owner?->id);
-        $service->approve($issuedSupplier, $owner?->id);
+        $service->approve($issuedSupplier, $approver?->id);
         $service->issue($issuedSupplier, $owner?->id);
 
         $submitted = $service->create([

@@ -40,6 +40,11 @@ trait BuildsAccounting
         app(SettingService::class)->set('accounting', 'schedule_auto_post', 'true');
         // Most tests act as one user; the segregation rule has its own test.
         app(SettingService::class)->set('accounting', 'refund_segregation', 'false');
+        // Work order 02 maker-checker rules: same single-user opt-out as
+        // refunds; each rule has its own dedicated test.
+        app(SettingService::class)->set('invoices', 'segregation', 'false');
+        app(SettingService::class)->set('treasury', 'reconciliation_segregation', 'false');
+        app(SettingService::class)->set('employees', 'segregation', 'false');
         // Tax is opt-in per installation; tests that use tax enable it deliberately.
         app(SettingService::class)->set('tax', 'enabled', 'true');
 

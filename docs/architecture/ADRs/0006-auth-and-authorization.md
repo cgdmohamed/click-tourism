@@ -61,6 +61,58 @@ Refinements applied with this set:
 - **Users are global records with per-user branch assignments** (ADR-0005), plus an
   optional `primary_branch_id` that must stay inside the assignment.
 
-Still open from this ADR: Sanctum token expiry/abilities for service accounts,
-login lockout, TOTP 2FA, and DEC-017 segregation of duties (maker ≠ approver).
+## Addendum 2026-11-12 — work order 02 (token lifetime + maker ≠ approver)
+
+Work order 02 closes the two items this ADR left open after work order 01:
+Sanctum token expiry and DEC-017 segregation of duties.
+
+### Token lifetime
+
+- **`SANCTUM_TOKEN_EXPIRATION`** (minutes, default `43200` = 30 days) is enforced by
+  the Sanctum guard at check time: a token whose `created_at` is older than the
+  window is rejected with 401 even though the row still exists. `createToken()`
+  deliberately does not set `expires_at`; the window is a single config knob.
+- A daily `sanctum:prune-expired --hours=168` (02:45) deletes rows of tokens that
+  have been dead for over a week, keeping the table small without destroying
+  recent evidence. The scheduler heartbeat (`/api/v1/health`) shows if it stalls.
+- **Password reset revokes tokens.** An administrator resetting a target's
+  password through `PATCH /users/{id}` deletes all of the target's tokens (audit
+  `user.tokens_revoked`, reason `password_reset`), so stolen bearer tokens die
+  with the credential. Self-service changes keep the actor's current token —
+  both `PATCH /auth/me` and `PATCH /users/{id}` behave the same way.
+- Token **abilities** for service/integration accounts remain open; the Meta/
+  WhatsApp webhooks use signed payloads, not personal access tokens.
+
+### Segregation of duties (DEC-017) — maker ≠ approver
+
+DEC-017 was closed by the project owner on 2026-11-11 with the reference behaviour
+(Odoo/Zoho): approval rules are **per document type** and enforced in the service,
+never only in the UI. Every rule is a setting; the installations below reflect the
+shipped defaults.
+
+| Document | Setting | Default | Maker field |
+|---|---|---|---|
+| Journal draft posting | `journal.post_own_drafts` permission | permission-based | `created_by` |
+| Expense | `expenses.segregation` | on | `created_by` / `submitted_by` |
+| Voucher (accounting document) | `documents.segregation` | on | `submitted_by` |
+| Invoice | `invoices.segregation` | **on (new)** | `created_by` |
+| Bank reconciliation | `treasury.reconciliation_segregation` | **on (new)** | `created_by` |
+| Employee advance | `employees.segregation` | **on (new)** | `created_by` |
+| Refund | `accounting.refund_segregation` | off (owner ruling) | `requested_by` |
+| Booking negative margin | unconditional | on | `margin_requested_by` |
+
+`documents.segregation` existed in code but was missing from the settings DEFAULTS;
+it is now visible and editable like the rest. The new defaults follow the expense
+and voucher precedent (on), while refunds stay off per the closed DEC-017 ruling —
+**flagged for owner review in the PR**, since a one-person installation must turn
+them off to operate.
+
+The maker≠approver check compares the actor against the maker before any state
+change; violations throw a `DomainException` (HTTP 422) inside the same database
+transaction, so nothing is partially approved. The demo seeder approves seeded
+invoices as a second seeded user (`admin@example.com`) instead of weakening the
+rule.
+
+Still open from this ADR: token abilities for service accounts, login lockout,
+and TOTP 2FA.
 

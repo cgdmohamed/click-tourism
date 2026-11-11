@@ -62,6 +62,32 @@ class ApiAccessTest extends TestCase
             ->assertJsonPath('code', 'account_disabled');
     }
 
+    public function test_tokens_expire_after_thirty_days_by_default(): void
+    {
+        $this->assertSame(43200, config('sanctum.expiration'));
+    }
+
+    public function test_an_expired_token_is_rejected_but_a_fresh_token_is_not(): void
+    {
+        $fresh = $this->user->createToken('fresh');
+
+        $stale = $this->user->createToken('stale');
+        // created_at is not mass-assignable on Sanctum tokens, so forceFill.
+        $stale->accessToken->forceFill(['created_at' => now()->subMinutes(43201)])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$fresh->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk();
+
+        // The sanctum guard caches the authenticated user between requests of
+        // the same test, so forget it before re-authenticating with a token.
+        $this->app['auth']->forgetGuards();
+
+        $this->withHeader('Authorization', 'Bearer '.$stale->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertStatus(401);
+    }
+
     public function test_me_returns_the_authenticated_profile(): void
     {
         Sanctum::actingAs($this->user);

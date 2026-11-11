@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\EmployeeAdvance;
@@ -149,6 +150,34 @@ class EmployeeFinanceTest extends TestCase
         // Cancel a plain requested advance.
         $advance2 = $this->requestAdvance($emp['id'], 20000)->assertCreated()->json('data');
         $this->cancelAdvance($emp['id'], $advance2['id'])->assertOk()->assertJsonPath('data.status', 'cancelled');
+    }
+
+    public function test_the_requester_cannot_approve_their_own_advance_unless_segregation_is_off(): void
+    {
+        app(SettingService::class)->set('employees', 'segregation', 'true');
+
+        $emp = $this->employee();
+        $advance = $this->requestAdvance($emp['id'], 50000)->assertCreated()->json('data');
+
+        $this->approveAdvance($emp['id'], $advance['id'])->assertStatus(422);
+        $this->assertSame('requested', EmployeeAdvance::query()->where('public_id', $advance['id'])->firstOrFail()->status);
+
+        // A different approver may approve the advance while the rule is on.
+        $approver = User::factory()->create();
+        $approver->branches()->attach($this->branch->id);
+        $approver->givePermissionTo(['employees.view', 'employees.manage']);
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($approver);
+        $this->approveAdvance($emp['id'], $advance['id'])->assertOk()->assertJsonPath('data.status', 'approved');
+
+        // With segregation off, the requester may approve their own advance.
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($this->user);
+        app(SettingService::class)->set('employees', 'segregation', 'false');
+        $own = $this->employee(['internal_code' => 'EMP-2'])['id'];
+        $requested = $this->requestAdvance($own, 20000)->assertCreated()->json('data');
+
+        $this->approveAdvance($own, $requested['id'])->assertOk()->assertJsonPath('data.status', 'approved');
     }
 
     public function test_several_custodies_and_partial_clearings_can_be_posted(): void

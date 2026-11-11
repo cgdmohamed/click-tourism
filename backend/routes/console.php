@@ -22,6 +22,13 @@ Schedule::call(fn () => Cache::put(HealthController::HEARTBEAT_KEY, now()->toIso
     ->name('scheduler-heartbeat')
     ->everyMinute();
 
+// Work order 02: keep the Sanctum token table small. Tokens expired for
+// more than a week are deleted; the guard already rejects them earlier.
+Schedule::command('sanctum:prune-expired --hours=168')
+    ->name('sanctum-prune-expired')
+    ->dailyAt('02:45')
+    ->withoutOverlapping();
+
 // Posts due accrual/prepayment/deferred-revenue events. Reruns are safe and
 // closed periods go to the exception queue instead of being bypassed.
 Schedule::command('schedules:post-due')

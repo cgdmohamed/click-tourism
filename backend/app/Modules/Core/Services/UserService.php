@@ -101,9 +101,14 @@ class UserService
      * when present; a primary branch that falls out of the assignment is
      * cleared unless the request names a new one (which must be assigned).
      *
+     * A password change revokes the target's tokens: a manager resetting a
+     * compromised account must not leave its stolen bearer tokens valid
+     * (work order 02). The actor's own current token survives a self change,
+     * matching PATCH /auth/me.
+     *
      * @param  array<string, mixed>  $data  Validated request payload.
      */
-    public function update(User $user, array $data, User $actor): User
+    public function update(User $user, array $data, User $actor, ?int $keepTokenId = null): User
     {
         $this->assertTargetManageable($actor, $user);
         $roleNames = array_key_exists('roles', $data) ? $data['roles'] : null;
@@ -123,11 +128,26 @@ class UserService
             $this->assertBranchAssignmentAllowed($actor, collect([$primary]));
         }
 
-        return DB::transaction(function () use ($user, $data, $actor, $roleNames, $branches, $primaryProvided, $primary) {
+        return DB::transaction(function () use ($user, $data, $actor, $keepTokenId, $roleNames, $branches, $primaryProvided, $primary) {
             $user = User::query()->findOrFail($user->id);
             $before = $this->account($user);
 
             $user->update(collect($data)->only(['name', 'email', 'password', 'locale', 'is_available_for_leads'])->all());
+
+            if (array_key_exists('password', $data)) {
+                $revoked = $user->tokens()->when(
+                    $keepTokenId !== null && $actor->id === $user->id,
+                    fn ($query) => $query->whereKeyNot($keepTokenId),
+                )->delete();
+
+                if ((int) $revoked > 0) {
+                    $this->audit->log('user.tokens_revoked', $user, null, [
+                        'reason' => 'password_reset',
+                        'tokens_revoked' => (int) $revoked,
+                        'kept_current_token' => $actor->id === $user->id,
+                    ], $actor->id);
+                }
+            }
 
             if ($roleNames !== null) {
                 $user->syncRoles($roleNames);

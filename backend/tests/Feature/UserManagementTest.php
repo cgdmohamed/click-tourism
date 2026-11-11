@@ -430,4 +430,67 @@ class UserManagementTest extends TestCase
             ->getJson('/api/v1/auth/me')
             ->assertStatus(401);
     }
+
+    public function test_an_admin_password_reset_revokes_the_targets_tokens(): void
+    {
+        $target = User::factory()->create();
+        $target->branches()->sync([$this->branch->id]);
+        $stolen = $target->createToken('stolen')->plainTextToken;
+
+        $adminToken = $this->user->createToken('admin-session')->plainTextToken;
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$adminToken)
+            ->patchJson('/api/v1/users/'.$target->public_id, ['password' => 'reset-password-123'])
+            ->assertOk();
+
+        // The reset must invalidate the target's existing bearer tokens.
+        $this->assertSame(0, $target->tokens()->count());
+        $this->assertNotEmpty(
+            AuditEvent::query()->where('action', 'user.tokens_revoked')->where('entity_id', $target->id)->get()
+        );
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$stolen)
+            ->getJson('/api/v1/auth/me')
+            ->assertStatus(401);
+
+        // The admin's own token is unaffected by resetting someone else.
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$adminToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk();
+
+        // The target signs in again with the new password.
+        $this->postJson('/api/v1/auth/login', [
+            'email' => $target->email,
+            'password' => 'reset-password-123',
+        ])->assertOk();
+    }
+
+    public function test_a_self_password_change_via_the_directory_keeps_the_current_token(): void
+    {
+        $kept = $this->user->createToken('kept')->plainTextToken;
+        $revoked = $this->user->createToken('revoked')->plainTextToken;
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$kept)
+            ->patchJson('/api/v1/users/'.$this->user->public_id, ['password' => 'new-password-1234'])
+            ->assertOk();
+
+        $this->assertSame(1, $this->user->tokens()->count());
+        $this->assertNotEmpty(
+            AuditEvent::query()->where('action', 'user.tokens_revoked')->where('entity_id', $this->user->id)->get()
+        );
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$kept)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$revoked)
+            ->getJson('/api/v1/auth/me')
+            ->assertStatus(401);
+    }
 }

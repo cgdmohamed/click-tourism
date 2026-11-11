@@ -48,9 +48,13 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | Work order 02: tokens are finite by default (30 days) so a leaked or
+    | forgotten bearer token cannot access the ERP forever. Installations
+    | may tighten or widen the window through SANCTUM_TOKEN_EXPIRATION.
+    |
     */
 
-    'expiration' => null,
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 43200),
 
     /*
     |--------------------------------------------------------------------------
