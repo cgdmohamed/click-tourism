@@ -344,6 +344,13 @@ export default function Invoices() {
         }
       />
 
+      {bookingFilter ? (
+        <div className="mb-3 flex items-center justify-between rounded-12 border border-border-subtle bg-surface-secondary px-4 py-3 text-small">
+          <span>{L('عرض الفواتير الخاصة بالحجز المحدد فقط', 'Showing invoices for the selected booking')}</span>
+          <Link to="/invoices" className="font-semibold text-brand-1-accent underline">{L('كل الفواتير', 'All invoices')}</Link>
+        </div>
+      ) : null}
+
       {error && !open && !detailId && !creditId ? (
         <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
       ) : null}
