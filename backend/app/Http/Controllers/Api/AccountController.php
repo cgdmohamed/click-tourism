@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -41,11 +42,8 @@ class AccountController extends ApiController
 
         $accounts = Account::query()
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
-            ->when($request->query('search'), fn ($query, $search) => $query->where(function ($query) use ($search) {
-                $query->where('code', 'like', "%{$search}%")
-                    ->orWhere('name_ar', 'like', "%{$search}%")
-                    ->orWhere('name_en', 'like', "%{$search}%");
-            }))
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['code', 'name_ar', 'name_en'], $search))
             ->orderBy('code')
             ->get()
             ->map(fn (Account $account) => $account->toApiArray() + [

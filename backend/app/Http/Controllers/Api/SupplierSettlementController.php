@@ -7,6 +7,7 @@ use App\Modules\Invoices\Services\InvoiceSettlementService;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Payments\Services\SupplierSettlementService;
+use App\Support\Like;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,17 @@ class SupplierSettlementController extends ApiController
                 fn ($query) => $query->where('public_id', $supplierId),
             ))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            // Payable picker: unpaid obligations backed by an issued supplier invoice.
+            ->when($request->boolean('payable'), fn ($query) => $query
+                ->whereIn('status', ['open', 'partially_paid'])
+                ->whereHas('invoice', fn ($invoice) => $invoice->where('status', Invoice::STATUS_ISSUED)))
+            ->when($request->query('currency'), fn ($query, $currency) => $query->where('currency_code', strtoupper((string) $currency)))
+            ->when(Like::term($request->query('search')), function ($query, $search) {
+                $query->where(function ($query) use ($search) {
+                    Like::contains($query, ['invoice_reference'], $search);
+                    $query->orWhereHas('supplier', fn ($supplier) => Like::contains($supplier, ['name_ar', 'name_en'], $search));
+                });
+            })
             ->orderByDesc('id')
             ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
 

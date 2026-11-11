@@ -8,6 +8,7 @@ use App\Modules\Parties\Models\EmployeeAdvance;
 use App\Modules\Parties\Models\EmployeeCustody;
 use App\Modules\Parties\Services\EmployeeFinanceService;
 use App\Modules\Parties\Services\PartyProfileService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,13 +22,8 @@ class EmployeeController extends ApiController
         $employees = Employee::query()->with('branch')
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->boolean('include_inactive') === false, fn ($query) => $query->where('is_active', true))
-            ->when($request->query('search'), function ($query, $search) {
-                $query->where(function ($query) use ($search) {
-                    $query->where('name_ar', 'like', "%{$search}%")
-                        ->orWhere('name_en', 'like', "%{$search}%")
-                        ->orWhere('internal_code', 'like', "%{$search}%");
-                });
-            })
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['name_ar', 'name_en', 'internal_code'], $search))
             ->orderBy('internal_code')->get()
             ->map(fn (Employee $e) => $e->toApiArray());
 

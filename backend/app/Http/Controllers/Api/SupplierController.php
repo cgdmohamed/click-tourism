@@ -6,6 +6,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\PartyProfileService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,13 +18,8 @@ class SupplierController extends ApiController
 
         $suppliers = Supplier::query()
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
-            ->when($request->query('search'), function ($query, $search) {
-                $query->where(function ($query) use ($search) {
-                    $query->where('name_ar', 'like', "%{$search}%")
-                        ->orWhere('name_en', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%");
-                });
-            })
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['name_ar', 'name_en', 'phone'], $search))
             ->orderBy('name_ar')
             ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
 
