@@ -895,6 +895,72 @@ paths:
       responses:
         '201': { description: Created }
 
+  /tour-packages:
+    get:
+      tags: [Bookings]
+      summary: List branch-scoped tourism packages with departures (bookings.view)
+      responses:
+        '200': { description: Packages and departure seat counts }
+    post:
+      tags: [Bookings]
+      summary: Create domestic, international, pilgrimage, corporate, private, or standalone program (bookings.create)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, category, execution_type, currency, base_price_minor, estimated_cost_minor]
+              properties:
+                code: { type: string }
+                name: { type: string }
+                category: { type: string, enum: [domestic, international, umrah, hajj, corporate, day_trip, other] }
+                execution_type: { type: string, enum: [fixed, private, standalone] }
+                description: { type: string }
+                destination: { type: string }
+                currency: { type: string }
+                base_price_minor: { type: integer, minimum: 0 }
+                estimated_cost_minor: { type: integer, minimum: 0 }
+      responses:
+        '201': { description: Package created }
+        '422': { $ref: '#/components/responses/Validation' }
+  /tour-packages/{package}:
+    get:
+      tags: [Bookings]
+      summary: Get program with scheduled departures
+      parameters:
+        - { name: package, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Package details }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /tour-packages/{package}/departures:
+    post:
+      tags: [Bookings]
+      summary: Add a capacity-controlled date to a fixed program
+      parameters:
+        - { name: package, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [starts_on, capacity]
+              properties:
+                starts_on: { type: string, format: date }
+                ends_on: { type: string, format: date }
+                capacity: { type: integer, minimum: 1 }
+      responses:
+        '201': { description: Departure created }
+        '422': { $ref: '#/components/responses/Validation' }
+  /tour-departures/{departure}/close:
+    post:
+      tags: [Bookings]
+      summary: Close a scheduled departure to new booking confirmations
+      parameters:
+        - { name: departure, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Departure closed }
   /bookings:
     get:
       tags: [Bookings]
