@@ -62,6 +62,7 @@ Route::prefix('v1')->group(function () {
         Route::get('settings', [SettingController::class, 'index'])->middleware('permission:settings.view');
         Route::put('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
         Route::get('decisions', [SettingController::class, 'decisions'])->middleware('permission:settings.view');
+        Route::post('decisions/{id}/resolve', [SettingController::class, 'resolveDecision'])->middleware('permission:settings.update');
 
         Route::get('currencies', [CurrencyController::class, 'index']);
         Route::get('fx-rates', [FxRateController::class, 'index'])->middleware('permission:settings.view');
@@ -88,6 +89,7 @@ Route::prefix('v1')->group(function () {
         Route::get('expenses/{expense}', [ExpenseController::class, 'show'])->middleware('permission:expenses.view');
         Route::patch('expenses/{expense}', [ExpenseController::class, 'update'])->middleware('permission:expenses.create');
         Route::post('expenses/{expense}/submit', [ExpenseController::class, 'submit'])->middleware('permission:expenses.create');
+        Route::post('expenses/{expense}/reopen', [ExpenseController::class, 'reopen'])->middleware('permission:expenses.create');
         Route::post('expenses/{expense}/cancel', [ExpenseController::class, 'cancel'])->middleware('permission:expenses.create');
         Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approve'])->middleware(['permission:expenses.approve', 'idempotent']);
         Route::post('expenses/{expense}/reject', [ExpenseController::class, 'reject'])->middleware('permission:expenses.approve');
@@ -150,6 +152,7 @@ Route::prefix('v1')->group(function () {
         Route::post('accounting-documents/{document}/post', [AccountingDocumentController::class, 'post'])->middleware(['permission:documents.approve', 'idempotent']);
         Route::post('accounting-documents/{document}/cancel', [AccountingDocumentController::class, 'cancel'])->middleware('permission:documents.create');
         Route::post('accounting-documents/{document}/reject', [AccountingDocumentController::class, 'reject'])->middleware('permission:documents.approve');
+        Route::post('accounting-documents/{document}/reopen', [AccountingDocumentController::class, 'reopen'])->middleware('permission:documents.create');
         Route::post('accounting-documents/{document}/correct', [AccountingDocumentController::class, 'correct'])->middleware(['permission:documents.approve', 'idempotent']);
 
         Route::get('bank-statements', [BankReconciliationController::class, 'statements'])->middleware('permission:reconciliation.view');
@@ -231,6 +234,7 @@ Route::prefix('v1')->group(function () {
         Route::get('supplier-payments/{supplierPayment}', [SupplierSettlementController::class, 'showPayment'])->middleware('permission:supplier_payments.view');
         Route::post('supplier-payments/{supplierPayment}/apply', [SupplierSettlementController::class, 'apply'])->middleware(['permission:supplier_payments.create', 'idempotent']);
         Route::post('supplier-payments/{supplierPayment}/invoice-applications', [SupplierSettlementController::class, 'applyToInvoice'])->middleware(['permission:supplier_payments.create', 'idempotent']);
+        Route::post('supplier-payments/{supplierPayment}/cancel', [SupplierSettlementController::class, 'cancel'])->middleware(['permission:supplier_payments.reverse']);
         Route::post('supplier-payments/{supplierPayment}/unapply', [SupplierSettlementController::class, 'unapply'])->middleware(['permission:supplier_payments.create']);
 
         Route::get('tax-profiles', [TaxProfileController::class, 'index'])->middleware('permission:bookings.view');
@@ -248,6 +252,7 @@ Route::prefix('v1')->group(function () {
         Route::post('payments/{payment}/allocate', [PaymentController::class, 'allocate'])->middleware(['permission:payments.create']);
         Route::delete('invoice-applications/{application}', [InvoiceApplicationController::class, 'destroy'])->middleware('permission:payments.create');
         Route::post('payments/{payment}/invoice-applications', [PaymentController::class, 'applyToInvoice'])->middleware(['permission:payments.create', 'idempotent']);
+        Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel'])->middleware(['permission:payments.reverse']);
         Route::post('payments/{payment}/unallocate', [PaymentController::class, 'unallocate'])->middleware(['permission:payments.create']);
 
         Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:payments.view');

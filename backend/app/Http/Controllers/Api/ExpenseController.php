@@ -141,6 +141,16 @@ class ExpenseController extends ApiController
         return $this->ok($expenses->reject($expense, $data['reason'], $this->actorId())->toApiArray());
     }
 
+    public function reopen(Expense $expense, ExpenseService $expenses): JsonResponse
+    {
+        $this->authorizeBranchId($expense->branch_id);
+
+        $user = request()->user();
+        abort_unless($expense->created_by === $user?->id || $user?->can('expenses.approve'), 403, 'Only the creator or an approver can reopen this expense.');
+
+        return $this->ok($expenses->reopen($expense, $this->actorId())->toApiArray());
+    }
+
     public function cancel(Expense $expense, ExpenseService $expenses): JsonResponse
     {
         $this->authorizeBranchId($expense->branch_id);

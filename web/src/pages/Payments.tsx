@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Booking, Customer, Paginated, Payment } from '../lib/types'
+import type { Booking, Customer, Paginated, Payment, Refund } from '../lib/types'
 import type { PaymentMethod } from '../lib/types'
 import {
   Badge,
@@ -27,6 +27,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
+import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
@@ -42,6 +43,13 @@ export default function Payments() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [applyTarget, setApplyTarget] = useState<ApplyTarget | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<Payment | null>(null)
+  const [cancelError, setCancelError] = useState('')
+  const [refundTarget, setRefundTarget] = useState<Payment | null>(null)
+  const [refundForm, setRefundForm] = useState({ amount: '', reason: '' })
+  const [refundError, setRefundError] = useState('')
+  const [refundsFor, setRefundsFor] = useState<Payment | null>(null)
+  const [refundsMessage, setRefundsMessage] = useState('')
   const [form, setForm] = useState({
     customer_id: '',
     booking_id: '',
@@ -101,6 +109,71 @@ export default function Payments() {
       const { data } = await api.get<{ data: PaymentMethod[] }>('/payment-methods')
       return data.data
     },
+  })
+
+  const refundsQuery = useQuery({
+    queryKey: ['refunds', activeBranch?.id],
+    queryFn: async () => {
+      const { data } = await api.get<Paginated<Refund>>('/refunds', { params: { per_page: 100 } })
+      return data.data
+    },
+  })
+  const refunds = refundsQuery.data ?? []
+
+  /** Money still refundable: the receipt minus pending and approved refunds. */
+  const refundableMinor = (payment: Payment) =>
+    payment.amount_minor -
+    refunds
+      .filter((refund) => refund.payment_id === payment.id && (refund.status === 'requested' || refund.status === 'approved'))
+      .reduce((sum, refund) => sum + refund.amount_minor, 0)
+
+  const cancelPayment = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!cancelTarget) throw new Error('No payment selected')
+      await api.post(`/payments/${cancelTarget.id}/cancel`, { reason })
+    },
+    onSuccess: async () => {
+      setCancelTarget(null)
+      setCancelError('')
+      await queryClient.invalidateQueries({ queryKey: ['payments'] })
+      await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      await queryClient.invalidateQueries({ queryKey: ['journal'] })
+    },
+    onError: (cause) => setCancelError(errorMessage(cause)),
+  })
+
+  const requestRefund = useMutation({
+    mutationFn: async () => {
+      if (!refundTarget) throw new Error('No payment selected')
+      const amountMinor = toMinor(refundForm.amount, refundTarget.currency)
+      if (amountMinor <= 0 || amountMinor > refundableMinor(refundTarget)) {
+        throw new Error(locale === 'ar' ? 'المبلغ يتجاوز المتاح للاسترداد' : 'Amount exceeds the refundable amount')
+      }
+      await api.post(
+        '/refunds',
+        { payment_id: refundTarget.id, amount_minor: amountMinor, reason: refundForm.reason },
+        { headers: { 'Idempotency-Key': idempotencyKey() } },
+      )
+    },
+    onSuccess: async () => {
+      setRefundTarget(null)
+      setRefundError('')
+      await queryClient.invalidateQueries({ queryKey: ['refunds'] })
+    },
+    onError: (cause) => setRefundError(errorMessage(cause)),
+  })
+
+  const approveRefund = useMutation({
+    mutationFn: async (refund: Refund) => {
+      await api.post(`/refunds/${refund.id}/approve`)
+    },
+    onSuccess: async () => {
+      setRefundsMessage('')
+      await queryClient.invalidateQueries({ queryKey: ['refunds'] })
+      await queryClient.invalidateQueries({ queryKey: ['payments'] })
+      await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+    },
+    onError: (cause) => setRefundsMessage(errorMessage(cause)),
   })
 
   const customerBookings = useMemo(
@@ -234,6 +307,34 @@ export default function Payments() {
                         {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
                       </Button>
                     ) : null}
+                    {payment.status === 'posted' && can('refunds.create') && refundableMinor(payment) > 0 ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setRefundError('')
+                          setRefundForm({ amount: toDecimal(refundableMinor(payment), payment.currency), reason: '' })
+                          setRefundTarget(payment)
+                        }}
+                      >
+                        {locale === 'ar' ? 'استرداد' : 'Refund'}
+                      </Button>
+                    ) : null}
+                    {refunds.some((refund) => refund.payment_id === payment.id) ? (
+                      <Button variant="ghost" onClick={() => { setRefundsMessage(''); setRefundsFor(payment) }}>
+                        {locale === 'ar' ? 'الاستردادات' : 'Refunds'}
+                      </Button>
+                    ) : null}
+                    {payment.status === 'posted' && can('payments.reverse') ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setCancelError('')
+                          setCancelTarget(payment)
+                        }}
+                      >
+                        {locale === 'ar' ? 'إلغاء السند' : 'Cancel receipt'}
+                      </Button>
+                    ) : null}
                   </Td>
                 </tr>
               ))}
@@ -332,6 +433,93 @@ export default function Payments() {
       </Modal>
 
       <ApplyToInvoiceModal target={applyTarget} onClose={() => setApplyTarget(null)} />
+
+      <ReasonModal
+        open={cancelTarget !== null}
+        title={locale === 'ar' ? `إلغاء السند ${cancelTarget?.number ?? ''}` : `Cancel receipt ${cancelTarget?.number ?? ''}`}
+        description={
+          locale === 'ar'
+            ? 'سيتم عكس قيود السند وتحرير التخصيص على الحجوزات. لا يمكن الإلغاء مع وجود استردادات أو تطبيقات على فواتير.'
+            : 'The receipt postings are reversed and booking allocations released. Not possible while refunds or invoice applications exist.'
+        }
+        confirmLabel={locale === 'ar' ? 'إلغاء السند' : 'Cancel receipt'}
+        pending={cancelPayment.isPending}
+        error={cancelError}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={(reason) => cancelPayment.mutate(reason)}
+      />
+
+      <Modal
+        open={refundTarget !== null}
+        title={locale === 'ar' ? `طلب استرداد — ${refundTarget?.number ?? ''}` : `Request refund — ${refundTarget?.number ?? ''}`}
+        onClose={() => setRefundTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRefundTarget(null)}>
+              {t('cancel')}
+            </Button>
+            <Button disabled={requestRefund.isPending || !refundForm.amount || !refundForm.reason.trim()} onClick={() => requestRefund.mutate()}>
+              {requestRefund.isPending ? t('saving') : t('save')}
+            </Button>
+          </>
+        }
+      >
+        {refundTarget ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label={t('amount')}
+              required
+              hint={`${locale === 'ar' ? 'المتاح للاسترداد' : 'Available'}: ${toDecimal(refundableMinor(refundTarget), refundTarget.currency)} ${refundTarget.currency}`}
+            >
+              <Input value={refundForm.amount} onChange={(event) => setRefundForm({ ...refundForm, amount: event.target.value })} inputMode="decimal" dir="ltr" />
+            </Field>
+            <Field label={locale === 'ar' ? 'السبب' : 'Reason'} required>
+              <Input value={refundForm.reason} maxLength={255} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} />
+            </Field>
+          </div>
+        ) : null}
+        {refundError ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{refundError}</p> : null}
+      </Modal>
+
+      <Modal
+        open={refundsFor !== null}
+        title={locale === 'ar' ? `استردادات السند ${refundsFor?.number ?? ''}` : `Refunds of ${refundsFor?.number ?? ''}`}
+        onClose={() => setRefundsFor(null)}
+      >
+        <Table>
+          <thead>
+            <tr>
+              <Th>{t('code')}</Th>
+              <Th className="text-end">{t('amount')}</Th>
+              <Th>{t('status')}</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody>
+            {refunds
+              .filter((refund) => refund.payment_id === refundsFor?.id)
+              .map((refund) => (
+                <tr key={refund.id}>
+                  <Td className="font-medium">{refund.number}</Td>
+                  <Td className="text-end tabular">
+                    {toDecimal(refund.amount_minor, refund.currency)} {refund.currency}
+                  </Td>
+                  <Td>
+                    <Badge tone={statusTone(refund.status)}>{statusLabel(refund.status, locale)}</Badge>
+                  </Td>
+                  <Td className="text-end">
+                    {refund.status === 'requested' && can('refunds.approve') ? (
+                      <Button variant="secondary" disabled={approveRefund.isPending} onClick={() => approveRefund.mutate(refund)}>
+                        {locale === 'ar' ? 'اعتماد' : 'Approve'}
+                      </Button>
+                    ) : null}
+                  </Td>
+                </tr>
+              ))}
+          </tbody>
+        </Table>
+        {refundsMessage ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{refundsMessage}</p> : null}
+      </Modal>
     </div>
   )
 }

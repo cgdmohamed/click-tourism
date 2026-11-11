@@ -3,6 +3,7 @@
 namespace App\Modules\Payments\Services;
 
 use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
@@ -15,6 +16,7 @@ use App\Modules\Core\Services\BranchScope;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\PartyLedgerService;
@@ -301,6 +303,59 @@ class SupplierSettlementService
             $this->audit->log('supplier_payment.applied', $payment, null, [
                 'obligation' => $obligation->public_id,
                 'amount_minor' => $amount,
+            ], $actorId);
+
+            return $payment->refresh()->load('supplier', 'obligation', 'branch', 'applications');
+        });
+    }
+
+    /**
+     * Cancel a supplier payment: reverse every posting of the payment (the
+     * payment entry plus any apply/unapply movements) exactly once. Refused
+     * while the payment is applied to obligations or invoices. Cancelling an
+     * already cancelled payment is a no-op.
+     */
+    public function cancel(SupplierPayment $payment, string $reason, ?int $actorId = null): SupplierPayment
+    {
+        return DB::transaction(function () use ($payment, $reason, $actorId) {
+            $payment = SupplierPayment::query()->lockForUpdate()->findOrFail($payment->id);
+            if ($payment->status === 'cancelled') {
+                return $payment->load('supplier', 'obligation', 'branch', 'applications');
+            }
+            if ($payment->status !== 'posted') {
+                throw new DomainException('Only posted supplier payments can be cancelled.');
+            }
+            $branch = Branch::query()->findOrFail($payment->branch_id);
+            $this->assertActor($actorId, $branch);
+
+            if ($payment->applications()->exists()
+                || InvoiceApplication::query()->active()->where('supplier_payment_id', $payment->id)->exists()) {
+                throw new DomainException('This supplier payment is applied to obligations or invoices. Undo the applications first.');
+            }
+
+            $entries = JournalEntry::query()
+                ->posted()
+                ->whereNull('reversal_of_id')
+                ->where('branch_id', $payment->branch_id)
+                ->where(function ($query) use ($payment) {
+                    $query->where(fn ($q) => $q->where('source_type', 'supplier_payment')->where('source_id', $payment->id))
+                        ->orWhere(fn ($q) => $q->where('source_type', 'supplier_payment_application')
+                            ->whereIn('memo', [
+                                'Apply supplier advance '.$payment->public_id,
+                                'Unapply supplier advance '.$payment->public_id,
+                            ]));
+                })
+                ->orderBy('id')
+                ->get()
+                ->filter(fn (JournalEntry $entry) => ! JournalEntry::query()->where('reversal_of_id', $entry->id)->exists());
+
+            foreach ($entries as $entry) {
+                $this->posting->reverse($entry, $reason, $actorId);
+            }
+
+            $payment->update(['status' => 'cancelled']);
+            $this->audit->log('supplier_payment.cancelled', $payment, ['status' => 'posted'], [
+                'status' => 'cancelled', 'reason' => $reason, 'reversed_entries' => $entries->count(),
             ], $actorId);
 
             return $payment->refresh()->load('supplier', 'obligation', 'branch', 'applications');
