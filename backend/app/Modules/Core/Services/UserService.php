@@ -105,6 +105,7 @@ class UserService
      */
     public function update(User $user, array $data, User $actor): User
     {
+        $this->assertTargetManageable($actor, $user);
         $roleNames = array_key_exists('roles', $data) ? $data['roles'] : null;
         $branches = array_key_exists('branch_ids', $data) ? $this->resolveBranches($data['branch_ids']) : null;
         $primaryProvided = array_key_exists('primary_branch_id', $data);
@@ -158,6 +159,7 @@ class UserService
      */
     public function deactivate(User $user, User $actor, string $reason): User
     {
+        $this->assertTargetManageable($actor, $user);
         if ($user->id === $actor->id) {
             throw new DomainException('You cannot deactivate your own account.');
         }
@@ -183,6 +185,7 @@ class UserService
 
     public function activate(User $user, User $actor): User
     {
+        $this->assertTargetManageable($actor, $user);
         return DB::transaction(function () use ($user, $actor) {
             $user = User::query()->findOrFail($user->id);
             $before = $this->account($user);
@@ -214,7 +217,12 @@ class UserService
             return collect();
         }
 
-        return Branch::query()->whereIn('public_id', array_values($publicIds))->get();
+        $branches = Branch::query()->whereIn('public_id', array_values($publicIds))->get();
+        if ($branches->count() !== count(array_unique($publicIds))) {
+            throw new DomainException('One or more requested branches do not exist.');
+        }
+
+        return $branches;
     }
 
     /** The primary branch requested by the payload, or null when absent/null. */
@@ -224,7 +232,8 @@ class UserService
             return null;
         }
 
-        return Branch::query()->where('public_id', $data['primary_branch_id'])->first();
+        return Branch::query()->where('public_id', $data['primary_branch_id'])->first()
+            ?? throw new DomainException('Requested primary branch does not exist.');
     }
 
     /** A primary branch must be one of the user's assigned branches. */
@@ -235,6 +244,25 @@ class UserService
         }
 
         return $primary;
+    }
+
+    /**
+     * A delegated user manager cannot reset the credentials, deactivate, or
+     * alter the account of a more privileged user. Without this guard,
+     * users.manage alone could be used to take over an administrator account.
+     */
+    private function assertTargetManageable(User $actor, User $target): void
+    {
+        if ($actor->id === $target->id) {
+            return;
+        }
+
+        $actorPermissions = $actor->getAllPermissions()->pluck('name')->all();
+        foreach ($target->getAllPermissions() as $permission) {
+            if (! in_array($permission->name, $actorPermissions, true)) {
+                throw new AuthorizationException('You may not manage an account with privileges you do not hold.');
+            }
+        }
     }
 
     /** Every role handed out must stay inside the actor's own privileges. */
