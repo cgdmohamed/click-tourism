@@ -9,10 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * An operational transfer of an asset between branches, cost centers or
- * custodians. Transfers deliberately create no journal and rewrite no posted
- * GL: the global control accounts stay unchanged, while the register records
- * who moved the asset, when and why.
+ * A transfer of an asset between branches, cost centers or custodians.
+ *
+ * A change of branch posts two balanced journals through PostingService, one
+ * per branch, at net book value via the inter-branch clearing accounts
+ * (Odoo-style due-from / due-to). Cost-center or custodian changes within a
+ * branch are operational only and post nothing. Posted history is never
+ * rewritten; a wrong transfer is reversed (both journals).
  */
 class FixedAssetTransfer extends Model
 {
@@ -28,6 +31,13 @@ class FixedAssetTransfer extends Model
         'to_employee_id',
         'transfer_date',
         'reason',
+        'source_journal_entry_id',
+        'destination_journal_entry_id',
+        'cost_minor',
+        'accumulated_minor',
+        'reversed_at',
+        'reversed_by',
+        'reversal_reason',
         'created_by',
     ];
 
@@ -35,7 +45,23 @@ class FixedAssetTransfer extends Model
     {
         return [
             'transfer_date' => 'date',
+            'reversed_at' => 'datetime',
         ];
+    }
+
+    public function sourceJournalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class, 'source_journal_entry_id');
+    }
+
+    public function destinationJournalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class, 'destination_journal_entry_id');
+    }
+
+    public function isReversed(): bool
+    {
+        return $this->reversed_at !== null;
     }
 
     public function asset(): BelongsTo
@@ -96,6 +122,14 @@ class FixedAssetTransfer extends Model
             ] : null,
             'transfer_date' => $this->transfer_date?->toDateString(),
             'reason' => $this->reason,
+            'cost_minor' => (int) $this->cost_minor,
+            'accumulated_minor' => (int) $this->accumulated_minor,
+            'net_book_value_minor' => (int) $this->cost_minor - (int) $this->accumulated_minor,
+            'source_journal' => $this->sourceJournalEntry ? ['id' => $this->sourceJournalEntry->public_id, 'number' => $this->sourceJournalEntry->number] : null,
+            'destination_journal' => $this->destinationJournalEntry ? ['id' => $this->destinationJournalEntry->public_id, 'number' => $this->destinationJournalEntry->number] : null,
+            'is_reversed' => $this->isReversed(),
+            'reversed_at' => $this->reversed_at?->toIso8601String(),
+            'reversal_reason' => $this->reversal_reason,
             'created_by' => $this->created_by,
             'created_at' => $this->created_at?->toIso8601String(),
         ];

@@ -4,7 +4,7 @@
 |---|---|---|---|---|---|
 | DEC-004 | No guarded trigger default | Configurable trigger, fully-collected default | Guarded settings only; no posting | Pending | `SettingService.php` |
 | DEC-008 | No explicit revaluation guard | Revaluation/reversal configuration | Disabled settings only; no posting | Pending | `SettingService.php` |
-| DEC-014 | Branch dimension and access existed | Record selected one-ledger model without activating clearing | Existing separation retained; inter-branch posting blocked | Pending | ADR-0005, `BranchScope` |
+| DEC-014 | Branch dimension and access existed | Record selected one-ledger model without activating clearing | Existing separation retained; inter-branch posting limited to fixed-asset transfers (clearing accounts 1180/2160, see fixed-assets audit item 18) | Pending | ADR-0005, `BranchScope` |
 | DEC-015 | Elapsed-hour reassignment | Business calendar, meaningful activity, retries and escalation | Implemented and tested | Not required | `LeadService.php`, decision-support migration |
 | DEC-016 | Least-loaded fallback; rules unused | Prioritized rules, category, availability, manual and queue fallback | Backend rule engine implemented and tested; management UI remains | Not required | `LeadService.php`, `AssignmentRule.php` |
 | DEC-018 | Calendar-year atomic sequence | Resolve containing fiscal year | Implemented without renumbering history | Statutory review only | `SequenceService.php` |

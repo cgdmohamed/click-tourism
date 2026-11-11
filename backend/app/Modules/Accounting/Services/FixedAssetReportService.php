@@ -250,9 +250,11 @@ class FixedAssetReportService
     /**
      * Compare register totals with the posted GL control accounts.
      *
-     * Branch transfers intentionally never rewrite the GL, so a branch filter
-     * can legitimately show a reallocation difference. The installation-wide
-     * reconciliation (no branch filter) must balance.
+     * An inter-branch transfer posts a journal per branch (cost and accumulated
+     * depreciation move through the inter-branch clearing accounts), so the
+     * branch view and the installation-wide view both reconcile. Transfers
+     * recorded before that posting existed (no journals) still show as a
+     * branch reallocation difference.
      *
      * @return array<string, mixed>
      */
@@ -267,15 +269,18 @@ class FixedAssetReportService
 
         // Draft assets are not in the ledger yet and are never compared.
         $assets = FixedAsset::query()
-            ->with(['category', 'depreciationItems'])
+            ->with(['category', 'depreciationItems', 'transfers'])
             ->where('status', '!=', FixedAsset::STATUS_DRAFT)
-            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($date !== null, fn ($query) => $query->whereDate('capitalization_date', '<=', $date))
             ->when($date !== null, fn ($query) => $query->where(function ($query) use ($date) {
                 $query->whereNull('disposed_on')->orWhereDate('disposed_on', '>', $date);
             }))
             ->when($date === null, fn ($query) => $query->whereNull('disposed_on'))
-            ->get();
+            ->get()
+            // A branch figure counts the assets the ledger had on that branch at
+            // the date: inter-branch transfers move cost and accumulated
+            // depreciation between branches in the GL, so the register follows.
+            ->filter(fn (FixedAsset $asset) => $branch === null || $this->branchIdAt($asset, $date) === $branch->id);
 
         $registerCost = [];
         $registerAccumulated = [];
@@ -400,7 +405,7 @@ class FixedAssetReportService
             'cost_difference_minor' => $totalCostDifference,
             'accumulated_difference_minor' => $totalAccumulatedDifference,
             'note' => $branch
-                ? 'Branch figures can differ by the cost of assets operationally transferred between branches; the GL control accounts are global.'
+                ? 'Branch figures follow inter-branch transfer journals; only transfers recorded before those journals existed can leave a branch reallocation difference.'
                 : 'Register and GL control accounts must agree at installation level.',
             'categories' => $rows,
             'accounts' => $accounts,
@@ -564,6 +569,26 @@ class FixedAssetReportService
             ->whereDate('document_date', '>=', $fromDate)
             ->whereDate('document_date', '<=', $toDate)
             ->sum('total_minor');
+    }
+
+    /**
+     * The branch the ledger held the asset on at $date: the origin of the first
+     * posted (journal-backed, not reversed) transfer after that date.
+     */
+    private function branchIdAt(FixedAsset $asset, ?string $date): int
+    {
+        if ($date === null) {
+            return $asset->branch_id;
+        }
+
+        $later = $asset->transfers
+            ->filter(fn ($transfer) => $transfer->source_journal_entry_id !== null
+                && $transfer->reversed_at === null
+                && $transfer->transfer_date->toDateString() > $date)
+            ->sortBy(fn ($transfer) => $transfer->transfer_date->toDateString().'#'.str_pad((string) $transfer->id, 12, '0', STR_PAD_LEFT))
+            ->first();
+
+        return $later ? $later->from_branch_id : $asset->branch_id;
     }
 
     /** Signed balance in the account's normal direction. */

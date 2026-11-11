@@ -197,6 +197,7 @@ Route::prefix('v1')->group(function () {
         Route::patch('fixed-assets/{asset}', [FixedAssetController::class, 'update'])->middleware('permission:assets.manage');
         Route::post('fixed-assets/{asset}/capitalize', [FixedAssetController::class, 'capitalize'])->middleware('permission:assets.approve');
         Route::post('fixed-assets/{asset}/transfer', [FixedAssetController::class, 'transfer'])->middleware('permission:assets.manage');
+        Route::post('fixed-asset-transfers/{transfer}/reverse', [FixedAssetController::class, 'reverseTransfer'])->middleware('permission:assets.approve');
         Route::post('fixed-assets/{asset}/dispose', [FixedAssetController::class, 'dispose'])->middleware('permission:assets.approve');
         Route::post('fixed-assets/{asset}/impairments', [FixedAssetController::class, 'impairment'])->middleware('permission:assets.manage');
         Route::post('fixed-assets/{asset}/impairments/{document}/apply', [FixedAssetController::class, 'applyImpairment'])->middleware('permission:assets.approve');
