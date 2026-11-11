@@ -43,3 +43,27 @@ Status: Draft. Forward-only in production. Each step must be tested with a rollb
 - `leads (branch_id, stage_id, owner_user_id)`, `(phone)`, `(email)`.
 - `webhook_events (provider, external_event_id)` unique.
 - `idempotency_keys (actor_id, key)` unique.
+
+### Pending: document-number uniqueness
+
+`bookings`, `payments`, `invoices` (`branch_id, series, number`),
+`accounting_schedules` and `fixed_asset_depreciation_runs` already have a
+database uniqueness guarantee on their numbers. These tables still rely only on
+the `SequenceService` row lock:
+
+- `journal_entries`, `refunds`, `transfers`, `expenses`, `accounting_documents`.
+
+Before adding a unique index on `(branch_id, number)` to them, run the
+read-only audit on the client installation:
+
+```bash
+php artisan accounting:audit-document-numbers          # prints a report; exits non-zero on duplicates
+php artisan accounting:audit-document-numbers --json   # machine-readable
+```
+
+It never renumbers or deletes anything. Duplicate numbers on posted documents
+are an accountant decision (which document keeps the number), so the index
+migration is intentionally not written until the audit is clean on that
+installation. The per-branch sequence lock means new documents are already
+unique; the audit finds legacy rows issued before the branch code was part of
+the number.
