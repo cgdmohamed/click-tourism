@@ -382,4 +382,154 @@ class FiscalCloseTest extends TestCase
         $this->withHeaders($this->h())->postJson("/api/v1/fiscal-years/{$this->yearId}/reopen", ['reason' => 'x'])->assertStatus(403);
         $this->assertSame('closed', FiscalYear::query()->findOrFail($this->yearId)->status);
     }
+
+    private function secondBranch(bool $attach = true): Branch
+    {
+        $second = Branch::query()->create([
+            'code' => 'B2', 'name_ar' => 'ف', 'name_en' => 'Branch 2', 'accounting_mode' => 'dimension', 'is_active' => true,
+        ]);
+        if ($attach) {
+            $this->user->branches()->attach($second->id);
+        }
+
+        return $second;
+    }
+
+    private function check(array $report, string $code): array
+    {
+        return collect($report['data']['checks'])->firstWhere('code', $code);
+    }
+
+    public function test_draft_and_expense_blockers_are_reported_per_branch_even_for_inaccessible_branches(): void
+    {
+        $this->seed(TreasurySeeder::class);
+        $second = $this->secondBranch();
+        $this->entry("{$this->year}-05-05", '1110', '4100', 5000, post: false)->assertCreated();
+        $this->entry("{$this->year}-05-06", '1110', '4100', 5000, $second, post: false)->assertCreated();
+        $this->entry("{$this->year}-05-07", '1110', '4100', 5000, $second, post: false)->assertCreated();
+        foreach ([[$second, 'EX-2'], [$second, 'EX-3']] as [$branch, $number]) {
+            Expense::query()->create([
+                'number' => $number, 'branch_id' => $branch->id,
+                'expense_category_id' => ExpenseCategory::query()->firstOrFail()->id,
+                'expense_date' => "{$this->year}-06-01", 'payee_type' => 'none', 'currency_code' => 'EGP',
+                'fx_rate_date' => "{$this->year}-06-01", 'amount_minor' => 1000, 'description' => 'Pending', 'status' => 'submitted',
+            ]);
+        }
+        $this->user->branches()->detach($second->id);
+
+        $report = $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-checks")->assertOk()->json();
+
+        $drafts = $this->check($report, 'draft_entries');
+        $this->assertSame(3, $drafts['count']);
+        $this->assertEqualsCanonicalizing([['branch_code' => 'B2', 'count' => 2], ['branch_code' => $this->branch->code, 'count' => 1]], $drafts['details']);
+        $this->assertStringContainsString('B2: 2', $drafts['message']);
+
+        $expenses = $this->check($report, 'submitted_expenses');
+        $this->assertSame([['branch_code' => 'B2', 'count' => 2]], $expenses['details']);
+        $this->assertStringContainsString('B2: 2', $expenses['message']);
+        $this->assertArrayNotHasKey('details', $this->check($report, 'trial_balance'));
+    }
+
+    public function test_reopen_records_and_returns_the_previous_period_status(): void
+    {
+        $this->profitYear();
+        $this->close()->assertOk();
+        $periods = FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)->orderBy('starts_on')->get();
+        $periods[0]->update(['status' => 'soft_closed']);
+
+        $response = $this->withHeaders($this->h())->postJson("/api/v1/fiscal-years/{$this->yearId}/reopen", ['reason' => 'Late invoice'])->assertOk();
+
+        $expected = $periods->mapWithKeys(fn ($period, $index) => [(string) $period->id => $index === 0 ? 'soft_closed' : 'closed'])->all();
+        $this->assertSame($expected, $response->json('data.previous_period_status'));
+        $event = DB::table('audit_events')->where('action', 'fiscal_year.reopened')->first();
+        $this->assertSame($expected, json_decode($event->after, true)['previous_period_status']);
+        $this->assertSame(0, FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)->where('status', '!=', 'open')->count());
+    }
+
+    public function test_restore_period_status_reapplies_review_state_only_after_the_reversals_posted(): void
+    {
+        $this->profitYear();
+        $this->close()->assertOk();
+        $periods = FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)->orderBy('starts_on')->get();
+        $periods[0]->update(['status' => 'soft_closed']);
+
+        $this->withHeaders($this->h())->postJson("/api/v1/fiscal-years/{$this->yearId}/reopen", [
+            'reason' => 'Late invoice', 'restore_period_status' => true,
+        ])->assertOk()->assertJsonPath('data.status', 'open');
+
+        // The year-end period was closed when reopening; the reversals still posted into it.
+        $this->assertSame(0, $this->balance('3100'));
+        $this->assertSame(-1000000, $this->balance('4100'));
+        $this->assertSame('open', FiscalYear::query()->findOrFail($this->yearId)->status);
+        $this->assertSame('soft_closed', $periods[0]->fresh()->status);
+        $this->assertSame(
+            $periods->count() - 1,
+            FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)->where('status', 'closed')->count(),
+        );
+        $this->assertCount(2, $this->closingEntries());
+    }
+
+    public function test_default_reopen_does_not_restore_period_status(): void
+    {
+        $this->profitYear();
+        $this->close()->assertOk();
+
+        $this->withHeaders($this->h())->postJson("/api/v1/fiscal-years/{$this->yearId}/reopen", [
+            'reason' => 'Late invoice', 'restore_period_status' => false,
+        ])->assertOk();
+
+        $this->assertSame(0, FiscalPeriod::query()->where('fiscal_year_id', $this->yearId)->where('status', '!=', 'open')->count());
+    }
+
+    public function test_close_preview_posts_nothing_and_equals_the_entries_close_posts(): void
+    {
+        $second = $this->secondBranch();
+        $this->entry("{$this->year}-03-10", '1110', '4100', 900000)->assertCreated();
+        $this->entry("{$this->year}-03-11", '1110', '4100', 300000, $second)->assertCreated();
+        $this->entry("{$this->year}-04-11", '6100', '1110', 500000, $second)->assertCreated();
+        $this->entry("{$this->year}-05-11", '6100', '1110', 100000)->assertCreated();
+
+        $entriesBefore = JournalEntry::query()->count();
+        $preview = $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-preview")->assertOk()->json('data');
+        $this->assertSame($entriesBefore, JournalEntry::query()->count());
+        $this->assertSame('open', FiscalYear::query()->findOrFail($this->yearId)->status);
+        $this->assertSame('EGP', $preview['currency']);
+        $this->assertCount(2, $preview['branches']);
+
+        foreach ($preview['branches'] as $branch) {
+            $this->assertSame(
+                collect($branch['lines'])->sum('debit_minor'),
+                collect($branch['lines'])->sum('credit_minor'),
+                'Preview of '.$branch['branch_code'].' must balance',
+            );
+        }
+
+        $this->close()->assertOk();
+
+        $posted = $this->closingEntries()->load('lines.account', 'branch');
+        $this->assertCount(count($preview['branches']), $posted);
+        foreach ($posted as $entry) {
+            $shown = collect($preview['branches'])->firstWhere('branch_code', $entry->branch->code);
+            $this->assertNotNull($shown);
+            $key = fn ($rows) => collect($rows)->map(fn ($row) => implode('|', $row))->sort()->values()->all();
+            $this->assertSame(
+                $key($entry->lines->map(fn ($line) => [$line->account->code, $line->base_debit_minor, $line->base_credit_minor])),
+                $key(collect($shown['lines'])->map(fn ($line) => [$line['account_code'], $line['debit_minor'], $line['credit_minor']])),
+            );
+        }
+        $first = collect($preview['branches'])->firstWhere('branch_code', $this->branch->code);
+        $this->assertSame(800000, $first['net_profit_minor']);
+    }
+
+    public function test_close_preview_needs_the_view_permission_and_is_empty_without_activity(): void
+    {
+        $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-preview")
+            ->assertOk()->assertJsonPath('data.branches', []);
+
+        $nobody = User::factory()->create();
+        $nobody->branches()->attach($this->branch->id);
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($nobody);
+        $this->withHeaders($this->h())->getJson("/api/v1/fiscal-years/{$this->yearId}/close-preview")->assertStatus(403);
+    }
 }

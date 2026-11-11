@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate } from '../lib/format'
+import { formatDate, formatMoney } from '../lib/format'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { Icon } from '../components/icons'
 import { statusLabel } from '../lib/labels'
@@ -11,7 +11,11 @@ import { statusLabel } from '../lib/labels'
 type Period = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'soft_closed' | 'closed' }
 type Year = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'closed'; closed_at: string | null; periods: Period[] }
 type Suggestion = { name: string; starts_on: string; ends_on: string; fiscal_year_start: string }
-type Check = { code: string; passed: boolean; message: string | null; count: number | null }
+type Check = { code: string; passed: boolean; message: string | null; count: number | null; details?: { branch_code: string; count: number }[] }
+type PreviewLine = { account_code: string; account_name_ar: string; account_name_en: string; debit_minor: number; credit_minor: number }
+type PreviewBranch = { branch_code: string; branch_name_ar: string; branch_name_en: string; net_profit_minor: number; lines: PreviewLine[] }
+type Preview = { currency: string; branches: PreviewBranch[] }
+type ReopenResult = { previous_period_status: Record<string, Period['status']> }
 type Checks = { can_close: boolean; checks: Check[] }
 
 const checkLabels: Record<string, { ar: string; en: string }> = {
@@ -33,6 +37,9 @@ export default function Periods() {
   const [checkYear, setCheckYear] = useState<Year | null>(null)
   const [reopenYear, setReopenYear] = useState<Year | null>(null)
   const [reason, setReason] = useState('')
+  const [restoreStatus, setRestoreStatus] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [reopenResult, setReopenResult] = useState<{ year: Year; previous: Record<string, Period['status']> } | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ name: '', starts_on: '', ends_on: '' })
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
@@ -55,6 +62,15 @@ export default function Periods() {
     enabled: checkYear !== null,
   })
 
+  const previewQuery = useQuery({
+    queryKey: ['close-preview', checkYear?.id],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: Preview }>(`/fiscal-years/${checkYear?.id}/close-preview`)
+      return data.data
+    },
+    enabled: checkYear !== null && showPreview,
+  })
+
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['fiscal-years'] })
     await queryClient.invalidateQueries({ queryKey: ['close-checks'] })
@@ -66,6 +82,7 @@ export default function Periods() {
     },
     onSuccess: async () => {
       setCheckYear(null)
+      setShowPreview(false)
       setError('')
       await refresh()
     },
@@ -74,11 +91,14 @@ export default function Periods() {
 
   const reopen = useMutation({
     mutationFn: async () => {
-      await api.post(`/fiscal-years/${reopenYear?.id}/reopen`, { reason })
+      const { data } = await api.post<{ data: ReopenResult }>(`/fiscal-years/${reopenYear?.id}/reopen`, { reason, restore_period_status: restoreStatus })
+      return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if (reopenYear) setReopenResult({ year: reopenYear, previous: result.previous_period_status ?? {} })
       setReopenYear(null)
       setReason('')
+      setRestoreStatus(false)
       setError('')
       await refresh()
     },
@@ -209,10 +229,11 @@ export default function Periods() {
       <Modal
         open={checkYear !== null}
         title={`${L('إقفال السنة', 'Close fiscal year')} ${checkYear?.name ?? ''}`}
-        onClose={() => setCheckYear(null)}
+        onClose={() => { setCheckYear(null); setShowPreview(false) }}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setCheckYear(null)}>{t('cancel')}</Button>
+            <Button variant="secondary" onClick={() => { setCheckYear(null); setShowPreview(false) }}>{t('cancel')}</Button>
+            <Button variant="secondary" onClick={() => setShowPreview(true)} disabled={previewQuery.isFetching}>{L('معاينة قيود الإقفال', 'Preview closing entries')}</Button>
             <Button onClick={() => closeYear.mutate()} disabled={closeYear.isPending || !checksQuery.data?.can_close}>{L('إقفال السنة', 'Close year')}</Button>
           </>
         }
@@ -235,10 +256,51 @@ export default function Periods() {
               <span>
                 {locale === 'ar' ? checkLabels[check.code]?.ar : checkLabels[check.code]?.en}
                 {!check.passed && check.message ? <span className="block text-small text-danger-text">{check.message}</span> : null}
+                {!check.passed && check.details?.length ? (
+                  <span className="block text-small text-text-subtle" dir="ltr">
+                    {check.details.map((row) => `${row.branch_code}: ${row.count}`).join(' · ')}
+                  </span>
+                ) : null}
               </span>
             </li>
           ))}
         </ul>
+        {showPreview ? (
+          <div className="mt-4 flex flex-col gap-4">
+            {previewQuery.isLoading ? <Loading /> : null}
+            {previewQuery.isError ? <ErrorState message={errorMessage(previewQuery.error)} /> : null}
+            {previewQuery.data && previewQuery.data.branches.length === 0 ? (
+              <p className="text-medium text-text-subtle">{L('لا توجد حركة أرباح وخسائر لإقفالها.', 'No profit-and-loss activity to close.')}</p>
+            ) : null}
+            {(previewQuery.data?.branches ?? []).map((branch) => (
+              <div key={branch.branch_code}>
+                <p className="mb-2 text-medium font-semibold">
+                  {branch.branch_code} · {locale === 'ar' ? branch.branch_name_ar : branch.branch_name_en}
+                  {' · '}
+                  {L('صافي الربح', 'Net profit')} {formatMoney(branch.net_profit_minor, previewQuery.data?.currency ?? 'EGP', locale)}
+                </p>
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>{L('الحساب', 'Account')}</Th>
+                      <Th>{L('مدين', 'Debit')}</Th>
+                      <Th>{L('دائن', 'Credit')}</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {branch.lines.map((line, index) => (
+                      <tr key={`${line.account_code}-${index}`}>
+                        <Td>{line.account_code} · {locale === 'ar' ? line.account_name_ar : line.account_name_en}</Td>
+                        <Td dir="ltr">{line.debit_minor ? formatMoney(line.debit_minor, previewQuery.data?.currency ?? 'EGP', locale) : ''}</Td>
+                        <Td dir="ltr">{line.credit_minor ? formatMoney(line.credit_minor, previewQuery.data?.currency ?? 'EGP', locale) : ''}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
@@ -256,9 +318,35 @@ export default function Periods() {
         <p className="mb-4 text-medium text-text-subtle">
           {L('تُعكس قيود الإقفال (ولا تُحذف) وتُفتح كل الفترات.', 'Closing entries are reversed (never deleted) and every period is opened.')}
         </p>
+        <p className="mb-2 text-medium text-text-subtle">
+          {L('حالة الفترات الحالية (ستُفتح كلها؛ سجّلها لإعادة تطبيقها):', 'Current period statuses (all will be opened; note them to re-apply):')}
+        </p>
+        <ul className="mb-4 flex flex-col gap-1 text-medium">
+          {(years.find((item) => item.id === reopenYear?.id)?.periods ?? []).map((period) => (
+            <li key={period.id}>{period.name}: {statusLabel(period.status, locale)}</li>
+          ))}
+        </ul>
+        <label className="mb-4 flex items-center gap-2 text-medium">
+          <input type="checkbox" checked={restoreStatus} onChange={(event) => setRestoreStatus(event.target.checked)} />
+          {L('استعادة حالة الفترات بعد عكس قيود الإقفال', 'Restore period statuses after the closing entries are reversed')}
+        </label>
         <Field label={L('السبب', 'Reason')} required>
           <Input value={reason} onChange={(event) => setReason(event.target.value)} />
         </Field>
+      </Modal>
+
+      <Modal
+        open={reopenResult !== null}
+        title={`${L('تمت إعادة فتح السنة', 'Fiscal year reopened')} ${reopenResult?.year.name ?? ''}`}
+        onClose={() => setReopenResult(null)}
+        footer={<Button onClick={() => setReopenResult(null)}>{L('إغلاق', 'Dismiss')}</Button>}
+      >
+        <p className="mb-2 text-medium text-text-subtle">{L('حالة الفترات قبل إعادة الفتح:', 'Period statuses before the reopen:')}</p>
+        <ul className="flex flex-col gap-1 text-medium">
+          {(reopenResult?.year.periods ?? []).map((period) => (
+            <li key={period.id}>{period.name}: {statusLabel(reopenResult?.previous[period.id] ?? period.status, locale)}</li>
+          ))}
+        </ul>
       </Modal>
 
       <Modal

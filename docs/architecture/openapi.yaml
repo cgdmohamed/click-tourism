@@ -592,10 +592,22 @@ paths:
     get:
       tags: [Accounting]
       summary: Pre-close validation checks for a fiscal year
+      description: Each check has code, passed, message and count; draft_entries and submitted_expenses also carry `details` ([{branch_code, count}], across all branches including ones the caller cannot access).
       parameters:
         - { name: fiscalYear, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: Close checks }
+  /fiscal-years/{fiscalYear}/close-preview:
+    get:
+      tags: [Accounting]
+      summary: Preview the closing entries close would post (posts nothing; permission periods.view)
+      description: Per branch with profit-and-loss activity, the lines in base currency minor units (account code/name, debit_minor, credit_minor) and net_profit_minor moved to retained earnings. Uses the same computation as close.
+      parameters:
+        - { name: fiscalYear, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Closing entries preview }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
   /fiscal-years/{fiscalYear}/close:
     post:
       tags: [Accounting]
@@ -623,8 +635,9 @@ paths:
               required: [reason]
               properties:
                 reason: { type: string, minLength: 3, maxLength: 255 }
+                restore_period_status: { type: boolean, default: false, description: "After the closing entries are reversed, restore soft_closed/closed periods to their status before the reopen." }
       responses:
-        '200': { description: Reopened }
+        '200': { description: "Reopened; data includes previous_period_status ({periodId: status} before the reopen)" }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
         '409': { $ref: '#/components/responses/Conflict' }
