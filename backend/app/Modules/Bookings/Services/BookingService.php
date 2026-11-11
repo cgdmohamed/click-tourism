@@ -44,6 +44,17 @@ class BookingService
         'no_show' => [],
     ];
 
+    /**
+     * Statuses a booking may move to from $status. Single source of truth for
+     * the transition guard, the API payload and the UI.
+     *
+     * @return string[]
+     */
+    public static function allowedTransitionsFor(?string $status): array
+    {
+        return self::TRANSITIONS[$status ?? ''] ?? [];
+    }
+
     public function __construct(
         private readonly SettingService $settings,
         private readonly SequenceService $sequences,
@@ -131,7 +142,7 @@ class BookingService
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $from = $booking->status;
 
-            $allowed = self::TRANSITIONS[$from] ?? [];
+            $allowed = self::allowedTransitionsFor($from);
             if (! in_array($toStatus, $allowed, true)) {
                 throw new DomainException("Cannot move a booking from {$from} to {$toStatus}.");
             }
@@ -485,9 +496,17 @@ class BookingService
         $grossSell = $quantity * $unitSell;
         $grossCost = $quantity * $unitCost;
 
-        $taxProfile = ! empty($item['tax_profile_id'])
-            ? TaxProfile::query()->find($item['tax_profile_id'])
-            : null;
+        $taxProfile = null;
+        if (! empty($item['tax_profile_id'])) {
+            // Accepts the public id (preferred) or the legacy internal numeric id.
+            $ref = (string) $item['tax_profile_id'];
+            $taxProfile = TaxProfile::query()
+                ->where(fn ($query) => $query->where('public_id', $ref)->orWhere('id', ctype_digit($ref) ? (int) $ref : 0))
+                ->first();
+            if (! $taxProfile) {
+                throw new DomainException('Tax profile not found.');
+            }
+        }
 
         $rate = $taxProfile ? (string) $taxProfile->rate : '0';
         $inclusive = $taxProfile?->is_inclusive ?? false;

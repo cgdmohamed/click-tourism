@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
 import type { Account, JournalEntry } from '../lib/types'
-import { Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 
@@ -86,6 +86,7 @@ type TrialBalanceRow = StatementLine & {
   closing_credit_minor: number
   closing_balance_minor: number
   balance_minor: number
+  abnormal: boolean
 }
 
 type TrialBalance = {
@@ -111,13 +112,23 @@ type IncomeStatement = {
   to: string
   revenue: StatementLine[]
   expenses: StatementLine[]
+  cost_of_services: StatementLine[]
+  operating_expenses: StatementLine[]
   total_revenue_minor: number
   total_expense_minor: number
+  total_cost_of_services_minor: number
+  total_operating_expenses_minor: number
+  gross_profit_minor: number
+  operating_profit_minor: number
   net_profit_minor: number
   comparison: IncomeStatement | null
   variance: {
     total_revenue_minor: number
     total_expense_minor: number
+    total_cost_of_services_minor: number
+    total_operating_expenses_minor: number
+    gross_profit_minor: number
+    operating_profit_minor: number
     net_profit_minor: number
   } | null
 }
@@ -128,6 +139,16 @@ type BalanceSheet = {
   assets: StatementLine[]
   liabilities: StatementLine[]
   equity: StatementLine[]
+  // PENDING ACCOUNTANT APPROVAL: current/non-current split is provisional, by account code.
+  classification: 'provisional_by_code'
+  current_assets: StatementLine[]
+  non_current_assets: StatementLine[]
+  current_liabilities: StatementLine[]
+  non_current_liabilities: StatementLine[]
+  current_assets_minor: number
+  non_current_assets_minor: number
+  current_liabilities_minor: number
+  non_current_liabilities_minor: number
   current_earnings_minor: number
   total_assets_minor: number
   total_liabilities_minor: number
@@ -139,6 +160,10 @@ type BalanceSheet = {
     total_assets_minor: number
     total_liabilities_minor: number
     total_equity_minor: number
+    current_assets_minor: number
+    non_current_assets_minor: number
+    current_liabilities_minor: number
+    non_current_liabilities_minor: number
     current_earnings_minor: number
   } | null
 }
@@ -414,6 +439,20 @@ export default function Reports() {
   ]
 
   const label = (line: StatementLine) => (locale === 'ar' ? line.name_ar : line.name_en)
+
+  const summaryLine = (text: string, amountMinor: number, currency: string, variance?: number, emphasis = false) => (
+    <div className={cx('flex items-center justify-between border-t border-border-subtle px-5 py-3 text-sm', emphasis && 'font-semibold')}>
+      <span>{text}</span>
+      <span>
+        <Money amountMinor={amountMinor} currency={currency} />
+        {variance !== undefined ? (
+          <span className="ms-2 text-text-subtle">
+            (<Money amountMinor={variance} currency={currency} />)
+          </span>
+        ) : null}
+      </span>
+    </div>
+  )
 
   const statementRows = (lines: StatementLine[], currency: string, comparisonLines?: StatementLine[]) => {
     const comparing = comparisonLines !== undefined
@@ -835,8 +874,6 @@ export default function Reports() {
         {query.data && report === 'trial-balance'
           ? (() => {
               const data = query.data as TrialBalance
-              const openingNet = data.total_opening_debit_minor - data.total_opening_credit_minor
-              const closingNet = data.total_closing_debit_minor - data.total_closing_credit_minor
               return (
                 <>
                   <CardHeader
@@ -852,10 +889,12 @@ export default function Reports() {
                         <tr>
                           <Th>{t('code')}</Th>
                           <Th>{t('name')}</Th>
-                          <Th className="text-end">{t('openingBalance')}</Th>
+                          <Th className="text-end">{locale === 'ar' ? 'افتتاحي مدين' : 'Opening debit'}</Th>
+                          <Th className="text-end">{locale === 'ar' ? 'افتتاحي دائن' : 'Opening credit'}</Th>
                           <Th className="text-end">{t('debit')}</Th>
                           <Th className="text-end">{t('credit')}</Th>
-                          <Th className="text-end">{t('closingBalance')}</Th>
+                          <Th className="text-end">{locale === 'ar' ? 'ختامي مدين' : 'Closing debit'}</Th>
+                          <Th className="text-end">{locale === 'ar' ? 'ختامي دائن' : 'Closing credit'}</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -865,36 +904,36 @@ export default function Reports() {
                               {row.code}
                               {row.level > 1 ? <span className="ms-2 text-small text-text-subtle">L{row.level}</span> : null}
                             </Td>
-                            <Td>{locale === 'ar' ? row.name_ar : row.name_en}</Td>
-                            <Td className="text-end">
-                              <Money amountMinor={row.opening_balance_minor} currency={data.currency} />
+                            <Td>
+                              {locale === 'ar' ? row.name_ar : row.name_en}
+                              {row.abnormal ? (
+                                <span className="ms-2">
+                                  <Badge tone="warning">{locale === 'ar' ? 'رصيد غير طبيعي' : 'Abnormal balance'}</Badge>
+                                </span>
+                              ) : null}
                             </Td>
-                            <Td className="text-end">
-                              <Money amountMinor={row.debit_minor} currency={data.currency} />
-                            </Td>
-                            <Td className="text-end">
-                              <Money amountMinor={row.credit_minor} currency={data.currency} />
-                            </Td>
-                            <Td className="text-end">
-                              <Money amountMinor={row.closing_balance_minor} currency={data.currency} />
-                            </Td>
+                            {[row.opening_debit_minor, row.opening_credit_minor, row.debit_minor, row.credit_minor, row.closing_debit_minor, row.closing_credit_minor].map((amount, index) => (
+                              <Td key={index} className="text-end">
+                                <Money amountMinor={amount} currency={data.currency} />
+                              </Td>
+                            ))}
                           </tr>
                         ))}
                         <tr className="bg-surface-subtle font-semibold">
                           <Td />
                           <Td>{t('total')}</Td>
-                          <Td className="text-end">
-                            <Money amountMinor={openingNet} currency={data.currency} />
-                          </Td>
-                          <Td className="text-end">
-                            <Money amountMinor={data.total_debit_minor} currency={data.currency} />
-                          </Td>
-                          <Td className="text-end">
-                            <Money amountMinor={data.total_credit_minor} currency={data.currency} />
-                          </Td>
-                          <Td className="text-end">
-                            <Money amountMinor={closingNet} currency={data.currency} />
-                          </Td>
+                          {[
+                            data.total_opening_debit_minor,
+                            data.total_opening_credit_minor,
+                            data.total_debit_minor,
+                            data.total_credit_minor,
+                            data.total_closing_debit_minor,
+                            data.total_closing_credit_minor,
+                          ].map((amount, index) => (
+                            <Td key={index} className="text-end">
+                              <Money amountMinor={amount} currency={data.currency} />
+                            </Td>
+                          ))}
                         </tr>
                       </tbody>
                     </Table>
@@ -927,8 +966,12 @@ export default function Reports() {
                   />
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الإيرادات' : 'Revenue'}</div>
                   {statementRows(data.revenue, data.currency, data.comparison?.revenue)}
-                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'المصروفات' : 'Expenses'}</div>
-                  {statementRows(data.expenses, data.currency, data.comparison?.expenses)}
+                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'تكلفة الخدمات' : 'Cost of services'}</div>
+                  {statementRows(data.cost_of_services, data.currency, data.comparison?.cost_of_services)}
+                  {summaryLine(locale === 'ar' ? 'مجمل الربح' : 'Gross profit', data.gross_profit_minor, data.currency, data.variance?.gross_profit_minor, true)}
+                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'المصروفات التشغيلية' : 'Operating expenses'}</div>
+                  {statementRows(data.operating_expenses, data.currency, data.comparison?.operating_expenses)}
+                  {summaryLine(locale === 'ar' ? 'ربح التشغيل' : 'Operating profit', data.operating_profit_minor, data.currency, data.variance?.operating_profit_minor, true)}
                   <div className="flex flex-wrap justify-end gap-6 border-t border-border-subtle px-5 py-4 text-sm">
                     <span>
                       {locale === 'ar' ? 'إجمالي الإيرادات' : 'Total revenue'}:{' '}
@@ -975,10 +1018,18 @@ export default function Reports() {
               return (
                 <>
                   <CardHeader title={t('balanceSheet')} subtitle={`${t('asOf')} ${formatDate(data.as_of, locale)}`} icon="landmark" />
-                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الأصول' : 'Assets'}</div>
-                  {statementRows(data.assets, data.currency, data.comparison?.assets)}
-                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الالتزامات' : 'Liabilities'}</div>
-                  {statementRows(data.liabilities, data.currency, data.comparison?.liabilities)}
+                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الأصول المتداولة' : 'Current assets'}</div>
+                  {statementRows(data.current_assets, data.currency, data.comparison?.current_assets)}
+                  {summaryLine(locale === 'ar' ? 'إجمالي الأصول المتداولة' : 'Total current assets', data.current_assets_minor, data.currency, data.variance?.current_assets_minor)}
+                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الأصول غير المتداولة' : 'Non-current assets'}</div>
+                  {statementRows(data.non_current_assets, data.currency, data.comparison?.non_current_assets)}
+                  {summaryLine(locale === 'ar' ? 'إجمالي الأصول غير المتداولة' : 'Total non-current assets', data.non_current_assets_minor, data.currency, data.variance?.non_current_assets_minor)}
+                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الالتزامات المتداولة' : 'Current liabilities'}</div>
+                  {statementRows(data.current_liabilities, data.currency, data.comparison?.current_liabilities)}
+                  {summaryLine(locale === 'ar' ? 'إجمالي الالتزامات المتداولة' : 'Total current liabilities', data.current_liabilities_minor, data.currency, data.variance?.current_liabilities_minor)}
+                  <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'الالتزامات غير المتداولة' : 'Non-current liabilities'}</div>
+                  {statementRows(data.non_current_liabilities, data.currency, data.comparison?.non_current_liabilities)}
+                  {summaryLine(locale === 'ar' ? 'إجمالي الالتزامات غير المتداولة' : 'Total non-current liabilities', data.non_current_liabilities_minor, data.currency, data.variance?.non_current_liabilities_minor)}
                   <div className="px-5 py-3 text-sm font-semibold">{locale === 'ar' ? 'حقوق الملكية' : 'Equity'}</div>
                   {statementRows(data.equity, data.currency, data.comparison?.equity)}
                   {data.current_earnings_minor !== 0 ? (
@@ -1008,6 +1059,13 @@ export default function Reports() {
                       {locale === 'ar' ? 'الالتزامات + الحقوق' : 'Liabilities + equity'}:{' '}
                       <Money amountMinor={data.total_liabilities_and_equity_minor} currency={data.currency} />
                     </span>
+                  </div>
+                  <div className="px-5 pt-3">
+                    <InlineNotice tone="warning">
+                      {locale === 'ar'
+                        ? 'تصنيف المتداول وغير المتداول مبدئي حسب رمز الحساب وبانتظار اعتماد المحاسب'
+                        : 'Current / non-current classification is provisional (by account code) and pending accountant approval'}
+                    </InlineNotice>
                   </div>
                   <div className="px-5 py-3">
                     <InlineNotice tone={data.balanced ? 'positive' : 'negative'}>

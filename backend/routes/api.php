@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
+use App\Http\Controllers\Api\TaxProfileController;
 use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -231,8 +232,10 @@ Route::prefix('v1')->group(function () {
         Route::get('supplier-payments/{supplierPayment}', [SupplierSettlementController::class, 'showPayment'])->middleware('permission:supplier_payments.view');
         Route::post('supplier-payments/{supplierPayment}/apply', [SupplierSettlementController::class, 'apply'])->middleware(['permission:supplier_payments.create', 'idempotent']);
         Route::post('supplier-payments/{supplierPayment}/invoice-applications', [SupplierSettlementController::class, 'applyToInvoice'])->middleware(['permission:supplier_payments.create', 'idempotent']);
+        Route::post('supplier-payments/{supplierPayment}/cancel', [SupplierSettlementController::class, 'cancel'])->middleware(['permission:supplier_payments.reverse']);
         Route::post('supplier-payments/{supplierPayment}/unapply', [SupplierSettlementController::class, 'unapply'])->middleware(['permission:supplier_payments.create']);
 
+        Route::get('tax-profiles', [TaxProfileController::class, 'index'])->middleware('permission:bookings.view');
         Route::get('bookings', [BookingController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('bookings', [BookingController::class, 'store'])->middleware('permission:bookings.create');
         Route::get('bookings/{booking}', [BookingController::class, 'show'])->middleware('permission:bookings.view');
@@ -247,6 +250,7 @@ Route::prefix('v1')->group(function () {
         Route::post('payments/{payment}/allocate', [PaymentController::class, 'allocate'])->middleware(['permission:payments.create']);
         Route::delete('invoice-applications/{application}', [InvoiceApplicationController::class, 'destroy'])->middleware('permission:payments.create');
         Route::post('payments/{payment}/invoice-applications', [PaymentController::class, 'applyToInvoice'])->middleware(['permission:payments.create', 'idempotent']);
+        Route::post('payments/{payment}/cancel', [PaymentController::class, 'cancel'])->middleware(['permission:payments.reverse']);
         Route::post('payments/{payment}/unallocate', [PaymentController::class, 'unallocate'])->middleware(['permission:payments.create']);
 
         Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:payments.view');

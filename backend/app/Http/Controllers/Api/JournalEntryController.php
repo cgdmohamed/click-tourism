@@ -8,6 +8,7 @@ use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Money\Services\FxService;
+use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -154,6 +155,14 @@ class JournalEntryController extends ApiController
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:255'],
         ]);
+
+        if ($journalEntry->isDocumentEntry()) {
+            throw new DomainException('This entry belongs to a business document ('.$journalEntry->source_type.'). Use the document\'s own cancel or reverse action instead of reversing the journal entry.');
+        }
+
+        if ($journalEntry->isDocumentEntry()) {
+            throw new DomainException('This entry belongs to a business document ('.$journalEntry->source_type.'). Use the document\'s own cancel or reverse action instead of reversing the journal entry.');
+        }
 
         $reversal = $posting->reverse($journalEntry, $data['reason'], $this->actorId());
 

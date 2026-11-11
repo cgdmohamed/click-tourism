@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Operational invoice open balances and unapplied credits are compared with
  * the posted control-account family. Differences are returned with explicit
- * reasons; they are never silently written off. The pre-existing
- * `/reports/aging` remains the operational view for backward compatibility.
+ * reasons; they are never silently written off. `/reports/aging` uses the
+ * same open-document definition (ReportService::openDocuments()).
  */
 class AgingReconciliationService
 {
@@ -189,12 +189,8 @@ class AgingReconciliationService
         $parties = [];
         $total = 0;
 
-        $invoices = Invoice::query()
-            ->where('party_type', $partyType)
-            ->where('status', Invoice::STATUS_ISSUED)
-            ->whereDate('issue_date', '<=', $asOf)
-            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
-            ->get();
+        // Same definition as ReportService::aging(): issued, outstanding > 0.
+        $invoices = ReportService::openDocuments($partyType, $asOf, $branch);
 
         foreach ($invoices as $invoice) {
             $amount = $invoice->type === Invoice::TYPE_CREDIT_NOTE
@@ -206,9 +202,7 @@ class AgingReconciliationService
 
             $total += $base;
 
-            $due = $invoice->due_date?->toDateString() ?? $invoice->issue_date->toDateString();
-            $age = max(0, (int) floor((strtotime($asOf) - strtotime($due)) / 86400));
-            $buckets[$this->bucket($age)] += $base;
+            $buckets[ReportService::bucketFor(ReportService::ageInDays($invoice, $asOf))] += $base;
 
             $key = $partyType.':'.$invoice->party_id;
             $parties[$key] ??= [
@@ -302,15 +296,5 @@ class AgingReconciliationService
         }
 
         return $total;
-    }
-
-    private function bucket(int $age): string
-    {
-        return match (true) {
-            $age <= 30 => '0-30',
-            $age <= 60 => '31-60',
-            $age <= 90 => '61-90',
-            default => '90+',
-        };
     }
 }
