@@ -33,6 +33,9 @@ import Documents from './pages/Documents'
 import Reconciliation from './pages/Reconciliation'
 import Schedules from './pages/Schedules'
 import FixedAssets from './pages/FixedAssets'
+import ExchangeRates from './pages/ExchangeRates'
+import CostCenters from './pages/CostCenters'
+import TaxProfiles from './pages/TaxProfiles'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,6 +67,9 @@ export default function App() {
                   <Route path="reconciliation" element={<Reconciliation />} />
                   <Route path="schedules" element={<Schedules />} />
                   <Route path="fixed-assets" element={<FixedAssets />} />
+                  <Route path="cost-centers" element={<CostCenters />} />
+                  <Route path="tax-profiles" element={<TaxProfiles />} />
+                  <Route path="exchange-rates" element={<ExchangeRates />} />
                   <Route path="customers" element={<Customers />} />
                   <Route path="customers/:id" element={<CustomerProfile />} />
                   <Route path="suppliers" element={<Suppliers />} />
