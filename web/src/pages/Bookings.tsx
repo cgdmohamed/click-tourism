@@ -28,7 +28,7 @@ import PartyPicker from '../components/PartyPicker'
 import QuickCreateCustomer from '../components/QuickCreateCustomer'
 import { statusLabel } from '../lib/labels'
 import { taxMinor } from '../lib/tax'
-import { useTaxEnabled } from '../lib/useSetting'
+import { useBaseCurrency, useTaxEnabled } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
@@ -64,12 +64,14 @@ export default function Bookings() {
   const { t, locale } = useI18n()
   const { activeBranch, user, can } = useAuth()
   const { enabled: taxEnabled } = useTaxEnabled()
+  const baseCurrency = useBaseCurrency()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const urlSearch = searchParams.get('search') ?? ''
   const requestedCustomerId = searchParams.get('customer_id') ?? ''
   const requestedDepartureId = searchParams.get('departure_id') ?? ''
-  const [open, setOpen] = useState(Boolean(requestedDepartureId))
+  const createRequested = searchParams.get('create') === '1'
+  const [open, setOpen] = useState(Boolean(requestedDepartureId || createRequested))
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState(urlSearch)
@@ -489,9 +491,11 @@ export default function Bookings() {
               <option value="USD">USD</option>
             </Select>
           </Field>
-          <Field label={locale === 'ar' ? 'سعر الصرف (اتركه فارغاً للسعر المسجّل)' : 'FX rate (leave empty for the stored rate)'}>
-            <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
-          </Field>
+          {form.currency !== baseCurrency ? (
+            <Field label={locale === 'ar' ? 'سعر الصرف (اختياري)' : 'Exchange rate (optional)'}>
+              <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
+            </Field>
+          ) : null}
           <Field label={locale === 'ar' ? 'ملاحظات' : 'Notes'}>
             <Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </Field>
