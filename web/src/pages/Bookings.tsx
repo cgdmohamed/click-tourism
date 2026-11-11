@@ -212,6 +212,7 @@ export default function Bookings() {
     setEditTarget(null)
     setForm({
       customer_id: '',
+      tour_departure_id: '',
       start_date: todayISO(),
       end_date: '',
       pax_adults: '1',
