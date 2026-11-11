@@ -690,6 +690,8 @@ export default function Invoices() {
                 <tr>
                   <Th>{t('account')}</Th>
                   <Th>{t('description')}</Th>
+                  <Th className="text-end">{L('الكمية', 'Qty')}</Th>
+                  <Th className="text-end">{L('سعر الوحدة', 'Unit price')}</Th>
                   <Th className="text-end">{t('debit')}</Th>
                   <Th className="text-end">{t('credit')}</Th>
                   <Th className="text-end">{t('tax')}</Th>
@@ -700,6 +702,8 @@ export default function Invoices() {
                   <tr key={index}>
                     <Td>{line.account?.code} {locale === 'ar' ? line.account?.name_ar : line.account?.name_en}</Td>
                     <Td>{line.description}</Td>
+                    <Td className="text-end tabular">{line.quantity ?? '—'}</Td>
+                    <Td className="text-end">{line.unit_price_minor != null ? <Money amountMinor={line.unit_price_minor} currency={detailQuery.data.currency} /> : '—'}</Td>
                     <Td className="text-end"><Money amountMinor={line.debit_minor} currency={detailQuery.data.currency} /></Td>
                     <Td className="text-end"><Money amountMinor={line.credit_minor} currency={detailQuery.data.currency} /></Td>
                     <Td className="text-end"><Money amountMinor={line.tax_minor} currency={detailQuery.data.currency} /></Td>
@@ -709,6 +713,18 @@ export default function Invoices() {
             </Table>
             </div>
 
+            {detailQuery.data.status === 'issued' && detailQuery.data.outstanding_minor > 0 ? (
+              <div className="mt-3 text-small text-text-subtle">
+                {detailQuery.data.type === 'customer_invoice' ? (
+                  <p>
+                    {L('للتحصيل: سجل سند قبض من التحصيلات، وبعدها اختر «تطبيق على فاتورة» لتخفيض المستحق. السند غير المطبق يظل دفعة مقدمة.', 'To collect, create a receipt in Payments and apply it to this invoice. Unapplied receipts remain advances.')}
+                    {' '}<Link className="font-semibold text-brand-1-accent underline" to="/payments">{L('فتح التحصيلات', 'Open Payments')}</Link>
+                  </p>
+                ) : (
+                  <p><Link className="font-semibold text-brand-1-accent underline" to="/supplier-settlements">{L('فتح مدفوعات الموردين', 'Open supplier payments')}</Link></p>
+                )}
+              </div>
+            ) : null}
             {detailQuery.data.status === 'issued' ? (
               <div className="mt-3 text-small text-text-subtle">
                 <p>{L('المستحق', 'Outstanding')}: <Money amountMinor={detailQuery.data.outstanding_minor} currency={detailQuery.data.currency} /></p>
