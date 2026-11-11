@@ -2,9 +2,12 @@
 
 namespace App\Modules\Core\Models;
 
+use App\Modules\Parties\Models\Employee;
 use App\Support\HasPublicId;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -25,6 +28,7 @@ class User extends Authenticatable
         'locale',
         'is_active',
         'is_available_for_leads',
+        'primary_branch_id',
         'last_login_at',
     ];
 
@@ -49,6 +53,17 @@ class User extends Authenticatable
         return $this->belongsToMany(Branch::class, 'user_branch')->withTimestamps();
     }
 
+    public function primaryBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'primary_branch_id');
+    }
+
+    /** Optional linked employee record; display only, several may share a user_id. */
+    public function employee(): HasOne
+    {
+        return $this->hasOne(Employee::class, 'user_id');
+    }
+
     protected static function newFactory(): UserFactory
     {
         return UserFactory::new();
@@ -69,6 +84,7 @@ class User extends Authenticatable
             'roles' => $this->getRoleNames()->values()->all(),
             'permissions' => $this->getAllPermissions()->pluck('name')->values()->all(),
             'branches' => $this->branches->map->toApiArray()->values()->all(),
+            'primary_branch_id' => $this->primaryBranch?->public_id,
         ];
     }
 }

@@ -25,3 +25,42 @@ The system is a self-hosted web app with ~10 users and flexible roles. It contai
 - Fine-grained roles without code changes.
 - Policy coverage test required for every route.
 - Spatie tables are part of the shared schema and need migration review.
+
+## Addendum 2026-11-12 — implemented role set
+
+Work order 01 (multi-user foundation) implemented the role/permission model. The
+illustrative list in §3 (Owner, Accountant, Chief Accountant, Sales Manager, Sales
+Agent, Treasurer, Branch Manager, Auditor, Administrator) is superseded by the
+following nine seeded system roles, defined in `RolePermissionSeeder` and re-applied
+by `php artisan roles:sync`. The full permission matrix (86 permissions × 9 roles)
+lives in `docs/product/permission-matrix.md`.
+
+| Role | Purpose |
+|---|---|
+| `admin` | All permissions, including user/role management and `branches.view_all`. |
+| `finance_manager` | Accountant scope plus posting own drafts and approval rights; read-only user/role directory. |
+| `senior_accountant` | Accountant scope plus posting/deleting journal drafts (maker-checker override, audited). |
+| `accountant` | Full accounting operations without user management or draft posting. |
+| `supervisor` | Sales scope plus staff visibility, exports, and the user directory. |
+| `sales` | Customer-facing pipeline without accounting setup. |
+| `reservations` | Bookings and parties without accounting power. |
+| `cashier` | Collections, refunds, and transfers at the counter. |
+| `viewer` | Read-only baseline. |
+
+Refinements applied with this set:
+
+- **Roles are seeded system data, not editable defaults.** The nine system roles are
+  immutable through the API and re-synced on every upgrade; installations may create
+  additional custom roles (`roles.manage`) whose permission sets may not exceed the
+  creator's own privileges.
+- **Privilege ceiling.** Users may only assign roles, permissions, and branches
+  within their own holdings — a manager can never mint a superior account.
+- **User lifecycle guards.** The last active administrator cannot be deactivated or
+  demoted, self-deactivation is refused, and deactivation keeps tokens on record
+  while the `active` middleware rejects them.
+- **Users are global records with per-user branch assignments** (ADR-0005), plus an
+  optional `primary_branch_id` that must stay inside the assignment.
+
+Still open from this ADR: Sanctum token expiry/abilities for service accounts,
+login lockout, TOTP 2FA, and DEC-017 segregation of duties (maker ≠ approver).
+

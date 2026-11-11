@@ -65,7 +65,7 @@ export default function AssignmentRules() {
     [rules],
   )
   const userPicker = useRemoteOptions<{ id: string; name: string; email?: string }>({
-    endpoint: '/users',
+    endpoint: '/users/assignable',
     keyPrefix: 'users-for-rules',
     toOption: userToOption,
     value: form.target_user_id,

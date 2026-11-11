@@ -14,6 +14,7 @@ security:
   - bearerAuth: []
 tags:
   - name: Auth
+  - name: IAM
   - name: Platform
   - name: Accounting
   - name: Schedules
@@ -77,6 +78,31 @@ paths:
                 type: object
                 properties:
                   data: { $ref: '#/components/schemas/User' }
+    patch:
+      tags: [Auth]
+      summary: Update own profile (locale and password)
+      description: Changes the caller's locale and/or password. A password change requires `current_password` and revokes every other Sanctum token, keeping only the token used for this request. Audited as `user.profile_updated` / `user.password_changed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale: { type: string, enum: [ar, en] }
+                current_password: { type: string, format: password }
+                password: { type: string, format: password, minLength: 12 }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /branches:
     get:
@@ -3433,13 +3459,289 @@ paths:
         '422': { $ref: '#/components/responses/Validation' }
   /users:
     get:
+      tags: [IAM]
+      summary: List users (requires users.view)
+      description: Global management directory across all branches (ADR-0005) — branch scope never filters this list. Inactive users are included by default; use `status` to narrow.
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Matches name or email; wildcards are treated literally }
+        - { name: status, in: query, schema: { type: string, enum: [active, inactive, all], default: all } }
+        - { name: role, in: query, schema: { type: string }, description: Exact role name }
+        - { name: branch_id, in: query, schema: { type: string }, description: Branch public id }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Paginated user accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/UserAccount' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [IAM]
+      summary: Create a user (requires users.manage)
+      description: Audited as `user.created`. Assignable roles and branches are limited to the actor's own privileges (403 `You may not assign privileges you do not hold.` / `You may not assign a branch you are not assigned to.`); a `primary_branch_id` outside `branch_ids` fails with 422 `The primary branch must be one of the assigned branches.`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserAccountInput' }
+      responses:
+        '201':
+          description: Created user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /users/assignable:
+    get:
       tags: [CRM]
       summary: List branch users for assignment pickers (requires leads.update)
+      description: Active users of the caller's branch only (X-Branch-Id), minimal fields.
       parameters:
         - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
       responses:
         '200':
           description: Users in the caller's branch (id, name, email)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        email: { type: string, format: email }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /users/{user}:
+    get:
+      tags: [IAM]
+      summary: Show a user with effective permissions (requires users.view)
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string }, description: User public id }
+      responses:
+        '200':
+          description: User account including the effective permission list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/UserAccount'
+                      - type: object
+                        properties:
+                          permissions: { type: array, items: { type: string } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [IAM]
+      summary: Update a user (requires users.manage)
+      description: Audited as `user.updated`. `roles` and `branch_ids` replace the full sets when present. Guards apply to the fields actually changed. Deactivating the last active administrator (via role removal) fails with 422 `The last active administrator cannot be deactivated or demoted.`.
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string }, description: User public id }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/UserAccountInput'
+                - type: object
+                  description: All fields optional
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /users/{user}/deactivate:
+    post:
+      tags: [IAM]
+      summary: Deactivate a user (requires users.manage)
+      description: Idempotent. Audited as `user.deactivated` with the reason. Tokens are left in place but rejected by the active middleware while the account is disabled. Self-deactivation fails with 422 `You cannot deactivate your own account.` and the last active administrator with 422 `The last active administrator cannot be deactivated or demoted.`.
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string }, description: User public id }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Deactivated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /users/{user}/activate:
+    post:
+      tags: [IAM]
+      summary: Reactivate a user (requires users.manage)
+      description: Idempotent. Audited as `user.activated`.
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string }, description: User public id }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Reactivated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /roles:
+    get:
+      tags: [IAM]
+      summary: List roles (requires roles.view)
+      description: All installation roles (system and custom) with their permission sets and user counts.
+      responses:
+        '200':
+          description: Role directory
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoleRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [IAM]
+      summary: Create a custom role (requires roles.manage)
+      description: Audited as `role.created`. The permission set may not exceed the actor's own privileges (403 `You may not assign privileges you do not hold.`).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleInput' }
+      responses:
+        '201':
+          description: Created role
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RoleRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /roles/{role}:
+    patch:
+      tags: [IAM]
+      summary: Update a custom role (requires roles.manage)
+      description: Audited as `role.updated`. System roles are immutable (422 `This role is a system role and cannot be modified or deleted.`).
+      parameters:
+        - { name: role, in: path, required: true, schema: { type: integer }, description: Role id }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/RoleInput'
+                - type: object
+                  description: All fields optional
+      responses:
+        '200':
+          description: Updated role
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RoleRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [IAM]
+      summary: Delete a custom role (requires roles.manage)
+      description: Audited as `role.deleted`. System roles are immutable (422 `This role is a system role and cannot be modified or deleted.`); roles still assigned to users are refused with 422 `This role is assigned to users and cannot be deleted.`.
+      parameters:
+        - { name: role, in: path, required: true, schema: { type: integer }, description: Role id }
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /permissions:
+    get:
+      tags: [IAM]
+      summary: Permission catalog (requires roles.view)
+      description: Every permission name known to the installation, sorted. Permission names are an API contract — additive changes only.
+      responses:
+        '200':
+          description: Permission names
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /assignment-rules:
     get:
@@ -3658,6 +3960,65 @@ components:
         branches:
           type: array
           items: { $ref: '#/components/schemas/Branch' }
+        primary_branch_id: { type: [string, 'null'], description: Public id of the user's default branch }
+    UserAccount:
+      type: object
+      description: Management view of a login user (users.view / users.manage).
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        locale: { type: string, enum: [ar, en] }
+        is_active: { type: boolean }
+        is_available_for_leads: { type: boolean }
+        roles: { type: array, items: { type: string } }
+        branches:
+          type: array
+          items: { $ref: '#/components/schemas/Branch' }
+        primary_branch_id: { type: [string, 'null'] }
+        employee:
+          type: [object, 'null']
+          properties:
+            id: { type: string }
+            internal_code: { type: string }
+            name_ar: { type: string }
+            name_en: { type: string }
+            category: { type: string }
+        last_login_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: [string, 'null'], format: date-time }
+    UserAccountInput:
+      type: object
+      description: Fields for user create; on update all fields are optional (`roles` and `branch_ids` replace the full sets).
+      required: [name, email, password, locale]
+      properties:
+        name: { type: string, maxLength: 255 }
+        email: { type: string, format: email, maxLength: 255 }
+        password: { type: string, format: password, minLength: 12 }
+        locale: { type: string, enum: [ar, en] }
+        roles: { type: array, items: { type: string }, description: Existing role names }
+        branch_ids: { type: array, items: { type: string }, description: Branch public ids }
+        primary_branch_id: { type: [string, 'null'], description: Must be one of branch_ids when set }
+        is_available_for_leads: { type: boolean, default: true }
+    RoleRecord:
+      type: object
+      description: Role directory record. System roles are owned by the product and re-applied by `roles:sync` on every upgrade.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        guard: { type: string }
+        permissions: { type: array, items: { type: string } }
+        is_system: { type: boolean }
+        users_count: { type: integer }
+    RoleInput:
+      type: object
+      required: [name, permissions]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          pattern: '^[a-z][a-z0-9_]*$'
+          description: Lower snake_case, unique per installation
+        permissions: { type: array, minItems: 1, items: { type: string }, description: Permission names from the catalog }
     Branch:
       type: object
       properties:

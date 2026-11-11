@@ -85,6 +85,46 @@ class RolePermissionSeeder extends Seeder
             'schedules.view',
             'assets.view',
         ],
+        // Work order 01 — multi-user foundation. Four additional system
+        // roles; the original five sets above are unchanged.
+        // Finance manager: accountant scope plus approval rights and
+        // read-only visibility of the user/role directory.
+        'finance_manager' => [
+            '@accountant',
+            'journal.post_own_drafts',
+            'accounting.approve_policy', 'reports.export',
+            'expenses.approve', 'documents.approve', 'schedules.approve',
+            'assets.approve', 'reconciliation.approve',
+            'users.view', 'roles.view',
+        ],
+        // Reservations desk: bookings and parties without accounting power.
+        'reservations' => [
+            'bookings.view', 'bookings.create', 'bookings.update', 'bookings.transition', 'bookings.cancel',
+            'customers.view', 'customers.create', 'customers.update',
+            'suppliers.view', 'supplier_obligations.view',
+            'payments.view', 'payments.create',
+            'refunds.create',
+            'reports.view',
+            'leads.view', 'leads.create', 'leads.update',
+            'cost_centers.view',
+            'expenses.view', 'accounts.view', 'branches.view',
+        ],
+        // Sales supervisor: sales scope plus staff visibility and exports.
+        'supervisor' => [
+            '@sales',
+            'employees.view',
+            'reports.export',
+            'users.view',
+        ],
+        // Cashier: collections and refunds at the counter.
+        'cashier' => [
+            'payments.view', 'payments.create', 'payments.manage', 'payments.reverse',
+            'refunds.create',
+            'transfers.view', 'transfers.create',
+            'customers.view',
+            'reports.view',
+            'expenses.view', 'accounts.view', 'branches.view',
+        ],
     ];
 
     private const PERMISSIONS = [
@@ -116,6 +156,8 @@ class RolePermissionSeeder extends Seeder
         'reconciliation.view', 'reconciliation.manage', 'reconciliation.approve',
         'schedules.view', 'schedules.manage', 'schedules.approve',
         'assets.view', 'assets.manage', 'assets.approve',
+        'users.view', 'users.manage',
+        'roles.view', 'roles.manage',
     ];
 
     /**

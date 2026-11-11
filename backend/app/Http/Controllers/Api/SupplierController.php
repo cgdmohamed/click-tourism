@@ -93,6 +93,8 @@ class SupplierController extends ApiController
         if ($publicId) {
             $branch = Branch::query()->where('public_id', $publicId)->first();
             if ($branch) {
+                $this->authorizeBranchChoice($branch);
+
                 return $branch;
             }
         }

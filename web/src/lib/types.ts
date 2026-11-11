@@ -389,6 +389,33 @@ export type ApiError = {
   requestId?: string
 }
 
+/** Full user-management view of an account (GET /users, GET /users/{id}). */
+export type UserAccount = {
+  id: string
+  name: string
+  email: string
+  locale: 'ar' | 'en'
+  is_active: boolean
+  is_available_for_leads: boolean
+  roles: string[]
+  branches: Branch[]
+  primary_branch_id: string | null
+  employee: { id: string; internal_code: string; name_ar: string; name_en: string; category: string } | null
+  last_login_at: string | null
+  created_at: string
+  permissions?: string[]
+}
+
+/** A role as returned by GET /roles (Spatie-style shape). */
+export type RoleRecord = {
+  id: number
+  name: string
+  guard: string
+  permissions: string[]
+  is_system: boolean
+  users_count: number
+}
+
 export type Employee = {
   id: string
   internal_code: string

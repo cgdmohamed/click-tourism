@@ -126,18 +126,18 @@ class PickerSearchTest extends TestCase
         $this->fetch('supplier-obligations?search=%25')->assertOk()->assertJsonCount(0, 'data');
     }
 
-    public function test_users_endpoint_lists_branch_users_with_search_and_minimal_fields(): void
+    public function test_assignable_users_lists_branch_users_with_search_and_minimal_fields(): void
     {
         $other = User::factory()->create(['name' => 'Searchable Agent', 'email' => 'agent@example.test']);
         $other->branches()->attach($this->branch->id);
         User::factory()->create(['name' => 'Outsider Agent']);
 
-        $response = $this->fetch('users?search=Searchable')->assertOk();
+        $response = $this->fetch('users/assignable?search=Searchable')->assertOk();
         $response->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $other->public_id);
         $this->assertSame(['id', 'name', 'email'], array_keys($response->json('data.0')));
 
-        $this->fetch('users?search=Outsider')->assertOk()->assertJsonCount(0, 'data');
-        $this->fetch('users?search=%25')->assertOk()->assertJsonCount(0, 'data');
+        $this->fetch('users/assignable?search=Outsider')->assertOk()->assertJsonCount(0, 'data');
+        $this->fetch('users/assignable?search=%25')->assertOk()->assertJsonCount(0, 'data');
     }
 
     public function test_assignment_rules_expose_the_target_user_public_reference(): void
@@ -153,12 +153,12 @@ class PickerSearchTest extends TestCase
             ->assertJsonPath('data.0.target_user.name', 'Rule Target');
     }
 
-    public function test_users_endpoint_requires_the_lead_update_permission(): void
+    public function test_assignable_users_requires_the_lead_update_permission(): void
     {
         $viewer = User::factory()->create();
         $viewer->branches()->attach($this->branch->id);
         Sanctum::actingAs($viewer);
 
-        $this->fetch('users')->assertForbidden();
+        $this->fetch('users/assignable')->assertForbidden();
     }
 }

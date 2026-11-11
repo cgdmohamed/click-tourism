@@ -23,6 +23,9 @@ import Reports from './pages/Reports'
 import Leads from './pages/Leads'
 import AssignmentRules from './pages/AssignmentRules'
 import Settings from './pages/Settings'
+import Users from './pages/Users'
+import Roles from './pages/Roles'
+import Profile from './pages/Profile'
 import Treasury from './pages/Treasury'
 import Expenses from './pages/Expenses'
 import OpeningBalances from './pages/OpeningBalances'
@@ -84,6 +87,9 @@ export default function App() {
                   <Route path="leads" element={<Leads />} />
                   <Route path="assignment-rules" element={<AssignmentRules />} />
                   <Route path="settings" element={<Settings />} />
+                  <Route path="users" element={<Users />} />
+                  <Route path="roles" element={<Roles />} />
+                  <Route path="profile" element={<Profile />} />
                 </Route>
               </Routes>
             </BrowserRouter>
