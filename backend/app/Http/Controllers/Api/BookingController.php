@@ -6,6 +6,7 @@ use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,10 +24,10 @@ class BookingController extends ApiController
                 $customer = Customer::query()->where('public_id', $customerId)->first();
                 $query->where('customer_id', $customer?->id ?? 0);
             })
-            ->when($request->query('search'), function ($query, $search) {
+            ->when(Like::term($request->query('search')), function ($query, $search) {
                 $query->where(function ($query) use ($search) {
-                    $query->where('number', 'like', "%{$search}%")
-                        ->orWhereHas('customer', fn ($query) => $query->where('name_ar', 'like', "%{$search}%")->orWhere('name_en', 'like', "%{$search}%"));
+                    Like::contains($query, ['number'], $search);
+                    $query->orWhereHas('customer', fn ($customer) => Like::contains($customer, ['name_ar', 'name_en'], $search));
                 });
             })
             ->orderByDesc('id')

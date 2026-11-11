@@ -27,6 +27,8 @@ class SupplierPayment extends Model
         'idempotency_key',
         'created_by',
         'paid_at',
+        'is_opening',
+        'opening_balance_line_id',
     ];
 
     protected function casts(): array
@@ -34,6 +36,7 @@ class SupplierPayment extends Model
         return [
             'amount_minor' => 'integer',
             'fx_rate' => 'decimal:10',
+            'is_opening' => 'boolean',
             'paid_at' => 'datetime',
         ];
     }
@@ -96,6 +99,7 @@ class SupplierPayment extends Model
             'fx_rate' => (string) $this->fx_rate,
             'paid_at' => $this->paid_at?->toIso8601String(),
             'status' => $this->status,
+            'is_opening' => (bool) $this->is_opening,
         ];
     }
 }

@@ -340,6 +340,9 @@ class PaymentService
             if ($payment->status !== 'posted') {
                 throw new DomainException('Only posted payments can be cancelled.');
             }
+            if ($payment->is_opening) {
+                throw new DomainException('This receipt comes from an opening balance batch; reverse the batch instead.');
+            }
             $branch = Branch::query()->findOrFail($payment->branch_id);
             if ($actorId !== null) {
                 $this->branchScope->assertBranch(User::query()->findOrFail($actorId), $branch);
@@ -389,6 +392,9 @@ class PaymentService
 
             if ($payment->status !== 'posted') {
                 throw new DomainException('Refunds can only be requested for posted payments.');
+            }
+            if ($payment->is_opening) {
+                throw new DomainException('Opening credit cannot be refunded in cash; apply it to an invoice.');
             }
 
             $branch = $payment->branch_id ? Branch::query()->find($payment->branch_id) : null;

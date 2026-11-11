@@ -6,6 +6,7 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -33,14 +34,14 @@ class InvoiceController extends ApiController
 
                 return $query->where('party_id', $partyId);
             })
+            ->when($request->query('currency'), fn ($query, $currency) => $query->where('currency_code', strtoupper((string) $currency)))
             ->when($request->boolean('open'), fn ($query) => $query->where('status', 'issued')->where('outstanding_minor', '>', 0))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('issue_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('issue_date', '<=', $to))
-            ->when($request->query('search'), function ($query, $search) {
+            ->when(Like::term($request->query('search')), function ($query, $search) {
                 $query->where(function ($query) use ($search) {
-                    $query->where('number', 'like', "%{$search}%")
-                        ->orWhereHas('party', fn ($q) => $q->where('name_ar', 'like', "%{$search}%")
-                            ->orWhere('name_en', 'like', "%{$search}%"));
+                    Like::contains($query, ['number'], $search);
+                    $query->orWhereHas('party', fn ($party) => Like::contains($party, ['name_ar', 'name_en'], $search));
                 });
             })
             ->orderByDesc('issue_date')->orderByDesc('id')

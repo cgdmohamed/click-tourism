@@ -62,6 +62,8 @@ class AssignmentRule extends Model
             'service_category' => $this->service_category,
             'strategy' => $this->strategy,
             'target_user_id' => $this->target_user_id,
+            // Public reference for pickers: `target_user_id` above is the internal id.
+            'target_user' => $this->targetUser ? ['id' => $this->targetUser->public_id, 'name' => $this->targetUser->name] : null,
             'max_leads_per_user' => $this->max_leads_per_user,
             'is_active' => (bool) $this->is_active,
         ];

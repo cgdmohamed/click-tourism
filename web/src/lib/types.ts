@@ -270,6 +270,8 @@ export type AssignmentRule = {
   service_category: string | null
   strategy: string
   target_user_id: string | null
+  /** Public reference of the target user (target_user_id is the internal id). */
+  target_user?: { id: string; name: string } | null
   max_leads_per_user: number | null
   is_active: boolean
 }

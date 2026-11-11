@@ -47,6 +47,7 @@ class Invoice extends Model
         'journal_entry_id',
         'credit_note_of_id',
         'is_opening',
+        'opening_balance_line_id',
         'idempotency_key',
         'created_by',
         'approved_by',

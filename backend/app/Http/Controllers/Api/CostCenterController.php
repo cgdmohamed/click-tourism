@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Accounting\Models\CostCenter;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Accounting\Services\CostCenterService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,6 +18,8 @@ class CostCenterController extends ApiController
 
         $centers = CostCenter::query()->with('parent')
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['code', 'name_ar', 'name_en'], $search))
             ->when($request->boolean('include_archived') === false, fn ($query) => $query->where('is_active', true))
             ->orderBy('code')->get()
             ->map(fn (CostCenter $center) => $center->toApiArray($request->boolean('with_children')));

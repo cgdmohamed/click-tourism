@@ -325,6 +325,9 @@ class SupplierSettlementService
             if ($payment->status !== 'posted') {
                 throw new DomainException('Only posted supplier payments can be cancelled.');
             }
+            if ($payment->is_opening) {
+                throw new DomainException('This supplier advance comes from an opening balance batch; reverse the batch instead.');
+            }
             $branch = Branch::query()->findOrFail($payment->branch_id);
             $this->assertActor($actorId, $branch);
 

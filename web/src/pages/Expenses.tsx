@@ -5,7 +5,8 @@ import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
 import { useTaxEnabled } from '../lib/useSetting'
-import type { Paginated, Supplier } from '../lib/types'
+import type { Paginated } from '../lib/types'
+import PartyPicker from '../components/PartyPicker'
 import {
   Badge,
   Button,
@@ -104,15 +105,6 @@ export default function Expenses() {
     enabled: open,
   })
 
-  const suppliersQuery = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Supplier[] }>('/suppliers')
-      return data.data
-    },
-    enabled: open,
-  })
-
   const currenciesQuery = useQuery({
     queryKey: ['currencies'],
     queryFn: async () => {
@@ -183,11 +175,6 @@ export default function Expenses() {
   const cashOptions = (cashQuery.data ?? [])
     .filter((account) => account.registered && account.is_active !== false && account.currency === form.currency)
     .map((account) => ({ value: account.cash_account_id ?? account.id, label: locale === 'ar' ? account.name_ar : account.name_en }))
-
-  const supplierOptions = (suppliersQuery.data ?? []).map((supplier) => ({
-    value: supplier.id,
-    label: locale === 'ar' ? supplier.name_ar : supplier.name_en,
-  }))
 
   const data = expensesQuery.data
 
@@ -343,7 +330,7 @@ export default function Expenses() {
             </Field>
           ) : (
             <Field label={L('المورد', 'Supplier')} required>
-              <SearchableSelect value={form.supplier_id} onChange={(value) => setForm({ ...form, supplier_id: value })} options={supplierOptions} placeholder={L('اختر', 'Select')} />
+              <PartyPicker kind="supplier" value={form.supplier_id} onChange={(value) => setForm({ ...form, supplier_id: value })} placeholder={L('اختر', 'Select')} />
             </Field>
           )}
           <Field label={t('description')} required>
