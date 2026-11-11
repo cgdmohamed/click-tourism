@@ -94,6 +94,11 @@ class ReportService
                 continue;
             }
 
+            // Abnormal = closing balance sits on the opposite side of the
+            // account's normal side (assets/expenses debit; others credit).
+            $debitNormal = in_array($account->type, ['asset', 'expense'], true);
+            $abnormal = $debitNormal ? $closingNet < 0 : $closingNet > 0;
+
             $rows[] = (object) [
                 'account_id' => $account->public_id,
                 'public_id' => $account->public_id,
@@ -111,6 +116,7 @@ class ReportService
                 'closing_credit_minor' => max(-$closingNet, 0),
                 'closing_balance_minor' => $closingNet,
                 'balance_minor' => $closingNet,
+                'abnormal' => $abnormal,
             ];
         }
 
@@ -412,6 +418,10 @@ class ReportService
             $current['variance'] = [
                 'total_revenue_minor' => $current['total_revenue_minor'] - $prior['total_revenue_minor'],
                 'total_expense_minor' => $current['total_expense_minor'] - $prior['total_expense_minor'],
+                'total_cost_of_services_minor' => $current['total_cost_of_services_minor'] - $prior['total_cost_of_services_minor'],
+                'total_operating_expenses_minor' => $current['total_operating_expenses_minor'] - $prior['total_operating_expenses_minor'],
+                'gross_profit_minor' => $current['gross_profit_minor'] - $prior['gross_profit_minor'],
+                'operating_profit_minor' => $current['operating_profit_minor'] - $prior['operating_profit_minor'],
                 'net_profit_minor' => $current['net_profit_minor'] - $prior['net_profit_minor'],
             ];
         } else {
@@ -436,14 +446,19 @@ class ReportService
             ->whereDate('je.entry_date', '<=', $to)
             ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
             ->groupBy('a.id', 'a.code', 'a.name_ar', 'a.name_en', 'a.type')
-            ->selectRaw('a.code, a.name_ar, a.name_en, a.type')
+            ->selectRaw('a.id, a.code, a.name_ar, a.name_en, a.type')
             ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit_minor')
             ->selectRaw('COALESCE(SUM(jl.base_credit_minor), 0) as credit_minor')
             ->orderBy('a.code')
             ->get();
 
+        $costIds = $this->costOfServicesAccountIds();
+        $costCode = $this->costAccountCode();
+
         $revenue = [];
         $expenses = [];
+        $costOfServices = [];
+        $operatingExpenses = [];
 
         foreach ($rows as $row) {
             $debit = (int) $row->debit_minor;
@@ -457,13 +472,22 @@ class ReportService
             } else {
                 $amount = $debit - $credit;
                 if ($amount !== 0) {
-                    $expenses[] = $this->line($row, $amount);
+                    $line = $this->line($row, $amount);
+                    $expenses[] = $line;
+                    if (isset($costIds[(int) $row->id]) || str_starts_with((string) $row->code, $costCode)) {
+                        $costOfServices[] = $line;
+                    } else {
+                        $operatingExpenses[] = $line;
+                    }
                 }
             }
         }
 
         $totalRevenue = array_sum(array_column($revenue, 'amount_minor'));
         $totalExpense = array_sum(array_column($expenses, 'amount_minor'));
+        $totalCost = array_sum(array_column($costOfServices, 'amount_minor'));
+        $totalOpex = array_sum(array_column($operatingExpenses, 'amount_minor'));
+        $grossProfit = $totalRevenue - $totalCost;
 
         return [
             'currency' => $currency,
@@ -471,8 +495,16 @@ class ReportService
             'to' => $to,
             'revenue' => $revenue,
             'expenses' => $expenses,
+            // Cost of services = the configured accounting.cost_account_code
+            // account, its descendants and any code starting with it.
+            'cost_of_services' => $costOfServices,
+            'operating_expenses' => $operatingExpenses,
             'total_revenue_minor' => $totalRevenue,
             'total_expense_minor' => $totalExpense,
+            'total_cost_of_services_minor' => $totalCost,
+            'total_operating_expenses_minor' => $totalOpex,
+            'gross_profit_minor' => $grossProfit,
+            'operating_profit_minor' => $grossProfit - $totalOpex,
             'net_profit_minor' => $totalRevenue - $totalExpense,
         ];
     }
@@ -488,6 +520,10 @@ class ReportService
                 'total_assets_minor' => $current['total_assets_minor'] - $prior['total_assets_minor'],
                 'total_liabilities_minor' => $current['total_liabilities_minor'] - $prior['total_liabilities_minor'],
                 'total_equity_minor' => $current['total_equity_minor'] - $prior['total_equity_minor'],
+                'current_assets_minor' => $current['current_assets_minor'] - $prior['current_assets_minor'],
+                'non_current_assets_minor' => $current['non_current_assets_minor'] - $prior['non_current_assets_minor'],
+                'current_liabilities_minor' => $current['current_liabilities_minor'] - $prior['current_liabilities_minor'],
+                'non_current_liabilities_minor' => $current['non_current_liabilities_minor'] - $prior['non_current_liabilities_minor'],
                 'current_earnings_minor' => $current['current_earnings_minor'] - $prior['current_earnings_minor'],
             ];
         } else {
@@ -551,11 +587,25 @@ class ReportService
         $totalLiabilities = array_sum(array_column($liabilities, 'amount_minor'));
         $totalEquity = array_sum(array_column($equity, 'amount_minor'));
 
+        $currentAssets = array_values(array_filter($assets, fn ($l) => $this->isCurrentAsset($l['code'])));
+        $nonCurrentAssets = array_values(array_filter($assets, fn ($l) => ! $this->isCurrentAsset($l['code'])));
+        $currentLiabilities = array_values(array_filter($liabilities, fn ($l) => $this->isCurrentLiability($l['code'])));
+        $nonCurrentLiabilities = array_values(array_filter($liabilities, fn ($l) => ! $this->isCurrentLiability($l['code'])));
+
         return [
             'currency' => $currency,
             'as_of' => $asOf,
+            'classification' => 'provisional_by_code',
             'assets' => $assets,
             'liabilities' => $liabilities,
+            'current_assets' => $currentAssets,
+            'non_current_assets' => $nonCurrentAssets,
+            'current_liabilities' => $currentLiabilities,
+            'non_current_liabilities' => $nonCurrentLiabilities,
+            'current_assets_minor' => array_sum(array_column($currentAssets, 'amount_minor')),
+            'non_current_assets_minor' => array_sum(array_column($nonCurrentAssets, 'amount_minor')),
+            'current_liabilities_minor' => array_sum(array_column($currentLiabilities, 'amount_minor')),
+            'non_current_liabilities_minor' => array_sum(array_column($nonCurrentLiabilities, 'amount_minor')),
             'equity' => $equity,
             'current_earnings_minor' => (int) $earnings,
             'total_assets_minor' => $totalAssets,
@@ -564,6 +614,44 @@ class ReportService
             'total_liabilities_and_equity_minor' => $totalLiabilities + $totalEquity + (int) $earnings,
             'balanced' => $totalAssets === $totalLiabilities + $totalEquity + (int) $earnings,
         ];
+    }
+
+    /**
+     * Current vs non-current split of the balance sheet.
+     *
+     * PENDING ACCOUNTANT APPROVAL: provisional classification by account code
+     * (reported as classification = 'provisional_by_code'). Assets starting
+     * '11' are current; '12', '13' and everything else are non-current.
+     * Liabilities starting '21'-'24' are current; the rest are non-current.
+     * To be replaced by an explicit per-account flag once approved.
+     */
+    private function isCurrentAsset(string $code): bool
+    {
+        return str_starts_with($code, '11');
+    }
+
+    private function isCurrentLiability(string $code): bool
+    {
+        foreach (['21', '22', '23', '24'] as $prefix) {
+            if (str_starts_with($code, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function costAccountCode(): string
+    {
+        return (string) $this->settings->get('accounting', 'cost_account_code', '5100');
+    }
+
+    /** @return array<int, true> ids of the cost account and its descendants */
+    private function costOfServicesAccountIds(): array
+    {
+        $account = Account::query()->where('code', $this->costAccountCode())->first();
+
+        return $account ? array_fill_keys($this->descendantIds($account), true) : [];
     }
 
     /** Hide year-end closing entries (and their reversals) so a closed year still shows its profit. */

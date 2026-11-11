@@ -375,6 +375,10 @@ class InvoiceService
                 throw new DomainException('Only draft or submitted invoices can be voided.');
             }
 
+            if ($invoice->is_opening) {
+                throw new DomainException('Opening balance documents cannot be voided; reverse the opening balance batch instead.');
+            }
+
             $invoice->update(['status' => 'voided']);
             $this->audit->log('invoice.voided', $invoice, ['status' => $invoice->status], ['status' => 'voided'], $actorId);
 
@@ -393,6 +397,10 @@ class InvoiceService
 
             if ($invoice->status !== 'issued') {
                 throw new DomainException('Only issued invoices can be credited.');
+            }
+
+            if ($invoice->is_opening) {
+                throw new DomainException('Opening balance documents cannot be credited; reverse the opening balance batch instead.');
             }
 
             $creditNoteLines = $invoice->lines->map(fn (InvoiceLine $line) => [

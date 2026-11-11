@@ -70,17 +70,17 @@ class DemoDataSeederTest extends TestCase
         $this->assertSame(DemoDataSeeder::EXPECTED_COLLECTIONS_MINOR, (int) Payment::query()->sum('amount_minor'));
 
         $this->assertSame([
-            'BK-'.now()->year.'-000001', 'BK-'.now()->year.'-000002', 'BK-'.now()->year.'-000003',
-            'BK-'.now()->year.'-000004', 'BK-'.now()->year.'-000005', 'BK-'.now()->year.'-000006',
+            'BK-HQ-'.now()->year.'-000001', 'BK-HQ-'.now()->year.'-000002', 'BK-HQ-'.now()->year.'-000003',
+            'BK-HQ-'.now()->year.'-000004', 'BK-HQ-'.now()->year.'-000005', 'BK-HQ-'.now()->year.'-000006',
         ], Booking::query()->orderBy('id')->pluck('number')->all());
         $this->assertSame([
-            'RV-'.now()->year.'-000001', 'RV-'.now()->year.'-000002', 'RV-'.now()->year.'-000003',
+            'RV-HQ-'.now()->year.'-000001', 'RV-HQ-'.now()->year.'-000002', 'RV-HQ-'.now()->year.'-000003',
         ], Payment::query()->orderBy('id')->pluck('number')->all());
         $this->assertSame([
-            'INV-'.now()->year.'-000001',
-            'INV-'.now()->year.'-000002',
-            'BIL-'.now()->year.'-000001',
-            'INV-'.now()->year.'-000003',
+            'INV-HQ-'.now()->year.'-000001',
+            'INV-HQ-'.now()->year.'-000002',
+            'BIL-HQ-'.now()->year.'-000001',
+            'INV-HQ-'.now()->year.'-000003',
         ], Invoice::query()->orderBy('id')->pluck('number')->all());
 
         $this->assertSame(7, $this->nextValue('booking', $branch));
@@ -126,7 +126,7 @@ class DemoDataSeederTest extends TestCase
 
         $number = app(SequenceService::class)->next('invoice.CN', $branch);
 
-        $this->assertSame('CN-'.now()->year.'-000005', $number);
+        $this->assertSame('CN-HQ-'.now()->year.'-000005', $number);
         $this->assertSame(6, $this->nextValue('invoice.CN', $branch));
     }
 

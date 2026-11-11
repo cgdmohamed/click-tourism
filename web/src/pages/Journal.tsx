@@ -54,6 +54,17 @@ type Filters = { from: string; to: string; status: '' | 'draft' | 'posted'; sear
 
 const defaultFilters: Filters = { from: '', to: '', status: '', search: '', includeReversals: true }
 
+/** Entries owned by a business document are cancelled from that document, never reversed directly. */
+const DOCUMENT_SOURCES = [
+  'payment', 'payment_allocation', 'refund', 'supplier_payment', 'supplier_payment_application',
+  'invoice', 'invoice_application', 'accounting_document', 'expense', 'transfer', 'booking',
+  'employee_advance', 'employee_custody', 'opening_balance', 'accounting_schedule', 'fiscal_year',
+]
+
+function isDocumentEntry(sourceType?: string | null): boolean {
+  return !!sourceType && (DOCUMENT_SOURCES.includes(sourceType) || sourceType.startsWith('fixed_asset'))
+}
+
 export default function Journal() {
   const { t, locale } = useI18n()
   const { activeBranch, can } = useAuth()
@@ -393,6 +404,8 @@ export default function Journal() {
                         <Badge tone="neutral">{locale === 'ar' ? 'قيد عكس' : 'Reversal'}</Badge>
                       ) : entry.reversed_by_id ? (
                         <Badge tone="neutral">{locale === 'ar' ? 'معكوس' : 'Reversed'}</Badge>
+                      ) : isDocumentEntry(entry.source_type) ? (
+                        <Badge tone="neutral">{locale === 'ar' ? 'يُلغى من المستند' : 'Cancel from document'}</Badge>
                       ) : (
                         <Button variant="ghost" onClick={() => reverse.mutate(entry)}>
                           {locale === 'ar' ? 'عكس' : 'Reverse'}

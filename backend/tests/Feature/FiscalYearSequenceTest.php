@@ -27,7 +27,7 @@ class FiscalYearSequenceTest extends TestCase
 
         $number = app(SequenceService::class)->next('booking', $this->branch, Carbon::parse('2027-02-15'));
 
-        $this->assertStringStartsWith('BK-2026-', $number);
+        $this->assertStringStartsWith('BK-HQ-2026-', $number);
         $this->assertDatabaseHas('sequences', [
             'document_type' => 'booking', 'branch_id' => $this->branch->id, 'year' => 2026,
         ]);

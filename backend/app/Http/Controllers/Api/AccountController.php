@@ -12,6 +12,19 @@ use Illuminate\Validation\Rule;
 
 class AccountController extends ApiController
 {
+    /** Export/import column order. */
+    private const IMPORT_COLUMNS = ['code', 'name_ar', 'name_en', 'type', 'parent_code', 'is_postable', 'is_active', 'currency_code'];
+
+    /** Legacy human-readable headers accepted on import (lower-cased). */
+    private const HEADER_ALIASES = [
+        'name (ar)' => 'name_ar',
+        'name (en)' => 'name_en',
+        'parent code' => 'parent_code',
+        'postable' => 'is_postable',
+        'active' => 'is_active',
+        'currency' => 'currency_code',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $controlParty = [
@@ -126,7 +139,8 @@ class AccountController extends ApiController
             ->orderBy('code')
             ->get();
 
-        $rows = [['Code', 'Name (AR)', 'Name (EN)', 'Type', 'Parent Code', 'Postable', 'Active', 'Currency']];
+        // Headers match the import format so an export can be re-imported.
+        $rows = [self::IMPORT_COLUMNS];
         foreach ($accounts as $account) {
             $rows[] = [
                 $account->code,
@@ -134,8 +148,8 @@ class AccountController extends ApiController
                 $account->name_en,
                 $account->type,
                 $account->parent?->code ?? '',
-                $account->is_postable ? 'Yes' : 'No',
-                $account->is_active ? 'Yes' : 'No',
+                $account->is_postable ? 'true' : 'false',
+                $account->is_active ? 'true' : 'false',
                 $account->currency_code ?? '',
             ];
         }
@@ -162,83 +176,252 @@ class AccountController extends ApiController
             'preview_only' => ['nullable', 'boolean'],
         ]);
 
-        $path = $request->file('file')->getRealPath();
+        $rows = $this->readImportFile($request->file('file')->getRealPath());
+        // Preview and real import share this single validation pass.
+        [$preview, $rowErrors] = $this->validateImportRows($rows);
+
+        if ($rowErrors !== []) {
+            return response()->json([
+                'message' => 'Validation failed.',
+                'code' => 'validation_failed',
+                'row_errors' => $rowErrors,
+            ], 422);
+        }
+
+        if ($request->boolean('preview_only')) {
+            return $this->ok(['preview' => $this->publicPreview($preview), 'total' => count($preview)]);
+        }
+
+        DB::transaction(function () use ($preview) {
+            $byCode = [];
+            foreach ($preview as $item) {
+                $values = [
+                    'name_ar' => $item['name_ar'],
+                    'name_en' => $item['name_en'],
+                    'type' => $item['type'],
+                ];
+                foreach (['is_postable', 'is_active', 'currency_code'] as $optional) {
+                    if ($item['provided'][$optional]) {
+                        $values[$optional] = $item[$optional];
+                    }
+                }
+
+                if ($item['action'] === 'create') {
+                    $values += ['code' => $item['code'], 'is_postable' => true, 'is_active' => true];
+                    $byCode[$item['code']] = Account::query()->create($values);
+                } else {
+                    $account = Account::query()->where('code', $item['code'])->firstOrFail();
+                    $account->update($values);
+                    $byCode[$item['code']] = $account;
+                }
+            }
+
+            // Parents are linked after all rows exist so file order does not matter.
+            foreach ($preview as $item) {
+                if (! $item['provided']['parent_code']) {
+                    continue;
+                }
+                $parentId = $item['parent_code'] !== ''
+                    ? ($byCode[$item['parent_code']]->id ?? Account::query()->where('code', $item['parent_code'])->value('id'))
+                    : null;
+                $byCode[$item['code']]->update(['parent_id' => $parentId]);
+            }
+        });
+
+        return $this->ok(['imported' => count($preview), 'preview' => $this->publicPreview($preview)]);
+    }
+
+    /** Strip internal bookkeeping before returning preview rows. */
+    private function publicPreview(array $preview): array
+    {
+        return array_map(function (array $item) {
+            unset($item['provided']);
+
+            return $item;
+        }, $preview);
+    }
+
+    /**
+     * @return list<array{row: int, data: array<string, string>}>
+     */
+    private function readImportFile(string $path): array
+    {
         $handle = fopen($path, 'r');
         $header = fgetcsv($handle);
         if (! $header) {
             throw new \DomainException('Unable to read the import file.');
         }
 
-        $header = array_map(fn ($h) => trim((string) $h), $header);
-        $required = ['code', 'name_ar', 'name_en', 'type'];
-        foreach ($required as $field) {
-            if (! in_array($field, $header, true)) {
+        $columns = array_map(function ($h) {
+            $h = strtolower(trim(preg_replace('/^\xEF\xBB\xBF/', '', (string) $h)));
+
+            return self::HEADER_ALIASES[$h] ?? $h;
+        }, $header);
+
+        foreach (['code', 'name_ar', 'name_en', 'type'] as $field) {
+            if (! in_array($field, $columns, true)) {
                 throw new \DomainException("Missing required column: {$field}");
             }
         }
 
-        $preview = [];
-        $errors = [];
+        $rows = [];
         $rowNum = 1;
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
-            $data = array_combine($header, array_map(fn ($v) => trim((string) $v), $row));
-            $code = $data['code'] ?? '';
-            $nameAr = $data['name_ar'] ?? '';
-            $nameEn = $data['name_en'] ?? '';
-            $type = $data['type'] ?? '';
-
-            if ($code === '' || $nameAr === '' || $nameEn === '') {
-                $errors[] = "Row {$rowNum}: code, name_ar, name_en are required.";
-
+            if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
                 continue;
             }
-            if (! in_array($type, ['asset', 'liability', 'equity', 'revenue', 'expense'], true)) {
-                $errors[] = "Row {$rowNum}: invalid type '{$type}'.";
-
-                continue;
-            }
-
-            $account = Account::query()->where('code', $code)->first();
-            $preview[] = [
-                'row' => $rowNum,
-                'code' => $code,
-                'name_ar' => $data['name_ar'] ?? '',
-                'name_en' => $data['name_en'] ?? '',
-                'type' => $type,
-                'action' => $account ? 'update' : 'create',
-                'existing' => $account ? $account->toApiArray() : null,
-            ];
+            $row = array_pad(array_slice($row, 0, count($columns)), count($columns), '');
+            $rows[] = ['row' => $rowNum, 'data' => array_combine($columns, array_map(fn ($v) => trim((string) $v), $row))];
         }
         fclose($handle);
 
-        if (! empty($errors)) {
-            return $this->errorResponse('Validation failed.', 'validation_failed', 422);
+        return $rows;
+    }
+
+    /**
+     * @param  list<array{row: int, data: array<string, string>}>  $rows
+     * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>}
+     */
+    private function validateImportRows(array $rows): array
+    {
+        $preview = [];
+        $errors = [];
+        $error = function (int $row, string $code, string $message, array $params = []) use (&$errors) {
+            $errors[] = ['row' => $row, 'code' => $code, 'message' => "Row {$row}: {$message}", 'params' => $params];
+        };
+
+        $existing = Account::query()->get()->keyBy('code');
+        $codeById = $existing->mapWithKeys(fn ($a) => [$a->id => $a->code])->all();
+        $withHistory = array_flip(array_merge(
+            DB::table('journal_lines')->distinct()->pluck('account_id')->all(),
+            DB::table('cash_accounts')->distinct()->pluck('account_id')->all(),
+        ));
+        $currencies = DB::table('currencies')->pluck('code')->map(fn ($c) => strtoupper($c))->all();
+
+        // Final parent map (code => parent code) used for existence and cycle checks.
+        $parentOf = [];
+        foreach ($existing as $code => $account) {
+            $parentOf[$code] = $account->parent_id ? ($codeById[$account->parent_id] ?? null) : null;
+        }
+        $fileCodes = [];
+        foreach ($rows as $r) {
+            $fileCodes[$r['data']['code'] ?? ''] = true;
+            if (array_key_exists('parent_code', $r['data'])) {
+                $parentOf[$r['data']['code']] = $r['data']['parent_code'] !== '' ? $r['data']['parent_code'] : null;
+            }
         }
 
-        if ($request->boolean('preview_only')) {
-            return $this->ok(['preview' => $preview, 'total' => count($preview)]);
-        }
+        $seen = [];
+        foreach ($rows as $r) {
+            $n = $r['row'];
+            $d = $r['data'];
+            $before = count($errors);
+            $code = $d['code'] ?? '';
+            $type = strtolower($d['type'] ?? '');
 
-        DB::transaction(function () use ($preview) {
-            foreach ($preview as $item) {
-                $values = [
-                    'name_ar' => $item['name_ar'],
-                    'name_en' => $item['name_en'],
-                    'type' => $item['type'],
-                    'is_active' => true,
-                ];
-                if ($item['action'] === 'create') {
-                    $values['code'] = $item['code'];
-                    $values['is_postable'] = true;
-                    Account::query()->create($values);
-                } else {
-                    Account::query()->where('code', $item['code'])->update($values);
+            if ($code === '' || ($d['name_ar'] ?? '') === '' || ($d['name_en'] ?? '') === '') {
+                $error($n, 'required', 'code, name_ar, name_en are required.');
+
+                continue;
+            }
+            if (strlen($code) > 20 || mb_strlen($d['name_ar']) > 255 || mb_strlen($d['name_en']) > 255) {
+                $error($n, 'too_long', 'code (max 20) or a name (max 255) is too long.');
+            }
+            if (isset($seen[$code])) {
+                $error($n, 'duplicate_code', "code '{$code}' is repeated (first on row {$seen[$code]}).", ['code' => $code, 'first' => (string) $seen[$code]]);
+            }
+            $seen[$code] ??= $n;
+            if (! in_array($type, ['asset', 'liability', 'equity', 'revenue', 'expense'], true)) {
+                $error($n, 'invalid_type', "invalid type '{$d['type']}'.", ['type' => $d['type']]);
+            }
+
+            $provided = [];
+            $values = [];
+            foreach (['is_postable', 'is_active'] as $flag) {
+                $provided[$flag] = ($d[$flag] ?? '') !== '';
+                $values[$flag] = null;
+                if ($provided[$flag]) {
+                    $bool = $this->parseBool($d[$flag]);
+                    if ($bool === null) {
+                        $error($n, 'invalid_boolean', "{$flag} must be true or false.", ['field' => $flag, 'value' => $d[$flag]]);
+                    }
+                    $values[$flag] = $bool;
                 }
             }
-        });
+            $provided['currency_code'] = array_key_exists('currency_code', $d);
+            $currency = $provided['currency_code'] && $d['currency_code'] !== '' ? strtoupper($d['currency_code']) : null;
+            if ($currency !== null && ! in_array($currency, $currencies, true)) {
+                $error($n, 'invalid_currency', "unknown currency '{$currency}'.", ['currency' => $currency]);
+            }
+            $provided['parent_code'] = array_key_exists('parent_code', $d);
+            $parentCode = $d['parent_code'] ?? '';
+            if ($parentCode !== '') {
+                if ($parentCode === $code) {
+                    $error($n, 'self_parent', 'an account cannot be its own parent.');
+                } elseif (! isset($existing[$parentCode]) && ! isset($fileCodes[$parentCode])) {
+                    $error($n, 'parent_not_found', "parent '{$parentCode}' not found.", ['parent' => $parentCode]);
+                } else {
+                    $guard = 0;
+                    for ($c = $parentCode; $c !== null && $guard++ < 10000; $c = $parentOf[$c] ?? null) {
+                        if ($c === $code) {
+                            $error($n, 'circular_parent', 'circular parent reference detected.');
+                            break;
+                        }
+                    }
+                }
+            }
 
-        return $this->ok(['imported' => count($preview), 'preview' => $preview]);
+            $account = $existing[$code] ?? null;
+            if ($account && isset($withHistory[$account->id])) {
+                $suffix = 'because it has postings or a cash/bank registration.';
+                if ($type !== '' && $type !== $account->type) {
+                    $error($n, 'account_has_history', "the type of account '{$code}' cannot be changed {$suffix}", ['code' => $code, 'field' => 'type']);
+                }
+                if ($provided['parent_code']) {
+                    $currentParent = $account->parent_id ? ($codeById[$account->parent_id] ?? null) : null;
+                    if (($parentCode !== '' ? $parentCode : null) !== $currentParent) {
+                        $error($n, 'account_has_history', "the parent of account '{$code}' cannot be changed {$suffix}", ['code' => $code, 'field' => 'parent_code']);
+                    }
+                }
+                if ($provided['is_postable'] && $values['is_postable'] === false && $account->is_postable) {
+                    $error($n, 'account_has_history', "account '{$code}' cannot become non-postable {$suffix}", ['code' => $code, 'field' => 'is_postable']);
+                }
+                if ($provided['currency_code'] && $currency !== ($account->currency_code ? strtoupper($account->currency_code) : null)) {
+                    $error($n, 'account_has_history', "the currency of account '{$code}' cannot be changed {$suffix}", ['code' => $code, 'field' => 'currency_code']);
+                }
+            }
+
+            if (count($errors) > $before) {
+                continue;
+            }
+
+            $preview[] = [
+                'row' => $n,
+                'code' => $code,
+                'name_ar' => $d['name_ar'],
+                'name_en' => $d['name_en'],
+                'type' => $type,
+                'parent_code' => $parentCode,
+                'is_postable' => $values['is_postable'] ?? ($account ? (bool) $account->is_postable : true),
+                'is_active' => $values['is_active'] ?? ($account ? (bool) $account->is_active : true),
+                'currency_code' => $provided['currency_code'] ? $currency : $account?->currency_code,
+                'action' => $account ? 'update' : 'create',
+                'existing' => $account ? $account->toApiArray() : null,
+                'provided' => $provided,
+            ];
+        }
+
+        return [$preview, $errors];
+    }
+
+    private function parseBool(string $value): ?bool
+    {
+        return match (strtolower(trim($value))) {
+            'true', '1', 'yes', 'y', 'نعم' => true,
+            'false', '0', 'no', 'n', 'لا' => false,
+            default => null,
+        };
     }
 
     private function errorResponse(string $message, string $code, int $status): JsonResponse

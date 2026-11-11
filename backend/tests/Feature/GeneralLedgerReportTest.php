@@ -359,7 +359,8 @@ class GeneralLedgerReportTest extends TestCase
         ]))->assertOk()->getContent();
 
         $this->assertStringContainsString('1110,"Cash on Hand",', $csv);
-        $this->assertStringContainsString('1234.56,0.00,1234.56,EGP', $csv);
+        $this->assertStringContainsString('0.00,0.00,1234.56,0.00,1234.56,0.00,,EGP', $csv);
+        $this->assertStringContainsString('"Closing debit","Closing credit",Abnormal', $csv);
         $this->assertDatabaseHas('audit_events', ['action' => 'report.exported']);
     }
 

@@ -102,7 +102,7 @@ class OpeningBalanceTest extends TestCase
         $this->assertSame($entry->lines->sum('base_debit_minor'), $entry->lines->sum('base_credit_minor'));
         $this->assertSame(
             $this->customer()->id,
-            (int) DB::table('journal_lines')->where('account_id', $this->account('1100')->id)->value('party_id'),
+            (int) DB::table('journal_lines')->whereIn('account_id', $this->accountFamily('1100'))->value('party_id'),
         );
 
         $this->postBatch($id)->assertStatus(422);
