@@ -27,8 +27,8 @@ use Tests\TestCase;
  * its cost with no negative carrying value; duplicate and concurrent runs
  * cannot duplicate postings; a closed period refuses the run and a retry
  * succeeds after reopening; a halfway disposal removes cost and accumulated
- * depreciation and recognizes the difference; a branch transfer leaves the
- * GL and global totals untouched while the audit trail records the move.
+ * depreciation and recognizes the difference; a branch transfer posts balanced
+ * inter-branch journals, keeps global totals and records the move in the audit trail.
  */
 class FixedAssetTest extends TestCase
 {
@@ -309,7 +309,7 @@ class FixedAssetTest extends TestCase
         $this->assertLedgerBalanced();
     }
 
-    public function test_branch_transfer_preserves_global_totals_and_records_audit_trail(): void
+    public function test_branch_transfer_posts_journals_keeps_global_totals_and_records_audit_trail(): void
     {
         $other = Branch::query()->create([
             'code' => 'ALX',
@@ -339,8 +339,8 @@ class FixedAssetTest extends TestCase
             ])
             ->assertCreated();
 
-        // Transfers never create a journal entry.
-        $this->assertSame($journalsBefore, $this->postedJournalCount());
+        // An inter-branch transfer posts one journal per branch.
+        $this->assertSame($journalsBefore + 2, $this->postedJournalCount());
         $this->assertSame($other->id, $asset->refresh()->branch_id);
 
         $global = $this->withHeaders($this->headers())
@@ -351,12 +351,14 @@ class FixedAssetTest extends TestCase
         $this->assertSame(0, $global->json('data.cost_difference_minor'));
         $this->assertSame(0, $global->json('data.accumulated_difference_minor'));
 
-        // Branch views show the reallocation, and the differences offset.
+        // The journals move cost between the branches, so each branch reconciles.
         $from = $this->withHeaders($this->headers())->getJson('/api/v1/reports/fixed-assets/reconciliation')->assertOk();
         $to = $this->withHeaders($this->headers($other))->getJson('/api/v1/reports/fixed-assets/reconciliation')->assertOk();
 
-        $this->assertSame(-1_200_000, $from->json('data.cost_difference_minor'));
-        $this->assertSame(1_200_000, $to->json('data.cost_difference_minor'));
+        $this->assertSame(0, $from->json('data.cost_difference_minor'));
+        $this->assertSame(0, $to->json('data.cost_difference_minor'));
+        $this->assertTrue($from->json('data.is_reconciled'));
+        $this->assertTrue($to->json('data.is_reconciled'));
 
         $trail = $this->withHeaders($this->headers())
             ->getJson("/api/v1/fixed-assets/{$asset->public_id}/audit-trail")

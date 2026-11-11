@@ -14,7 +14,9 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\BranchScope;
 use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
@@ -54,6 +56,7 @@ class FixedAssetService
         private readonly FxService $fx,
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
+        private readonly BranchScope $branchScope,
     ) {}
 
     // ------------------------------------------------------------------
@@ -656,11 +659,27 @@ class FixedAssetService
     // Transfers
     // ------------------------------------------------------------------
 
-    /** @param array<string, mixed> $data */
+    public const TRANSFER_SOURCE_TYPE = 'fixed_asset_transfer';
+
+    /**
+     * Transfer an asset to another branch, cost center or custodian.
+     *
+     * A change of branch posts two balanced journals at net book value, one in
+     * each branch, through the inter-branch clearing accounts (Odoo-style):
+     *   source branch:      Dr accumulated depreciation, Dr inter-branch receivable (NBV), Cr cost
+     *   destination branch: Dr cost, Cr accumulated depreciation, Cr inter-branch payable (NBV)
+     * The two clearing balances net to zero installation-wide. Amounts are the
+     * register's base-currency figures, so foreign-currency assets move at
+     * their historical base cost. Cost-center / custodian changes inside the
+     * same branch post nothing.
+     *
+     * @param  array<string, mixed>  $data
+     */
     public function transfer(FixedAsset $asset, array $data, ?int $actorId): FixedAssetTransfer
     {
         return DB::transaction(function () use ($asset, $data, $actorId) {
-            $asset = FixedAsset::query()->with('branch')->lockForUpdate()->findOrFail($asset->id);
+            $asset = FixedAsset::query()->with('branch', 'category.assetAccount', 'category.accumulatedDepreciationAccount')
+                ->lockForUpdate()->findOrFail($asset->id);
 
             if (! $asset->isOpen()) {
                 throw new DomainException('Only active or fully depreciated assets can be transferred.');
@@ -674,6 +693,13 @@ class FixedAssetService
                 throw new DomainException('The destination branch is inactive.');
             }
 
+            $branchChanges = $toBranch->id !== $asset->branch_id;
+            if ($branchChanges) {
+                // Both sides of an inter-branch move must be in the actor's scope.
+                $this->assertActorBranchScope($actorId, $asset->branch);
+                $this->assertActorBranchScope($actorId, $toBranch);
+            }
+
             $toCostCenterId = array_key_exists('to_cost_center_id', $data)
                 ? $this->resolveCostCenterId($data['to_cost_center_id'])
                 : $asset->cost_center_id;
@@ -682,11 +708,19 @@ class FixedAssetService
                 ? $this->resolveEmployeeId($data['to_employee_id'])
                 : $asset->employee_id;
 
-            if ($toBranch->id === $asset->branch_id
+            if (! $branchChanges
                 && $toCostCenterId === $asset->cost_center_id
                 && $toEmployeeId === $asset->employee_id) {
                 throw new DomainException('The transfer does not change the branch, cost center or custodian.');
             }
+
+            $transferDate = (string) ($data['transfer_date'] ?? now()->toDateString());
+            if ($branchChanges && Carbon::parse($transferDate)->lt($asset->capitalization_date)) {
+                throw new DomainException('The transfer date cannot be before the capitalization date.');
+            }
+
+            $cost = $branchChanges ? (int) $asset->acquisition_value_base_minor : 0;
+            $accumulated = $branchChanges ? $asset->totalAccumulatedMinor() : 0;
 
             $transfer = FixedAssetTransfer::query()->create([
                 'fixed_asset_id' => $asset->id,
@@ -696,13 +730,25 @@ class FixedAssetService
                 'to_cost_center_id' => $toCostCenterId,
                 'from_employee_id' => $asset->employee_id,
                 'to_employee_id' => $toEmployeeId,
-                'transfer_date' => (string) ($data['transfer_date'] ?? now()->toDateString()),
+                'transfer_date' => $transferDate,
                 'reason' => $data['reason'] ?? null,
+                'cost_minor' => $cost,
+                'accumulated_minor' => $accumulated,
                 'created_by' => $actorId,
             ]);
 
+            $fromBranch = $asset->branch;
+            $journals = null;
+            if ($branchChanges) {
+                $journals = $this->postBranchTransfer($asset, $transfer, $fromBranch, $toBranch, $cost, $accumulated, $transferDate, $actorId);
+                $transfer->update([
+                    'source_journal_entry_id' => $journals['source']->id,
+                    'destination_journal_entry_id' => $journals['destination']->id,
+                ]);
+            }
+
             $before = [
-                'branch' => $asset->branch?->code,
+                'branch' => $fromBranch?->code,
                 'cost_center_id' => $asset->cost_center_id,
                 'employee_id' => $asset->employee_id,
             ];
@@ -713,26 +759,179 @@ class FixedAssetService
                 'employee_id' => $toEmployeeId,
             ]);
 
-            // No journal is created on purpose: the GL control account is
-            // global and must not be rewritten by an operational move.
             $this->audit->log('fixed_asset.transferred', $asset, $before, [
                 'branch' => $toBranch->code,
                 'cost_center_id' => $toCostCenterId,
                 'employee_id' => $toEmployeeId,
                 'transfer' => $transfer->public_id,
                 'gl_rewritten' => false,
+                'source_journal' => $journals['source']->number ?? null,
+                'destination_journal' => $journals['destination']->number ?? null,
+                'net_book_value_minor' => $cost - $accumulated,
             ], $actorId);
 
-            return $transfer->refresh()->load(
-                'asset',
-                'fromBranch',
-                'toBranch',
-                'fromCostCenter',
-                'toCostCenter',
-                'fromEmployee',
-                'toEmployee',
-            );
+            return $transfer->refresh()->load(self::TRANSFER_RELATIONS);
         });
+    }
+
+    /** @var list<string> */
+    private const TRANSFER_RELATIONS = [
+        'asset',
+        'fromBranch',
+        'toBranch',
+        'fromCostCenter',
+        'toCostCenter',
+        'fromEmployee',
+        'toEmployee',
+        'sourceJournalEntry',
+        'destinationJournalEntry',
+    ];
+
+    /**
+     * Reverse an inter-branch transfer: both journals are reversed through
+     * PostingService and the asset returns to its previous branch, cost center
+     * and custodian. Only the latest transfer of an asset can be reversed, and
+     * only while nothing was depreciated or impaired since (reverse those first).
+     */
+    public function reverseTransfer(FixedAssetTransfer $transfer, string $reason, ?int $actorId): FixedAssetTransfer
+    {
+        return DB::transaction(function () use ($transfer, $reason, $actorId) {
+            $transfer = FixedAssetTransfer::query()->lockForUpdate()->findOrFail($transfer->id);
+            $asset = FixedAsset::query()->lockForUpdate()->findOrFail($transfer->fixed_asset_id);
+
+            if (trim($reason) === '') {
+                throw new DomainException('A reversal reason is required.');
+            }
+            if ($transfer->isReversed()) {
+                throw new DomainException('This transfer has already been reversed.');
+            }
+            if ($transfer->source_journal_entry_id === null || $transfer->destination_journal_entry_id === null) {
+                throw new DomainException('This transfer posted no journals (it predates inter-branch posting or only changed cost center or custodian) and cannot be reversed.');
+            }
+            if ($asset->status === FixedAsset::STATUS_DISPOSED) {
+                throw new DomainException('The asset has been disposed; the transfer can no longer be reversed.');
+            }
+            $later = FixedAssetTransfer::query()
+                ->where('fixed_asset_id', $asset->id)
+                ->where('id', '>', $transfer->id)
+                ->whereNull('reversed_at')
+                ->exists();
+            if ($later || $asset->branch_id !== $transfer->to_branch_id) {
+                throw new DomainException('Only the latest transfer of an asset can be reversed.');
+            }
+            if ($asset->totalAccumulatedMinor() !== (int) $transfer->accumulated_minor) {
+                throw new DomainException('The asset was depreciated or impaired after the transfer; reverse those entries first.');
+            }
+
+            $source = JournalEntry::query()->findOrFail($transfer->source_journal_entry_id);
+            $destination = JournalEntry::query()->findOrFail($transfer->destination_journal_entry_id);
+            $this->assertActorBranchScope($actorId, $source->branch);
+            $this->assertActorBranchScope($actorId, $destination->branch);
+
+            $this->posting->reverse($source, $reason, $actorId);
+            $this->posting->reverse($destination, $reason, $actorId);
+
+            $asset->update([
+                'branch_id' => $transfer->from_branch_id,
+                'cost_center_id' => $transfer->from_cost_center_id,
+                'employee_id' => $transfer->from_employee_id,
+            ]);
+            $transfer->update([
+                'reversed_at' => now(),
+                'reversed_by' => $actorId,
+                'reversal_reason' => Str::limit($reason, 250, ''),
+            ]);
+
+            $this->audit->log('fixed_asset.transfer_reversed', $asset, ['branch_id' => $transfer->to_branch_id], [
+                'branch_id' => $transfer->from_branch_id,
+                'transfer' => $transfer->public_id,
+                'reason' => $reason,
+            ], $actorId);
+
+            return $transfer->refresh()->load(self::TRANSFER_RELATIONS);
+        });
+    }
+
+    /**
+     * Post the two linked journals of a branch transfer. Each is balanced on
+     * its own; they share the source (the transfer) and carry the event keys
+     * `transfer_out` / `transfer_in` (the unique key is source + event).
+     *
+     * @return array{source: JournalEntry, destination: JournalEntry}
+     */
+    private function postBranchTransfer(
+        FixedAsset $asset,
+        FixedAssetTransfer $transfer,
+        Branch $from,
+        Branch $to,
+        int $cost,
+        int $accumulated,
+        string $date,
+        ?int $actorId,
+    ): array {
+        $category = $asset->category;
+        $costAccount = $category->assetAccount;
+        $accumulatedAccount = $category->accumulatedDepreciationAccount;
+        if (! $costAccount || ! $accumulatedAccount) {
+            throw new DomainException('The asset category needs cost and accumulated depreciation accounts to post a branch transfer.');
+        }
+
+        $receivable = $this->posting->account((string) $this->settings->get('accounting', 'interbranch_receivable_account_code', '1180'));
+        $payable = $this->posting->account((string) $this->settings->get('accounting', 'interbranch_payable_account_code', '2160'));
+        $nbv = $cost - $accumulated;
+        $base = $this->settings->baseCurrency();
+        $label = $asset->code.' '.$from->code.' -> '.$to->code;
+
+        // Source: remove cost and accumulated depreciation, book the NBV due from the destination.
+        $sourceLines = [PostingLine::credit($costAccount, $cost, null, null, 'Transfer out '.$label)];
+        if ($accumulated > 0) {
+            $sourceLines[] = PostingLine::debit($accumulatedAccount, $accumulated, null, null, 'Transfer out '.$label);
+        }
+        if ($nbv > 0) {
+            $sourceLines[] = PostingLine::debit($receivable, $nbv, null, null, 'Due from '.$to->code.' for '.$asset->code);
+        } elseif ($nbv < 0) {
+            $sourceLines[] = PostingLine::credit($receivable, -$nbv, null, null, 'Due from '.$to->code.' for '.$asset->code);
+        }
+
+        // Destination: mirror image, NBV due to the source.
+        $destinationLines = [PostingLine::debit($costAccount, $cost, null, null, 'Transfer in '.$label)];
+        if ($accumulated > 0) {
+            $destinationLines[] = PostingLine::credit($accumulatedAccount, $accumulated, null, null, 'Transfer in '.$label);
+        }
+        if ($nbv > 0) {
+            $destinationLines[] = PostingLine::credit($payable, $nbv, null, null, 'Due to '.$from->code.' for '.$asset->code);
+        } elseif ($nbv < 0) {
+            $destinationLines[] = PostingLine::debit($payable, -$nbv, null, null, 'Due to '.$from->code.' for '.$asset->code);
+        }
+
+        $memo = Str::limit('Inter-branch transfer '.$label.' · '.$asset->description, 250, '');
+        $make = fn (Branch $branch, array $lines, string $event) => PostingRequest::make(
+            entryDate: $date,
+            branch: $branch,
+            currency: $base,
+            lines: $lines,
+            memo: $memo,
+            sourceType: self::TRANSFER_SOURCE_TYPE,
+            sourceId: $transfer->id,
+            event: $event,
+            actorId: $actorId,
+        );
+
+        return [
+            'source' => $this->posting->post($make($from, $sourceLines, 'transfer_out')),
+            'destination' => $this->posting->post($make($to, $destinationLines, 'transfer_in')),
+        ];
+    }
+
+    private function assertActorBranchScope(?int $actorId, Branch $branch): void
+    {
+        if ($actorId === null) {
+            return;
+        }
+        $user = User::query()->find($actorId);
+        if ($user) {
+            $this->branchScope->assertBranch($user, $branch);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1063,7 +1262,7 @@ class FixedAssetService
             ->all();
 
         $transfers = $asset->transfers()
-            ->with('fromBranch', 'toBranch', 'fromCostCenter', 'toCostCenter', 'fromEmployee', 'toEmployee')
+            ->with(self::TRANSFER_RELATIONS)
             ->orderBy('transfer_date')
             ->get()
             ->map(fn (FixedAssetTransfer $transfer) => $transfer->toApiArray())

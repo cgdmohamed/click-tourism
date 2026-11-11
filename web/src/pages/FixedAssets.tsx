@@ -702,8 +702,8 @@ export default function FixedAssets() {
             <CardHeader
               title={L('سجل الأصول الثابتة', 'Fixed-asset register')}
               subtitle={L(
-                'المسودات قابلة للتعديل. الاعتماد يرحّل القيمة، والتحويلات لا تعيد كتابة الأستاذ.',
-                'Drafts are editable. Capitalization posts cost; transfers never rewrite the ledger.',
+                'المسودات قابلة للتعديل. الاعتماد يرحّل القيمة، والتحويل بين الفروع يرحّل قيدين متوازنين بصافي القيمة الدفترية.',
+                'Drafts are editable. Capitalization posts cost; a transfer between branches posts one balanced journal per branch at net book value.',
               )}
             />
             {assets.length === 0 ? (
@@ -952,8 +952,8 @@ export default function FixedAssets() {
           <CardHeader
             title={L('مطابقة السجل مع حسابات الضبط', 'Register vs. control accounts')}
             subtitle={L(
-              'يقارن تكلفة السجل ومجمع الإهلاك مع أرصدة الأستاذ. الفروع قد تختلف بعد التحويلات التشغيلية، أما على مستوى المنشأة فيجب أن تتوازن.',
-              'Compares register cost and accumulated depreciation to the ledger. Branch views can differ after operational transfers; installation-wide figures must agree.',
+              'يقارن تكلفة السجل ومجمع الإهلاك مع أرصدة الأستاذ. التحويل بين الفروع يرحّل قيدًا لكل فرع، فتتطابق أرصدة كل فرع وأرصدة المنشأة.',
+              'Compares register cost and accumulated depreciation to the ledger. Inter-branch transfers post a journal per branch, so each branch and the installation as a whole should agree.',
             )}
             actions={
               <div className="flex flex-wrap items-end gap-2">
@@ -1485,8 +1485,8 @@ export default function FixedAssets() {
             {lifecycle.mode === 'transfer' ? (
               <p className="text-small text-text-subtle">
                 {L(
-                  'التحويل عملية تشغيلية: يحدّث الفرع/مركز التكلفة في السجل دون إنشاء قيد أو إعادة كتابة الأستاذ.',
-                  'A transfer is operational: it updates branch/cost-center attribution without a journal or ledger rewrite.',
+                  'عند تغيير الفرع يُرحَّل قيدان متوازنان بصافي القيمة الدفترية (قيد في كل فرع عبر حسابي الفروع الجاري)، ويجب أن يكون تاريخ التحويل في فترة مفتوحة. تغيير مركز التكلفة أو الحائز فقط لا ينشئ قيدًا.',
+                  'Changing the branch posts two balanced journals at net book value (one per branch, through the inter-branch clearing accounts); the date must fall in an open period. Changing only the cost center or custodian posts nothing.',
                 )}
               </p>
             ) : null}

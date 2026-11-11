@@ -147,6 +147,62 @@ class ReportService
             // is allocated to the center, debits and credits will not match.
             // Consumers should not interpret this as a ledger imbalance.
             'balanced' => $totalDebit === $totalCredit,
+            'interbranch' => $this->interbranchCheck($byId, $opening, $movements, $branch, $to),
+        ];
+    }
+
+    /**
+     * Inter-branch clearing check: the due-from / due-to accounts carry the
+     * net book value of assets moved between branches. Installation-wide they
+     * must net to zero (receivable debit = payable credit). The branch figures
+     * are this report's own position and are expected to be non-zero; the
+     * global figures (as of the period end, all branches) are only shown to
+     * users who may see every branch.
+     *
+     * @param  Collection<int, Account>  $byId
+     * @param  array<int, array{debit: int, credit: int}>  $opening
+     * @param  array<int, array{debit: int, credit: int}>  $movements
+     * @return array<string, mixed>
+     */
+    private function interbranchCheck($byId, array $opening, array $movements, ?Branch $branch, string $to): array
+    {
+        $codes = [
+            'receivable' => (string) $this->settings->get('accounting', 'interbranch_receivable_account_code', '1180'),
+            'payable' => (string) $this->settings->get('accounting', 'interbranch_payable_account_code', '2160'),
+        ];
+        $closing = [];
+        $global = [];
+        $showGlobal = (bool) auth()->user()?->can('branches.view_all');
+        foreach ($codes as $role => $code) {
+            $id = $byId->firstWhere('code', $code)?->id;
+            $closing[$role] = $id === null ? 0
+                : (($opening[$id]['debit'] ?? 0) - ($opening[$id]['credit'] ?? 0))
+                    + (($movements[$id]['debit'] ?? 0) - ($movements[$id]['credit'] ?? 0));
+            $global[$role] = ($id === null || ! $showGlobal) ? null : (int) DB::table('journal_lines as jl')
+                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+                ->where('je.status', 'posted')
+                ->where('jl.account_id', $id)
+                ->whereDate('je.entry_date', '<=', $to)
+                ->selectRaw('COALESCE(SUM(jl.base_debit_minor - jl.base_credit_minor), 0) as net')
+                ->value('net');
+            if ($id === null && $showGlobal) {
+                $global[$role] = 0;
+            }
+        }
+        $globalNet = $showGlobal ? $global['receivable'] + $global['payable'] : null;
+
+        return [
+            'receivable_account_code' => $codes['receivable'],
+            'payable_account_code' => $codes['payable'],
+            'scope' => $branch ? 'branch' : 'global',
+            'receivable_closing_minor' => $closing['receivable'],
+            'payable_closing_minor' => $closing['payable'],
+            'net_minor' => $closing['receivable'] + $closing['payable'],
+            'global_receivable_closing_minor' => $global['receivable'],
+            'global_payable_closing_minor' => $global['payable'],
+            'global_net_minor' => $globalNet,
+            // The installation-wide clearing must net to zero; null when not visible.
+            'balanced' => $globalNet === null ? ($branch ? null : $closing['receivable'] + $closing['payable'] === 0) : $globalNet === 0,
         ];
     }
 
