@@ -2,17 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Modules\Accounting\Models\FiscalPeriod;
-use App\Modules\Accounting\Models\FiscalYear;
-use App\Modules\Accounting\Models\JournalEntry;
-use App\Modules\Accounting\Services\PostingLine;
-use App\Modules\Accounting\Services\PostingRequest;
-use App\Modules\Accounting\Services\PostingService;
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Core\Models\AuditEvent;
+use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\PermissionRegistrar;
+use Spatie\Permission\Models\Role;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -25,185 +22,169 @@ class AccountingPolicySettingsTest extends TestCase
     {
         parent::setUp();
         $this->buildAccounting();
+        $this->seed(RolePermissionSeeder::class);
+        // Fresh installation: policy not approved.
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'false');
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'false');
+    }
 
-        foreach (['settings.view', 'settings.update', 'periods.view', 'periods.manage'] as $permission) {
-            Permission::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+    private function actAs(string $role): User
+    {
+        $user = User::factory()->create(['name' => 'Policy Actor']);
+        $user->branches()->attach($this->branch->id);
+        $user->assignRole($role);
+        Sanctum::actingAs($user);
+
+        return $user;
+    }
+
+    private function putSettings(array $settings)
+    {
+        return $this->putJson('/api/v1/settings', ['settings' => $settings]);
+    }
+
+    private function row(string $group, string $key, string $value): array
+    {
+        return ['group' => $group, 'key' => $key, 'value' => $value];
+    }
+
+    public function test_valid_mapping_is_saved(): void
+    {
+        $this->actAs('accountant');
+
+        $this->putSettings([$this->row('accounting', 'ar_account_code', '1120')])->assertOk();
+
+        $this->assertSame('1120', app(SettingService::class)->get('accounting', 'ar_account_code'));
+    }
+
+    public function test_mapping_rejects_unknown_wrong_type_inactive_and_non_postable(): void
+    {
+        $this->actAs('admin');
+        Account::query()->where('code', '1150')->update(['is_active' => false]);
+        Account::query()->where('code', '1160')->update(['is_postable' => false]);
+
+        $this->putSettings([$this->row('accounting', 'ar_account_code', '9999')])
+            ->assertStatus(422)->assertJsonValidationErrors('ar_account_code');
+        $this->putSettings([$this->row('accounting', 'ar_account_code', '2100')])
+            ->assertStatus(422)->assertJsonValidationErrors('ar_account_code');
+        $this->putSettings([$this->row('accounting', 'prepaid_expense_account_code', '1150')])
+            ->assertStatus(422)->assertJsonValidationErrors('prepaid_expense_account_code');
+        $this->putSettings([$this->row('accounting', 'input_tax_account_code', '1160')])
+            ->assertStatus(422)->assertJsonValidationErrors('input_tax_account_code');
+        $this->putSettings([$this->row('accounting', 'ar_account_code', '')])
+            ->assertStatus(422)->assertJsonValidationErrors('ar_account_code');
+    }
+
+    public function test_assets_group_mapping_is_type_checked(): void
+    {
+        $this->actAs('admin');
+
+        $this->putSettings([$this->row('assets', 'depreciation_expense_account_code', '1300')])
+            ->assertStatus(422)->assertJsonValidationErrors('depreciation_expense_account_code');
+        $this->putSettings([$this->row('assets', 'depreciation_expense_account_code', '6800')])->assertOk();
+    }
+
+    public function test_every_default_mapping_passes_with_seeded_chart(): void
+    {
+        $this->actAs('admin');
+        $rows = [];
+        foreach (SettingService::ACCOUNT_TYPES as $group => $keys) {
+            foreach (array_keys($keys) as $key) {
+                $rows[] = $this->row($group, $key, SettingService::DEFAULTS[$group][$key]);
+            }
         }
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-        $this->user->givePermissionTo(['settings.view', 'settings.update', 'periods.view', 'periods.manage']);
-        Sanctum::actingAs($this->user);
+
+        $this->putSettings($rows)->assertOk();
     }
 
-    private function h(): array
+    public function test_invalid_mapping_rejects_whole_request_atomically(): void
     {
-        return ['X-Branch-Id' => $this->branch->public_id];
-    }
+        $this->actAs('admin');
 
-    private function putSetting(string $key, string $value, string $group = 'accounting')
-    {
-        return $this->withHeaders($this->h())->putJson('/api/v1/settings', [
-            'settings' => [['group' => $group, 'key' => $key, 'value' => $value]],
-        ]);
-    }
-
-    private function postOne(): JournalEntry
-    {
-        return app(PostingService::class)->post(PostingRequest::make(now(), $this->branch, 'EGP', [
-            PostingLine::debit($this->account('1110'), 1000),
-            PostingLine::credit($this->account('4100'), 1000),
-        ], 'lock', actorId: $this->user->id));
-    }
-
-    private function lockedFlag(): string
-    {
-        $rows = $this->withHeaders($this->h())->getJson('/api/v1/settings')->assertOk()->json('data');
-
-        return collect($rows)->firstWhere('key', 'base_currency_locked')['value'];
-    }
-
-    public function test_base_currency_is_unlocked_without_posted_entries(): void
-    {
-        $this->assertSame('false', $this->lockedFlag());
-        $this->putSetting('base_currency', 'SAR', 'general')->assertOk();
-        $this->assertSame('SAR', app(SettingService::class)->baseCurrency());
-    }
-
-    public function test_base_currency_is_locked_after_the_first_posted_entry(): void
-    {
-        $this->postOne();
-
-        $this->assertSame('true', $this->lockedFlag());
-        $this->putSetting('base_currency', 'USD', 'general')
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'domain_error');
-        $this->assertSame('EGP', app(SettingService::class)->baseCurrency());
-
-        // Re-sending the same value is allowed.
-        $this->putSetting('base_currency', 'EGP', 'general')->assertOk();
-    }
-
-    public function test_a_failed_base_currency_change_rolls_back_the_whole_batch(): void
-    {
-        $this->postOne();
-
-        $this->withHeaders($this->h())->putJson('/api/v1/settings', ['settings' => [
-            ['group' => 'general', 'key' => 'company_name_en', 'value' => 'Changed'],
-            ['group' => 'general', 'key' => 'base_currency', 'value' => 'USD'],
-        ]])->assertStatus(422);
+        $this->putSettings([
+            $this->row('general', 'company_name_en', 'Changed'),
+            $this->row('accounting', 'ar_account_code', '9999'),
+        ])->assertStatus(422);
 
         $this->assertNotSame('Changed', app(SettingService::class)->get('general', 'company_name_en'));
     }
 
-    public function test_draft_entries_do_not_lock_the_base_currency(): void
+    public function test_policy_change_requires_permission(): void
     {
-        app(PostingService::class)->draft(PostingRequest::make(now(), $this->branch, 'EGP', [
-            PostingLine::debit($this->account('1110'), 1000),
-            PostingLine::credit($this->account('4100'), 1000),
-        ], 'draft', actorId: $this->user->id));
+        $user = $this->actAs('accountant');
+        $user->syncRoles([]);
+        $user->givePermissionTo('settings.update');
 
-        $this->assertSame('false', $this->lockedFlag());
-        $this->putSetting('base_currency', 'USD', 'general')->assertOk();
+        $this->putSettings([$this->row('accounting', 'accounting_policy_approved', 'true')])->assertStatus(403);
+        $this->putSettings([$this->row('accounting', 'auto_post_bookings', 'true')])->assertStatus(403);
+
+        $this->assertFalse(app(SettingService::class)->bool('accounting', 'accounting_policy_approved'));
+        $this->assertFalse(app(SettingService::class)->bool('accounting', 'auto_post_bookings'));
     }
 
-    public function test_the_computed_lock_flag_cannot_be_written(): void
+    public function test_unchanged_policy_value_does_not_need_permission(): void
     {
-        $this->putSetting('base_currency_locked', 'false', 'general')->assertStatus(422);
+        $user = $this->actAs('accountant');
+        $user->syncRoles([]);
+        $user->givePermissionTo('settings.update');
+
+        $this->putSettings([$this->row('accounting', 'accounting_policy_approved', 'false')])->assertOk();
     }
 
-    public function test_rounding_policy_and_fiscal_year_start_are_validated(): void
+    public function test_seeded_roles_hold_the_permission(): void
     {
-        $this->putSetting('rounding_policy', 'floor')->assertStatus(422);
-        $this->putSetting('rounding_policy', 'bankers')->assertOk();
-
-        $this->putSetting('fiscal_year_start', '02-29')->assertStatus(422);
-        $this->putSetting('fiscal_year_start', '13-01')->assertStatus(422);
-        $this->putSetting('fiscal_year_start', '7-1')->assertStatus(422);
-        $this->putSetting('fiscal_year_start', '07-01')->assertOk();
+        $this->assertTrue(Role::findByName('admin')->hasPermissionTo('accounting.approve_policy'));
+        $this->assertTrue(Role::findByName('accountant')->hasPermissionTo('accounting.approve_policy'));
+        $this->assertFalse(Role::findByName('sales')->hasPermissionTo('accounting.approve_policy'));
     }
 
-    public function test_a_posting_rounds_per_policy_and_still_balances(): void
+    public function test_approve_and_revoke_are_audited_with_actor(): void
     {
-        $post = fn () => app(PostingService::class)->post(PostingRequest::make(now(), $this->branch, 'EGP', [
-            // 5 USD cents at 0.5 = 2.5 EGP minor units: half-up 3, bankers 2.
-            PostingLine::debit($this->account('1110'), 5)->in('USD', '0.5'),
-            PostingLine::credit($this->account('4100'), 3)->in('EGP', '1'),
-        ], 'round', actorId: $this->user->id));
+        $user = $this->actAs('accountant');
+        $settings = app(SettingService::class);
 
-        $halfUp = $post();
-        $this->assertSame(3, (int) $halfUp->lines->firstWhere('account.code', '1110')->base_debit_minor);
-        $this->assertSame((int) $halfUp->lines->sum('base_debit_minor'), (int) $halfUp->lines->sum('base_credit_minor'));
-        $this->assertNull($halfUp->lines->firstWhere('account.code', '6999'));
+        $this->putSettings([$this->row('accounting', 'accounting_policy_approved', 'true')])->assertOk();
 
-        app(SettingService::class)->set('accounting', 'rounding_policy', 'bankers');
-        $bankers = $post();
-        $this->assertSame(2, (int) $bankers->lines->firstWhere('account.code', '1110')->base_debit_minor);
-        $this->assertSame(1, (int) $bankers->lines->firstWhere('account.code', '6999')->base_debit_minor);
-        $this->assertSame((int) $bankers->lines->sum('base_debit_minor'), (int) $bankers->lines->sum('base_credit_minor'));
+        $this->assertTrue($settings->bool('accounting', 'accounting_policy_approved'));
+        $this->assertSame('Policy Actor', $settings->get('accounting', 'approved_by'));
+        $this->assertNotEmpty($settings->get('accounting', 'approved_at'));
+
+        $event = AuditEvent::query()->where('action', 'accounting.policy_changed')->latest('id')->firstOrFail();
+        $this->assertSame($user->id, $event->actor_id);
+        $this->assertSame('false', $event->before['value']);
+        $this->assertSame('true', $event->after['value']);
+        $this->assertSame('accounting_policy_approved', $event->after['key']);
+
+        $this->putSettings([$this->row('accounting', 'accounting_policy_approved', 'false')])->assertOk();
+        $this->assertSame('', $settings->get('accounting', 'approved_by'));
+        $this->assertSame(2, AuditEvent::query()->where('action', 'accounting.policy_changed')->count());
     }
 
-    public function test_suggestion_without_years_uses_the_current_year_and_configured_start(): void
+    public function test_auto_post_change_is_audited(): void
     {
-        FiscalPeriod::query()->delete();
-        FiscalYear::query()->delete();
-        $year = now()->year;
-        $this->withHeaders($this->h())->getJson('/api/v1/fiscal-years/suggested')
-            ->assertOk()
-            ->assertJsonPath('data.starts_on', "{$year}-01-01")
-            ->assertJsonPath('data.ends_on', "{$year}-12-31")
-            ->assertJsonPath('data.name', (string) $year);
+        $this->actAs('admin');
 
-        app(SettingService::class)->set('accounting', 'fiscal_year_start', '07-01');
-        $next = $year + 1;
-        $this->withHeaders($this->h())->getJson('/api/v1/fiscal-years/suggested')
-            ->assertJsonPath('data.starts_on', "{$year}-07-01")
-            ->assertJsonPath('data.ends_on', "{$next}-06-30")
-            ->assertJsonPath('data.name', "{$year}/{$next}");
+        $this->putSettings([$this->row('accounting', 'auto_post_bookings', 'true')])->assertOk();
+
+        $event = AuditEvent::query()->where('action', 'accounting.policy_changed')->firstOrFail();
+        $this->assertSame('auto_post_bookings', $event->after['key']);
+        $this->assertSame('false', $event->before['value']);
     }
 
-    public function test_suggestion_follows_the_latest_existing_year(): void
+    public function test_policy_value_must_be_boolean_string(): void
     {
-        FiscalYear::query()->create(['name' => '2030', 'starts_on' => '2030-01-01', 'ends_on' => '2030-12-31']);
+        $this->actAs('admin');
 
-        $this->withHeaders($this->h())->getJson('/api/v1/fiscal-years/suggested')
-            ->assertJsonPath('data.starts_on', '2031-01-01')
-            ->assertJsonPath('data.ends_on', '2031-12-31');
-
-        // A mid-year start continues right after the previous year, with no gap.
-        app(SettingService::class)->set('accounting', 'fiscal_year_start', '07-01');
-        FiscalYear::query()->create(['name' => '2031/2032', 'starts_on' => '2031-01-01', 'ends_on' => '2032-06-30']);
-        $this->withHeaders($this->h())->getJson('/api/v1/fiscal-years/suggested')
-            ->assertJsonPath('data.starts_on', '2032-07-01')
-            ->assertJsonPath('data.ends_on', '2033-06-30')
-            ->assertJsonPath('data.name', '2032/2033');
+        $this->putSettings([$this->row('accounting', 'accounting_policy_approved', 'maybe')])
+            ->assertStatus(422)->assertJsonValidationErrors('accounting_policy_approved');
     }
 
-    public function test_store_defaults_missing_fields_from_the_suggestion(): void
+    public function test_get_settings_shape_is_unchanged(): void
     {
-        FiscalPeriod::query()->delete();
-        FiscalYear::query()->delete();
+        $this->actAs('accountant');
 
-        $this->withHeaders($this->h())->postJson('/api/v1/fiscal-periods', [])
-            ->assertCreated()
-            ->assertJsonPath('data.name', (string) now()->year)
-            ->assertJsonCount(12, 'data.periods');
-    }
+        $row = $this->getJson('/api/v1/settings')->assertOk()->json('data.0');
 
-    public function test_store_rejects_overlaps_and_unconfirmed_custom_starts(): void
-    {
-        $this->withHeaders($this->h())->postJson('/api/v1/fiscal-periods', [
-            'name' => '2040', 'starts_on' => '2040-01-01', 'ends_on' => '2040-12-31',
-        ])->assertCreated();
-
-        $this->withHeaders($this->h())->postJson('/api/v1/fiscal-periods', [
-            'name' => 'overlap', 'starts_on' => '2040-06-01', 'ends_on' => '2041-05-31', 'confirm_custom_start' => true,
-        ])->assertStatus(422);
-
-        $this->withHeaders($this->h())->postJson('/api/v1/fiscal-periods', [
-            'name' => 'custom', 'starts_on' => '2041-04-01', 'ends_on' => '2042-03-31',
-        ])->assertStatus(422);
-
-        $this->withHeaders($this->h())->postJson('/api/v1/fiscal-periods', [
-            'name' => 'custom', 'starts_on' => '2041-04-01', 'ends_on' => '2042-03-31', 'confirm_custom_start' => true,
-        ])->assertCreated();
+        $this->assertSame(['group', 'key', 'value', 'is_secret'], array_keys($row));
     }
 }

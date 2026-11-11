@@ -3,6 +3,8 @@
 namespace App\Modules\Treasury\Services;
 
 use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\FiscalPeriod;
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
@@ -207,23 +209,10 @@ class TreasuryService
                 // entry balances in the base currency; the difference is FX gain/loss.
                 $entryCurrency = $base;
                 $entryRate = '1';
-                $baseFrom = $this->toBase($amount, $fromCurrency, $base, $fromRate);
-                $baseTo = $this->toBase($toAmount, $toCurrency, $base, $toRate);
-                $baseFee = $this->toBase($fee, $fromCurrency, $base, $fromRate);
-                $outgoingBase = $baseFrom + $baseFee;
-                $lines = [
-                    PostingLine::debit($to->account, $toAmount, null, null, "Transfer in {$toAmount} {$toCurrency}")->in($toCurrency, $toRate),
-                    PostingLine::credit($from->account, $amount + $fee, null, null, "Transfer out {$amount} {$fromCurrency}")->in($fromCurrency, $fromRate),
-                ];
-                if ($feeAccount && $fee > 0) {
-                    $lines[] = PostingLine::debit($feeAccount, $fee, null, null, 'Transfer fee')->in($fromCurrency, $fromRate);
-                }
-                $difference = $baseTo - $baseFrom;
-                if ($difference > 0) {
-                    $lines[] = PostingLine::credit($this->posting->account((string) $this->settings->get('accounting', 'fx_gain_account_code', '7900')), $difference, null, null, 'FX gain on transfer');
-                } elseif ($difference < 0) {
-                    $lines[] = PostingLine::debit($this->posting->account((string) $this->settings->get('accounting', 'fx_loss_account_code', '6900')), abs($difference), null, null, 'FX loss on transfer');
-                }
+                ['lines' => $lines, 'outgoing_base' => $outgoingBase] = $this->crossCurrencyLines(
+                    $from->account, $to->account, $fromCurrency, $toCurrency,
+                    $amount, $fee, $toAmount, $base, $fromRate, $toRate,
+                );
             }
 
             if ($this->settings->bool('treasury', 'block_negative_cash', false)) {
@@ -279,6 +268,136 @@ class TreasuryService
         });
     }
 
+    /**
+     * Journal lines of a cross-currency transfer: each cash account in its own
+     * currency, the bank fee on the source currency, and the base-currency
+     * difference as FX gain/loss. The entry itself is posted in the base
+     * currency at rate 1. Shared by transfer() and the legacy repair command.
+     *
+     * @return array{lines: array<int, PostingLine>, outgoing_base: int}
+     */
+    public function crossCurrencyLines(
+        Account $fromAccount,
+        Account $toAccount,
+        string $fromCurrency,
+        string $toCurrency,
+        int $amount,
+        int $fee,
+        int $toAmount,
+        string $base,
+        string $fromRate,
+        string $toRate,
+    ): array {
+        $baseFrom = $this->toBase($amount, $fromCurrency, $base, $fromRate);
+        $baseTo = $this->toBase($toAmount, $toCurrency, $base, $toRate);
+        $baseFee = $this->toBase($fee, $fromCurrency, $base, $fromRate);
+        $lines = [
+            PostingLine::debit($toAccount, $toAmount, null, null, "Transfer in {$toAmount} {$toCurrency}")->in($toCurrency, $toRate),
+            PostingLine::credit($fromAccount, $amount + $fee, null, null, "Transfer out {$amount} {$fromCurrency}")->in($fromCurrency, $fromRate),
+        ];
+        if ($fee > 0) {
+            $feeAccount = $this->posting->account((string) $this->settings->get('accounting', 'bank_charges_account_code', '6500'));
+            $lines[] = PostingLine::debit($feeAccount, $fee, null, null, 'Transfer fee')->in($fromCurrency, $fromRate);
+        }
+        $difference = $baseTo - $baseFrom;
+        if ($difference > 0) {
+            $lines[] = PostingLine::credit($this->posting->account((string) $this->settings->get('accounting', 'fx_gain_account_code', '7900')), $difference, null, null, 'FX gain on transfer');
+        } elseif ($difference < 0) {
+            $lines[] = PostingLine::debit($this->posting->account((string) $this->settings->get('accounting', 'fx_loss_account_code', '6900')), abs($difference), null, null, 'FX loss on transfer');
+        }
+
+        return ['lines' => $lines, 'outgoing_base' => $baseFrom + $baseFee];
+    }
+
+    /**
+     * True when a posted cross-currency transfer still has the legacy shape:
+     * a cash-account line of a foreign-currency side carries the base currency.
+     */
+    public function hasLegacyForeignShape(Transfer $transfer): bool
+    {
+        if ($transfer->status !== 'posted' || $transfer->repaired_at !== null || $transfer->journal_entry_id === null
+            || strtoupper($transfer->from_currency) === strtoupper($transfer->to_currency)) {
+            return false;
+        }
+
+        $base = $this->settings->baseCurrency();
+        $transfer->loadMissing('from', 'to');
+        $lines = DB::table('journal_lines')->where('journal_entry_id', $transfer->journal_entry_id)->get(['account_id', 'currency_code']);
+
+        foreach ([[$transfer->from, $transfer->from_currency], [$transfer->to, $transfer->to_currency]] as [$cash, $currency]) {
+            if (strtoupper($currency) === $base) {
+                continue;
+            }
+            if ($lines->contains(fn ($line) => (int) $line->account_id === (int) $cash->account_id && strtoupper((string) $line->currency_code) === $base)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Replace the legacy base-currency posting of a cross-currency transfer
+     * with a correct per-currency one: reverse the original entry, then post
+     * the replacement. Atomic and idempotent (a repaired transfer is skipped).
+     * Returns the replacement entry, or null when nothing needed repairing.
+     */
+    public function repairForeignTransfer(Transfer $transfer, ?int $actorId = null): ?JournalEntry
+    {
+        return DB::transaction(function () use ($transfer, $actorId) {
+            $transfer = Transfer::query()->lockForUpdate()->findOrFail($transfer->id);
+
+            if (! $this->hasLegacyForeignShape($transfer)) {
+                return null;
+            }
+
+            $transfer->loadMissing('from.account', 'to.account', 'branch');
+            $original = JournalEntry::query()->findOrFail($transfer->journal_entry_id);
+
+            // PostingService::reverse dates the reversal on the original date,
+            // or today when the original period is closed.
+            $reversal = $this->posting->reverse($original, 'Repair legacy cross-currency transfer', $actorId);
+
+            $date = $transfer->transfer_date->toDateString();
+            $period = FiscalPeriod::query()->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->first();
+            $postingDate = $period?->status === 'open' ? $date : now()->toDateString();
+
+            $base = $this->settings->baseCurrency();
+            ['lines' => $lines] = $this->crossCurrencyLines(
+                $transfer->from->account, $transfer->to->account,
+                strtoupper($transfer->from_currency), strtoupper($transfer->to_currency),
+                (int) $transfer->from_amount_minor, (int) $transfer->fee_minor, (int) $transfer->to_amount_minor,
+                $base, (string) $transfer->from_fx_rate, (string) $transfer->to_fx_rate,
+            );
+
+            $entry = $this->posting->post(PostingRequest::make(
+                entryDate: $postingDate,
+                branch: $transfer->branch,
+                currency: $base,
+                lines: $lines,
+                memo: 'Transfer '.$transfer->number.' (repaired)',
+                sourceType: 'transfer',
+                sourceId: $transfer->id,
+                event: 'repair',
+                fxRate: '1',
+                fxRateDate: $postingDate,
+                actorId: $actorId,
+            ));
+
+            $transfer->update(['repaired_at' => now(), 'repair_journal_entry_id' => $entry->id]);
+
+            $this->audit->log('transfer.repaired', $transfer, [
+                'journal_entry_id' => $original->public_id,
+            ], [
+                'reversal_journal_entry_id' => $reversal->public_id,
+                'repair_journal_entry_id' => $entry->public_id,
+                'posting_date' => $postingDate,
+            ], $actorId);
+
+            return $entry;
+        });
+    }
+
     public function reverse(Transfer $transfer, string $reason, ?int $actorId = null): Transfer
     {
         return DB::transaction(function () use ($transfer, $reason, $actorId) {
@@ -288,7 +407,9 @@ class TreasuryService
                 throw new DomainException('Only posted transfers can be reversed.');
             }
 
-            $reversal = $this->posting->reverse($transfer->journalEntry, $reason, $actorId);
+            // A repaired transfer's live posting is the replacement entry.
+            $active = JournalEntry::query()->findOrFail($transfer->repair_journal_entry_id ?? $transfer->journal_entry_id);
+            $reversal = $this->posting->reverse($active, $reason, $actorId);
 
             $transfer->update(['status' => 'reversed', 'reversal_journal_entry_id' => $reversal->id]);
 

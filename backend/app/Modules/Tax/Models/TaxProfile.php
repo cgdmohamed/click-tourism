@@ -2,10 +2,13 @@
 
 namespace App\Modules\Tax\Models;
 
+use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 class TaxProfile extends Model
 {
+    use HasPublicId;
+
     protected $fillable = [
         'name',
         'rate',
@@ -25,6 +28,16 @@ class TaxProfile extends Model
             'is_active' => 'boolean',
             'effective_from' => 'date',
             'effective_to' => 'date',
+        ];
+    }
+
+    public function toApiArray(): array
+    {
+        return [
+            'id' => $this->public_id,
+            'name' => $this->name,
+            'rate' => (string) $this->rate,
+            'is_inclusive' => (bool) $this->is_inclusive,
         ];
     }
 }

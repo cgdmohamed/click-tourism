@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
+use App\Http\Controllers\Api\TaxProfileController;
 use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -233,6 +234,7 @@ Route::prefix('v1')->group(function () {
         Route::post('supplier-payments/{supplierPayment}/invoice-applications', [SupplierSettlementController::class, 'applyToInvoice'])->middleware(['permission:supplier_payments.create', 'idempotent']);
         Route::post('supplier-payments/{supplierPayment}/unapply', [SupplierSettlementController::class, 'unapply'])->middleware(['permission:supplier_payments.create']);
 
+        Route::get('tax-profiles', [TaxProfileController::class, 'index'])->middleware('permission:bookings.view');
         Route::get('bookings', [BookingController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('bookings', [BookingController::class, 'store'])->middleware('permission:bookings.create');
         Route::get('bookings/{booking}', [BookingController::class, 'show'])->middleware('permission:bookings.view');

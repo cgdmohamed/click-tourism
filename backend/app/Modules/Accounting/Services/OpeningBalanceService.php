@@ -7,10 +7,13 @@ use App\Modules\Accounting\Models\OpeningBalanceBatch;
 use App\Modules\Accounting\Models\OpeningBalanceLine;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Parties\Services\PartyLedgerService;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +29,8 @@ class OpeningBalanceService
         private readonly SettingService $settings,
         private readonly FxService $fx,
         private readonly AuditService $audit,
+        private readonly PartyLedgerService $partyLedger,
+        private readonly SequenceService $sequences,
     ) {}
 
     /**
@@ -89,6 +94,8 @@ class OpeningBalanceService
 
             $batch->load('lines.account');
             $groups = $batch->lines->groupBy('currency_code');
+            $arCode = (string) $this->settings->get('accounting', 'ar_account_code');
+            $apCode = (string) $this->settings->get('accounting', 'ap_account_code');
 
             if ($groups->isEmpty()) {
                 throw new DomainException('The batch has no lines.');
@@ -102,7 +109,7 @@ class OpeningBalanceService
                     branch: $batch->branch,
                     currency: $currency,
                     lines: $lines->map(fn (OpeningBalanceLine $line) => new PostingLine(
-                        account: $line->account,
+                        account: $this->postingAccount($line, $arCode, $apCode),
                         debitMinor: $line->debit_minor,
                         creditMinor: $line->credit_minor,
                         partyType: $line->party_type,
@@ -119,6 +126,10 @@ class OpeningBalanceService
                 ));
 
                 $batch->entries()->attach($entry->id, ['currency_code' => $currency]);
+
+                foreach ($lines as $line) {
+                    $this->createOpeningDocument($batch, $line, $entry->id, $arCode, $apCode, $actorId);
+                }
             }
 
             $batch->update(['status' => 'posted', 'posted_by' => $actorId, 'posted_at' => now()]);
@@ -137,8 +148,32 @@ class OpeningBalanceService
                 throw new DomainException('Only posted batches can be reversed.');
             }
 
+            $entryIds = $batch->entries()->pluck('journal_entries.id');
+            $documents = Invoice::query()->where('is_opening', true)
+                ->whereIn('journal_entry_id', $entryIds)
+                ->where('status', '!=', Invoice::STATUS_VOIDED)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($documents as $document) {
+                $applied = $document->applications()->whereNull('reversed_at')->exists();
+                if ($applied || (int) $document->outstanding_minor !== (int) $document->total_minor) {
+                    throw new DomainException(
+                        "Opening document {$document->number} has already been settled; undo its applications before reversing the batch."
+                    );
+                }
+            }
+
             foreach ($batch->entries as $entry) {
                 $this->posting->reverse($entry, $reason, $actorId);
+            }
+
+            foreach ($documents as $document) {
+                $document->update(['status' => Invoice::STATUS_VOIDED, 'outstanding_minor' => 0]);
+                $this->audit->log('invoice.voided', $document, ['status' => Invoice::STATUS_ISSUED], [
+                    'status' => Invoice::STATUS_VOIDED,
+                    'reason' => 'Opening balance batch reversed',
+                ], $actorId);
             }
 
             $batch->update(['status' => 'reversed', 'reversal_reason' => $reason]);
@@ -171,8 +206,18 @@ class OpeningBalanceService
                 ->groupBy('account_id', 'currency_code')
                 ->selectRaw('account_id, currency_code, SUM(debit_minor) as debit, SUM(credit_minor) as credit')
                 ->get();
+            // Party lines post to the party's subaccount; roll them up to the control account the batch names.
+            $parents = DB::table('party_accounts as pa')
+                ->join('accounts as a', 'a.id', '=', 'pa.account_id')
+                ->whereIn('pa.account_id', $rows->pluck('account_id'))
+                ->pluck('a.parent_id', 'pa.account_id');
             foreach ($rows as $row) {
-                $ledger[$row->account_id.'|'.$row->currency_code] = [(int) $row->debit, (int) $row->credit];
+                $accountId = (int) ($parents[$row->account_id] ?? $row->account_id);
+                $key = $accountId.'|'.$row->currency_code;
+                $ledger[$key] = [
+                    ($ledger[$key][0] ?? 0) + (int) $row->debit,
+                    ($ledger[$key][1] ?? 0) + (int) $row->credit,
+                ];
             }
         }
 
@@ -224,6 +269,70 @@ class OpeningBalanceService
             'control_account_detail' => $detail,
             'reconciled' => $reconciled,
         ];
+    }
+
+    /**
+     * Receivable/payable lines post to the party's own subaccount (ADR-0015),
+     * never to the control account.
+     */
+    private function postingAccount(OpeningBalanceLine $line, string $arCode, string $apCode): Account
+    {
+        if ($line->party_id !== null) {
+            if ($line->account->code === $arCode && $line->party_type === 'customer') {
+                return $this->partyLedger->receivable((int) $line->party_id);
+            }
+            if ($line->account->code === $apCode && $line->party_type === 'supplier') {
+                return $this->partyLedger->payable((int) $line->party_id);
+            }
+        }
+
+        return $line->account;
+    }
+
+    /**
+     * A customer debit / supplier credit becomes an issued opening document so
+     * it can be settled through the normal invoice applications. It carries no
+     * journal entry of its own: it points at the opening entry.
+     */
+    private function createOpeningDocument(OpeningBalanceBatch $batch, OpeningBalanceLine $line, int $entryId, string $arCode, string $apCode, ?int $actorId): void
+    {
+        $isCustomer = $line->account->code === $arCode && $line->party_type === 'customer' && $line->debit_minor > 0;
+        $isSupplier = $line->account->code === $apCode && $line->party_type === 'supplier' && $line->credit_minor > 0;
+        if (! $line->party_id || (! $isCustomer && ! $isSupplier)) {
+            return;
+        }
+
+        $asOf = $batch->as_of_date->toDateString();
+        $amount = $isCustomer ? (int) $line->debit_minor : (int) $line->credit_minor;
+        $invoice = Invoice::query()->create([
+            'type' => $isCustomer ? Invoice::TYPE_CUSTOMER_INVOICE : Invoice::TYPE_SUPPLIER_INVOICE,
+            'series' => 'OB',
+            'number' => $this->sequences->next('invoice.OB', $batch->branch, $batch->as_of_date),
+            'party_type' => $line->party_type,
+            'party_id' => $line->party_id,
+            'branch_id' => $batch->branch_id,
+            'issue_date' => $asOf,
+            'currency_code' => $line->currency_code,
+            'fx_rate' => $line->fx_rate,
+            'fx_rate_date' => $asOf,
+            'fx_rate_source' => 'opening_balance',
+            'status' => Invoice::STATUS_ISSUED,
+            'subtotal_minor' => $amount,
+            'tax_minor' => 0,
+            'total_minor' => $amount,
+            'outstanding_minor' => $amount,
+            'journal_entry_id' => $entryId,
+            'is_opening' => true,
+            'created_by' => $actorId,
+            'issued_at' => now(),
+            'memo' => $line->description ?? 'Opening balance '.$asOf,
+        ]);
+
+        $this->audit->log('invoice.opening_created', $invoice, null, [
+            'number' => $invoice->number,
+            'total_minor' => $amount,
+            'batch' => $batch->id,
+        ], $actorId);
     }
 
     /**

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Booking, Customer, Paginated, Supplier } from '../lib/types'
+import type { Booking, Customer, Paginated, Supplier, TaxProfile } from '../lib/types'
 import {
   Badge,
   Button,
@@ -26,6 +26,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import BookingDetails from './BookingDetails'
 
 type DraftItem = {
   service_type: string
@@ -37,6 +38,7 @@ type DraftItem = {
   unit_sell: string
   cost_currency: string
   sell_currency: string
+  tax_profile_id: string
 }
 
 const emptyItem = (currency: string): DraftItem => ({
@@ -49,7 +51,20 @@ const emptyItem = (currency: string): DraftItem => ({
   unit_sell: '0',
   cost_currency: currency,
   sell_currency: currency,
+  tax_profile_id: '',
 })
+
+/** Mirrors BookingService::taxFor with integer math (rate has up to 4 decimals). */
+function taxMinor(grossMinor: number, rate: string, inclusive: boolean): number {
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(rate.trim())
+  if (!match || grossMinor <= 0) return 0
+  const scaled = BigInt(match[1] + (match[2] ?? '').padEnd(4, '0').slice(0, 4))
+  if (scaled === 0n) return 0
+  const scale = 10000n
+  const denominator = (inclusive ? 100n * scale + scaled : 100n * scale) * 2n
+  const numerator = BigInt(grossMinor) * scaled * 2n + denominator / 2n
+  return Number(numerator / denominator)
+}
 
 export default function Bookings() {
   const { t, locale } = useI18n()
@@ -62,6 +77,7 @@ export default function Bookings() {
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
+  const [viewId, setViewId] = useState<string | null>(null)
   const [form, setForm] = useState({
     customer_id: '',
     start_date: todayISO(),
@@ -108,16 +124,40 @@ export default function Bookings() {
     },
   })
 
+  const taxProfilesQuery = useQuery({
+    queryKey: ['tax-profiles'],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: TaxProfile[] }>('/tax-profiles')
+      return data.data
+    },
+  })
+  const taxProfiles = useMemo(() => taxProfilesQuery.data ?? [], [taxProfilesQuery.data])
+
+  const itemAmounts = useCallback(
+    (item: DraftItem) => {
+      const quantity = Number.parseInt(item.quantity || '0', 10) || 0
+      const gross = toMinor(item.unit_sell || '0', item.sell_currency) * quantity
+      const cost = toMinor(item.unit_cost || '0', item.cost_currency) * quantity
+      const profile = taxProfiles.find((candidate) => candidate.id === item.tax_profile_id)
+      const tax = profile ? taxMinor(gross, profile.rate, profile.is_inclusive) : 0
+      return { cost, tax, sell: gross + (profile?.is_inclusive ? 0 : tax) }
+    },
+    [taxProfiles],
+  )
+
   const totals = useMemo(() => {
     let sell = 0
     let cost = 0
+    let tax = 0
     for (const item of items) {
-      const quantity = Number(item.quantity || '0')
-      sell += Math.round(toMinor(item.unit_sell || '0', item.sell_currency) * quantity)
-      cost += Math.round(toMinor(item.unit_cost || '0', item.cost_currency) * quantity)
+      const amounts = itemAmounts(item)
+      sell += amounts.sell
+      cost += amounts.cost
+      tax += amounts.tax
     }
-    return { sell, cost, margin: sell - cost }
-  }, [items])
+    return { sell, cost, tax, margin: sell - cost }
+  }, [items, itemAmounts])
 
   const create = useMutation({
     mutationFn: async () => {
@@ -144,6 +184,7 @@ export default function Bookings() {
           unit_sell_minor: toMinor(item.unit_sell || '0', item.sell_currency),
           cost_currency: item.cost_currency,
           sell_currency: item.sell_currency,
+          tax_profile_id: item.tax_profile_id || null,
         })),
       }
       const { data } = await api.post<{ data: Booking }>('/bookings', payload)
@@ -153,18 +194,6 @@ export default function Bookings() {
       setOpen(false)
       setError('')
       setItems([emptyItem(form.currency)])
-      await queryClient.invalidateQueries({ queryKey: ['bookings'] })
-    },
-    onError: (cause) => setError(errorMessage(cause)),
-  })
-
-  const transition = useMutation({
-    mutationFn: async ({ booking, status }: { booking: Booking; status: string }) => {
-      const { data } = await api.post(`/bookings/${booking.id}/transition`, { status })
-      return data
-    },
-    onSuccess: async () => {
-      setError('')
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
     },
     onError: (cause) => setError(errorMessage(cause)),
@@ -262,16 +291,9 @@ export default function Bookings() {
                     {toDecimal(booking.margin_minor, booking.currency)} {booking.currency}
                   </Td>
                   <Td className="text-end">
-                    {booking.status === 'draft' || booking.status === 'quoted' ? (
-                      <Button variant="ghost" onClick={() => transition.mutate({ booking, status: 'confirmed' })}>
-                        {locale === 'ar' ? 'تأكيد' : 'Confirm'}
-                      </Button>
-                    ) : null}
-                    {booking.status === 'confirmed' ? (
-                      <Button variant="ghost" onClick={() => transition.mutate({ booking, status: 'in_progress' })}>
-                        {locale === 'ar' ? 'بدء' : 'Start'}
-                      </Button>
-                    ) : null}
+                    <Button variant="ghost" onClick={() => setViewId(booking.id)}>
+                      {locale === 'ar' ? 'عرض' : 'View'}
+                    </Button>
                   </Td>
                 </tr>
               ))}
@@ -285,6 +307,8 @@ export default function Bookings() {
         />
       </Card>
 
+      <BookingDetails bookingId={viewId} onClose={() => setViewId(null)} />
+
       <Modal
         open={open}
         title={t('newBooking')}
@@ -292,7 +316,7 @@ export default function Bookings() {
         footer={
           <>
             <span className="me-auto text-sm text-text-subtle">
-              {t('total')}: {toDecimal(totals.sell, form.currency)} · {t('margin')}: {toDecimal(totals.margin, form.currency)}
+              {t('total')}: {toDecimal(totals.sell, form.currency)} · {t('tax')}: {toDecimal(totals.tax, form.currency)} · {t('margin')}: {toDecimal(totals.margin, form.currency)}
             </span>
             <Button variant="secondary" onClick={() => setOpen(false)}>
               {t('cancel')}
@@ -405,6 +429,19 @@ export default function Bookings() {
                   inputMode="decimal"
                   dir="ltr"
                 />
+              </div>
+              <div className="sm:col-span-4">
+                <Select value={item.tax_profile_id} onChange={(event) => updateItem(index, { tax_profile_id: event.target.value })} aria-label={t('tax')}>
+                  <option value="">{t('tax')}: {t('none')}</option>
+                  {taxProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name} ({Number(profile.rate)}%{profile.is_inclusive ? (locale === 'ar' ? '، شامل' : ', inclusive') : ''})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="text-small self-center text-text-subtle sm:col-span-7">
+                {t('tax')}: {toDecimal(itemAmounts(item).tax, item.sell_currency)} {item.sell_currency}
               </div>
               <div className="sm:col-span-1">
                 <Button
