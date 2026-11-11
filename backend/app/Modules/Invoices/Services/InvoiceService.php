@@ -576,7 +576,11 @@ class InvoiceService
                 throw new DomainException("Line {$position}: quantity and unit price must match the line amount.");
             }
 
-            $tax = (int) ($raw['tax_minor'] ?? 0);
+            // When the UI supplies the VAT toggle, never trust a manually
+            // supplied tax amount: calculate the configured rate on the server.
+            $tax = array_key_exists('tax_applied', $raw)
+                ? ((bool) $raw['tax_applied'] ? $this->taxPolicy->exclusiveMinor($debit + $credit) : 0)
+                : (int) ($raw['tax_minor'] ?? 0);
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
             }
