@@ -186,6 +186,7 @@ class UserService
     public function activate(User $user, User $actor): User
     {
         $this->assertTargetManageable($actor, $user);
+
         return DB::transaction(function () use ($user, $actor) {
             $user = User::query()->findOrFail($user->id);
             $before = $this->account($user);
