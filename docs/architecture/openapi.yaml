@@ -1171,6 +1171,45 @@ paths:
         '404': { description: Not found }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/collections:
+    post:
+      tags: [Accounting]
+      summary: Collect a customer invoice in full or partially using one or more payment methods
+      description: >-
+        Creates separate posted receipts and invoice applications for each
+        payment tranche in one database transaction. All-or-nothing; cannot
+        collect more than the remaining invoice balance. The invoice must
+        already be issued. Requires payments.create.
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receipts]
+              properties:
+                receipts:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: object
+                    required: [amount_minor, cash_account_id, payment_method_id, paid_at]
+                    properties:
+                      amount_minor: { type: integer, minimum: 1 }
+                      cash_account_id: { type: string, description: Public ID of a cash or bank account }
+                      payment_method_id: { type: string, description: Public ID of an active payment method }
+                      paid_at: { type: string, format: date }
+                      fx_rate: { type: number, exclusiveMinimum: 0, description: Required for foreign-currency receipts }
+      responses:
+        '201': { description: Invoice balance plus individually posted receipts and applications }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
   /invoices/{invoice}/submit:
     post:
       tags: [Accounting]
