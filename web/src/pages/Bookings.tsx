@@ -77,7 +77,7 @@ export default function Bookings() {
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
-  const [viewId, setViewId] = useState<string | null>(null)
+  const [viewId, setViewId] = useState<string | null>(searchParams.get('booking_id'))
   const [editTarget, setEditTarget] = useState<Booking | null>(null)
   const [form, setForm] = useState({
     customer_id: requestedCustomerId,
