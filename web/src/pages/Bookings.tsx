@@ -104,6 +104,26 @@ export default function Bookings() {
 
   const bookings = bookingsQuery.data?.data ?? []
 
+  const toursQuery = useQuery({
+    queryKey: ['tour-packages', activeBranch?.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: TourOption[] }>('/tour-packages')
+      return data.data
+    },
+  })
+  const departureOptions = (toursQuery.data ?? [])
+    .filter((tour) => tour.execution_type === 'fixed')
+    .flatMap((tour) => (tour.departures ?? [])
+      .filter((departure) => departure.status === 'open')
+      .map((departure) => ({
+        id: departure.id,
+        label: `${tour.name} · ${departure.starts_on} · ${departure.available_seats ?? '∞'} ${locale === 'ar' ? 'مقعد متاح' : 'seats left'}`,
+        start: departure.starts_on,
+        end: departure.ends_on,
+        currency: tour.currency,
+      })))
+
   const taxProfilesQuery = useQuery({
     queryKey: ['tax-profiles'],
     enabled: open && taxEnabled,
