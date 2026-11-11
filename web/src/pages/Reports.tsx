@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -22,6 +23,8 @@ type ReportKey =
   | 'aging'
   | 'aging-reconciliation'
   | 'party-statement'
+  | 'cost-center-pl'
+  | 'cost-center-unallocated'
 
 type SourceReference = {
   source_type: string | null
@@ -292,6 +295,9 @@ export default function Reports() {
     if (report === 'balance-sheet') {
       return { as_of: to, ...(compare ? { compare_as_of: compareAsOf } : {}) }
     }
+    if (report === 'cost-center-pl' || report === 'cost-center-unallocated') {
+      return { from, to }
+    }
     if (report === 'party-statement') {
       return {
         party_type: partyType || 'customer',
@@ -317,6 +323,7 @@ export default function Reports() {
 
   const isLedger = report === 'general-ledger'
   const isStatement = report === 'party-statement'
+  const isCostCenterReport = report === 'cost-center-pl' || report === 'cost-center-unallocated'
 
   const query = useQuery({
     queryKey: ['report', report, params, activeBranch?.id],
@@ -392,7 +399,7 @@ export default function Reports() {
   })
 
   const canExport =
-    can('reports.export') &&
+    !isCostCenterReport && can('reports.export') &&
     (isLedger ? ledgerAccount !== '' : isStatement ? partyId !== '' : true)
 
   const download = async (format: 'csv' | 'xlsx' | 'pdf') => {
@@ -433,6 +440,10 @@ export default function Reports() {
     { key: 'aging', ar: 'أعمار الديون', en: 'Aging', icon: 'clock' },
     { key: 'aging-reconciliation', ar: 'مطابقة الأعمار', en: 'Aging reconciliation', icon: 'listChecks' },
     { key: 'party-statement', ar: 'كشف حساب طرف', en: 'Party statement', icon: 'users' },
+    ...(can('cost_centers.view') ? [
+      { key: 'cost-center-pl' as const, ar: 'أرباح مراكز التكلفة', en: 'Cost center P&L', icon: 'trendUp' as const },
+      { key: 'cost-center-unallocated' as const, ar: 'قيود غير موزعة', en: 'Unallocated entries', icon: 'listChecks' as const },
+    ] : []),
   ]
 
   const label = (line: StatementLine) => (locale === 'ar' ? line.name_ar : line.name_en)
@@ -526,6 +537,10 @@ export default function Reports() {
         ))}
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-3 text-small">
+        {can('cost_centers.view') ? <Link to="/cost-centers" className="text-brand-1-accent underline">{locale === 'ar' ? 'إدارة مراكز التكلفة' : 'Manage cost centers'}</Link> : null}
+        {can('assets.view') ? <Link to="/fixed-assets" className="text-brand-1-accent underline">{locale === 'ar' ? 'الأصول الثابتة والإهلاك' : 'Fixed assets and depreciation'}</Link> : null}
+      </div>
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-5 py-4">
           {isLedger ? (
@@ -866,6 +881,68 @@ export default function Reports() {
             })()
           : null}
 
+        {query.data && report === 'cost-center-pl' ? (() => {
+          const result = query.data as {
+            centers: Array<{ center: { id: string; code: string; name_ar: string; name_en: string };
+              allocated_revenue_minor: number; allocated_expense_minor: number; allocated_net_minor: number }>;
+            grand_allocated_revenue_minor: number; grand_allocated_expense_minor: number; grand_allocated_net_minor: number
+          }
+          return (
+            <Card>
+              <CardHeader title={locale === 'ar' ? 'أرباح وخسائر مراكز التكلفة' : 'Cost center profit and loss'} icon="trendUp" />
+              <Table>
+                <thead><tr>
+                  <Th>{locale === 'ar' ? 'مركز التكلفة' : 'Cost center'}</Th>
+                  <Th className="text-end">{locale === 'ar' ? 'الإيرادات الموزعة' : 'Allocated revenue'}</Th>
+                  <Th className="text-end">{locale === 'ar' ? 'التكاليف الموزعة' : 'Allocated expenses'}</Th>
+                  <Th className="text-end">{locale === 'ar' ? 'الصافي الموزع' : 'Allocated net'}</Th>
+                </tr></thead>
+                <tbody>
+                  {result.centers.map((row) => <tr key={row.center.id}>
+                    <Td>{row.center.code} — {locale === 'ar' ? row.center.name_ar : row.center.name_en}</Td>
+                    <Td className="text-end"><Money amountMinor={row.allocated_revenue_minor} currency={currency || 'EGP'}/></Td>
+                    <Td className="text-end"><Money amountMinor={row.allocated_expense_minor} currency={currency || 'EGP'}/></Td>
+                    <Td className="text-end"><Money amountMinor={row.allocated_net_minor} currency={currency || 'EGP'}/></Td>
+                  </tr>)}
+                  <tr className="font-semibold">
+                    <Td>{locale === 'ar' ? 'الإجمالي' : 'Total'}</Td>
+                    <Td className="text-end"><Money amountMinor={result.grand_allocated_revenue_minor} currency={currency || 'EGP'}/></Td>
+                    <Td className="text-end"><Money amountMinor={result.grand_allocated_expense_minor} currency={currency || 'EGP'}/></Td>
+                    <Td className="text-end"><Money amountMinor={result.grand_allocated_net_minor} currency={currency || 'EGP'}/></Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </Card>
+          )
+        })() : null}
+        {query.data && report === 'cost-center-unallocated' ? (() => {
+          const result = query.data as {
+            unallocated_line_count: number; unallocated_total_minor: number;
+            lines: Array<{ journal_entry: string; entry_date: string; account: string; amount_minor: number }>
+          }
+          return (
+            <Card>
+              <CardHeader title={locale === 'ar' ? 'القيود غير الموزعة على مراكز التكلفة' : 'Unallocated journal lines'} icon="listChecks" />
+              <div className="px-5 py-3 text-small text-text-subtle">
+                {locale === 'ar' ? 'عدد البنود:' : 'Line count:'} {result.unallocated_line_count} ·
+                {' '}{locale === 'ar' ? 'إجمالي القيمة:' : 'Total amount:'} <Money amountMinor={result.unallocated_total_minor} currency={currency || 'EGP'}/>
+              </div>
+              {result.lines.length === 0 ? <EmptyState /> : <Table>
+                <thead><tr>
+                  <Th>{locale === 'ar' ? 'القيد' : 'Journal entry'}</Th>
+                  <Th>{locale === 'ar' ? 'التاريخ' : 'Date'}</Th>
+                  <Th>{locale === 'ar' ? 'الحساب' : 'Account'}</Th>
+                  <Th className="text-end">{locale === 'ar' ? 'القيمة' : 'Amount'}</Th>
+                </tr></thead>
+                <tbody>{result.lines.map((line, index) => <tr key={index}>
+                  <Td>{line.journal_entry}</Td><Td>{formatDate(line.entry_date, locale)}</Td>
+                  <Td>{line.account ?? '—'}</Td>
+                  <Td className="text-end"><Money amountMinor={line.amount_minor} currency={currency || 'EGP'}/></Td>
+                </tr>)}</tbody>
+              </Table>}
+            </Card>
+          )
+        })() : null}
         {query.data && report === 'trial-balance'
           ? (() => {
               const data = query.data as TrialBalance
