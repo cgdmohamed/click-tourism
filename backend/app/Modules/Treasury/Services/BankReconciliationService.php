@@ -2,6 +2,7 @@
 
 namespace App\Modules\Treasury\Services;
 
+use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Accounting\Services\AccountingDocumentService;
@@ -557,6 +558,11 @@ class BankReconciliationService
             $bankAccount = $cashAccount->account->public_id;
             $charges = (string) ($data['charges_account_code'] ?? $this->settings->get('accounting', 'bank_charges_account_code', '6500'));
             $interest = (string) ($data['interest_account_code'] ?? $this->settings->get('accounting', 'bank_interest_account_code', '7920'));
+
+            if (in_array('in', array_column($items, 'direction'), true)
+                && ! Account::query()->where('code', $interest)->exists()) {
+                throw new DomainException("Bank interest account {$interest} does not exist; run accounting:ensure-accounts --apply");
+            }
 
             $lines = [];
             foreach ($items as $item) {

@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import { useSetting } from '../lib/useSetting'
+import { useBaseCurrency } from '../lib/useSetting'
 import type { Booking, Customer, Paginated, Payment, Refund } from '../lib/types'
 import type { PaymentMethod } from '../lib/types'
 import {
@@ -166,7 +166,7 @@ export default function Payments() {
     onError: (cause) => setRefundError(errorMessage(cause)),
   })
 
-  const { value: baseCurrency } = useSetting('general', 'base_currency', 'EGP')
+  const baseCurrency = useBaseCurrency()
 
   const approveRefund = useMutation({
     mutationFn: async ({ refund, fxRate }: { refund: Refund; fxRate: string }) => {
