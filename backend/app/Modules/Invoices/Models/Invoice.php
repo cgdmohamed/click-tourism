@@ -44,6 +44,7 @@ class Invoice extends Model
         'outstanding_minor',
         'journal_entry_id',
         'credit_note_of_id',
+        'is_opening',
         'idempotency_key',
         'created_by',
         'approved_by',
@@ -63,6 +64,7 @@ class Invoice extends Model
             'tax_minor' => 'integer',
             'total_minor' => 'integer',
             'outstanding_minor' => 'integer',
+            'is_opening' => 'boolean',
             'approved_at' => 'datetime',
             'issued_at' => 'datetime',
         ];
@@ -157,6 +159,7 @@ class Invoice extends Model
             'journal_entry_id' => $this->journalEntry?->public_id,
             'credit_note_of_id' => $this->creditNoteOf?->public_id,
             'memo' => $this->memo,
+            'is_opening' => (bool) $this->is_opening,
             'approved_at' => $this->approved_at?->toIso8601String(),
             'issued_at' => $this->issued_at?->toIso8601String(),
             'created_by' => $this->created_by,
