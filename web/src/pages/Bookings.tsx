@@ -25,6 +25,7 @@ import {
   statusTone,
 } from '../components/ui'
 import PartyPicker from '../components/PartyPicker'
+import QuickCreateCustomer from '../components/QuickCreateCustomer'
 import { statusLabel } from '../lib/labels'
 import { taxMinor } from '../lib/tax'
 import { useTaxEnabled } from '../lib/useSetting'
@@ -69,6 +70,7 @@ export default function Bookings() {
   const requestedCustomerId = searchParams.get('customer_id') ?? ''
   const requestedDepartureId = searchParams.get('departure_id') ?? ''
   const [open, setOpen] = useState(false)
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
@@ -408,6 +410,8 @@ export default function Bookings() {
       </Card>
 
       <BookingDetails bookingId={viewId} onClose={() => setViewId(null)} />
+      <QuickCreateCustomer open={quickCustomerOpen} onClose={() => setQuickCustomerOpen(false)}
+        onCreated={(customer) => { setForm((current) => ({ ...current, customer_id: customer.id })); setQuickCustomerOpen(false) }} />
 
       <Modal
         open={open}
@@ -428,14 +432,21 @@ export default function Bookings() {
         }
       >
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={t('customer')} required>
-            <PartyPicker
-              kind="customer"
-              value={form.customer_id}
-              onChange={(customer_id) => setForm({ ...form, customer_id })}
-              placeholder={t('selectCustomer')}
-            />
-          </Field>
+          <div>
+            <Field label={t('customer')} required>
+              <PartyPicker
+                kind="customer"
+                value={form.customer_id}
+                onChange={(customer_id) => setForm({ ...form, customer_id })}
+                placeholder={t('selectCustomer')}
+              />
+            </Field>
+            {!editTarget && can('customers.create') ? (
+              <Button variant="ghost" icon="plus" onClick={() => setQuickCustomerOpen(true)}>
+                {locale === 'ar' ? 'إضافة عميل جديد دون مغادرة الحجز' : 'Add customer without leaving booking'}
+              </Button>
+            ) : null}
+          </div>
           {!editTarget ? (
             <Field label={locale === 'ar' ? 'موعد برنامج سياحي (اختياري)' : 'Tour departure (optional)'}>
               <Select
