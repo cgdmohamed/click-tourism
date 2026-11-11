@@ -287,7 +287,7 @@ export default function Payments() {
       ...current,
       payment_method_id: methodId,
       method: selectedMethod?.type ?? 'cash',
-      cash_account_id: selectedMethod?.default_cash_account_id ?? current.cash_account_id,
+      cash_account_id: selectedMethod?.default_cash_account_id ?? '',
     }))
   }
 
@@ -459,10 +459,18 @@ export default function Payments() {
               value={form.cash_account_id}
               onChange={(cash_account_id) => setForm({ ...form, cash_account_id })}
               placeholder={t('selectAccount')}
-              options={(cashQuery.data ?? []).map((account) => ({
-                value: account.id,
-                label: `${locale === 'ar' ? account.name_ar : account.name_en} (${account.currency})`,
-              }))}
+              disabled={!!(methodsQuery.data ?? []).find((method) =>
+                method.id === form.payment_method_id && method.default_cash_account_id)}
+              options={(cashQuery.data ?? [])
+                .filter((account) => account.currency === form.currency)
+                .filter((account) => {
+                  const selected = (methodsQuery.data ?? []).find((method) => method.id === form.payment_method_id)
+                  return !selected?.default_cash_account_id || selected.default_cash_account_id === account.id
+                })
+                .map((account) => ({
+                  value: account.id,
+                  label: `${locale === 'ar' ? account.name_ar : account.name_en} (${account.currency})`,
+                }))}
             />
           </Field>
           <Field label={t('paymentMethod')}>
@@ -484,7 +492,7 @@ export default function Payments() {
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
-            <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, invoice_id: '', amount: '' })}>
+            <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, invoice_id: '', amount: '', cash_account_id: '' })}>
               <option value="EGP">EGP</option>
               <option value="SAR">SAR</option>
               <option value="USD">USD</option>
