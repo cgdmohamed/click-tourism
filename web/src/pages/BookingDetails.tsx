@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -244,9 +245,12 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
                 {booking.notes || '—'}
               </Info>
               <Info label={ar ? 'المدفوعات / الفواتير المرتبطة' : 'Linked payments / invoices'}>
-                <span className="tabular">
-                  {booking.payments_count ?? 0} / {booking.invoices_count ?? 0}
-                </span>
+                <span className="tabular">{booking.payments_count ?? 0} / {booking.invoices_count ?? 0}</span>
+                {can('invoices.view') ? (
+                  <Link to={`/invoices?booking_id=${booking.id}`} className="ms-2 text-brand-1-accent underline" onClick={close}>
+                    {ar ? 'عرض فواتير الحجز' : 'View booking invoices'}
+                  </Link>
+                ) : null}
               </Info>
             </dl>
 
