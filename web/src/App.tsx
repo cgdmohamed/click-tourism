@@ -22,6 +22,7 @@ import PaymentMethods from './pages/PaymentMethods'
 import SupplierSettlements from './pages/SupplierSettlements'
 import Reports from './pages/Reports'
 import Leads from './pages/Leads'
+import LeadProfile from './pages/LeadProfile'
 import AssignmentRules from './pages/AssignmentRules'
 import Settings from './pages/Settings'
 import Users from './pages/Users'
@@ -90,6 +91,7 @@ export default function App() {
                   <Route path="supplier-settlements" element={<SupplierSettlements />} />
                   <Route path="reports" element={<Reports />} />
                   <Route path="leads" element={<Leads />} />
+                  <Route path="leads/:id" element={<LeadProfile />} />
                   <Route path="assignment-rules" element={<AssignmentRules />} />
                   <Route path="imports" element={<Imports />} />
                   <Route path="settings" element={<Settings />} />
