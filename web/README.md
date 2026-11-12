@@ -42,3 +42,21 @@ The approved design system has not been supplied yet. A temporary neutral token
 layer lives in [`src/index.css`](src/index.css) (`@theme` block) and the shared
 primitives in [`src/components/ui.tsx`](src/components/ui.tsx). Replace those
 two places when the design system arrives; do not add a parallel UI kit.
+
+## Browser E2E, accessibility and coverage
+
+`npm run test:e2e` needs a migrated, seeded **disposable** installation
+(`php artisan migrate:fresh --seed` with `DEMO_PASSWORD`; set the same value as
+`E2E_ADMIN_PASSWORD`). Playwright starts the API and Vite itself, or reuses
+servers when `E2E_BASE_URL` is set.
+
+- Specs: invoice PDF, report export, lead conversion, payment refund request.
+  The refund spec approves the accounting policy to be able to post a receipt,
+  so it only runs with `E2E_APPROVE_POLICY=1` (CI sets it). Never set it against
+  a real client installation.
+- `e2e/accessibility.spec.ts` runs axe (WCAG 2 A/AA) on 8 key pages and fails on
+  any serious or critical violation not listed in `KNOWN_VIOLATIONS`. It runs
+  last (separate `a11y` project) because `auth/login` shares a 10/min throttle
+  counter with the `demo/status` polls of every page load.
+- `npm run test:coverage` gates Vitest coverage on `src/lib` (thresholds in
+  `vitest.config.ts`; raise them, never lower them).

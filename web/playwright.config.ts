@@ -16,6 +16,7 @@ const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173'
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/support/global-setup.ts',
   outputDir: './test-results',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -30,8 +31,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'off',
   },
+  // The accessibility sweep loads many pages and runs last: every page load
+  // hits `demo/status`, which shares its throttle counter with the 10/min
+  // login limit, and the invoice spec needs a real form login.
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', testIgnore: /accessibility/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'a11y', testMatch: /accessibility/, dependencies: ['chromium'], use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

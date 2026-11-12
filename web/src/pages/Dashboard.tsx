@@ -200,7 +200,7 @@ export default function Dashboard() {
             <Card>
               <CardHeader title={t('cashInflowOutflow')} subtitle={locale === 'ar' ? 'حركات التحصيلات ومدفوعات الموردين (آخر 6 أشهر)' : 'Receipts and supplier payments, last 6 months'} />
               <div className="h-64 px-4 pb-4">
-                <Line data={{
+                <Line role="img" aria-label={t('cashInflowOutflow')} data={{
                   labels: data.monthly_cash_flow.map((item) => item.month),
                   datasets: [
                     { label: t('inflow'), data: data.monthly_cash_flow.map((item) => major(item.inflow_minor)), borderColor: colors[1], tension: 0.25 },
@@ -213,7 +213,7 @@ export default function Dashboard() {
               <CardHeader title={t('receivablesAging')} subtitle={locale === 'ar' ? 'أرصدة الفواتير حسب تاريخ الاستحقاق' : 'Outstanding invoices by due date'} />
               <div className="h-64 px-4 pb-4">
                 {data.aging_buckets.every((item) => item.amount_minor === 0) ? <EmptyState /> : (
-                  <Doughnut data={{
+                  <Doughnut role="img" aria-label={t('receivablesAging')} data={{
                     labels: data.aging_buckets.map((item) => locale === 'ar' ? item.label_ar : item.label_en),
                     datasets: [{ data: data.aging_buckets.map((item) => major(item.amount_minor)), backgroundColor: colors }],
                   }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }} />
@@ -223,7 +223,7 @@ export default function Dashboard() {
             <Card>
               <CardHeader title={t('revenueVsExpenses')} subtitle={locale === 'ar' ? 'من القيود المرحلة، وليس التدفق النقدي' : 'Posted GL entries, not cash movements'} />
               <div className="h-64 px-4 pb-4">
-                <Line data={{
+                <Line role="img" aria-label={t('revenueVsExpenses')} data={{
                   labels: data.monthly_profit_loss.map((item) => item.month),
                   datasets: [
                     { label: t('revenue'), data: data.monthly_profit_loss.map((item) => major(item.revenue_minor)), borderColor: colors[0], tension: 0.25 },
@@ -236,7 +236,7 @@ export default function Dashboard() {
               <CardHeader title={t('cashBankDistribution')} subtitle={locale === 'ar' ? 'الحسابات الموجبة بالعملة الأساسية فقط' : 'Positive balances in base currency only'} />
               <div className="h-64 px-4 pb-4">
                 {cashChartAccounts.length === 0 ? <EmptyState /> : (
-                  <Doughnut data={{
+                  <Doughnut role="img" aria-label={t('cashBankDistribution')} data={{
                     labels: cashChartAccounts.map((item) => locale === 'ar' ? item.name_ar : item.name_en),
                     datasets: [{ data: cashChartAccounts.map((item) => major(item.balance_minor)), backgroundColor: colors }],
                   }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }} />

@@ -27,7 +27,7 @@ Severity is about product risk, not effort.
 | CRM | Lead capture, rules, conversion, WhatsApp consent done | 6 | wire reassignment (P0), then pipeline/activities |
 | Core / auth | Users, roles, branches, settings, audit events, health, install | 3 | notifications, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
-| QA / release | 876 backend tests, 88 unit tests, 8 CI jobs | 4 | coverage gate, a11y, performance seed |
+| QA / release | 886 backend tests, 93 unit tests, 9 CI jobs, E2E + axe a11y gate | 4 | backend coverage gate, close→report E2E, performance seed |
 | Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
 
 Counts include only tracked gaps below (35 total, 3 at P0).
@@ -71,13 +71,13 @@ Implemented today: Sanctum auth with rate limiting, role/permission matrix incl.
 
 ## 6. Frontend / QA / release
 
-Implemented today: design tokens from `DESIGN.md` (light/dark, AR/EN, Suisse Intl incl. Arabic), 38 routed pages, shared UI primitives, global search, demo banner, error/empty/loading states, 88 Vitest unit tests, one Playwright critical-flow spec.
+Implemented today: design tokens from `DESIGN.md` (light/dark, AR/EN, Suisse Intl incl. Arabic), 38 routed pages, shared UI primitives, global search, demo banner, error/empty/loading states, 88 Vitest unit tests, Playwright critical-flow specs (invoice PDF, report export, lead conversion, payment refund request) plus an axe accessibility sweep.
 
 | ID | Sev | Gap | Evidence | Done when | Blocked by |
 |---|---|---|---|---|---|
-| GAP-QA-01 | P1 | Browser E2E covers one journey only (invoice PDF); no per-module critical flow. | `web/e2e` contains only `invoice-pdf.spec.ts`. | One spec per finished module: reports export, lead→conversion, payment/refund, close→report. | none |
-| GAP-QA-02 | P1 | No accessibility gate although AC-UI-006 requires an automated check. | `.github/workflows/ci.yml` has no axe/a11y step. | Automated a11y check on key pages fails the build on regressions. | none |
-| GAP-QA-03 | P2 | No coverage threshold, so "coverage ≥ 80% on accounting engine" is unenforced. | `php artisan test` runs without `--coverage` (`ci.yml:53`); no Vitest threshold. | Coverage reported and gated per configured scope. | none |
+| GAP-QA-01 | P2 | Browser E2E covers four journeys (invoice PDF, report export, lead→conversion, payment refund request); the close→report journey and refund approval (maker-checker, needs a second user) are still missing. | `web/e2e/{invoice-pdf,reports-export,lead-conversion,payment-refund}.spec.ts`; the payment spec only runs with `E2E_APPROVE_POLICY=1` (CI sets it; disposable installs only). | Add close→report and refund approval specs. | none |
+| ~~GAP-QA-02~~ | **P1 — closed** | Automated accessibility gate: `web/e2e/accessibility.spec.ts` runs `@axe-core/playwright` (WCAG 2 A/AA) on login, dashboard, bookings, invoices, payments, reports, leads and settings and fails on any serious/critical violation (allowlist `KNOWN_VIOLATIONS`, currently 0 entries). Fixed on the way: dashboard chart canvases had no accessible name, global-search `kbd` hint contrast, unlabeled status/stage filters, keyboard access to scrollable tables. | `web/e2e/accessibility.spec.ts`; `e2e` CI job. Not yet covered: dark theme, Arabic/RTL, modals, detail pages, and pages loaded with rich data. | Closed by the spec running in CI on every PR. | none |
+| GAP-QA-03 | P2 | Coverage is reported but the backend gate is not enforced. Vitest gates `src/lib` (thresholds 45/48/28/43 stmts/branches/funcs/lines vs 51.7/55.1/32.3/49.2 measured). Backend: non-blocking `backend-coverage` CI job (pcov) prints accounting-engine line coverage; measured locally at 90.4% (4618/5107 lines in `app/Modules/Accounting`) against the 80% target. | `web/vitest.config.ts`; `.github/workflows/ci.yml` job `backend-coverage` (`continue-on-error`). | Promote the backend job to a blocking gate (e.g. fail below 80% on the Accounting module) after one green CI run confirms the number. | none |
 | GAP-QA-04 | P2 | No performance seed or p95 check (AC-NFR-001). | No `tests/performance`; no k6/benchmark step. | Seeded reference-scale dataset + repeatable p95 assertion in CI or a documented pre-release job. | none |
 | GAP-QA-05 | P3 | Frontend tests are thin relative to surface: 11 test files for 38 pages. | `web/src/**/*.test.*` count = 11. | Critical forms/reports have component tests for validation, empty, and error states. | none |
 
@@ -121,7 +121,7 @@ Order follows the module completion sequence; each step is one branch → one PR
 1. `agent/reports-close-gaps` — GAP-RPT-01, 03, 04; E2E for a report export (GAP-QA-01).
 2. `agent/crm-close-gaps` — GAP-CRM-01 (P0 scheduler) then 02, 03, 04, 05.
 3. `agent/core-notifications-audit` — GAP-CORE-02 closed by `agent/core-audit-browser`; GAP-CORE-01 notifications and GAP-CORE-03 decision next.
-4. `agent/qa-harness` — GAP-QA-02, 03, 04, 05; remaining per-module E2E.
+4. `agent/qa-harness` — GAP-QA-01 (partial), 02 (closed), 03 (Vitest gate + report-only backend job) done; GAP-QA-04, 05 and close→report E2E remain.
 5. `agent/docs-truth-pass` — GAP-DOC-01..05.
 6. Release rehearsal — re-run the PostgreSQL, compose, backup/restore, and N-1 upgrade jobs already in CI.
 

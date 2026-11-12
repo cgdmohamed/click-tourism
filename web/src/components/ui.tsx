@@ -418,7 +418,7 @@ export function statusTone(status: string): BadgeTone {
 
 export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" tabIndex={0}>
       <table className="text-medium w-full min-w-[640px] border-collapse">{children}</table>
     </div>
   )
