@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\FixedAssetReportController;
 use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\InvoiceApplicationController;
 use App\Http\Controllers\Api\InvoiceCollectionController;
@@ -255,6 +256,18 @@ Route::prefix('v1')->group(function () {
         Route::patch('accounts/{account}', [AccountController::class, 'update'])->middleware('permission:accounts.update');
         Route::get('accounts/export', [AccountController::class, 'export'])->middleware('permission:accounts.view');
         Route::post('accounts/import', [AccountController::class, 'import'])->middleware('permission:accounts.update');
+
+        // Generic import framework (work order 13). Authorisation is per entity
+        // inside the controller: the same permission that creates/updates the
+        // record by hand, evaluated for the chosen duplicate policy.
+        Route::get('imports/templates', [ImportController::class, 'templates']);
+        Route::get('imports/templates/{entity}', [ImportController::class, 'template']);
+        Route::get('imports', [ImportController::class, 'index']);
+        Route::post('imports', [ImportController::class, 'store'])->middleware('throttle:30,1');
+        Route::get('imports/{job}', [ImportController::class, 'show']);
+        Route::post('imports/{job}/confirm', [ImportController::class, 'confirm']);
+        Route::get('imports/{job}/errors', [ImportController::class, 'errors']);
+        Route::delete('imports/{job}', [ImportController::class, 'destroy']);
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');
