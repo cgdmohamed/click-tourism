@@ -96,6 +96,26 @@ class CurrencyManagementTest extends TestCase
         $this->assertSame(1, AuditEvent::query()->where('action', 'currency.updated')->count());
     }
 
+    public function test_built_in_currencies_keep_their_fixed_exponent(): void
+    {
+        $this->actAs();
+
+        // KWD is built in with 3 decimals: the UI formatter, Money, imports and exports all agree on it.
+        Currency::query()->updateOrCreate(['code' => 'KWD'], ['name' => 'Kuwaiti Dinar', 'symbol' => 'KD', 'exponent' => 3, 'is_active' => true]);
+        Money::flushExponentCache();
+
+        $this->patchJson('/api/v1/currencies/KWD', ['exponent' => 2])
+            ->assertStatus(422)->assertJsonValidationErrors('exponent');
+        $this->assertSame(3, (int) Currency::query()->find('KWD')->exponent);
+        $this->patchJson('/api/v1/currencies/KWD', ['exponent' => 3, 'name' => 'Kuwaiti Dinar (KWD)'])->assertOk();
+
+        Currency::query()->where('code', 'BHD')->delete();
+        $this->postJson('/api/v1/currencies', ['code' => 'BHD', 'name' => 'Bahraini Dinar', 'exponent' => 2])
+            ->assertStatus(422)->assertJsonValidationErrors('exponent');
+        $this->postJson('/api/v1/currencies', ['code' => 'BHD', 'name' => 'Bahraini Dinar', 'exponent' => 3])->assertCreated();
+        $this->assertSame(3, Money::exponent('KWD'));
+    }
+
     public function test_exponent_is_editable_only_while_unused(): void
     {
         $this->actAs();

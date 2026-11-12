@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
+import { resolveCurrency } from '../lib/currencies'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import type { Booking, Paginated } from '../lib/types'
 import {
@@ -94,6 +95,19 @@ export default function Bookings() {
     notes: '',
   })
   const [items, setItems] = useState<DraftItem[]>([emptyItem('EGP')])
+  // A new draft must never keep a currency that is no longer offered (e.g. the hard-coded default
+  // after it was deactivated): reconcile the draft and its lines with the active currencies.
+  const draftCurrency = editTarget ? form.currency : resolveCurrency(form.currency, currencyCodes, baseCurrency)
+  useEffect(() => {
+    if (!open || editTarget || form.currency === draftCurrency) return
+    const previous = form.currency
+    setForm((current) => ({ ...current, currency: draftCurrency, fx_rate: '' }))
+    setItems((current) => current.map((item) => ({
+      ...item,
+      cost_currency: item.cost_currency === previous ? draftCurrency : item.cost_currency,
+      sell_currency: item.sell_currency === previous ? draftCurrency : item.sell_currency,
+    })))
+  }, [open, editTarget, form.currency, draftCurrency])
 
   useEffect(() => {
     setSearch(urlSearch)
@@ -170,7 +184,7 @@ export default function Bookings() {
         pax_adults: Number(form.pax_adults),
         pax_children: Number(form.pax_children),
         pax_infants: Number(form.pax_infants),
-        currency: form.currency,
+        currency: draftCurrency,
         ...(form.fx_rate.trim() ? { fx_rate: form.fx_rate.trim() } : {}),
         notes: form.notes,
         items: items.map((item) => ({
@@ -200,7 +214,7 @@ export default function Bookings() {
       setOpen(false)
       setEditTarget(null)
       setError('')
-      setItems([emptyItem(form.currency)])
+      setItems([emptyItem(draftCurrency)])
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
       setViewId(booking.id)
     },
@@ -250,7 +264,7 @@ export default function Bookings() {
         unit_cost: selected.unitCost,
       }])
     } else {
-      setItems([emptyItem(form.currency)])
+      setItems([emptyItem(draftCurrency)])
     }
   }
 
@@ -421,7 +435,7 @@ export default function Bookings() {
         footer={
           <>
             <span className="me-auto text-sm text-text-subtle">
-              {t('total')}: {toDecimal(totals.sell, form.currency)} · {t('tax')}: {toDecimal(totals.tax, form.currency)} · {t('margin')}: {toDecimal(totals.margin, form.currency)}
+              {t('total')}: {toDecimal(totals.sell, draftCurrency)} · {t('tax')}: {toDecimal(totals.tax, draftCurrency)} · {t('margin')}: {toDecimal(totals.margin, draftCurrency)}
             </span>
             <Button variant="secondary" onClick={() => { setOpen(false); setEditTarget(null) }}>
               {t('cancel')}
@@ -475,13 +489,13 @@ export default function Bookings() {
             <Input type="number" min="0" value={form.pax_infants} onChange={(event) => setForm({ ...form, pax_infants: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
-            <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
+            <Select value={draftCurrency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
               {currencyCodes.map((code) => (
                 <option key={code} value={code}>{code}</option>
               ))}
             </Select>
           </Field>
-          {form.currency !== baseCurrency ? (
+          {draftCurrency !== baseCurrency ? (
             <Field label={locale === 'ar' ? 'سعر الصرف (اختياري)' : 'Exchange rate (optional)'}>
               <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
             </Field>
@@ -567,7 +581,7 @@ export default function Bookings() {
               </div>
             </div>
           ))}
-          <Button variant="secondary" onClick={() => setItems((current) => [...current, emptyItem(form.currency)])}>
+          <Button variant="secondary" onClick={() => setItems((current) => [...current, emptyItem(draftCurrency)])}>
             + {t('addLine')}
           </Button>
         </div>

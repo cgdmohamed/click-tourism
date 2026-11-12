@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
+import { resolveCurrency } from '../lib/currencies'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import { useBaseCurrency } from '../lib/useSetting'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
@@ -164,6 +165,13 @@ export default function Payments() {
   })
 
   const baseCurrency = useBaseCurrency()
+  // The draft must never keep a currency that is no longer offered (e.g. the hard-coded default
+  // after it was deactivated), otherwise the select shows one currency and the form submits another.
+  const draftCurrency = resolveCurrency(form.currency, currencyCodes, baseCurrency)
+  useEffect(() => {
+    if (!open || form.currency === draftCurrency) return
+    setForm((current) => ({ ...current, currency: draftCurrency, invoice_id: '', amount: '', cash_account_id: '', fx_rate: draftCurrency === baseCurrency ? '1' : '' }))
+  }, [open, form.currency, draftCurrency, baseCurrency])
 
   const approveRefund = useMutation({
     mutationFn: async ({ refund, fxRate }: { refund: Refund; fxRate: string }) => {
@@ -199,9 +207,9 @@ export default function Payments() {
     type: 'customer_invoice',
     party_type: 'customer',
     party_id: form.customer_id || undefined,
-    currency: form.currency,
+    currency: draftCurrency,
     open: 1,
-  }), [form.customer_id, form.currency])
+  }), [form.customer_id, draftCurrency])
   const invoicePicker = useRemoteOptions<OpenCustomerInvoice>({
     endpoint: '/invoices',
     keyPrefix: 'customer-collection-invoices',
@@ -227,7 +235,7 @@ export default function Payments() {
   const create = useMutation({
     mutationFn: async () => {
       if (!activeBranch) throw new Error(t('branchRequired'))
-      const amountMinor = toMinor(form.amount, form.currency)
+      const amountMinor = toMinor(form.amount, draftCurrency)
       if (form.invoice_id) {
         if (!selectedInvoice || !form.payment_method_id || amountMinor <= 0 || amountMinor > selectedInvoice.outstanding_minor) {
           throw new Error(locale === 'ar' ? 'اختر فاتورة وطريقة تحصيل ومبلغًا لا يتجاوز المستحق.' : 'Choose an invoice, payment method, and amount within the outstanding balance.')
@@ -238,7 +246,7 @@ export default function Payments() {
             cash_account_id: form.cash_account_id,
             payment_method_id: form.payment_method_id,
             paid_at: form.paid_at,
-            ...(form.currency !== baseCurrency ? { fx_rate: form.fx_rate } : {}),
+            ...(draftCurrency !== baseCurrency ? { fx_rate: form.fx_rate } : {}),
           }],
         }, { headers: { 'Idempotency-Key': idempotencyKey() } })
         return
@@ -251,7 +259,7 @@ export default function Payments() {
         payment_method_id: form.payment_method_id || null,
         method: form.method,
         amount_minor: amountMinor,
-        currency: form.currency,
+        currency: draftCurrency,
         fx_rate: form.fx_rate,
         paid_at: form.paid_at,
         allocations: form.booking_id ? [{ booking_id: form.booking_id, amount_minor: amountMinor }] : [],
@@ -465,7 +473,7 @@ export default function Payments() {
               disabled={!!(methodsQuery.data ?? []).find((method) =>
                 method.id === form.payment_method_id && method.default_cash_account_id)}
               options={(cashQuery.data ?? [])
-                .filter((account) => account.currency === form.currency)
+                .filter((account) => account.currency === draftCurrency)
                 .filter((account) => {
                   const selected = (methodsQuery.data ?? []).find((method) => method.id === form.payment_method_id)
                   return !selected?.default_cash_account_id || selected.default_cash_account_id === account.id
@@ -495,7 +503,7 @@ export default function Payments() {
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
-            <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, invoice_id: '', amount: '', cash_account_id: '' })}>
+            <Select value={draftCurrency} onChange={(event) => setForm({ ...form, currency: event.target.value, invoice_id: '', amount: '', cash_account_id: '' })}>
               {currencyCodes.map((code) => (
                 <option key={code} value={code}>{code}</option>
               ))}

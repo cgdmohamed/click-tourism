@@ -96,9 +96,26 @@ class CurrencyService
         return $this->references = $found;
     }
 
+    /**
+     * Built-in currencies (EGP, KWD, ...) have a fixed number of decimals shared by the money
+     * layer, the web formatter, imports and exports; any other value would make the same amount
+     * mean different minor units in different places.
+     */
+    private function assertBuiltinExponent(string $code, int $exponent): void
+    {
+        $builtin = Money::builtinExponent($code);
+        if ($builtin !== null && $builtin !== $exponent) {
+            throw ValidationException::withMessages([
+                'exponent' => strtoupper($code)." is a built-in currency and always uses {$builtin} decimals.",
+            ]);
+        }
+    }
+
     /** @param array{code: string, name: string, symbol?: ?string, exponent: int} $data */
     public function create(array $data, ?int $actorId): Currency
     {
+        $this->assertBuiltinExponent((string) $data['code'], (int) $data['exponent']);
+
         $currency = DB::transaction(fn () => Currency::query()->create([
             'code' => strtoupper($data['code']),
             'name' => $data['name'],
@@ -117,6 +134,10 @@ class CurrencyService
     public function update(Currency $currency, array $data, ?int $actorId): Currency
     {
         $before = $this->snapshot($currency);
+
+        if (array_key_exists('exponent', $data)) {
+            $this->assertBuiltinExponent($currency->code, (int) $data['exponent']);
+        }
 
         if (array_key_exists('exponent', $data) && (int) $data['exponent'] !== (int) $currency->exponent && $this->isUsed($currency->code)) {
             throw ValidationException::withMessages([

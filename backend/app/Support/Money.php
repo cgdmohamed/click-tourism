@@ -59,6 +59,12 @@ final class Money
      * its stored exponent (frozen once the currency is in use); anything else
      * defaults to 2.
      */
+    /** Fixed exponent of a built-in currency, or null when the code is not built in. */
+    public static function builtinExponent(string $currency): ?int
+    {
+        return self::EXPONENTS[strtoupper($currency)] ?? null;
+    }
+
     public static function exponent(string $currency): int
     {
         $code = strtoupper($currency);
