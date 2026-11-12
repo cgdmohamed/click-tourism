@@ -44,7 +44,6 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
-use App\Http\Controllers\Api\TaxProfileController;
 use App\Http\Controllers\Api\TourPackageController;
 use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\UserController;
@@ -298,7 +297,6 @@ Route::prefix('v1')->group(function () {
         Route::post('supplier-payments/{supplierPayment}/cancel', [SupplierSettlementController::class, 'cancel'])->middleware(['permission:supplier_payments.reverse']);
         Route::post('supplier-payments/{supplierPayment}/unapply', [SupplierSettlementController::class, 'unapply'])->middleware(['permission:supplier_payments.create']);
 
-        Route::get('tax-profiles', [TaxProfileController::class, 'index'])->middleware('permission:bookings.view');
         Route::get('tour-packages', [TourPackageController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('tour-packages', [TourPackageController::class, 'store'])->middleware('permission:bookings.create');
         Route::get('tour-packages/{package}', [TourPackageController::class, 'show'])->middleware('permission:bookings.view');

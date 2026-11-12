@@ -9,10 +9,10 @@ use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
-use App\Modules\Tax\Models\TaxProfile;
 use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -57,7 +57,7 @@ class InstallCommandTest extends TestCase
 
     public function test_installs_company_profile_chart_roles_and_admin_without_demo_data(): void
     {
-        $this->install(['--tax-enabled' => true])->expectsOutputToContain('Installation complete')->assertSuccessful();
+        $this->install(['--tax-enabled' => true, '--tax-rate' => '14', '--tax-inclusive' => true])->expectsOutputToContain('Installation complete')->assertSuccessful();
 
         $settings = app(SettingService::class);
         $this->assertSame('Nile Horizons Travel', $settings->get('general', 'company_name_en'));
@@ -66,6 +66,8 @@ class InstallCommandTest extends TestCase
         $this->assertSame('branding/logo.png', $settings->get('general', 'company_logo_path'));
         $this->assertSame('07-01', $settings->get('accounting', 'fiscal_year_start'));
         $this->assertTrue($settings->bool('tax', 'enabled'));
+        $this->assertSame('14', $settings->get('tax', 'default_rate'));
+        $this->assertTrue($settings->bool('tax', 'inclusive'));
         $this->assertFalse($settings->bool('accounting', 'accounting_policy_approved'));
         $this->assertNotNull($settings->get('general', 'installed_at'));
 
@@ -79,7 +81,7 @@ class InstallCommandTest extends TestCase
 
         $this->assertGreaterThan(20, Account::query()->count());
         $this->assertTrue(CashAccount::query()->where('currency_code', '!=', 'USD')->doesntExist());
-        $this->assertSame(['No tax'], TaxProfile::query()->pluck('name')->all());
+        $this->assertSame(0, DB::table('tax_profiles')->count());
         $this->assertSame(1, AuditEvent::query()->where('action', 'installation.completed')->count());
         $this->assertStringNotContainsString(self::PASSWORD, json_encode(AuditEvent::query()->get()->toArray()));
     }

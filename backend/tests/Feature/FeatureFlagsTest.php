@@ -29,6 +29,7 @@ class FeatureFlagsTest extends TestCase
             ->assertExactJson(['data' => [
                 'tax_enabled' => false,
                 'tax_default_rate' => '0',
+                'tax_inclusive' => false,
                 'credit_limit_policy' => 'warn',
                 'base_currency' => 'EGP',
                 'refund_segregation' => false,

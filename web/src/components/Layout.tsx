@@ -47,7 +47,6 @@ export function Layout() {
         { to: '/documents', label: t('vouchers'), icon: 'clipboardCheck', permission: 'documents.view' },
         { to: '/fixed-assets', label: t('fixedAssets'), icon: 'package', permission: 'assets.view' },
         { to: '/cost-centers', label: locale === 'ar' ? 'مراكز التكلفة' : 'Cost centers', icon: 'hash', permission: 'cost_centers.view' },
-        { to: '/tax-profiles', label: locale === 'ar' ? 'ملفات الضريبة' : 'Tax profiles', icon: 'percent', permission: 'bookings.view' },
         { to: '/reports', label: t('reports'), icon: 'chart' },
       ],
     },

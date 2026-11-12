@@ -1523,7 +1523,7 @@ paths:
   /bookings/{id}:
     get:
       tags: [Bookings]
-      summary: Booking with customer, items, tax profiles and status history (requires bookings.view)
+      summary: Booking with customer, items and status history (requires bookings.view)
       description: Adds `payments_count` (distinct receipts allocated to the booking) and `invoices_count` to the booking payload.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
@@ -2233,7 +2233,7 @@ paths:
   /reports/tax:
     get:
       tags: [Reports]
-      summary: Output vs input tax by tax profile from posted lines on the tax accounts (base currency)
+      summary: Output vs input tax from posted lines on the tax accounts (base currency)
       description: Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
@@ -3943,24 +3943,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
-  /tax-profiles:
-    get:
-      tags: [Bookings]
-      summary: Active tax profiles for booking item pickers (requires bookings.view)
-      description: Read-only. Returns active profiles whose `effective_to` is empty or not yet passed.
-      responses:
-        '200':
-          description: Tax profiles
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: '#/components/schemas/TaxProfile' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
   /payment-methods:
     get:
       tags: [Payments]
@@ -5095,7 +5077,7 @@ components:
         unit_sell_minor: { type: integer, minimum: 0 }
         cost_currency: { type: string }
         sell_currency: { type: string }
-        tax_profile_id: { type: string, nullable: true }
+        tax_profile_id: { type: string, nullable: true, deprecated: true, description: 'Ignored on input (old clients may still send it). Read-only history on items created before the single-tax change; new items return null.' }
     BookingInput:
       type: object
       required: [customer_id, branch_id, owner_user_id, start_date, currency, fx_rate, items]
@@ -6281,13 +6263,6 @@ components:
         email: { type: string, format: email, nullable: true }
         settlement_currency: { type: string, minLength: 3, maxLength: 3 }
         is_active: { type: boolean }
-    TaxProfile:
-      type: object
-      properties:
-        id: { type: string }
-        name: { type: string }
-        rate: { type: string, example: '14.0000' }
-        is_inclusive: { type: boolean }
     PaymentMethod:
       type: object
       properties:

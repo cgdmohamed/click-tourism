@@ -5,9 +5,9 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Core\Services\SettingService;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\PaymentAllocation;
-use App\Modules\Tax\Models\TaxProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
@@ -34,17 +34,6 @@ class BookingApiTest extends TestCase
         }
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $this->user->givePermissionTo($permissions);
-    }
-
-    private function taxProfile(string $rate = '14.0000', bool $active = true): TaxProfile
-    {
-        return TaxProfile::query()->create([
-            'name' => 'VAT '.$rate,
-            'rate' => $rate,
-            'is_inclusive' => false,
-            'effective_from' => Carbon::now()->startOfYear()->toDateString(),
-            'is_active' => $active,
-        ]);
     }
 
     private function booking(array $item = []): Booking
@@ -114,73 +103,34 @@ class BookingApiTest extends TestCase
         $this->assertSame([], BookingService::allowedTransitionsFor('unknown'));
     }
 
-    public function test_tax_profiles_endpoint_lists_active_profiles_with_public_ids(): void
+    public function test_tax_profiles_endpoint_no_longer_exists(): void
     {
         $this->grant('bookings.view');
-        $active = $this->taxProfile('14.0000');
-        $this->taxProfile('5.0000', false);
         Sanctum::actingAs($this->user);
 
-        $response = $this->getJson('/api/v1/tax-profiles')->assertOk();
-
-        $response->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $active->public_id)
-            ->assertJsonPath('data.0.rate', '14.0000')
-            ->assertJsonPath('data.0.is_inclusive', false);
-        $this->assertNotEmpty($active->public_id);
+        $this->getJson('/api/v1/tax-profiles')->assertStatus(404);
     }
 
-    public function test_tax_profiles_endpoint_requires_permission(): void
-    {
-        Sanctum::actingAs($this->user);
-
-        $this->getJson('/api/v1/tax-profiles')->assertStatus(403);
-    }
-
-    public function test_booking_items_accept_a_tax_profile_public_id(): void
-    {
-        $profile = $this->taxProfile('14.0000');
-        $booking = $this->booking(['tax_profile_id' => $profile->public_id]);
-
-        $this->assertSame(28000, $booking->tax_minor);
-        $this->assertSame(228000, $booking->total_sell_minor);
-        $this->assertSame($profile->id, $booking->items->first()->tax_profile_id);
-    }
-
-    public function test_booking_items_still_accept_the_internal_numeric_id(): void
-    {
-        $profile = $this->taxProfile('14.0000');
-        $booking = $this->booking(['tax_profile_id' => $profile->id]);
-
-        $this->assertSame(28000, $booking->tax_minor);
-    }
-
-    public function test_an_unknown_tax_profile_is_rejected(): void
-    {
-        $this->expectException(\DomainException::class);
-
-        $this->booking(['tax_profile_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV']);
-    }
-
-    public function test_item_payload_exposes_the_tax_profile(): void
+    public function test_item_payload_uses_the_single_settings_rate(): void
     {
         $this->grant('bookings.view');
-        $profile = $this->taxProfile('14.0000');
-        $booking = $this->booking(['tax_profile_id' => $profile->public_id]);
+        app(SettingService::class)->set('tax', 'enabled', 'true');
+        app(SettingService::class)->set('tax', 'default_rate', '14');
+        $booking = $this->booking();
         Sanctum::actingAs($this->user);
 
         $this->getJson('/api/v1/bookings/'.$booking->public_id)
             ->assertOk()
             ->assertJsonPath('data.tax_minor', 28000)
-            ->assertJsonPath('data.items.0.tax_profile_id', $profile->public_id)
             ->assertJsonPath('data.items.0.tax_rate', '14.0000')
             ->assertJsonPath('data.items.0.tax_minor', 28000);
     }
 
-    public function test_store_endpoint_accepts_a_tax_profile_public_id(): void
+    public function test_store_endpoint_ignores_a_legacy_tax_profile_id(): void
     {
         $this->grant('bookings.view', 'bookings.create');
-        $profile = $this->taxProfile('14.0000');
+        app(SettingService::class)->set('tax', 'enabled', 'true');
+        app(SettingService::class)->set('tax', 'default_rate', '14');
         Sanctum::actingAs($this->user);
 
         $this->postJson('/api/v1/bookings', [
@@ -195,11 +145,12 @@ class BookingApiTest extends TestCase
                 'quantity' => 1,
                 'unit_cost_minor' => 1000,
                 'unit_sell_minor' => 10000,
-                'tax_profile_id' => $profile->public_id,
+                'tax_profile_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             ]],
         ])->assertCreated()
             ->assertJsonPath('data.tax_minor', 1400)
-            ->assertJsonPath('data.total_sell_minor', 11400);
+            ->assertJsonPath('data.total_sell_minor', 11400)
+            ->assertJsonPath('data.items.0.tax_profile_id', null);
     }
 
     public function test_update_replaces_draft_items_and_recalculates_totals(): void

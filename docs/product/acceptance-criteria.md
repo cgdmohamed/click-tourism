@@ -67,7 +67,7 @@ Format: **AC-&lt;module&gt;-&lt;n&gt;**. Unless stated, "user" means an authenti
 | ID | Criterion |
 |---|---|
 | AC-BOOK-001 | A booking with customer, branch, owner, dates, pax, and ≥1 item can be created in draft; missing required fields return field-level errors. |
-| AC-BOOK-002 | Each service type (flight/hotel/transport/visa/program/other) can be added with supplier, dates, quantity, cost, sell, and tax profile. |
+| AC-BOOK-002 | Each service type (flight/hotel/transport/visa/program/other) can be added with supplier, dates, quantity, cost, sell, and the computed tax amount. |
 | AC-BOOK-003 | Only allowed lifecycle transitions succeed; an illegal transition returns 409 and does not change state. |
 | AC-BOOK-004 | Confirmation freezes the FX rate and pricing snapshot; subsequent rate changes do not alter the confirmed booking. |
 | AC-BOOK-005 | Booking totals equal the sum of item totals minus discounts plus tax; margin = sell − cost − commission (per policy). |
@@ -96,7 +96,7 @@ Format: **AC-&lt;module&gt;-&lt;n&gt;**. Unless stated, "user" means an authenti
 
 | ID | Criterion |
 |---|---|
-| AC-TAX-001 | Tax profiles support rate, inclusive/exclusive, effective dates, and sales/purchase accounts; invalid rates are rejected. |
+| AC-TAX-001 | The single tax (enabled, rate 0-100, inclusive/exclusive) is set only in Settings; invalid rates are rejected and changes are audited. |
 | AC-TAX-002 | A booking item/expense snapshots the tax rate and amount at the time of the document; later profile edits do not change history. |
 | AC-TAX-003 | Tax-inclusive and tax-exclusive calculations produce the expected base/tax/total for a table of known cases. |
 | AC-TAX-004 | Tax summary by period/branch reconciles to the tax control accounts in the trial balance. |

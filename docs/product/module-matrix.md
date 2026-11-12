@@ -17,7 +17,7 @@ A module owns its domain models, migrations, policies, services, API endpoints, 
 | Parties | `Parties` | customers, suppliers, contacts, agent/employee payees | Core | `CustomerCreated`, `SupplierCreated` | LeadConverted |
 | Bookings | `Bookings` | bookings, booking items, lifecycle, pricing/costing, cancellation policy, profitability | Parties, Money, Tax, Suppliers, Core | `BookingConfirmed`, `BookingCompleted`, `BookingCancelled`, `BookingAdjusted` | LeadConverted |
 | Payments | `Payments` | customer receipts, allocations, advances, refunds, supplier obligations/payments, cash/bank transfers | Bookings, Parties, Accounting, Money | `PaymentRecorded`, `RefundIssued`, `SupplierPaid`, `TransferCompleted` | — |
-| Tax | `Tax` | tax profiles, calculation snapshots, tax summary | Money, Core | `TaxCalculated` | — |
+| Tax | `Tax` | single tax settings, calculation snapshots, tax summary | Money, Core | `TaxCalculated` | — |
 | Commissions | `Commissions` | rules, accruals, approvals, payouts | Bookings, Parties, Money, Accounting | `CommissionAccrued`, `CommissionPaid` | Booking events |
 | Reporting | `Reporting` | report queries, saved definitions, PDF/CSV rendering, export jobs | all via read models | `ReportExported` | — |
 | CRM | `CRM` | leads, sources, stages, assignment rules, activities, conversion, reassignment scheduler | Parties, Bookings, Core | `LeadCreated`, `LeadAssigned`, `LeadConverted`, `LeadReassigned` | webhook events |
@@ -35,7 +35,7 @@ A module owns its domain models, migrations, policies, services, API endpoints, 
 | Parties | 3 | P0 | Customers, suppliers + categories, contacts, payees, statements | Core | customer, supplier, contact, payee | `/customers`, `/suppliers` | statements, aging | customers, suppliers, party detail |
 | Bookings | 3 | P0 | Multi-service bookings, lifecycle, pricing, profitability, cancellation | Parties, Money, Tax, Suppliers | booking, booking_item, status_history, cancellation | `/bookings` | profitability | booking list/detail/form, cancellation |
 | Payments | 3 | P0 | Receipts, allocations, advances, refunds, supplier obligations/payments, transfers | Bookings, Parties, Accounting, Money | payment, allocation, refund, supplier_obligation, supplier_payment, transfer | `/payments`, `/refunds`, `/supplier-payments`, `/transfers` | cash book, AR/AP aging | receipt, refund, supplier payment, transfer |
-| Tax | 4 | P0 | Tax profiles, per-line calculation, summary | Core, Money | tax_profile, tax_snapshot | `/tax-profiles`, `/tax-summary` | tax summary | tax profiles, tax report |
+| Tax | 4 | P0 | Single tax setting, per-line calculation, summary | Core, Money | tax_profile, tax_snapshot | `/settings` (tax group), `/tax-summary` | tax summary | tax report |
 | Commissions | 4 | P1 | Rules, accrual, approval, payout, reports | Bookings, Parties, Accounting | commission_rule, commission_accrual | `/commission-rules`, `/commissions` | commission report | rules, accruals, payout |
 | Reporting | 4 | P0 | GL, TB, IS, BS, aging, profitability, PDF/CSV | all read | saved_report, export_job | `/reports/*`, `/exports` | all financial/management | report hub, report viewer |
 | CRM | 5 | P1 | Leads, sources, stages, assignment, 24h reassignment, activities, conversion | Core, Parties, Bookings | lead, lead_source, lead_stage, assignment_rule, lead_activity | `/leads`, `/lead-stages`, `/assignment-rules` | pipeline, sales metrics | leads board, lead detail, pipeline config |

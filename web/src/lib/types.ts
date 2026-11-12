@@ -140,21 +140,12 @@ export type BookingItem = {
   unit_sell_minor: number
   cost_currency: string
   sell_currency: string
-  tax_profile_id?: string | null
-  tax_profile_name?: string | null
   tax_rate?: string
   tax_minor?: number
   supplier_name_ar?: string | null
   supplier_name_en?: string | null
   total_sell_minor?: number
   total_cost_minor?: number
-}
-
-export type TaxProfile = {
-  id: string
-  name: string
-  rate: string
-  is_inclusive: boolean
 }
 
 export type BookingStatusHistoryRow = {

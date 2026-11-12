@@ -41,7 +41,6 @@ import Schedules from './pages/Schedules'
 import FixedAssets from './pages/FixedAssets'
 import ExchangeRates from './pages/ExchangeRates'
 import CostCenters from './pages/CostCenters'
-import TaxProfiles from './pages/TaxProfiles'
 import Imports from './pages/Imports'
 
 const queryClient = new QueryClient({
@@ -76,7 +75,6 @@ export default function App() {
                   <Route path="schedules" element={<Schedules />} />
                   <Route path="fixed-assets" element={<FixedAssets />} />
                   <Route path="cost-centers" element={<CostCenters />} />
-                  <Route path="tax-profiles" element={<TaxProfiles />} />
                   <Route path="exchange-rates" element={<ExchangeRates />} />
                   <Route path="customers" element={<Customers />} />
                   <Route path="customers/:id" element={<CustomerProfile />} />

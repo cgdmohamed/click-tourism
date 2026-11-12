@@ -123,7 +123,7 @@ erDiagram
 Key entity groups:
 
 - **Party:** customer, supplier (+ category), contact, address, tax identifiers.
-- **Catalog/config:** branch, user, role, permission, currency, FX rate, tax profile, commission rule, document sequence, feature flag, setting.
+- **Catalog/config:** branch, user, role, permission, currency, FX rate, tax setting, commission rule, document sequence, feature flag, setting.
 - **Commercial:** booking, booking item (service), booking status history, quotation/version (later), cancellation policy snapshot.
 - **Money movement:** payment/receipt, payment allocation, refund, supplier obligation, supplier payment, expense, cash/bank account, transfer.
 - **Ledger:** account (nested), fiscal year, fiscal period, journal entry, journal line, opening balance batch, period close, reversal link.
@@ -196,7 +196,7 @@ Priority: **M** = MVP mandatory, **S** = MVP should, **L** = later.
 | ID | Requirement | Pri |
 |---|---|---|
 | FR-BOOK-001 | Create bookings with customer, branch, owner, dates, headcount (adults/children/infants), currency + FX snapshot, notes, and one or more service items. | M |
-| FR-BOOK-002 | Service item types: flight, hotel, transport, visa, tourist program, other; each with supplier, description, dates, quantity, unit cost/sell, tax profile. | M |
+| FR-BOOK-002 | Service item types: flight, hotel, transport, visa, tourist program, other; each with supplier, description, dates, quantity, unit cost/sell; tax is computed from the installation tax setting. | M |
 | FR-BOOK-003 | Lifecycle: draft → quoted → confirmed → in progress → completed → closed, plus cancelled/no-show; transitions validated, timestamped, audited, reason-required where defined. | M |
 | FR-BOOK-004 | Pricing: per-item sell and cost, discounts (with authority limits), taxes, totals, and derived margin; currency-consistent calculations. | M |
 | FR-BOOK-005 | Profitability per booking, item, customer, agent, sales user, and branch, including commissions and FX effects. | M |
@@ -222,7 +222,7 @@ Priority: **M** = MVP mandatory, **S** = MVP should, **L** = later.
 
 | ID | Requirement | Pri |
 |---|---|---|
-| FR-TAX-001 | Configurable tax profiles (name, rate, inclusive/exclusive, effective dates, sales and purchase accounts). | M |
+| FR-TAX-001 | One tax per installation, configured only in Settings (enabled, rate 0-100, inclusive/exclusive). No tax profiles or per-item choice; effective-dating is dropped: a rate change is an audited settings change and historical documents keep their stored amounts. Posting accounts stay `output_tax_account_code` / `input_tax_account_code`. | M |
 | FR-TAX-002 | Apply tax per booking item/expense; snapshot rate and computed amounts on the document; rounding policy documented. | M |
 | FR-TAX-003 | Tax summary report by period/branch/type, reconciled to ledger tax accounts. | M |
 | FR-TAX-004 | Withholding tax and multi-jurisdiction rules — later, pending accountant decision. | L |

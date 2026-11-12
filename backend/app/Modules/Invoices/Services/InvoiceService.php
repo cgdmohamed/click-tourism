@@ -669,11 +669,20 @@ class InvoiceService
                 throw new DomainException("Line {$position}: quantity and unit price must match the line amount.");
             }
 
-            // When the UI supplies the VAT toggle, never trust a manually
-            // supplied tax amount: calculate the configured rate on the server.
-            $tax = array_key_exists('tax_applied', $raw)
-                ? ((bool) $raw['tax_applied'] ? $this->taxPolicy->exclusiveMinor($debit + $credit) : 0)
+            // When the UI supplies the tax toggle, never trust a manually supplied
+            // tax amount: calculate it from the settings (rate + inclusive flag).
+            // Inclusive: the entered amount contains the tax, so the line keeps the net.
+            $applied = array_key_exists('tax_applied', $raw);
+            $tax = $applied
+                ? ((bool) $raw['tax_applied'] ? $this->taxPolicy->taxOn($debit + $credit) : 0)
                 : (int) ($raw['tax_minor'] ?? 0);
+            if ($applied && $tax > 0 && $this->taxPolicy->inclusive()) {
+                if ($debit > 0) {
+                    $debit -= $tax;
+                } else {
+                    $credit -= $tax;
+                }
+            }
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
             }

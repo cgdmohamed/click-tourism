@@ -7,6 +7,7 @@ type Setting = { group: string; key: string; value: string | null; is_secret: bo
 export type FeatureFlags = {
   tax_enabled: boolean
   tax_default_rate: string
+  tax_inclusive?: boolean
   credit_limit_policy: 'off' | 'warn' | 'block'
   base_currency: string
   refund_segregation: boolean
@@ -80,6 +81,13 @@ export function useBaseCurrency(): string {
   const { flags } = useFeatureFlags()
   const legacy = useSetting('general', 'base_currency', 'EGP')
   return resolveBaseCurrency(flags, legacy.value)
+}
+
+/** Whether entered prices already include the tax (setting tax.inclusive). */
+export function useTaxInclusive(): boolean {
+  const { flags } = useFeatureFlags()
+  const legacy = useSetting('tax', 'inclusive', 'false')
+  return flags?.tax_inclusive ?? legacy.value === 'true'
 }
 
 /** Configured VAT percentage, never typed manually on invoice lines. */

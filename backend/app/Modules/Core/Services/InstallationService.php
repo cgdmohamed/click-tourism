@@ -8,7 +8,6 @@ use App\Modules\Accounting\Services\FiscalYearSuggestionService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\Setting;
 use App\Modules\Core\Models\User;
-use App\Modules\Tax\Models\TaxProfile;
 use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\ChartOfAccountsSeeder;
 use Database\Seeders\CrmSeeder;
@@ -31,7 +30,7 @@ use Spatie\Permission\PermissionRegistrar;
  * Creates company profile, base currency, fiscal calendar, chart of accounts,
  * roles and the initial administrator. It never installs demo users, sample
  * customers or customer-specific data (no branch other than the head office,
- * no jurisdiction-specific tax profile), and it never uses a built-in password:
+ * tax defaults to off with a 0 rate), and it never uses a built-in password:
  * the administrator password must be supplied by the operator.
  */
 class InstallationService
@@ -95,6 +94,8 @@ class InstallationService
             'timezone' => ['required', 'in:'.implode(',', DateTimeZone::listIdentifiers())],
             'locale' => ['required', 'in:ar,en'],
             'tax_enabled' => ['required', 'boolean'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_inclusive' => ['nullable', 'boolean'],
             'branch_name_en' => ['required', 'string', 'max:120'],
             'branch_name_ar' => ['nullable', 'string', 'max:120'],
             'admin_name' => ['required', 'string', 'max:120'],
@@ -112,6 +113,8 @@ class InstallationService
         $data['branch_name_ar'] = ($data['branch_name_ar'] ?? '') !== '' ? $data['branch_name_ar'] : $data['branch_name_en'];
         $data['logo_path'] = (string) ($data['logo_path'] ?? '');
         $data['tax_enabled'] = filter_var($data['tax_enabled'], FILTER_VALIDATE_BOOL);
+        $data['tax_rate'] = (string) ($data['tax_rate'] ?? '0');
+        $data['tax_inclusive'] = filter_var($data['tax_inclusive'] ?? false, FILTER_VALIDATE_BOOL);
 
         return $data;
     }
@@ -166,20 +169,6 @@ class InstallationService
 
             $this->openFiscalYear((string) $data['fiscal_start'], (string) $data['timezone']);
 
-            // Neutral: a zero-rate profile only. Jurisdiction VAT profiles are created by the client.
-            TaxProfile::query()->updateOrCreate(
-                ['name' => 'No tax'],
-                [
-                    'rate' => '0.0000',
-                    'is_inclusive' => false,
-                    'sales_account_id' => null,
-                    'purchase_account_id' => null,
-                    'effective_from' => Carbon::now($data['timezone'])->startOfYear()->toDateString(),
-                    'effective_to' => null,
-                    'is_active' => true,
-                ],
-            );
-
             $user = User::query()->create([
                 'name' => $data['admin_name'],
                 'email' => $data['admin_email'],
@@ -198,6 +187,8 @@ class InstallationService
                 'base_currency' => $base,
                 'fiscal_year_start' => $data['fiscal_start'],
                 'tax_enabled' => $data['tax_enabled'],
+                'tax_rate' => $data['tax_rate'],
+                'tax_inclusive' => $data['tax_inclusive'],
                 'admin_email' => $data['admin_email'],
             ], $user->id);
 
@@ -219,6 +210,8 @@ class InstallationService
         $this->settings->set('accounting', 'fiscal_year_start', (string) $data['fiscal_start']);
         $this->settings->set('crm', 'business_timezone', (string) $data['timezone']);
         $this->settings->set('tax', 'enabled', $data['tax_enabled'] ? 'true' : 'false');
+        $this->settings->set('tax', 'default_rate', $data['tax_rate']);
+        $this->settings->set('tax', 'inclusive', $data['tax_inclusive'] ? 'true' : 'false');
         // Accounting policy stays unapproved: auto-posting remains disabled until an accountant signs off.
         $this->settings->set('accounting', 'accounting_policy_approved', 'false');
     }

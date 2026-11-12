@@ -16,7 +16,6 @@ use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Payments\Services\PaymentService;
-use App\Modules\Tax\Models\TaxProfile;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 
@@ -50,7 +49,7 @@ class DemoDataSeeder extends Seeder
 
     public const EXPECTED_LEADS = 3;
 
-    public const EXPECTED_BOOKING_SALES_MINOR = 8_696_800;
+    public const EXPECTED_BOOKING_SALES_MINOR = 9_336_600;
 
     public const EXPECTED_BOOKING_COST_MINOR = 5_660_000;
 
@@ -69,8 +68,10 @@ class DemoDataSeeder extends Seeder
             return;
         }
 
-        // The demo data exercises VAT, so seeding it enables the tax setting.
+        // The demo data exercises VAT: the installation's single tax is 14%, exclusive.
         app(SettingService::class)->set('tax', 'enabled', 'true');
+        app(SettingService::class)->set('tax', 'default_rate', '14');
+        app(SettingService::class)->set('tax', 'inclusive', 'false');
 
         // Only the isolated, disposable demo installation can opt into the
         // provisional accounting policy needed to generate realistic samples.
@@ -91,11 +92,10 @@ class DemoDataSeeder extends Seeder
         // demo data needs a second person to approve what the accountant
         // submits. Falls back to the owner only when no second user exists.
         $approver = User::query()->where('email', 'admin@example.com')->first() ?? $owner;
-        $taxProfile = TaxProfile::query()->where('name', 'VAT 14% (Egypt)')->first();
         $customers = $this->seedCustomers($branch);
         $suppliers = $this->seedSuppliers($branch);
         $this->seedEmployees($branch);
-        $bookings = $this->seedBookings($branch, $owner, $taxProfile, $customers, $suppliers);
+        $bookings = $this->seedBookings($branch, $owner, $customers, $suppliers);
         $this->seedPayments($branch, $owner, $customers, $bookings);
         $this->seedInvoices($branch, $owner, $approver, $customers, $suppliers, $bookings);
         $this->seedLeads($branch, $owner);
@@ -165,7 +165,7 @@ class DemoDataSeeder extends Seeder
      * @param  array<int, Supplier>  $suppliers
      * @return array<int, Booking>
      */
-    private function seedBookings(Branch $branch, ?User $owner, ?TaxProfile $taxProfile, array $customers, array $suppliers): array
+    private function seedBookings(Branch $branch, ?User $owner, array $customers, array $suppliers): array
     {
         $service = app(BookingService::class);
         $today = Carbon::today();
@@ -175,14 +175,14 @@ class DemoDataSeeder extends Seeder
                 'adults' => 2, 'children' => 1, 'status' => ['confirmed'],
                 'notes' => 'Cairo and Nile cruise package.',
                 'items' => [
-                    $this->item('hotel', 0, 'Nile Hotel - 7 nights, double room', 7, 180_000, 260_000, $taxProfile),
+                    $this->item('hotel', 0, 'Nile Hotel - 7 nights, double room', 7, 180_000, 260_000),
                     $this->item('transport', 2, 'Airport transfers and daily transport', 1, 150_000, 240_000),
                 ],
             ],
             [
                 'customer' => 1, 'start' => $today->copy()->addDays(25), 'end' => $today->copy()->addDays(30),
                 'adults' => 4, 'status' => ['quoted'], 'notes' => 'Corporate group quotation.',
-                'items' => [$this->item('flight', 1, 'Return flights Cairo - Sharm El Sheikh', 4, 320_000, 450_000, $taxProfile)],
+                'items' => [$this->item('flight', 1, 'Return flights Cairo - Sharm El Sheikh', 4, 320_000, 450_000)],
             ],
             [
                 'customer' => 2, 'start' => $today->copy()->subDays(7), 'end' => $today->copy()->addDays(1),
@@ -247,7 +247,7 @@ class DemoDataSeeder extends Seeder
     }
 
     /** @return array<string, mixed> */
-    private function item(string $type, int $supplier, string $description, int $quantity, int $cost, int $sell, ?TaxProfile $taxProfile = null): array
+    private function item(string $type, int $supplier, string $description, int $quantity, int $cost, int $sell): array
     {
         return array_filter([
             'service_type' => $type,
@@ -256,7 +256,6 @@ class DemoDataSeeder extends Seeder
             'quantity' => $quantity,
             'unit_cost_minor' => $cost,
             'unit_sell_minor' => $sell,
-            'tax_profile_id' => $taxProfile?->id,
         ], fn ($value) => $value !== null);
     }
 

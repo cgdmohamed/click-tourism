@@ -23,6 +23,8 @@ const editable: Array<{ group: string; key: string; ar: string; en: string; type
   { group: 'accounting', key: 'rounding_policy', ar: 'سياسة التقريب', en: 'Rounding policy', type: 'select', options: ['half_up', 'bankers'] },
   { group: 'accounting', key: 'credit_limit_policy', ar: 'سياسة حد الائتمان', en: 'Credit limit policy', type: 'select', options: ['off', 'warn', 'block'] },
   { group: 'tax', key: 'enabled', ar: 'تفعيل الضريبة', en: 'Enable tax', type: 'toggle', options: ['true', 'false'] },
+  { group: 'tax', key: 'default_rate', ar: 'نسبة الضريبة (%)', en: 'Tax rate (%)' },
+  { group: 'tax', key: 'inclusive', ar: 'الأسعار شاملة الضريبة', en: 'Prices include tax', type: 'toggle', options: ['true', 'false'] },
   { group: 'crm', key: 'reassign_after_hours', ar: 'إعادة توزيع العميل المحتمل بعد (ساعات)', en: 'Lead reassignment after (hours)' },
 ]
 

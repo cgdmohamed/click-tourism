@@ -62,7 +62,7 @@ erDiagram
 | `journal_lines` | `journal_entry_id`, `account_id`, `debit_minor`, `credit_minor`, `base_debit_minor`, `base_credit_minor`, `currency_code`, `party_type/party_id`, `branch_id`, `description`. Check debit xor credit. |
 | `customers` | `public_id`, `type`, `name_ar/name_en`, `phone`, `email`, `tax_id`, `branch_id`, `credit_limit_minor`, `is_active`; normalized phone index. |
 | `suppliers` | `public_id`, `category` (`airline/hotel_eg/hotel_sa/transport/visa/agent/other`), names, `settlement_currency`, `branch_id`, `is_active`. |
-| `tax_profiles` | `name`, `rate numeric(9,4)`, `is_inclusive`, `sales_account_id`, `purchase_account_id`, `effective_from/to`, `is_active`. |
+| `tax_profiles` | LEGACY, history only (no longer written or exposed): `name`, `rate numeric(9,4)`, `is_inclusive`, `sales_account_id`, `purchase_account_id`, `effective_from/to`, `is_active`. |
 | `bookings` | `public_id`, `number`, `customer_id`, `branch_id`, `owner_user_id`, `status`, `currency_code`, `fx_rate/date/source`, dates, pax, totals in minor, `confirmed_at`, `cancelled_at`, `cancellation_policy` snapshot. |
 | `booking_items` | `booking_id`, `service_type`, `supplier_id`, `description`, dates, `quantity`, `unit_cost_minor`, `unit_sell_minor`, `cost_currency`, `sell_currency`, `tax_profile_id`, `tax_rate_snapshot`, `tax_minor`, `total_sell_minor`, `total_cost_minor`. |
 | `booking_status_history` | `booking_id`, `from_status`, `to_status`, `reason`, `actor_id`, `created_at`. |

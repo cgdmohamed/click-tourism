@@ -145,6 +145,21 @@ class SettingController extends ApiController
     private function validateAccountingPolicyValues(array $items): void
     {
         foreach ($items as $index => $item) {
+            if (($item['group'] ?? null) === 'tax') {
+                $value = trim((string) ($item['value'] ?? ''));
+                if (in_array($item['key'], ['enabled', 'inclusive'], true) && ! in_array($value, ['true', 'false'], true)) {
+                    throw ValidationException::withMessages([
+                        "settings.{$index}.value" => "tax.{$item['key']} must be 'true' or 'false'.",
+                    ]);
+                }
+                if ($item['key'] === 'default_rate' && (! is_numeric($value) || bccomp($value, '0', 4) < 0 || bccomp($value, '100', 4) > 0)) {
+                    throw ValidationException::withMessages([
+                        "settings.{$index}.value" => 'The tax rate must be a number from 0 to 100.',
+                    ]);
+                }
+
+                continue;
+            }
             if (($item['group'] ?? null) === 'treasury') {
                 $value = trim((string) ($item['value'] ?? ''));
                 if (in_array($item['key'], ['reconciliation_lookahead_days', 'reconciliation_date_window_days'], true)

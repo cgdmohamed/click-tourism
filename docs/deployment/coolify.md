@@ -60,6 +60,8 @@ Neither PostgreSQL, Redis, backend nor API should have public ports.
    logs may still exist on the server and must have separate retention rules. The demo cannot persist its
    application database or uploads through container restarts.
 
+**Tax in the demo:** the baseline is rebuilt by `migrate:fresh --seed` at demo container start (`docker/entrypoint.sh`), and `DemoDataSeeder` sets `tax.enabled=true`, `tax.default_rate=14`, `tax.inclusive=false`. An already-running demo keeps its old saved baseline (with the two legacy tax profiles) until the demo container is redeployed/restarted so the baseline is regenerated; `demo-restore-db.sh` only restores that dump. Do not edit production data.
+
 **Safety constraints:** The reset script refuses execution unless
 `DEMO_MODE=true`, `APP_ENV=demo`, `DB_HOST=demo-db`,
 `DB_DATABASE=demo_erp`, and the interval is exactly 600 seconds.

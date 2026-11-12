@@ -174,6 +174,7 @@ class SettingService
         'tax' => [
             'enabled' => 'false',
             'default_rate' => '0',
+            'inclusive' => 'false',
         ],
         'crm' => [
             'reassign_after_hours' => '24',

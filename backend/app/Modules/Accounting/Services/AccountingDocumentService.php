@@ -91,7 +91,7 @@ class AccountingDocumentService
             $tax = (int) array_sum(array_column($lines, 'tax_minor'));
             // In simplified settlement mode the document amount is the single
             // cash movement; summing debit + credit would double-count it.
-            $total = ($data['simple_mode'] ?? false) === true ? (int) $data['amount_minor'] : $subtotal + $tax;
+            $total = ($data['simple_mode'] ?? false) === true ? (int) $data['amount_minor'] : $subtotal + $this->extraTax($lines);
             if (($data['simple_mode'] ?? false) === true) {
                 $subtotal = $total;
             }
@@ -196,7 +196,7 @@ class AccountingDocumentService
 
                 $attributes['subtotal_minor'] = (int) array_sum(array_column($lines, 'debit_minor'));
                 $attributes['tax_minor'] = (int) array_sum(array_column($lines, 'tax_minor'));
-                $attributes['total_minor'] = $attributes['subtotal_minor'] + $attributes['tax_minor'];
+                $attributes['total_minor'] = $attributes['subtotal_minor'] + $this->extraTax($lines);
             }
 
             if ($currency !== $document->currency_code || isset($data['fx_rate']) || isset($data['document_date'])) {
@@ -575,7 +575,12 @@ class AccountingDocumentService
                 throw new DomainException("Line {$position}: enter exactly one of debit or credit, greater than zero.");
             }
 
-            $tax = (int) ($raw['tax_minor'] ?? 0);
+            // `tax_applied` computes the tax from the settings (rate + inclusive flag);
+            // otherwise a legacy explicit amount is kept. The tax is metadata only.
+            $applied = array_key_exists('tax_applied', $raw);
+            $tax = $applied
+                ? ((bool) $raw['tax_applied'] ? $this->taxPolicy->taxOn($debit + $credit) : 0)
+                : (int) ($raw['tax_minor'] ?? 0);
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
             }
@@ -592,6 +597,7 @@ class AccountingDocumentService
                 'debit_minor' => $debit,
                 'credit_minor' => $credit,
                 'tax_minor' => $tax,
+                'tax_included' => $applied && $tax > 0 && $this->taxPolicy->inclusive(),
                 'tax_account_id' => $taxAccountId,
                 'party_type' => $raw['party_type'] ?? null,
                 'party_id' => $this->resolvePartyId($raw['party_type'] ?? null, $raw['party_id'] ?? null),
@@ -600,6 +606,12 @@ class AccountingDocumentService
         }
 
         return $lines;
+    }
+
+    /** Tax added on top of the lines; tax already contained in an inclusive line adds nothing. */
+    private function extraTax(array $lines): int
+    {
+        return (int) array_sum(array_map(fn ($l) => ! empty($l['tax_included']) ? 0 : $l['tax_minor'], $lines));
     }
 
     /** @param  array<int, array<string, mixed>>  $lines */

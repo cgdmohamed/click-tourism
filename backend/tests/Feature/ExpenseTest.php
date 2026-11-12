@@ -335,6 +335,25 @@ class ExpenseTest extends TestCase
         $this->create()->assertCreated();
     }
 
+    public function test_expense_tax_is_computed_from_settings(): void
+    {
+        $settings = app(SettingService::class);
+        $settings->set('tax', 'enabled', 'true');
+        $settings->set('tax', 'default_rate', '14');
+
+        // Exclusive: the entered amount is the net.
+        $settings->set('tax', 'inclusive', 'false');
+        $this->create(['amount_minor' => 100000, 'tax_minor' => 0, 'tax_applied' => true])->assertCreated()
+            ->assertJsonPath('data.tax_minor', 14000)
+            ->assertJsonPath('data.amount_minor', 114000);
+
+        // Inclusive: the entered amount is the total.
+        $settings->set('tax', 'inclusive', 'true');
+        $this->create(['amount_minor' => 114000, 'tax_applied' => true])->assertCreated()
+            ->assertJsonPath('data.tax_minor', 14000)
+            ->assertJsonPath('data.amount_minor', 114000);
+    }
+
     public function test_a_rejected_expense_can_be_reopened_edited_and_resubmitted(): void
     {
         $id = $this->create(['submit' => true])->assertCreated()->json('data.id');

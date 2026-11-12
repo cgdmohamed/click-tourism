@@ -6,6 +6,8 @@ Purpose: one place that answers "what is actually still missing?" so modules can
 
 Companion documents: `PRD.md`, `acceptance-criteria.md`, `traceability-matrix.md`, `decision-implementation-matrix.md`, `issues/`, `../architecture/dependency-graph.md`, `../architecture/openapi.yaml`.
 
+> Note (single tax): the installation has one tax defined in Settings; tax profiles are removed. The management tax report (`/reports/tax`) still groups by legacy tax profile and needs a follow-up to use the single rate.
+
 ## 1. How to read this register
 
 | Field | Meaning |

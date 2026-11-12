@@ -256,9 +256,18 @@ class ExpenseService
         }
 
         $amount = (int) $data['amount_minor'];
-        $tax = (int) ($data['tax_minor'] ?? 0);
         if ($amount <= 0) {
             throw new DomainException('The expense amount must be greater than zero.');
+        }
+        if (array_key_exists('tax_applied', $data)) {
+            // Tax comes from the settings only (rate + inclusive flag); the stored
+            // amount is always the total paid. Exclusive: the entered amount is the net.
+            $tax = ! empty($data['tax_applied']) ? $this->taxPolicy->taxOn($amount) : 0;
+            if ($tax > 0 && ! $this->taxPolicy->inclusive()) {
+                $amount += $tax;
+            }
+        } else {
+            $tax = (int) ($data['tax_minor'] ?? 0);
         }
         $this->taxPolicy->assertTaxAllowed($tax);
         if ($tax < 0 || $tax >= $amount) {

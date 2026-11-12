@@ -18,7 +18,8 @@ class FeatureFlagController extends ApiController
 
         return $this->ok([
             'tax_enabled' => $tax->enabled(),
-            'tax_default_rate' => $tax->defaultRate(),
+            'tax_default_rate' => $tax->rate(),
+            'tax_inclusive' => $tax->inclusive(),
             'credit_limit_policy' => in_array($policy, ['off', 'warn', 'block'], true) ? $policy : 'warn',
             'base_currency' => $settings->baseCurrency(),
             'refund_segregation' => $settings->bool('accounting', 'refund_segregation', false),

@@ -15,7 +15,7 @@
 | Customer advances (DEC-005) | Liability (2300) until applied to an invoice or booking. | Unapplied customer payment sits as a credit until reconciled | `PartyLedgerService`, `InvoiceSettlementService` |
 | Cancellation fee (DEC-006) | Charged when the booking is cancelled and posted as revenue; the refund is a separate refund document. | Fee is a line on the invoice/credit note | `BookingService::cancel` |
 | FX (DEC-007, 008) | Manual daily rate table, rate snapshot on each document; realized gain/loss at settlement against the original rate; **monthly revaluation with automatic reversal** into dedicated unrealized accounts (7901/6901). Revaluation before the year-end close is shown as a warning, not a blocker. | Exchange difference on payment; unrealized revaluation with auto-reversal | `RealizedFxService`, `RevaluationService` |
-| Tax (DEC-009, 021, 032, 036) | Tax is off until enabled; per-profile rate; **tax point = invoice date**; amounts exclusive unless the profile is marked inclusive; input tax is recoverable through the input-tax account. | Taxes defined per tax with a "included in price" flag; tax computed on the invoice | `TaxPolicy`, tax profiles |
+| Tax (DEC-009, 021, 032, 036) | Tax is off until enabled; one installation-wide rate and inclusive flag in Settings (no tax profiles, effective-dating dropped: a rate change is an audited settings change and historical documents keep their stored amounts); **tax point = invoice date**; amounts exclusive unless the profile is marked inclusive; input tax is recoverable through the input-tax account. | Taxes defined per tax with a "included in price" flag; tax computed on the invoice | `TaxPolicy`, tax profiles |
 | Rounding (DEC-010) | Per line, `half_up` or `bankers` by setting; the residue goes to 6999. | Rounding method configurable | `RoundingPolicy`, `Money` |
 | Opening balances (DEC-011, 033) | One dated opening batch per branch; each customer/supplier balance becomes an **open document** that is settled like an invoice. Cut-over date = go-live date. | Opening entry plus open items per partner | `OpeningBalanceService` |
 | Fiscal year and close (DEC-012, 034) | Configurable year start; the close posts reversible closing entries per branch; the final period must be **open**; reopen needs `periods.reopen`. | Fiscal-year lock dates and unaffected earnings | `FiscalCloseService` |
@@ -42,7 +42,7 @@
 | DEC-024 Data retention and PII | No automatic deletion; retention is a per-installation operational policy. |
 | DEC-026 Notification channels | In-app first; email/WhatsApp are integrations, not core. |
 | DEC-027 Idempotency scope | `Idempotency-Key` per user and endpoint on creating operations. |
-| DEC-030 Reference data seeding | Seeders create currencies, chart of accounts, treasury accounts, tax profiles, CRM stages and roles. |
+| DEC-030 Reference data seeding | Seeders create currencies, chart of accounts, treasury accounts, CRM stages and roles. |
 
 ## 3. What changed in the code with this closure
 
