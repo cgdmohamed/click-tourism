@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { downloadResponse } from '../lib/download'
 import { formatDate, todayISO } from '../lib/format'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import { useBaseCurrency } from '../lib/useSetting'
@@ -414,14 +415,7 @@ export default function Reports() {
         params: { ...reportParams, format, language: locale },
         responseType: 'blob',
       })
-      const disposition = String(response.headers['content-disposition'] ?? '')
-      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${report}.${format}`
-      const href = URL.createObjectURL(response.data)
-      const link = document.createElement('a')
-      link.href = href
-      link.download = filename
-      link.click()
-      URL.revokeObjectURL(href)
+      downloadResponse(response, `${report}.${format}`)
     } catch {
       setExportError(t('exportFailed'))
     } finally {

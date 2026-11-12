@@ -9,6 +9,7 @@ graph TD
   MONEY[Money: currencies, FX]
   ACCT[Accounting: CoA, periods, journal, posting]
   PARTY[Parties: customers, suppliers, payees]
+  INVOICE[Invoices: AR/AP, credit notes, documents]
   TAX[Tax]
   BOOK[Bookings]
   PAY[Payments]
@@ -31,6 +32,13 @@ graph TD
   BOOK --> MONEY
   BOOK --> TAX
   BOOK --> ACCT
+  INVOICE --> CORE
+  INVOICE --> MONEY
+  INVOICE --> ACCT
+  INVOICE --> PARTY
+  INVOICE --> BOOK
+  INVOICE --> TAX
+  INVOICE --> PAY
   PAY --> BOOK
   PAY --> PARTY
   PAY --> ACCT
@@ -57,7 +65,16 @@ graph TD
   UI --> PAY
   UI --> RPT
   UI --> CRM
+  UI --> INVOICE
 ```
+
+## Known coupling (not drawn as cycles)
+
+`Payments` and `Reports` reference `Invoices` Eloquent models directly
+(`InvoiceApplication` relations, invoice statements and aging). Those inbound
+model references are deliberately not drawn as `PAY --> INVOICE` /
+`RPT --> INVOICE` edges because that would form a cycle; moving them behind a
+query service/contract is architect-approved follow-up work (rules 4 and 7).
 
 ## Rules
 

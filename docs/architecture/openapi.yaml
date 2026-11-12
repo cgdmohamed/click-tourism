@@ -1849,6 +1849,33 @@ paths:
         '404': { description: Not found }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Validation' }
+  /invoices/{invoice}/pdf:
+    get:
+      tags: [Accounting]
+      summary: Download a server-rendered invoice or credit-note PDF
+      description: >-
+        Renders the stored invoice or credit note as an A4 PDF: company
+        letterhead, bilingual labels, bill-to/supplier block, line items,
+        totals, outstanding balance and FX provenance. Generated from the
+        immutable issue-time snapshot only; it does not post or mutate any
+        accounting state. Requires invoices.view and a branch the caller can
+        access. Throttled like report exports and audited as invoice.exported
+        without party names or amounts. Draft, submitted, approved and void
+        documents carry an explicit status band; the document is not asserted
+        to be a jurisdiction-specific statutory tax invoice (DEC-028).
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: string } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200':
+          description: PDF document
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /reports/trial-balance:
     get:

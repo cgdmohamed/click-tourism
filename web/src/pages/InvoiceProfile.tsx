@@ -4,10 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { downloadResponse } from '../lib/download'
 import { formatDate, formatDateTime } from '../lib/format'
 import { statusLabel } from '../lib/labels'
 import type { InvoiceRecord } from '../lib/types'
-import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, InlineNotice, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat } from '../components/profile'
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 
@@ -33,6 +34,8 @@ export default function InvoiceProfile() {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const [collectOpen, setCollectOpen] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   const query = useQuery({
     queryKey: ['invoice-profile', id],
@@ -64,6 +67,22 @@ export default function InvoiceProfile() {
   const typeLabel =
     invoice.type === 'customer_invoice' ? t('customerInvoice') : invoice.type === 'supplier_invoice' ? t('supplierInvoice') : t('creditNote')
 
+  const downloadPdf = async () => {
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      const response = await api.get<Blob>(`/invoices/${id}/pdf`, {
+        params: { language: locale },
+        responseType: 'blob',
+      })
+      downloadResponse(response, `invoice-${invoice.number}.pdf`)
+    } catch (error) {
+      setDownloadError(errorMessage(error, t('exportFailed')))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div>
       <ProfileHeader
@@ -80,8 +99,8 @@ export default function InvoiceProfile() {
                 {locale === 'ar' ? 'تحصيل الفاتورة' : 'Collect invoice'}
               </Button>
             ) : null}
-            <Button variant="secondary" icon="printer" onClick={() => window.print()}>
-              {t('print')}
+            <Button variant="secondary" icon="download" disabled={downloading} onClick={() => void downloadPdf()}>
+              {downloading ? t('loading') : t('downloadPdf')}
             </Button>
           </div>
         }
@@ -101,6 +120,12 @@ export default function InvoiceProfile() {
           </>
         }
       />
+
+      {downloadError ? (
+        <div className="mb-4" role="alert">
+          <InlineNotice tone="negative">{downloadError}</InlineNotice>
+        </div>
+      ) : null}
 
       <InvoiceCollectionModal
         invoice={collectOpen && invoice.type === 'customer_invoice' ? invoice : null}

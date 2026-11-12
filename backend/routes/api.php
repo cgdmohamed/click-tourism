@@ -335,6 +335,7 @@ Route::prefix('v1')->group(function () {
         Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->middleware(['permission:invoices.approve', 'idempotent']);
         Route::post('invoices/{invoice}/void', [InvoiceController::class, 'void'])->middleware('permission:invoices.create');
         Route::post('invoices/{invoice}/credit-note', [InvoiceController::class, 'creditNote'])->middleware(['permission:invoices.approve', 'idempotent']);
+        Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->middleware(['permission:invoices.view', 'throttle:report-exports']);
 
         Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])->middleware('permission:reports.view');
         Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:report-exports']);

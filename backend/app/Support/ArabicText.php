@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Reports\Support;
+namespace App\Support;
 
 /**
  * Arabic shaping and visual reordering for the PDF renderer.

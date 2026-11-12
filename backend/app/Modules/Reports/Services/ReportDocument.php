@@ -3,10 +3,11 @@
 namespace App\Modules\Reports\Services;
 
 use App\Modules\Core\Services\SettingService;
-use App\Modules\Reports\Support\ArabicText;
 use App\Modules\Reports\Support\DateCell;
 use App\Modules\Reports\Support\MoneyCell;
 use App\Modules\Reports\Support\ReportRow;
+use App\Support\ArabicText;
+use App\Support\LogoDataUri;
 use DateTimeImmutable;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -34,9 +35,6 @@ class ReportDocument
 {
     /** PDF rendering is memory heavy; larger reports must use CSV or XLSX. */
     public const PDF_MAX_ROWS = 5000;
-
-    /** Logo files above this size are ignored. */
-    private const LOGO_MAX_BYTES = 1048576;
 
     public function __construct(private readonly SettingService $settings, private readonly ReportCsv $csv = new ReportCsv) {}
 
@@ -486,34 +484,6 @@ class ReportDocument
     /** Letterhead logo as a data URI (png/jpeg only), from a storage path or an inline data URI. */
     private function logoDataUri(): ?string
     {
-        $value = trim((string) $this->settings->get('general', 'company_logo', ''));
-        if ($value === '') {
-            return null;
-        }
-
-        if (str_starts_with($value, 'data:')) {
-            if (preg_match('#^data:image/(png|jpeg);base64,([A-Za-z0-9+/=]+)$#', $value, $m) !== 1) {
-                return null;
-            }
-            $binary = base64_decode($m[2], true);
-        } else {
-            $base = realpath(storage_path('app'));
-            $full = $base !== false ? realpath($base.DIRECTORY_SEPARATOR.ltrim($value, '/\\')) : false;
-            if ($base === false || $full === false || ! str_starts_with($full, $base.DIRECTORY_SEPARATOR) || ! is_file($full)) {
-                return null;
-            }
-            $binary = filesize($full) <= self::LOGO_MAX_BYTES ? file_get_contents($full) : false;
-        }
-
-        if ($binary === false || $binary === '' || strlen($binary) > self::LOGO_MAX_BYTES) {
-            return null;
-        }
-
-        $info = @getimagesizefromstring($binary);
-        if ($info === false || ! in_array($info[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG], true)) {
-            return null;
-        }
-
-        return 'data:'.$info['mime'].';base64,'.base64_encode($binary);
+        return LogoDataUri::fromValue((string) $this->settings->get('general', 'company_logo', ''));
     }
 }
