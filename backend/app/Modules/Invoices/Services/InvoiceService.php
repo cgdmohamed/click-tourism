@@ -348,27 +348,16 @@ class InvoiceService
                 throw new DomainException("Invoice {$invoice->number} has already been issued.");
             }
 
-            // The booking may already have posted its AR, revenue and tax.
-            // An invoice documents that SAME receivable; it must never post
-            // a second AR/revenue journal entry.
+            // Preserve existing partial-invoice workflows when no booking
+            // revenue journal exists. If revenue WAS already booked, the
+            // invoice must document that exact single posted transaction.
             $existingBookingRevenue = null;
             if ($invoice->booking_id !== null && $invoice->type === Invoice::TYPE_CUSTOMER_INVOICE) {
-                // Serializes issuance against booking state changes and other invoices.
                 $booking = Booking::query()->lockForUpdate()->findOrFail($invoice->booking_id);
                 if (in_array($booking->status, ['cancelled', 'no_show'], true)
                     || $booking->customer_id !== $invoice->party_id
-                    || $booking->branch_id !== $invoice->branch_id
-                    || $booking->currency_code !== $invoice->currency_code
-                    || bccomp((string) $booking->fx_rate, (string) $invoice->fx_rate, 8) !== 0
-                    || (int) $booking->total_sell_minor !== (int) $invoice->total_minor
-                    || (int) $booking->tax_minor !== (int) $invoice->tax_minor) {
-                    throw new DomainException('An invoice linked to a booking must match its customer, currency, complete total and tax before issue.');
-                }
-                // Booking-allocated receipts have already credited AR outside
-                // invoice applications. Do not claim the invoice is wholly due
-                // until those allocations have an explicit reconciliation path.
-                if ($booking->allocations()->exists()) {
-                    throw new DomainException('This booking has directly allocated receipts. Reconcile them with the invoice before issuing to avoid overstating the balance due.');
+                    || $booking->branch_id !== $invoice->branch_id) {
+                    throw new DomainException('The invoice must belong to an active booking for the same customer and branch.');
                 }
                 $existingBookingRevenue = JournalEntry::query()
                     ->where('source_type', 'booking')
@@ -379,15 +368,24 @@ class InvoiceService
                     ->whereNotExists(function ($query) {
                         $query->select('id')->from('journal_entries as reversals')
                             ->whereColumn('reversals.reversal_of_id', 'journal_entries.id');
-                    })
-                    ->first();
-                $otherIssued = Invoice::query()
-                    ->where('booking_id', $invoice->booking_id)
-                    ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
-                    ->where('status', Invoice::STATUS_ISSUED)
-                    ->where('id', '!=', $invoice->id)->exists();
-                if ($otherIssued) {
-                    throw new DomainException('A customer invoice for this booking has already been issued.');
+                    })->first();
+
+                if ($existingBookingRevenue) {
+                    if ($booking->currency_code !== $invoice->currency_code
+                        || bccomp((string) $booking->fx_rate, (string) $invoice->fx_rate, 8) !== 0
+                        || (int) $booking->total_sell_minor !== (int) $invoice->total_minor
+                        || (int) $booking->tax_minor !== (int) $invoice->tax_minor) {
+                        throw new DomainException('Posted booking revenue can only be reused for an invoice matching the full booking total, tax, currency and FX rate.');
+                    }
+                    if ($booking->allocations()->exists()) {
+                        throw new DomainException('This booking has directly allocated receipts. Reconcile these receipts before issuing an invoice.');
+                    }
+                    if (Invoice::query()->where('booking_id', $invoice->booking_id)
+                        ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+                        ->where('status', Invoice::STATUS_ISSUED)
+                        ->where('id', '!=', $invoice->id)->exists()) {
+                        throw new DomainException('A customer invoice for this posted booking has already been issued.');
+                    }
                 }
             }
 
