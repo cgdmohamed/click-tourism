@@ -150,6 +150,7 @@ export function SearchableSelect({
   id,
   onSearch,
   hasMore,
+  ariaLabel,
 }: {
   value: string
   onChange: (value: string) => void
@@ -163,6 +164,8 @@ export function SearchableSelect({
   onSearch?: (query: string) => void
   /** True when the server holds more rows than were loaded: shows "more results — refine the search". */
   hasMore?: boolean
+  /** Accessible name when no visible <label> wraps the control (e.g. inside a table cell). */
+  ariaLabel?: string
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -278,6 +281,8 @@ export function SearchableSelect({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
+        // role=combobox does not take its name from content, so name it explicitly (label/placeholder + current value).
+        aria-label={[ariaLabel ?? placeholder ?? t('search'), selected?.label].filter(Boolean).join(': ')}
         disabled={disabled}
         className={cx(controlBase, 'flex h-9 items-center justify-between gap-2 pe-2 text-start')}
         onClick={toggle}

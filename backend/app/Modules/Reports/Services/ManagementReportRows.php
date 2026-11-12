@@ -71,11 +71,13 @@ class ManagementReportRows
     {
         $exp = $this->csv->exponent($r['currency']);
         $m = fn (int $v) => $this->csv->money($v, $exp);
-        $rows = [$this->csv->header(['Tax profile', 'Rate %', 'Output tax', 'Input tax', 'Net payable', 'Currency'])];
+        $rows = [$this->csv->header(['Account', 'Name', 'Tax side', 'Amount', 'Rate %', 'Currency'])];
         foreach ($r['rows'] as $row) {
-            $rows[] = [$row['tax_profile']['name'] ?? 'Default tax accounts', $row['tax_profile']['rate'] ?? '', $m($row['output_minor']), $m($row['input_minor']), $m($row['net_payable_minor']), $r['currency']];
+            $rows[] = [$row['account']['code'], $row['account']['name_en'], $row['side'] === 'output' ? 'Output tax' : 'Input tax', $m($row['amount_minor']), $r['rate'], $r['currency']];
         }
-        $rows[] = $this->csv->total(['Total', '', $m($r['total_output_minor']), $m($r['total_input_minor']), $m($r['total_net_payable_minor']), $r['currency']]);
+        $rows[] = $this->csv->total(['Output tax', '', '', $m($r['total_output_minor']), '', $r['currency']]);
+        $rows[] = $this->csv->total(['Input tax', '', '', $m($r['total_input_minor']), '', $r['currency']]);
+        $rows[] = $this->csv->total(['Net payable', '', '', $m($r['total_net_payable_minor']), '', $r['currency']]);
 
         return $rows;
     }

@@ -2233,8 +2233,8 @@ paths:
   /reports/tax:
     get:
       tags: [Reports]
-      summary: Output vs input tax from posted lines on the tax accounts (base currency)
-      description: Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
+      summary: Output vs input tax from posted lines on the configured tax accounts (base currency)
+      description: One tax per installation (settings tax.default_rate / tax.inclusive); rows are per tax account with side output|input. Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }

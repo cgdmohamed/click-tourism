@@ -13,7 +13,6 @@ use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Payments\Services\PaymentService;
-use App\Modules\Tax\Models\TaxProfile;
 use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\TreasurySeeder;
@@ -221,14 +220,9 @@ class ManagementReportsTest extends TestCase
         $this->assertSame(0, $this->report('commissions', $this->other)->assertOk()->json('data.total_expense_minor'));
     }
 
-    public function test_tax_summary_reports_output_and_input_by_profile_and_reconciles_to_trial_balance(): void
+    public function test_tax_summary_reports_output_and_input_for_the_single_tax_and_reconciles_to_trial_balance(): void
     {
         $this->booking([['hotel', 100000, 0]]); // 10,000 output at the default rate, default accounts
-        $profile = TaxProfile::query()->create([
-            'name' => 'VAT 14%', 'rate' => '14', 'is_inclusive' => false,
-            'sales_account_id' => $this->account('2200')->id, 'purchase_account_id' => $this->account('1160')->id,
-            'effective_from' => '2020-01-01', 'is_active' => true,
-        ]);
         // Input tax paid on an expense.
         $this->withHeaders(['X-Branch-Id' => $this->branch->public_id])->postJson('/api/v1/journal-entries', [
             'entry_date' => now()->toDateString(), 'branch_id' => $this->branch->public_id, 'currency' => 'EGP',
@@ -241,8 +235,9 @@ class ManagementReportsTest extends TestCase
 
         $report = $this->report('tax')->assertOk()->json('data');
 
-        $this->assertCount(1, $report['rows']);
-        $this->assertSame($profile->public_id, $report['rows'][0]['tax_profile']['id']);
+        $this->assertSame('10', $report['rate']);
+        $this->assertFalse($report['inclusive']);
+        $this->assertSame(['output' => '2200', 'input' => '1160'], collect($report['rows'])->mapWithKeys(fn ($r) => [$r['side'] => $r['account']['code']])->all());
         $this->assertSame(10000, $report['total_output_minor']);
         $this->assertSame(1500, $report['total_input_minor']);
         $this->assertSame(8500, $report['total_net_payable_minor']);

@@ -254,86 +254,59 @@ class ManagementReportService
     }
 
     /**
-     * Output tax (credit-side) and input tax (debit-side) per tax profile from
-     * posted lines on the tax accounts. A profile owns its sales (output) and
-     * purchase (input) accounts; an account shared by profiles goes to the
-     * lowest profile id. The configured default tax accounts not owned by any
-     * profile form the "default" row, so totals equal the ledger.
+     * Output tax (credit-side) and input tax (debit-side) from posted lines on
+     * the configured tax accounts. The installation has a single tax (rate and
+     * inclusive flag live in settings), so the report is one line per tax
+     * account and the totals equal the ledger.
      *
      * @return array<string, mixed>
      */
     public function tax(string $from, string $to, ?Branch $branch): array
     {
         $codes = fn (string $key, string $default) => (string) $this->settings->get('accounting', $key, $default);
-        $defaultOutput = DB::table('accounts')->whereIn('code', array_unique([$codes('output_tax_account_code', '2200'), $codes('tax_payable_account_code', '2200')]))->pluck('id')->all();
-        $defaultInput = DB::table('accounts')->where('code', $codes('input_tax_account_code', '1160'))->pluck('id')->all();
+        $outputCodes = array_values(array_unique([$codes('output_tax_account_code', '2200'), $codes('tax_payable_account_code', '2200')]));
+        $inputCodes = array_values(array_diff([$codes('input_tax_account_code', '1160')], $outputCodes));
 
-        $profiles = DB::table('tax_profiles')->orderBy('id')->get();
-        $outputOwner = [];
-        $inputOwner = [];
-        foreach ($profiles as $profile) {
-            if ($profile->sales_account_id !== null) {
-                $outputOwner[$profile->sales_account_id] ??= $profile->id;
-            }
-            if ($profile->purchase_account_id !== null) {
-                $inputOwner[$profile->purchase_account_id] ??= $profile->id;
-            }
-        }
-
-        $accountIds = array_values(array_unique(array_merge($defaultOutput, $defaultInput, array_keys($outputOwner), array_keys($inputOwner))));
-        $movements = $accountIds === [] ? collect() : DB::table('journal_lines as jl')
+        $accounts = DB::table('accounts')->whereIn('code', array_merge($outputCodes, $inputCodes))->get()->keyBy('code');
+        $ids = $accounts->pluck('id')->all();
+        $movements = $ids === [] ? collect() : DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.status', 'posted')
-            ->whereIn('jl.account_id', $accountIds)
+            ->whereIn('jl.account_id', $ids)
             ->whereDate('je.entry_date', '>=', $from)->whereDate('je.entry_date', '<=', $to)
             ->when($branch, fn ($q) => $q->where('jl.branch_id', $branch->id))
             ->groupBy('jl.account_id')
             ->selectRaw('jl.account_id, SUM(jl.base_debit_minor) as debit, SUM(jl.base_credit_minor) as credit')
             ->get()->keyBy('account_id');
 
-        // Output side wins for an account configured on both sides (never expected).
-        $outputAccounts = array_values(array_unique(array_merge($defaultOutput, array_keys($outputOwner))));
-        $inputAccounts = array_values(array_diff(array_unique(array_merge($defaultInput, array_keys($inputOwner))), $outputAccounts));
-
         $rows = [];
-        foreach ($outputAccounts as $accountId) {
-            $m = $movements[$accountId] ?? null;
-            if ($m !== null) {
-                $key = 'p'.($outputOwner[$accountId] ?? 'default');
-                $rows[$key]['output_minor'] = ($rows[$key]['output_minor'] ?? 0) + (int) $m->credit - (int) $m->debit;
+        $output = 0;
+        $input = 0;
+        foreach (['output' => $outputCodes, 'input' => $inputCodes] as $side => $sideCodes) {
+            foreach ($sideCodes as $code) {
+                $account = $accounts[$code] ?? null;
+                $m = $account ? ($movements[$account->id] ?? null) : null;
+                if ($account === null || $m === null) {
+                    continue;
+                }
+                $amount = $side === 'output' ? (int) $m->credit - (int) $m->debit : (int) $m->debit - (int) $m->credit;
+                $side === 'output' ? $output += $amount : $input += $amount;
+                $rows[] = [
+                    'side' => $side,
+                    'account' => ['code' => $account->code, 'name_ar' => $account->name_ar, 'name_en' => $account->name_en],
+                    'amount_minor' => $amount,
+                ];
             }
         }
-        foreach ($inputAccounts as $accountId) {
-            $m = $movements[$accountId] ?? null;
-            if ($m !== null) {
-                $key = 'p'.($inputOwner[$accountId] ?? 'default');
-                $rows[$key]['input_minor'] = ($rows[$key]['input_minor'] ?? 0) + (int) $m->debit - (int) $m->credit;
-            }
-        }
-
-        $out = [];
-        foreach ($rows as $key => $amounts) {
-            $profile = $key === 'pdefault' ? null : $profiles->firstWhere('id', (int) substr($key, 1));
-            $output = $amounts['output_minor'] ?? 0;
-            $input = $amounts['input_minor'] ?? 0;
-            $out[] = [
-                'tax_profile' => $profile ? ['id' => $profile->public_id, 'name' => $profile->name, 'rate' => (string) $profile->rate] : null,
-                'output_minor' => $output,
-                'input_minor' => $input,
-                'net_payable_minor' => $output - $input,
-            ];
-        }
-        usort($out, fn ($a, $b) => strcmp((string) ($a['tax_profile']['name'] ?? '~'), (string) ($b['tax_profile']['name'] ?? '~')));
-
-        $output = array_sum(array_column($out, 'output_minor'));
-        $input = array_sum(array_column($out, 'input_minor'));
 
         return [
             'currency' => $this->settings->baseCurrency(),
             'from' => $from,
             'to' => $to,
             'enabled' => (bool) $this->settings->bool('tax', 'enabled', false),
-            'rows' => $out,
+            'rate' => (string) $this->settings->get('tax', 'default_rate', '0'),
+            'inclusive' => (bool) $this->settings->bool('tax', 'inclusive', false),
+            'rows' => $rows,
             'total_output_minor' => $output,
             'total_input_minor' => $input,
             'total_net_payable_minor' => $output - $input,
