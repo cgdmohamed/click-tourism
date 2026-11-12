@@ -359,9 +359,16 @@ class InvoiceService
                     || $booking->customer_id !== $invoice->party_id
                     || $booking->branch_id !== $invoice->branch_id
                     || $booking->currency_code !== $invoice->currency_code
+                    || bccomp((string) $booking->fx_rate, (string) $invoice->fx_rate, 8) !== 0
                     || (int) $booking->total_sell_minor !== (int) $invoice->total_minor
                     || (int) $booking->tax_minor !== (int) $invoice->tax_minor) {
                     throw new DomainException('An invoice linked to a booking must match its customer, currency, complete total and tax before issue.');
+                }
+                // Booking-allocated receipts have already credited AR outside
+                // invoice applications. Do not claim the invoice is wholly due
+                // until those allocations have an explicit reconciliation path.
+                if ($booking->allocations()->exists()) {
+                    throw new DomainException('This booking has directly allocated receipts. Reconcile them with the invoice before issuing to avoid overstating the balance due.');
                 }
                 $existingBookingRevenue = JournalEntry::query()
                     ->where('source_type', 'booking')
