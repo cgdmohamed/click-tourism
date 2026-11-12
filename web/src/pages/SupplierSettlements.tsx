@@ -27,6 +27,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { statusLabel as statusLabelOf } from '../lib/labels'
 import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
@@ -193,7 +194,7 @@ export default function SupplierSettlements() {
   const openObligations = applyObligationPicker.rows
 
   const supplierName = (supplier?: Supplier | null) =>
-    supplier ? (locale === 'ar' ? supplier.name_ar : supplier.name_en) : '—'
+    supplier ? (localizedName(supplier, locale)) : '—'
 
   const statusLabel = (status: string) => {
     if (status === 'partially_paid') return t('partiallyPaid')
@@ -678,7 +679,7 @@ export default function SupplierSettlements() {
               placeholder={t('selectAccount')}
               options={(cashQuery.data ?? []).map((account) => ({
                 value: account.id,
-                label: `${locale === 'ar' ? account.name_ar : account.name_en} (${account.currency})`,
+                label: `${localizedName(account, locale)} (${account.currency})`,
               }))}
             />
           </Field>

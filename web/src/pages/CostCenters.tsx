@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate } from '../lib/format'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 type CostCenter = {
   id: string
@@ -170,10 +171,9 @@ export default function CostCenters() {
                   <tr key={center.id}>
                     <Td className="tabular font-medium">{center.code}</Td>
                     <Td>
-                      <p className="font-medium">{ar ? center.name_ar : center.name_en}</p>
-                      <p className="text-xs text-text-subtle">{ar ? center.name_en : center.name_ar}</p>
+                      <p className="font-medium">{localizedName(center, ar ? 'ar' : 'en')}</p>
                     </Td>
-                    <Td>{parent ? `${parent.code} — ${ar ? parent.name_ar : parent.name_en}` : '—'}</Td>
+                    <Td>{parent ? `${parent.code} — ${localizedName(parent, ar ? 'ar' : 'en')}` : '—'}</Td>
                     <Td className="text-small text-text-subtle">
                       {center.effective_from || center.effective_to
                         ? `${center.effective_from ? formatDate(center.effective_from, locale) : '…'} → ${center.effective_to ? formatDate(center.effective_to, locale) : '…'}`
@@ -217,7 +217,7 @@ export default function CostCenters() {
             <Select value={form.parent_id} onChange={(event) => setForm({ ...form, parent_id: event.target.value })}>
               <option value="">{ar ? 'بدون' : 'None'}</option>
               {parentOptions.map((center) => (
-                <option key={center.id} value={center.id}>{center.code} — {ar ? center.name_ar : center.name_en}</option>
+                <option key={center.id} value={center.id}>{center.code} — {localizedName(center, ar ? 'ar' : 'en')}</option>
               ))}
             </Select>
           </Field>

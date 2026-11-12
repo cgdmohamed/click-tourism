@@ -8,6 +8,7 @@ import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading,
   Modal, PageHeader, SearchableSelect, Select, Table, Td, Th,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 type Account = { id: string; name_ar: string; name_en: string; currency: string }
 type Kind = 'cash' | 'bank_transfer' | 'card' | 'wallet' | 'other'
@@ -137,10 +138,10 @@ export default function PaymentMethods() {
             </tr></thead>
             <tbody>{methods.map((method) => (
               <tr key={method.id}>
-                <Td>{locale === 'ar' ? method.name_ar : method.name_en}</Td>
+                <Td>{localizedName(method, locale)}</Td>
                 <Td>{kinds.find((k) => k.value === method.type)?.[locale === 'ar' ? 'ar' : 'en'] ?? method.type}</Td>
                 <Td>{method.provider_name ?? '—'} {method.account_reference ?? method.iban ?? ''}</Td>
-                <Td>{method.default_cash_account ? (locale === 'ar' ? method.default_cash_account.name_ar : method.default_cash_account.name_en) : '—'}</Td>
+                <Td>{method.default_cash_account ? (localizedName(method.default_cash_account, locale)) : '—'}</Td>
                 <Td><Badge tone={method.is_active ? 'positive' : 'neutral'}>{method.is_active ? L('نشطة', 'Active') : L('معطلة', 'Inactive')}</Badge></Td>
                 <Td>{can('payments.create') ? <Button variant="ghost" onClick={() => startEdit(method)}>{L('تعديل', 'Edit')}</Button> : null}</Td>
               </tr>
@@ -180,7 +181,7 @@ export default function PaymentMethods() {
               onChange={(value) => setForm({ ...form, default_cash_account_id: value })}
               placeholder={L('اختر حسابًا', 'Select an account')}
               options={(cashQuery.data ?? []).map((a) => ({
-                value: a.id, label: locale === 'ar' ? a.name_ar : a.name_en, hint: a.currency,
+                value: a.id, label: localizedName(a, locale), hint: a.currency,
               }))}
             />
           </Field>

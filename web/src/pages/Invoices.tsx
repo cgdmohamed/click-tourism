@@ -28,6 +28,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
@@ -160,7 +161,7 @@ export default function Invoices() {
 
   const accountOptions = (accountsQuery.data ?? [])
     .filter((a) => a.is_postable && a.is_active)
-    .map((a) => ({ value: a.id, label: `${a.code} — ${locale === 'ar' ? a.name_ar : a.name_en}` }))
+    .map((a) => ({ value: a.id, label: localizedName(a, locale), code: a.code }))
   const defaultRevenueAccount = (accountsQuery.data ?? [])
     .find((a) => a.code === '4100' && a.is_active && a.is_postable)
     ?? (accountsQuery.data ?? []).find((a) => a.type === 'revenue' && a.is_active && a.is_postable)
@@ -545,15 +546,22 @@ export default function Invoices() {
                     </div>
                     <div className="sm:col-span-2">
                       {taxEnabled ? <Field label={L('تطبيق الضريبة', 'Apply tax')}>
-                        <label className="flex items-center gap-2 text-small">
+                        <label className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small">
                           <span className="relative inline-flex h-5 w-9 shrink-0">
                             <input type="checkbox" role="switch" className="peer sr-only" checked={taxEnabled && line.tax_applied}
                               disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
                               onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
-                            <span className="absolute inset-0 rounded-full bg-border-default transition-colors peer-checked:bg-brand-1 peer-disabled:opacity-40" />
+                            <span className="absolute inset-0 rounded-full bg-text-subtlest transition-colors peer-checked:bg-brand-1-background peer-focus-visible:ring-2 peer-focus-visible:ring-border-focus peer-focus-visible:ring-offset-1 peer-disabled:opacity-40" />
                             <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
                           </span>
-                          {L('ضريبة', 'VAT')} {defaultTaxRate}%{taxInclusive ? L(' (شاملة)', ' (inclusive)') : ''} — {L('تلقائي', 'Automatic')}
+                          <span className={line.tax_applied ? 'font-semibold text-text-default' : 'font-semibold text-text-subtle'}>
+                            {line.tax_applied ? L('مفعّلة', 'On') : L('غير مفعّلة', 'Off')}
+                          </span>
+                          <span className="whitespace-nowrap text-text-subtle">
+                            {L('ضريبة', 'VAT')} <bdi dir="ltr">{defaultTaxRate}%</bdi>
+                            {taxInclusive ? ` ${L('(شاملة)', '(inclusive)')}` : ''}
+                          </span>
+                          <span className="whitespace-nowrap text-text-subtlest">{L('تلقائي', 'Automatic')}</span>
                         </label>
                       </Field> : null}
                     </div>
@@ -597,7 +605,7 @@ export default function Invoices() {
                           <input type="checkbox" role="switch" className="peer sr-only" checked={taxEnabled && line.tax_applied}
                             disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
                             onChange={(event) => updateLine(index, { tax_applied: event.target.checked })} />
-                          <span className="absolute inset-0 rounded-full bg-border-default transition-colors peer-checked:bg-brand-1 peer-disabled:opacity-40" />
+                          <span className="absolute inset-0 rounded-full bg-text-subtlest transition-colors peer-checked:bg-brand-1-background peer-focus-visible:ring-2 peer-focus-visible:ring-border-focus peer-focus-visible:ring-offset-1 peer-disabled:opacity-40" />
                           <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
                         </span>
                         {defaultTaxRate}%

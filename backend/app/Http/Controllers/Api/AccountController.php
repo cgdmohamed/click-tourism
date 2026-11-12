@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Services\AccountImportService;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Parties\Models\PartyAccount;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +42,20 @@ class AccountController extends ApiController
             (string) $this->settings()->get('accounting', 'ap_account_code', '2100') => 'supplier',
         ];
 
+        // Party subledger accounts (ADR-0015): account id => party tag + display names (additive, read-only).
+        $partyTables = ['customer' => 'customers', 'supplier' => 'suppliers', 'employee' => 'employees'];
+        $partyByAccount = [];
+        foreach (PartyAccount::query()->get() as $link) {
+            $table = $partyTables[$link->party_type] ?? null;
+            $party = $table ? DB::table($table)->where('id', $link->party_id)->first(['name_ar', 'name_en']) : null;
+            $partyByAccount[$link->account_id] = [
+                'party_type' => $link->party_type,
+                'party_role' => $link->role,
+                'party_name_ar' => $party->name_ar ?? null,
+                'party_name_en' => $party->name_en ?? null,
+            ];
+        }
+
         $accounts = Account::query()
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
@@ -49,7 +64,12 @@ class AccountController extends ApiController
             ->get()
             ->map(fn (Account $account) => $account->toApiArray() + [
                 'control_party_type' => $controlParty[$account->code] ?? null,
-            ]);
+            ] + ($partyByAccount[$account->id] ?? [
+                'party_type' => null,
+                'party_role' => null,
+                'party_name_ar' => null,
+                'party_name_en' => null,
+            ]));
 
         return $this->ok($accounts);
     }

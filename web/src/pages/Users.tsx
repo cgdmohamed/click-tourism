@@ -13,6 +13,7 @@ import {
   validateUserForm,
   type UserFormState,
 } from '../lib/iam'
+import { localizedName } from '../lib/names'
 import type { Branch, Paginated, RoleRecord, UserAccount } from '../lib/types'
 import { ReasonModal } from '../components/ReasonModal'
 import {
@@ -279,7 +280,7 @@ export default function Users() {
     })
   }
 
-  const branchName = (branch: Branch) => (locale === 'ar' ? branch.name_ar : branch.name_en)
+  const branchName = (branch: Branch) => (localizedName(branch, locale))
 
   return (
     <div>

@@ -16,6 +16,7 @@ import ManagementReportView from './ManagementReports'
 import { isManagementReport } from '../lib/managementReports'
 import type { ManagementReportKey } from '../lib/managementReports'
 import type { IconName } from '../components/icons'
+import { localizedName } from '../lib/names'
 
 type CurrencyRow = { code: string; is_active: boolean }
 type PartyType = 'customer' | 'supplier' | 'employee'
@@ -451,7 +452,7 @@ export default function Reports() {
     ] : []),
   ]
 
-  const label = (line: StatementLine) => (locale === 'ar' ? line.name_ar : line.name_en)
+  const label = (line: StatementLine) => (localizedName(line, locale))
 
   const summaryLine = (text: string, amountMinor: number, currency: string, variance?: number, emphasis = false) => (
     <div className={cx('flex items-center justify-between border-t border-border-subtle px-5 py-3 text-sm', emphasis && 'font-semibold')}>
@@ -559,7 +560,7 @@ export default function Reports() {
                 placeholder={t('selectAccount')}
                 options={(accountsQuery.data ?? []).map((account) => ({
                   value: account.id,
-                  label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
+                  label: localizedName(account, locale), code: account.code,
                 }))}
               />
             </Field>
@@ -669,7 +670,7 @@ export default function Reports() {
                   <option value="">{locale === 'ar' ? 'كل المراكز' : 'All centers'}</option>
                   {(costCentersQuery.data ?? []).map((center) => (
                     <option key={center.id} value={center.id}>
-                      {center.code} — {locale === 'ar' ? center.name_ar : center.name_en}
+                      {center.code} — {localizedName(center, locale)}
                     </option>
                   ))}
                 </Select>
@@ -796,7 +797,7 @@ export default function Reports() {
         {isLedger && ledgerQuery.data
           ? (() => {
               const { data, meta } = ledgerQuery.data
-              const accountName = locale === 'ar' ? data.account.name_ar : data.account.name_en
+              const accountName = localizedName(data.account, locale)
               return (
                 <>
                   <CardHeader
@@ -911,7 +912,7 @@ export default function Reports() {
                 </tr></thead>
                 <tbody>
                   {result.centers.map((row) => <tr key={row.center.id}>
-                    <Td>{row.center.code} — {locale === 'ar' ? row.center.name_ar : row.center.name_en}</Td>
+                    <Td>{row.center.code} — {localizedName(row.center, locale)}</Td>
                     <Td className="text-end"><Money amountMinor={row.allocated_revenue_minor} currency={baseCurrency}/></Td>
                     <Td className="text-end"><Money amountMinor={row.allocated_expense_minor} currency={baseCurrency}/></Td>
                     <Td className="text-end"><Money amountMinor={row.allocated_net_minor} currency={baseCurrency}/></Td>
@@ -989,7 +990,7 @@ export default function Reports() {
                               {row.level > 1 ? <span className="ms-2 text-small text-text-subtle">L{row.level}</span> : null}
                             </Td>
                             <Td>
-                              {locale === 'ar' ? row.name_ar : row.name_en}
+                              {localizedName(row, locale)}
                               {row.abnormal ? (
                                 <span className="ms-2">
                                   <Badge tone="warning">{locale === 'ar' ? 'رصيد غير طبيعي' : 'Abnormal balance'}</Badge>
@@ -1229,7 +1230,7 @@ export default function Reports() {
                         <Money amountMinor={data.ledger.balance_minor} currency={data.currency} />
                       </div>
                       <div className="mt-1 text-small text-text-subtle">
-                        {data.ledger.control_account.code} — {locale === 'ar' ? data.ledger.control_account.name_ar : data.ledger.control_account.name_en}
+                        {data.ledger.control_account.code} — {localizedName(data.ledger.control_account, locale)}
                       </div>
                     </div>
                     <div className="rounded-12 border border-border-subtle p-4">
@@ -1345,7 +1346,7 @@ export default function Reports() {
         {isStatement && statementQuery.data
           ? (() => {
               const { data, meta } = statementQuery.data
-              const partyName = locale === 'ar' ? data.party.name_ar : data.party.name_en
+              const partyName = localizedName(data.party, locale)
               const partyLabel = data.party_type === 'customer' ? t('customer') : data.party_type === 'supplier' ? t('supplier') : locale === 'ar' ? 'موظف' : 'Employee'
               const lineDebit = (line: LedgerLine) => (data.basis === 'original' ? line.debit_minor : line.base_debit_minor)
               const lineCredit = (line: LedgerLine) => (data.basis === 'original' ? line.credit_minor : line.base_credit_minor)

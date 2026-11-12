@@ -11,9 +11,10 @@ import type { InvoiceRecord } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, InlineNotice, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat } from '../components/profile'
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
+import { localizedName } from '../lib/names'
 
 function nameOf(party: { name_ar: string; name_en: string }, locale: 'ar' | 'en') {
-  return (locale === 'ar' ? party.name_ar : party.name_en) || party.name_ar || party.name_en
+  return (localizedName(party, locale)) || party.name_ar || party.name_en
 }
 
 const accountTypes: Record<string, { ar: string; en: string }> = {
@@ -220,7 +221,7 @@ export default function InvoiceProfile() {
                         <span>
                           <span className="block font-medium" dir="ltr">{line.account.code}</span>
                           <span className="text-small text-text-subtlest">
-                            {locale === 'ar' ? line.account.name_ar : line.account.name_en}
+                            {localizedName(line.account, locale)}
                             {line.account.type ? ` · ${accountTypeLabel(line.account.type, locale)}` : ''}
                           </span>
                         </span>

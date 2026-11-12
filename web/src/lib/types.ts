@@ -46,6 +46,11 @@ export type Account = {
   balance_minor?: number
   /** Set when the account is the receivable/payable control account. */
   control_party_type?: 'customer' | 'supplier' | null
+  /** Party subledger accounts (ADR-0015): the owning party, null on ordinary accounts. */
+  party_type?: 'customer' | 'supplier' | 'employee' | null
+  party_role?: string | null
+  party_name_ar?: string | null
+  party_name_en?: string | null
 }
 
 export type JournalLine = {

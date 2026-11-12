@@ -8,6 +8,7 @@ import { draftFromStatus, formBranchMapError, missingSecrets, settingsPatch } fr
 import type { IntegrationDraft, IntegrationStatus, SecretsConfigured } from '../lib/integrations'
 import type { Branch } from '../lib/types'
 import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Select } from './ui'
+import { localizedName } from '../lib/names'
 
 const secretLabels: Record<keyof SecretsConfigured, { ar: string; en: string }> = {
   app_secret: { ar: 'سر التطبيق', en: 'App secret' },
@@ -187,7 +188,7 @@ export default function IntegrationsPanel() {
                   <option value="">{L('أول فرع نشط', 'First active branch')}</option>
                   {(branchesQuery.data ?? []).filter((branch) => branch.is_active).map((branch) => (
                     <option key={branch.id} value={branch.id}>
-                      {branch.code} — {locale === 'ar' ? branch.name_ar : branch.name_en}
+                      {branch.code} — {localizedName(branch, locale)}
                     </option>
                   ))}
                 </Select>

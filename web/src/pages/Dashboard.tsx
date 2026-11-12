@@ -10,6 +10,7 @@ import { Icon, type IconName } from '../components/icons'
 import { api, errorMessage } from '../lib/api'
 import { exponent, formatDate, formatMoney } from '../lib/format'
 import type { AttentionItem, DashboardSummary } from '../lib/types'
+import { localizedName } from '../lib/names'
 
 ChartJS.register(ArcElement, CategoryScale, Legend, LineElement, LinearScale, PointElement, Tooltip)
 
@@ -130,7 +131,7 @@ export default function Dashboard() {
     <div className="space-y-5">
       <PageHeader
         title={t('financialCommandCenter')}
-        subtitle={activeBranch ? (locale === 'ar' ? activeBranch.name_ar : activeBranch.name_en) : undefined}
+        subtitle={activeBranch ? (localizedName(activeBranch, locale)) : undefined}
         icon="dashboard"
         actions={
           <button
@@ -237,7 +238,7 @@ export default function Dashboard() {
               <div className="h-64 px-4 pb-4">
                 {cashChartAccounts.length === 0 ? <EmptyState /> : (
                   <Doughnut role="img" aria-label={t('cashBankDistribution')} data={{
-                    labels: cashChartAccounts.map((item) => locale === 'ar' ? item.name_ar : item.name_en),
+                    labels: cashChartAccounts.map((item) => localizedName(item, locale)),
                     datasets: [{ data: cashChartAccounts.map((item) => major(item.balance_minor)), backgroundColor: colors }],
                   }} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }} />
                 )}
@@ -246,7 +247,7 @@ export default function Dashboard() {
                 <div className="border-t border-border-subtle p-4 text-small text-text-subtle">
                   {locale === 'ar' ? 'أرصدة خارج الرسم (سالبة أو بعملة مختلفة):' : 'Balances excluded from chart (negative or another currency):'}
                   {data.cash_accounts.filter((item) => item.balance_minor < 0 || item.currency !== data.currency).map((item) => (
-                    <p key={item.id}>{locale === 'ar' ? item.name_ar : item.name_en}: {money(item.balance_minor, item.currency)}</p>
+                    <p key={item.id}>{localizedName(item, locale)}: {money(item.balance_minor, item.currency)}</p>
                   ))}
                 </div>
               )}

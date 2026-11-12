@@ -21,6 +21,7 @@ import {
   type CommissionRule,
   type CommissionStatement,
 } from '../lib/commission'
+import { localizedName } from '../lib/names'
 import { ReasonModal } from '../components/ReasonModal'
 import {
   Badge,
@@ -76,8 +77,6 @@ const emptyRule = {
   effective_to: '',
 }
 
-const employeeOption = (row: Employee): SelectOption => ({ value: row.id, label: `${row.internal_code} · ${row.name_en}`, hint: row.name_ar })
-const agentOption = (row: Supplier): SelectOption => ({ value: row.id, label: row.name_en, hint: row.name_ar })
 const isAgent = (row: Supplier) => row.category === 'agent'
 
 export default function Commissions() {
@@ -107,6 +106,14 @@ export default function Commissions() {
     },
   })
 
+  const employeeOption = useCallback(
+    (row: Employee): SelectOption => ({ value: row.id, label: localizedName(row, locale), hint: row.internal_code }),
+    [locale],
+  )
+  const agentOption = useCallback(
+    (row: Supplier): SelectOption => ({ value: row.id, label: localizedName(row, locale) }),
+    [locale],
+  )
   const employeePicker = useRemoteOptions<Employee>({
     endpoint: '/employees',
     keyPrefix: 'commission-employees',
@@ -123,7 +130,7 @@ export default function Commissions() {
     enabled: ruleOpen && form.beneficiary_type === 'agent',
   })
   const branchOptions = useMemo<SelectOption[]>(
-    () => branches.map((branch) => ({ value: branch.id, label: locale === 'ar' ? branch.name_ar : branch.name_en, hint: branch.code })),
+    () => branches.map((branch) => ({ value: branch.id, label: localizedName(branch, locale), hint: branch.code })),
     [branches, locale],
   )
   const beneficiaryOptions =
@@ -341,7 +348,7 @@ export default function Commissions() {
 
   const cashOptions = (cashQuery.data ?? [])
     .filter((account) => account.registered && account.is_active !== false && payTarget && account.currency === payTarget.currency)
-    .map((account) => ({ value: account.cash_account_id ?? account.id, label: locale === 'ar' ? account.name_ar : account.name_en }))
+    .map((account) => ({ value: account.cash_account_id ?? account.id, label: localizedName(account, locale) }))
 
   // ---- statements -----------------------------------------------------------
   const [beneficiaryFilter, setBeneficiaryFilter] = useState('')
@@ -441,7 +448,7 @@ export default function Commissions() {
                   <tr key={rule.id}>
                     <Td>
                       <div className="font-medium tabular">{rule.code} · v{rule.version}</div>
-                      <div className="text-small text-text-subtle">{locale === 'ar' ? rule.name_ar : rule.name_en}</div>
+                      <div className="text-small text-text-subtle">{localizedName(rule, locale)}</div>
                       {rule.rejection_reason ? <div className="text-small text-danger-text">{rule.rejection_reason}</div> : null}
                     </Td>
                     <Td>

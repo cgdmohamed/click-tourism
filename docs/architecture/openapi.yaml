@@ -315,7 +315,12 @@ paths:
   /accounts:
     get:
       tags: [Accounting]
-      summary: Chart of accounts tree
+      summary: Chart of accounts (flat list; build the tree from parent_id)
+      description: >-
+        Each row also carries `classification` and `control_party_type`, plus additive read-only party
+        fields for ADR-0015 party subledger accounts (null on ordinary accounts): `party_type`
+        (customer|supplier|employee), `party_role` (receivable|payable|advance|custody|payable_balance),
+        `party_name_ar`, `party_name_en`.
       responses:
         '200': { description: Accounts }
     post:
@@ -5025,6 +5030,10 @@ components:
         parent_id: { type: string, nullable: true }
         is_postable: { type: boolean }
         is_active: { type: boolean }
+        party_type: { type: string, nullable: true, enum: [customer, supplier, employee], description: 'GET /accounts only; set on party subledger accounts' }
+        party_role: { type: string, nullable: true, description: 'GET /accounts only' }
+        party_name_ar: { type: string, nullable: true, description: 'GET /accounts only' }
+        party_name_en: { type: string, nullable: true, description: 'GET /accounts only' }
     JournalLineInput:
       type: object
       required: [account_id]

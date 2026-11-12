@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { formatDate } from '../lib/format'
 import type { ManagementReportKey } from '../lib/managementReports'
 import { CardHeader, EmptyState, InlineNotice, Money, Table, Td, Th } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 type Names = { name_ar: string; name_en: string }
 type Reconciliation = { reconciled: boolean }
@@ -74,7 +75,7 @@ export default function ManagementReportView({ report, data }: { report: Managem
   const { can } = useAuth()
   const ar = locale === 'ar'
   const text = (en: string, arabic: string) => (ar ? arabic : en)
-  const name = (n: Names | null | undefined) => (n ? (ar ? n.name_ar : n.name_en) : text('Not linked to a booking', 'غير مرتبط بحجز'))
+  const name = (n: Names | null | undefined) => (n ? (localizedName(n, ar ? 'ar' : 'en')) : text('Not linked to a booking', 'غير مرتبط بحجز'))
   const header = (title: string, d: { from: string; to: string }) => (
     <CardHeader title={title} subtitle={`${formatDate(d.from, locale)} → ${formatDate(d.to, locale)}`} icon="chart" />
   )
@@ -286,7 +287,7 @@ export default function ManagementReportView({ report, data }: { report: Managem
           <tbody>
             {d.rows.map((row) => (
               <tr key={`${row.side}-${row.account.code}`}>
-                <Td>{`${row.account.code} · ${ar ? row.account.name_ar : row.account.name_en}`}</Td>
+                <Td>{`${row.account.code} · ${localizedName(row.account, ar ? 'ar' : 'en')}`}</Td>
                 <Td>{row.side === 'output' ? text('Output tax', 'ضريبة المخرجات') : text('Input tax', 'ضريبة المدخلات')}</Td>
                 <Td className="text-end">{money(row.amount_minor, d.currency)}</Td>
               </tr>

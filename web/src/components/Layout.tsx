@@ -7,6 +7,7 @@ import { GlobalSearch } from './GlobalSearch'
 import { Icon } from './icons'
 import type { IconName } from './icons'
 import { cx, IconButton, Spinner } from './ui'
+import { localizedName } from '../lib/names'
 
 type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[] }
 
@@ -216,7 +217,7 @@ export function Layout() {
                 >
                   {branches.map((branch) => (
                     <option key={branch.id} value={branch.id}>
-                      {locale === 'ar' ? branch.name_ar : branch.name_en}
+                      {localizedName(branch, locale)}
                     </option>
                   ))}
                 </select>

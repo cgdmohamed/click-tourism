@@ -25,6 +25,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
 
 type CashAccount = {
@@ -113,7 +114,7 @@ export default function Treasury() {
   const fromAccount = registered.find((account) => account.cash_account_id === transferForm.from)
   const toAccount = registered.find((account) => account.cash_account_id === transferForm.to)
   const crossCurrency = Boolean(fromAccount && toAccount && fromAccount.currency !== toAccount.currency)
-  const name = (account?: CashAccount | null) => (account ? (locale === 'ar' ? account.name_ar : account.name_en) : '—')
+  const name = (account?: CashAccount | null) => (account ? (localizedName(account, locale)) : '—')
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['cash-accounts'] })
