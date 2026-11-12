@@ -106,6 +106,66 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Validation' }
 
+  /mcp/tokens:
+    get:
+      tags: [Auth]
+      summary: List the caller's own MCP tokens (no secrets)
+      description: Read-only MCP tokens (ability `mcp:read`, ADR-0016). Callable only with a normal login token; MCP tokens themselves get 403 `mcp_scope_denied`.
+      responses:
+        '200':
+          description: Own MCP tokens, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/McpToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Auth]
+      summary: Create a read-only MCP token (permission `mcp.use`)
+      description: Returns the plaintext token exactly once. The token carries only the `mcp:read` ability and may call only `GET /search`, `GET /bookings` and `GET /invoices` (everything else is 403 `mcp_scope_denied`). Default lifetime 8h (`MCP_TOKEN_DEFAULT_MINUTES`), maximum 24h (`MCP_TOKEN_MAX_MINUTES`). At most 10 active MCP tokens per user. Audited as `mcp.token_created`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                expires_in_minutes: { type: integer, minimum: 5, maximum: 1440, description: Defaults to 480 }
+      responses:
+        '201':
+          description: Created; `token` is shown only in this response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/McpToken'
+                      - type: object
+                        properties:
+                          token: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /mcp/tokens/{id}:
+    delete:
+      tags: [Auth]
+      summary: Revoke one of the caller's own MCP tokens
+      description: Audited as `mcp.token_revoked`. Another user's token, or an unknown id, returns 404.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Token not found }
+
   /branches:
     get:
       tags: [Platform]
@@ -5325,6 +5385,15 @@ components:
           pattern: '^[a-z][a-z0-9_]*$'
           description: Lower snake_case, unique per installation
         permissions: { type: array, minItems: 1, items: { type: string }, description: Permission names from the catalog }
+    McpToken:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        abilities: { type: array, items: { type: string }, example: ['mcp:read'] }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
     Branch:
       type: object
       properties:
