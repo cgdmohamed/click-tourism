@@ -116,6 +116,77 @@ class InvoiceTest extends TestCase
         return (int) $row->d - (int) $row->c;
     }
 
+    public function test_booking_invoice_reuses_existing_posted_revenue_and_blocks_duplicate_and_cancellation(): void
+    {
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'true');
+        app(SettingService::class)->set('accounting', 'booking_posting_trigger', 'confirm');
+        app(SettingService::class)->set('invoices', 'segregation', 'false');
+        $bookingService = app(BookingService::class);
+        $booking = $bookingService->create([
+            'customer_id' => $this->customer()->public_id,
+            'branch_id' => $this->branch->public_id,
+            'start_date' => now()->toDateString(),
+            'currency' => 'EGP',
+            'items' => [[
+                'service_type' => 'program', 'description' => 'Tour group',
+                'quantity' => 2, 'unit_cost_minor' => 10000, 'unit_sell_minor' => 30000,
+                'cost_currency' => 'EGP', 'sell_currency' => 'EGP',
+            ]],
+        ], $this->user->id);
+        $bookingService->transition($booking, 'quoted', null, $this->user->id);
+        $bookingService->transition($booking, 'confirmed', null, $this->user->id);
+        $entry = JournalEntry::query()->where('source_type', 'booking')
+            ->where('source_id', $booking->id)->where('event', 'revenue')->firstOrFail();
+        $priorCount = JournalEntry::query()->count();
+
+        $id = $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])
+            ->assertCreated()->assertJsonPath('data.total_minor', 60000)
+            ->assertJsonPath('data.lines.0.quantity', 2)
+            ->json('data.id');
+        $invoice = Invoice::query()->where('public_id', $id)->firstOrFail();
+        $service = app(InvoiceService::class);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+        $issued = $service->issue($invoice, $this->user->id);
+
+        $this->assertSame($entry->id, $issued->journal_entry_id);
+        $this->assertSame($priorCount, JournalEntry::query()->count());
+        $this->assertSame(60000, $this->balance('1100'));
+        $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])->assertStatus(422);
+        $this->postJson("/api/v1/bookings/{$booking->public_id}/cancel", [
+            'reason' => 'Customer request',
+        ])->assertStatus(422);
+        $this->assertSame('confirmed', $booking->fresh()->status);
+    }
+
+    public function test_booking_invoice_issues_normally_if_no_revenue_was_posted(): void
+    {
+        app(SettingService::class)->set('accounting', 'auto_post_bookings', 'false');
+        app(SettingService::class)->set('invoices', 'segregation', 'false');
+        $booking = app(BookingService::class)->create([
+            'customer_id' => $this->customer()->public_id,
+            'branch_id' => $this->branch->public_id,
+            'start_date' => now()->toDateString(),
+            'currency' => 'EGP',
+            'items' => [[
+                'service_type' => 'hotel', 'description' => 'Hotel service',
+                'quantity' => 1, 'unit_cost_minor' => 10000, 'unit_sell_minor' => 30000,
+                'cost_currency' => 'EGP', 'sell_currency' => 'EGP',
+            ]],
+        ], $this->user->id);
+        $id = $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])
+            ->assertCreated()->json('data.id');
+        $invoice = Invoice::query()->where('public_id', $id)->firstOrFail();
+        $service = app(InvoiceService::class);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+        $issued = $service->issue($invoice, $this->user->id);
+
+        $this->assertSame('issued', $issued->status);
+        $this->assertSame(30000, $this->balance('1100'));
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'invoice')->where('event', 'issued')->count());
+    }
+
     public function test_invoice_index_filters_by_booking_and_rejects_mismatched_customer(): void
     {
         $booking = app(BookingService::class)->create([
