@@ -28,6 +28,7 @@ import Users from './pages/Users'
 import Roles from './pages/Roles'
 import Profile from './pages/Profile'
 import Treasury from './pages/Treasury'
+import Commissions from './pages/Commissions'
 import Expenses from './pages/Expenses'
 import OpeningBalances from './pages/OpeningBalances'
 import Periods from './pages/Periods'
@@ -40,6 +41,7 @@ import FixedAssets from './pages/FixedAssets'
 import ExchangeRates from './pages/ExchangeRates'
 import CostCenters from './pages/CostCenters'
 import TaxProfiles from './pages/TaxProfiles'
+import Imports from './pages/Imports'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,6 +65,7 @@ export default function App() {
                   <Route path="journal" element={<Journal />} />
                   <Route path="treasury" element={<Treasury />} />
                   <Route path="expenses" element={<Expenses />} />
+                  <Route path="commissions" element={<Commissions />} />
                   <Route path="opening-balances" element={<OpeningBalances />} />
                   <Route path="periods" element={<Periods />} />
                   <Route path="invoices" element={<Invoices />} />
@@ -88,6 +91,7 @@ export default function App() {
                   <Route path="reports" element={<Reports />} />
                   <Route path="leads" element={<Leads />} />
                   <Route path="assignment-rules" element={<AssignmentRules />} />
+                  <Route path="imports" element={<Imports />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="users" element={<Users />} />
                   <Route path="roles" element={<Roles />} />

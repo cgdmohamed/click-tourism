@@ -4,6 +4,8 @@ use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\Idempotent;
 use App\Http\Middleware\SetLocale;
+use App\Modules\Imports\Support\ImportFileException;
+use App\Support\ApiResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -47,6 +49,12 @@ return Application::configure(basePath: dirname(__DIR__))
                     'message' => $exception->getMessage(),
                     'code' => 'domain_error',
                 ], 422);
+            }
+        });
+
+        $exceptions->render(function (ImportFileException $exception, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return ApiResponse::error($exception->getMessage(), $exception->errorCode, $exception->status, ['params' => (object) $exception->params]);
             }
         });
 

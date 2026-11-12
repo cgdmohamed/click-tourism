@@ -10,6 +10,7 @@ use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Models\BookingItem;
 use App\Modules\Bookings\Models\BookingStatusHistory;
 use App\Modules\Bookings\Models\TourDeparture;
+use App\Modules\Commissions\Services\CommissionService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -69,6 +70,7 @@ class BookingService
         private readonly PartyLedgerService $ledger,
         private readonly CreditLimitService $creditLimits,
         private readonly TaxPolicy $taxPolicy,
+        private readonly CommissionService $commissions,
     ) {}
 
     public function create(array $data, ?int $actorId = null): Booking
@@ -369,6 +371,7 @@ class BookingService
             }
 
             $this->audit->log('booking.transitioned', $booking, ['status' => $from], ['status' => $toStatus, 'reason' => $reason], $actorId);
+            $this->commissions->syncBooking($booking, $actorId);
 
             return $booking->refresh()->load('items', 'customer')->withWarnings($warnings);
         });
@@ -469,6 +472,7 @@ class BookingService
                 'reason' => $reason,
                 'cancellation_fee_minor' => $cancellationFeeMinor,
             ], $actorId);
+            $this->commissions->syncBooking($booking, $actorId);
 
             return $booking->refresh()->load('items', 'customer');
         });

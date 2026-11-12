@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 
 /**
  * Creates accounts the code relies on that older installs may lack: the
- * unrealized FX gain/loss accounts (7901/6901), Bank Interest Income (7920) and the inter-branch clearing accounts (1180/2160).
+ * unrealized FX gain/loss accounts (7901/6901), Bank Interest Income (7920), Sales Commissions (6700) and the inter-branch clearing accounts (1180/2160).
  * Names and types come from ChartOfAccountsSeeder. The 1151-1154 children of
  * 1150 are deliberately NOT created here; `accounting:split-1150` owns them.
  *
@@ -25,6 +25,7 @@ class EnsureAccounts extends Command
         'bank_interest_account_code' => '7920',
         'interbranch_receivable_account_code' => '1180',
         'interbranch_payable_account_code' => '2160',
+        'commission_expense_account_code' => '6700',
     ];
 
     public const FX_ONLY = ['fx_unrealized_gain_account_code', 'fx_unrealized_loss_account_code'];
@@ -33,7 +34,7 @@ class EnsureAccounts extends Command
         {--dry-run : Show which accounts would be created (default)}
         {--apply : Create the missing accounts}';
 
-    protected $description = 'Create accounts newer code relies on (7901, 6901, 7920, 1180, 2160) if absent';
+    protected $description = 'Create accounts newer code relies on (7901, 6901, 7920, 6700, 1180, 2160) if absent';
 
     /** @var list<string> */
     protected array $settingKeys = [];

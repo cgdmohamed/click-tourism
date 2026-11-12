@@ -8,7 +8,10 @@ import { Icon } from './icons'
 import type { IconName } from './icons'
 import { cx, IconButton, Spinner } from './ui'
 
-type NavItem = { to: string; label: string; icon: IconName; permission?: string }
+type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[] }
+
+/** Entities the import page can load; the page is useful to anyone holding one of these. */
+const IMPORT_PERMISSIONS = ['customers.create', 'suppliers.create', 'employees.manage', 'bookings.create', 'accounts.update', 'opening_balances.manage']
 type NavGroup = { label?: string; items: NavItem[] }
 
 export function Layout() {
@@ -54,6 +57,7 @@ export function Layout() {
         { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
         { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
         { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
+        { to: '/commissions', label: locale === 'ar' ? 'العمولات' : 'Commissions', icon: 'coins', permission: 'commissions.view' },
         { to: '/payments', label: locale === 'ar' ? 'تحصيلات العملاء' : 'Customer collections', icon: 'creditCard', permission: 'payments.view' },
         { to: '/payment-methods', label: locale === 'ar' ? 'طرق الدفع' : 'Payment methods', icon: 'wallet', permission: 'payments.view' },
         { to: '/supplier-settlements', label: t('supplierSettlements'), icon: 'handshake' },
@@ -78,6 +82,7 @@ export function Layout() {
       items: [
         { to: '/users', label: t('users'), icon: 'users', permission: 'users.view' },
         { to: '/roles', label: t('rolesPermissions'), icon: 'shield', permission: 'roles.view' },
+        { to: '/imports', label: locale === 'ar' ? 'استيراد البيانات' : 'Data import', icon: 'upload', anyPermission: IMPORT_PERMISSIONS },
         { to: '/exchange-rates', label: locale === 'ar' ? 'أسعار الصرف' : 'Exchange rates', icon: 'refresh', permission: 'settings.view' },
         { to: '/settings', label: t('settings'), icon: 'settings' },
       ],
@@ -87,7 +92,9 @@ export function Layout() {
   const nav = (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4" aria-label="Main navigation">
       {groups.map((group, index) => {
-        const items = group.items.filter((item) => !item.permission || can(item.permission))
+        const items = group.items.filter(
+          (item) => (!item.permission || can(item.permission)) && (!item.anyPermission || item.anyPermission.some((permission) => can(permission))),
+        )
         if (items.length === 0) return null
         return (
           <div key={group.label ?? `group-${index}`} className="flex flex-col gap-1">

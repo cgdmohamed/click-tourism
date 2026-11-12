@@ -2,7 +2,7 @@
 
 | Decision | Previous state | Required change | Final implementation status | Accountant approval | Related files |
 |---|---|---|---|---|---|
-| DEC-004 | No guarded trigger default | Configurable trigger, fully-collected default | Guarded settings only; no posting | Pending | `SettingService.php` |
+| DEC-004 | No guarded trigger default | Configurable trigger, fully-collected default | Implemented (agent/commissions): rules, accrual on full collection, approval, posting behind `accounting_policy_approved` and `commission_auto_post=false`, reversal, payout | Pending for production posting | `docs/architecture/commissions.md` |
 | DEC-008 | No explicit revaluation guard | Revaluation/reversal configuration | Disabled settings only; no posting | Pending | `SettingService.php` |
 | DEC-014 | Branch dimension and access existed | Record selected one-ledger model without activating clearing | Existing separation retained; inter-branch posting limited to fixed-asset transfers (clearing accounts 1180/2160, see fixed-assets audit item 18) | Pending | ADR-0005, `BranchScope` |
 | DEC-015 | Elapsed-hour reassignment | Business calendar, meaningful activity, retries and escalation | Implemented and tested | Not required | `LeadService.php`, decision-support migration |
@@ -17,7 +17,7 @@
 
 ## Blocked accounting actions
 
-- Commission accrual, reversal, payout, and journal posting (DEC-004/013).
+- Commission journal posting stays disabled until the accounting policy is approved (DEC-004/013); accrual, approval and rules work without it.
 - Period-end FX revaluation and reversing journals (DEC-008).
 - Inter-branch due-to/due-from posting activation (DEC-014).
 - Negative/zero-margin commission and accounting interpretation (DEC-025).

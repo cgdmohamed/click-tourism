@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CashAccountController;
+use App\Http\Controllers\Api\CommissionController;
+use App\Http\Controllers\Api\CommissionRuleController;
 use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
@@ -23,6 +25,8 @@ use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\FixedAssetReportController;
 use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\ImportController;
+use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\InvoiceApplicationController;
 use App\Http\Controllers\Api\InvoiceCollectionController;
 use App\Http\Controllers\Api\InvoiceController;
@@ -102,6 +106,28 @@ Route::prefix('v1')->group(function () {
         Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approve'])->middleware(['permission:expenses.approve', 'idempotent']);
         Route::post('expenses/{expense}/reject', [ExpenseController::class, 'reject'])->middleware('permission:expenses.approve');
         Route::post('expenses/{expense}/reverse', [ExpenseController::class, 'reverse'])->middleware('permission:expenses.approve');
+
+        Route::get('commission-rules', [CommissionRuleController::class, 'index'])->middleware('permission:commissions.view');
+        Route::post('commission-rules', [CommissionRuleController::class, 'store'])->middleware('permission:commission_rules.manage');
+        Route::get('commission-rules/{commissionRule}', [CommissionRuleController::class, 'show'])->middleware('permission:commissions.view');
+        Route::patch('commission-rules/{commissionRule}', [CommissionRuleController::class, 'update'])->middleware('permission:commission_rules.manage');
+        Route::delete('commission-rules/{commissionRule}', [CommissionRuleController::class, 'destroy'])->middleware('permission:commission_rules.manage');
+        Route::post('commission-rules/{commissionRule}/new-version', [CommissionRuleController::class, 'newVersion'])->middleware('permission:commission_rules.manage');
+        Route::post('commission-rules/{commissionRule}/submit', [CommissionRuleController::class, 'submit'])->middleware('permission:commission_rules.manage');
+        Route::post('commission-rules/{commissionRule}/approve', [CommissionRuleController::class, 'approve'])->middleware('permission:commission_rules.approve');
+        Route::post('commission-rules/{commissionRule}/reject', [CommissionRuleController::class, 'reject'])->middleware('permission:commission_rules.approve');
+        Route::post('commission-rules/{commissionRule}/retire', [CommissionRuleController::class, 'retire'])->middleware('permission:commission_rules.manage');
+
+        Route::get('commissions', [CommissionController::class, 'index'])->middleware('permission:commissions.view');
+        Route::get('commissions/beneficiaries', [CommissionController::class, 'beneficiaries'])->middleware('permission:commissions.view');
+        Route::get('commissions/statement', [CommissionController::class, 'statement'])->middleware('permission:commissions.view');
+        Route::get('commissions/{commission}', [CommissionController::class, 'show'])->middleware('permission:commissions.view');
+        Route::post('commissions/{commission}/override', [CommissionController::class, 'override'])->middleware('permission:commissions.override');
+        Route::post('commissions/{commission}/approve', [CommissionController::class, 'approve'])->middleware(['permission:commissions.approve', 'idempotent']);
+        Route::post('commissions/{commission}/reject', [CommissionController::class, 'reject'])->middleware('permission:commissions.approve');
+        Route::post('commissions/{commission}/post', [CommissionController::class, 'post'])->middleware(['permission:commissions.post', 'idempotent']);
+        Route::post('commissions/{commission}/pay', [CommissionController::class, 'pay'])->middleware(['permission:commissions.pay', 'idempotent']);
+        Route::post('commissions/{commission}/reverse', [CommissionController::class, 'reverse'])->middleware('permission:commissions.reverse');
 
         Route::get('transfers', [TransferController::class, 'index'])->middleware('permission:transfers.view');
         Route::post('transfers', [TransferController::class, 'store'])->middleware(['permission:transfers.create', 'idempotent']);
@@ -221,12 +247,27 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/fixed-assets/movements', [FixedAssetReportController::class, 'movements'])->middleware('permission:assets.view');
         Route::get('reports/fixed-assets/reconciliation', [FixedAssetReportController::class, 'reconciliation'])->middleware('permission:assets.view');
         Route::get('reports/fixed-assets/schedule', [FixedAssetReportController::class, 'schedule'])->middleware('permission:assets.view');
+        Route::get('reports/fixed-assets/{report}/export', [FixedAssetReportController::class, 'export'])
+            ->whereIn('report', ['roll-forward', 'carrying-values', 'movements', 'reconciliation', 'schedule'])
+            ->middleware(['permission:assets.view', 'permission:reports.export', 'throttle:report-exports']);
 
         Route::get('accounts', [AccountController::class, 'index'])->middleware('permission:accounts.view');
         Route::post('accounts', [AccountController::class, 'store'])->middleware('permission:accounts.create');
         Route::patch('accounts/{account}', [AccountController::class, 'update'])->middleware('permission:accounts.update');
         Route::get('accounts/export', [AccountController::class, 'export'])->middleware('permission:accounts.view');
         Route::post('accounts/import', [AccountController::class, 'import'])->middleware('permission:accounts.update');
+
+        // Generic import framework (work order 13). Authorisation is per entity
+        // inside the controller: the same permission that creates/updates the
+        // record by hand, evaluated for the chosen duplicate policy.
+        Route::get('imports/templates', [ImportController::class, 'templates']);
+        Route::get('imports/templates/{entity}', [ImportController::class, 'template']);
+        Route::get('imports', [ImportController::class, 'index']);
+        Route::post('imports', [ImportController::class, 'store'])->middleware('throttle:30,1');
+        Route::get('imports/{job}', [ImportController::class, 'show']);
+        Route::post('imports/{job}/confirm', [ImportController::class, 'confirm']);
+        Route::get('imports/{job}/errors', [ImportController::class, 'errors']);
+        Route::delete('imports/{job}', [ImportController::class, 'destroy']);
 
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('permission:customers.create');
@@ -296,19 +337,19 @@ Route::prefix('v1')->group(function () {
         Route::post('invoices/{invoice}/credit-note', [InvoiceController::class, 'creditNote'])->middleware(['permission:invoices.approve', 'idempotent']);
 
         Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])->middleware('permission:reports.view');
-        Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/general-ledger', [ReportController::class, 'generalLedger'])->middleware('permission:reports.view');
-        Route::get('reports/general-ledger/export', [ReportController::class, 'exportGeneralLedger'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/general-ledger/export', [ReportController::class, 'exportGeneralLedger'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/income-statement', [ReportController::class, 'incomeStatement'])->middleware('permission:reports.view');
-        Route::get('reports/income-statement/export', [ReportController::class, 'exportIncomeStatement'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/income-statement/export', [ReportController::class, 'exportIncomeStatement'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/balance-sheet', [ReportController::class, 'balanceSheet'])->middleware('permission:reports.view');
-        Route::get('reports/balance-sheet/export', [ReportController::class, 'exportBalanceSheet'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/balance-sheet/export', [ReportController::class, 'exportBalanceSheet'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/aging', [ReportController::class, 'aging'])->middleware('permission:reports.view');
-        Route::get('reports/aging/export', [ReportController::class, 'exportAging'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/aging/export', [ReportController::class, 'exportAging'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/aging-reconciliation', [ReportController::class, 'agingReconciliation'])->middleware('permission:reports.view');
-        Route::get('reports/aging-reconciliation/export', [ReportController::class, 'exportAgingReconciliation'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/aging-reconciliation/export', [ReportController::class, 'exportAgingReconciliation'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/party-statement', [ReportController::class, 'partyStatement'])->middleware('permission:reports.view');
-        Route::get('reports/party-statement/export', [ReportController::class, 'exportPartyStatement'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/party-statement/export', [ReportController::class, 'exportPartyStatement'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('dashboard/summary', [ReportController::class, 'dashboard'])->middleware('permission:reports.view');
 
         Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1');
@@ -317,6 +358,13 @@ Route::prefix('v1')->group(function () {
         Route::post('leads', [LeadController::class, 'store'])->middleware('permission:leads.create');
         Route::patch('leads/{lead}', [LeadController::class, 'update'])->middleware('permission:leads.update');
         Route::post('leads/{lead}/convert', [LeadController::class, 'convert'])->middleware('permission:leads.convert');
+
+        // Optional Meta / WhatsApp integrations (disabled by default; secrets are env-only).
+        Route::get('integrations/status', [IntegrationController::class, 'status'])->middleware('permission:settings.view');
+        Route::put('integrations/settings', [IntegrationController::class, 'updateSettings'])->middleware('permission:settings.update');
+        Route::get('integrations/whatsapp/messages', [IntegrationController::class, 'messages'])->middleware('permission:leads.view');
+        Route::post('integrations/whatsapp/messages', [IntegrationController::class, 'send'])->middleware('permission:leads.update');
+        Route::post('integrations/whatsapp/consents', [IntegrationController::class, 'recordConsent'])->middleware('permission:leads.update');
 
         Route::get('assignment-rules', [AssignmentRuleController::class, 'index'])->middleware('permission:leads.view');
         Route::post('assignment-rules', [AssignmentRuleController::class, 'store'])->middleware('permission:leads.update');
