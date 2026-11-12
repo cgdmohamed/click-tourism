@@ -62,3 +62,26 @@ Status: Draft. Scope: self-hosted single-tenant installation. Method: asset inve
 - Single-server deployment → backup/RTO depends on customer infrastructure.
 - Meta/WhatsApp credentials are customer-managed → compromise is outside product control; provide rotation guidance.
 - No formal penetration test in MVP → schedule before first production if required.
+
+## 6. AI assistant / MCP gateway (proposed, not implemented)
+
+Status: design only; full detail in `mcp-ai-assistant-blueprint.md`. Nothing is enabled by default (`mcp.enabled` and `assistant.enabled` are off), no write tools exist, and no AI provider keys are stored in the repository.
+
+New trust boundary: assistant client <-> MCP gateway (sidecar, no DB access) <-> Laravel API using the **end user's own** read-only token (`mcp:read` ability, 8h expiry). Authorization stays in Laravel (permission middleware + `BranchScope`).
+
+| Threat | Scenario | Mitigation |
+|---|---|---|
+| Indirect prompt injection | Lead notes, names, memos or bank memos contain instructions | Untrusted-field wrapping, no outbound tools in the same session, no write tools, tool calls after untrusted content need user confirmation |
+| Data exfiltration | Model renders external links/images or chains to another MCP server that can send data | Same-origin links only, CSP, dedicated assistant profile, per-token row/rate budgets, contact masking by default |
+| Privilege escalation / cross-branch | Tool arguments tampered, foreign branch id | Laravel authoritative; gateway drops foreign-branch rows; method fixed to GET |
+| Token theft | MCP token leaked | Short expiry, read-only ability, revoke endpoints, never logged |
+| Provider data leakage | PII sent to cloud model | Customer-chosen provider (cloud or local), PII redaction on by default, provider allowlist |
+| Repudiation | User denies a query | Every tool call audited by Laravel (`mcp.tool_call`), no result bodies stored |
+
+Additional abuse cases to test (blueprint AT-1..AT-14):
+
+13. An injected lead note cannot trigger extra tool calls or leak other customers.
+14. An MCP token cannot call any non-GET route or any export route.
+15. Cross-branch ids requested through the assistant return 403/404 and are audited.
+16. A deactivated or revoked user's MCP token fails immediately.
+17. A paged bulk read hits the row budget and is flagged.

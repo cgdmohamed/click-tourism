@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\Integrations\Models\WebhookEvent;
+use App\Modules\Integrations\Models\WhatsAppMessage;
 use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\BuildsAccounting;
@@ -19,6 +21,8 @@ class WebhookTest extends TestCase
         parent::setUp();
         $this->buildAccounting();
         $this->seed(CrmSeeder::class);
+        // Integrations are disabled by default (see IntegrationDisabledTest).
+        app(SettingService::class)->set('integrations', 'whatsapp_enabled', 'true');
     }
 
     private function payload(): string
@@ -136,7 +140,9 @@ class WebhookTest extends TestCase
         $this->signedPost($first, 'app-secret')->assertOk();
         $this->signedPost($second, 'app-secret')->assertOk();
 
-        $this->assertSame(2, Lead::query()->count());
+        // The second message is from the same phone: it is linked to the existing lead, not a new lead.
+        $this->assertSame(1, Lead::query()->count());
+        $this->assertSame(2, WhatsAppMessage::query()->where('direction', 'in')->where('lead_id', Lead::query()->value('id'))->count());
         $this->assertSame(2, WebhookEvent::query()->count());
     }
 }

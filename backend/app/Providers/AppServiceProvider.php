@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Modules\Core\Services\RoundingPolicy;
+use App\Modules\Integrations\Adapters\GraphMetaLeadFetcher;
+use App\Modules\Integrations\Adapters\GraphWhatsAppSender;
+use App\Modules\Integrations\Contracts\MetaLeadFetcher;
+use App\Modules\Integrations\Contracts\WhatsAppSender;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\EmployeeAdvance;
@@ -20,6 +24,10 @@ class AppServiceProvider extends ServiceProvider
     {
         // Resolved once per request/job; SettingService::set() flushes it.
         $this->app->scoped(RoundingPolicy::class);
+
+        // Integrations sit behind adapter interfaces; tests swap or Http::fake these.
+        $this->app->bind(MetaLeadFetcher::class, GraphMetaLeadFetcher::class);
+        $this->app->bind(WhatsAppSender::class, GraphWhatsAppSender::class);
     }
 
     /**

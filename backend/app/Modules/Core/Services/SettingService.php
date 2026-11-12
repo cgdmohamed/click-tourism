@@ -181,6 +181,27 @@ class SettingService
             'reassignment_max_attempts' => '3',
             'meaningful_activity_types' => 'note,call,email,whatsapp,stage_changed',
         ],
+        // Optional Meta Lead Ads / WhatsApp Cloud API integrations (ADR-0010).
+        // Everything is OFF by default. Non-secret ids only: app secrets,
+        // verify tokens and access tokens come from env (config/services.php)
+        // and are never stored here.
+        'integrations' => [
+            'meta_leads_enabled' => 'false',
+            'meta_page_id' => '',
+            'meta_default_branch_id' => '',
+            // JSON object {"<form_id>": "<branch public id>"}; optional.
+            'meta_form_branch_map' => '',
+            // UNVERIFIED: confirm the current supported Graph API version.
+            'meta_graph_version' => 'v21.0',
+            'meta_webhook_verified_at' => '',
+            'whatsapp_enabled' => 'false',
+            'whatsapp_outbound_enabled' => 'false',
+            'whatsapp_phone_number_id' => '',
+            'whatsapp_business_account_id' => '',
+            'whatsapp_graph_version' => 'v21.0',
+            'whatsapp_webhook_verified_at' => '',
+            'whatsapp_stop_keywords' => 'stop,unsubscribe,إيقاف,الغاء',
+        ],
         'documents' => [
             'default_language' => 'bilingual',
             // DEC-017 (work order 02): the person who submitted a voucher
