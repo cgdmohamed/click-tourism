@@ -47,6 +47,13 @@ Schedule::command('accounting:revalue --apply --reversals-only')
     ->dailyAt('00:30')
     ->withoutOverlapping();
 
+// Optional Meta / WhatsApp integrations: publish queued outbox rows and re-queue
+// lost jobs. No-op while the integrations are disabled or idle.
+Schedule::command('integrations:dispatch-outbox')
+    ->name('integrations-dispatch-outbox')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 /**
  * Only the dedicated disposable demo container publishes a reset window.
  * Production must never call the destructive demo reset script.

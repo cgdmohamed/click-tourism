@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\FixedAssetController;
 use App\Http\Controllers\Api\FixedAssetReportController;
 use App\Http\Controllers\Api\FxRateController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\InvoiceApplicationController;
 use App\Http\Controllers\Api\InvoiceCollectionController;
 use App\Http\Controllers\Api\InvoiceController;
@@ -317,6 +318,13 @@ Route::prefix('v1')->group(function () {
         Route::post('leads', [LeadController::class, 'store'])->middleware('permission:leads.create');
         Route::patch('leads/{lead}', [LeadController::class, 'update'])->middleware('permission:leads.update');
         Route::post('leads/{lead}/convert', [LeadController::class, 'convert'])->middleware('permission:leads.convert');
+
+        // Optional Meta / WhatsApp integrations (disabled by default; secrets are env-only).
+        Route::get('integrations/status', [IntegrationController::class, 'status'])->middleware('permission:settings.view');
+        Route::put('integrations/settings', [IntegrationController::class, 'updateSettings'])->middleware('permission:settings.update');
+        Route::get('integrations/whatsapp/messages', [IntegrationController::class, 'messages'])->middleware('permission:leads.view');
+        Route::post('integrations/whatsapp/messages', [IntegrationController::class, 'send'])->middleware('permission:leads.update');
+        Route::post('integrations/whatsapp/consents', [IntegrationController::class, 'recordConsent'])->middleware('permission:leads.update');
 
         Route::get('assignment-rules', [AssignmentRuleController::class, 'index'])->middleware('permission:leads.view');
         Route::post('assignment-rules', [AssignmentRuleController::class, 'store'])->middleware('permission:leads.update');
