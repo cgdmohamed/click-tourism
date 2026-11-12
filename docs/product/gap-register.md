@@ -24,13 +24,13 @@ Severity is about product risk, not effort.
 |---|---|---|---|
 | Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 1 (GAP-RPT-03 adjacent, export parity) | none |
 | Reports | Core ledger + statements + aging/statements + CSV/XLSX/PDF done | 6 | close RPT-01..05, then browser E2E |
-| CRM | Lead capture, rules, conversion, WhatsApp consent done | 6 | wire reassignment (P0), then pipeline/activities |
+| CRM | Lead capture, rules, conversion, WhatsApp consent done; 24-hour reassignment scheduled | 5 | pipeline/activities (CRM-02..05) |
 | Core / auth | Users, roles, branches, settings, audit events, health, install | 4 | notifications, audit browsing, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
 | QA / release | 876 backend tests, 88 unit tests, 8 CI jobs | 4 | coverage gate, a11y, performance seed |
 | Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
 
-Counts include only tracked gaps below (36 total, 3 at P0).
+Counts include only tracked gaps below (31 total after closing GAP-CRM-01, 0 at P0).
 
 ## 3. Reports module
 
@@ -51,7 +51,7 @@ Implemented today: lead create/update/list, configurable sources/stages as data,
 
 | ID | Sev | Gap | Evidence | Done when | Blocked by |
 |---|---|---|---|---|---|
-| GAP-CRM-01 | **P0** | 24-hour reassignment is advertised but never runs. `LeadService::reassignStale()` has no caller: no artisan command, no scheduler entry. | `backend/app/Modules/CRM/Services/LeadService.php:154`; `backend/routes/console.php` has no lead job; `backend/app/Console/Commands` has no reassignment command; `web/src/pages/Leads.tsx:98,107` promises "automatic reassignment will apply". | A scheduled command runs `reassignStale()`, is idempotent, respects closed periods/business hours, writes activity + audit, and has a feature test proving stale-only reassignment. | none |
+| ~~GAP-CRM-01~~ | **P0 — closed** | 24-hour reassignment was advertised but never ran. Now: `crm:reassign-stale-leads` runs hourly, calls `LeadService::reassignStale()`, is idempotent, measures inactivity in configured business hours, and writes an activity + audit row. | `backend/app/Console/Commands/ReassignStaleLeads.php`; `backend/routes/console.php` (`crm-reassign-stale-leads`); `backend/tests/Feature/LeadReassignmentCommandTest.php`. | Closed by the scheduled command and stale-only/idempotency test. No accounting period is touched by lead routing, so closed-period logic does not apply. | none |
 | GAP-CRM-02 | P1 | Lead sources and stages cannot be managed through the API/UI; they are seed data only. | No `/lead-sources` or `/lead-stages` routes in `backend/routes/api.php`; models exist in `Modules/CRM/Models`. | CRUD (or settings-managed) sources/stages with won/lost flags, ordering, and tests; AC-CRM-001/005 fully satisfiable. | none |
 | GAP-CRM-03 | P1 | No lead activity/timeline read API and no lead detail screen; activities are written but never displayed. | Only `index`, `store`, `update`, `convert` in `LeadController`; no `/lead-activities` route; no lead profile route in `web/src/App.tsx`. | `GET /leads/{lead}` with paginated activities and a detail page showing timeline, owner history, and consent state. | none |
 | GAP-CRM-04 | P1 | No duplicate detection for phone/email, so the same lead can be captured repeatedly. | No duplicate-normalisation logic in `LeadService`; AC-CRM-007 unmet. | Creating/importing a lead inside the configured window flags the match and links it instead of silently duplicating. | duplicate-window setting (default 30 days) |
@@ -119,7 +119,7 @@ Tracked here so they are never silently implemented or silently assumed "done".
 Order follows the module completion sequence; each step is one branch → one PR with tests.
 
 1. `agent/reports-close-gaps` — GAP-RPT-01, 03, 04; E2E for a report export (GAP-QA-01).
-2. `agent/crm-close-gaps` — GAP-CRM-01 (P0 scheduler) then 02, 03, 04, 05.
+2. `agent/crm-close-gaps` — GAP-CRM-02, 03, 04, 05 (GAP-CRM-01 closed by `agent/crm-reassignment`).
 3. `agent/core-notifications-audit` — GAP-CORE-01, 02; then GAP-CORE-03 decision.
 4. `agent/qa-harness` — GAP-QA-02, 03, 04, 05; remaining per-module E2E.
 5. `agent/docs-truth-pass` — GAP-DOC-01..05.
