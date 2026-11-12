@@ -1,10 +1,24 @@
 # MCP Tooling and AI Assistant Blueprint
 
-Status: **Proposed (design only).** No code, no AI provider keys, no write tools are enabled by this document.
+Status: **Stage 1 implemented (2026-11-12, ADR-0016); stages 2-4 remain proposed.** Stage 1 = token hardening + read-only gateway with tools 1, 5, 7 (`mcp-gateway/`). No AI provider is integrated, no assistant transcripts are stored, write tools stay BLOCKED. Where section 3/7/8 differ from ADR-0016, **the ADR and the code win** (see "Stage 1 as built" below).
 Date: 2026-11-12. Source work order: `tourism_erp_agent_prompts/.../04-next-phase-readiness/11-mcp-tooling-and-ai-assistant-security-blueprint.md`.
 Companions: ADR-0005 (branch scoping), ADR-0006 (auth/authz), ADR-0007 (idempotency), ADR-0008 (API conventions), `threat-model.md` section 6, `docs/product/permission-matrix.md`.
 
 Scope reminder (`reference/PRODUCT_CONTEXT.md`): one self-hosted installation per customer, one legal entity, never SaaS or multi-tenant. The assistant runs inside that installation's boundary; there is no shared cloud control plane.
+
+## Stage 1 as built (ADR-0016)
+
+| Topic | Built | Differs from the design text |
+|---|---|---|
+| Token endpoints | `POST/GET /mcp/tokens`, `DELETE /mcp/tokens/{id}` (permission `mcp.use` only on create) | Paths are `/mcp/tokens`, not `/auth/mcp-tokens`; expiry default 8 h, caller may ask up to 24 h (`MCP_TOKEN_MAX_MINUTES`), not 8 h max; admin revoke-any deferred |
+| Ability / middleware | Ability `mcp:read`; `mcp.readonly` allows GET `/search`, `/bookings`, `/invoices` only, else 403 `mcp_scope_denied` | Detection is by ability (`mcp:read` without `*`), not by name prefix |
+| Rate limit | Named limiter `mcp-read`, 60/min per token | No hourly limit, no report limiter, no daily row budget or circuit breaker |
+| Audit | `mcp.token_created`, `mcp.token_revoked`, `mcp.tool_called`, `mcp.tool_denied` written by Laravel | Event names differ (`tool_called`, not `tool_call`); no `X-Mcp-Tool` audit middleware, tool name derived from the route; no params hash/result count |
+| Masking | Setting `mcp.mask_contacts` (default true) applied server-side to MCP responses, plus gateway second layer | Replaces the proposed `mcp.reveal_contact`; `tax_id` is not masked in stage 1 |
+| Gateway | Node ESM, stdio, env config, Ajv-validated schemas, data envelope, 500-char truncation, 64 KB cap | No `/auth/me` second branch filter, no HTTP transport, no feature flags `mcp.enabled`/`assistant.enabled` |
+| Not built | Provider abstraction, assistant UI, transcripts, PII redaction toward a provider, write tools | By owner decision |
+
+Adversarial tests covered in stage 1: AT-1/AT-2 (envelope tests in `mcp-gateway/test`, verbatim-data test in `McpTokenTest`), AT-5 (cross-branch), AT-6 (viewer without `invoices.view` gets 403 through the token; the full role x tool matrix is stage 2), AT-7 (per-token rate limit only), AT-8 (export denial), AT-9 (non-GET and traversal ids), AT-10 (revoked, expired, deactivated). AT-3 and AT-4 are client-side concerns (renderer/other servers) and are documented as deployment guidance only: UNVERIFIED in code.
 
 ## 1. Gap report (verified against the current branch)
 
@@ -269,6 +283,7 @@ Release conditions for any future draft tool (all required): written product app
 
 | Stage | Scope | Exit criteria |
 |---|---|---|
+| Status | 0 Design: done. **1 PoC: implemented (ADR-0016), real-client connection UNVERIFIED.** 2-4: not started. | |
 | 0 Design | This document + ADR-0016 "MCP gateway and assistant" (to be written from sections 2-9) + architect approval of `mcp.use`, `mcp:read` ability and `mcp.readonly` middleware | ADR accepted; permission-matrix addendum drafted; OpenAPI additions drafted for token endpoints. |
 | 1 PoC | Gateway + tools 1, 5, 7; feature flags off by default; token endpoints; `mcp.readonly`; audit | AT-1..AT-10 pass in CI; `php artisan test` green incl. `OpenApiCoverageTest`; role x tool matrix (T6) matches permission-matrix; no secrets in repo (secret scan); non-GET with MCP token always 403; deactivated user rejected; rollback = disable `mcp.enabled` and drop gateway container, no schema dependency except an additive permission and token abilities. |
 | 2 Read expansion | Tools 2-4, 6, 8-11, then 12-15; masking; rate/cost limits; bulk-read detection | AT-11..AT-14 pass; load test shows limits enforced; audit rows complete for 100% of calls. |
@@ -277,8 +292,8 @@ Release conditions for any future draft tool (all required): written product app
 
 ## 12. Unresolved decisions
 
-1. Architect approval for new permission `mcp.use`, token abilities, `mcp.readonly` middleware, and `X-Mcp-*` audit headers (contract change).
-2. Customer choice of provider and data-processing stance (cloud vs local) per installation.
-3. Whether contact masking is default-on for roles that normally see PII (proposed: yes, with `mcp.reveal_contact` setting).
-4. Whether assistant transcripts may be stored at all (proposed: off).
+1. ~~Architect approval for new permission `mcp.use`, token abilities, `mcp.readonly` middleware~~ - granted by the owner for stage 1 (ADR-0016). `X-Mcp-*` audit headers were not needed.
+2. ~~Customer choice of provider~~ - decided: no provider is integrated; the gateway serves any MCP client the customer chooses. Data-processing stance of that client stays the customer's responsibility.
+3. ~~Contact masking default~~ - decided: on for everyone via setting `mcp.mask_contacts=true`.
+4. ~~Transcripts~~ - decided: not stored.
 5. DEC-017 (segregation of duties) and all `ACC` decisions remain `PENDING_ACCOUNTANT_APPROVAL`; nothing here infers their approval.

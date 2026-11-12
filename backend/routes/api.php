@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\ManagementReportController;
+use App\Http\Controllers\Api\McpTokenController;
 use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
@@ -63,11 +64,17 @@ Route::prefix('v1')->group(function () {
     Route::get('webhooks/whatsapp', [WebhookController::class, 'verifyWhatsApp']);
     Route::post('webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp'])->middleware('throttle:120,1');
 
-    Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::middleware(['auth:sanctum', 'active', 'mcp.readonly', 'throttle:mcp-read'])->group(function () {
         Route::get('auth/me', [AuthController::class, 'me']);
         Route::patch('auth/me', [AuthController::class, 'update']);
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('feature-flags', [FeatureFlagController::class, 'show']);
+
+        // MCP gateway tokens (ADR-0016). Listing/revoking are own-token only and
+        // need no permission so a user who lost `mcp.use` can still revoke.
+        Route::post('mcp/tokens', [McpTokenController::class, 'store'])->middleware('permission:mcp.use');
+        Route::get('mcp/tokens', [McpTokenController::class, 'index']);
+        Route::delete('mcp/tokens/{id}', [McpTokenController::class, 'destroy'])->whereNumber('id');
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');
         Route::post('branches', [BranchController::class, 'store'])->middleware('permission:branches.create');

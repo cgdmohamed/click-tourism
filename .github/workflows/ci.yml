@@ -270,3 +270,29 @@ jobs:
         run: docker build -f backend/Dockerfile -t click-tourism-backend:ci backend
       - name: Secret and default-credential scan (repository and built backend image)
         run: IMAGE=click-tourism-backend:ci sh scripts/release/scan-secrets.sh
+
+  mcp-gateway:
+    name: MCP gateway (Node 22)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-gateway
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mcp-gateway/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=moderate

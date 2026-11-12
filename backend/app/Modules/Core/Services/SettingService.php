@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\DB;
 class SettingService
 {
     public const DEFAULTS = [
+        // MCP gateway (ADR-0016): contact details are masked in MCP token responses.
+        'mcp' => [
+            'mask_contacts' => 'true',
+        ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',
             'company_name_en' => 'Tourism ERP',
