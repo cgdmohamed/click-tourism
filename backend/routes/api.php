@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\InvoiceCollectionController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\ManagementReportController;
 use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
@@ -356,6 +357,14 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/aging-reconciliation/export', [ReportController::class, 'exportAgingReconciliation'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/party-statement', [ReportController::class, 'partyStatement'])->middleware('permission:reports.view');
         Route::get('reports/party-statement/export', [ReportController::class, 'exportPartyStatement'])->middleware(['permission:reports.export', 'throttle:report-exports']);
+        Route::get('reports/profitability', [ManagementReportController::class, 'profitability'])->middleware('permission:reports.view');
+        Route::get('reports/profitability/export', [ManagementReportController::class, 'exportProfitability'])->middleware(['permission:reports.export', 'throttle:report-exports']);
+        Route::get('reports/sales', [ManagementReportController::class, 'sales'])->middleware('permission:reports.view');
+        Route::get('reports/sales/export', [ManagementReportController::class, 'exportSales'])->middleware(['permission:reports.export', 'throttle:report-exports']);
+        Route::get('reports/commissions', [ManagementReportController::class, 'commissions'])->middleware('permission:reports.view');
+        Route::get('reports/commissions/export', [ManagementReportController::class, 'exportCommissions'])->middleware(['permission:reports.export', 'throttle:report-exports']);
+        Route::get('reports/tax', [ManagementReportController::class, 'tax'])->middleware('permission:reports.view');
+        Route::get('reports/tax/export', [ManagementReportController::class, 'exportTax'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('dashboard/summary', [ReportController::class, 'dashboard'])->middleware('permission:reports.view');
 
         Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1');
