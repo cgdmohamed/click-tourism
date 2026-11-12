@@ -11,6 +11,8 @@ Produced by step `01-product-discovery`. **No application code has been written.
 | `acceptance-criteria.md` | 112 observable/testable criteria. | Draft |
 | `traceability-matrix.md` | Source scope → requirements → modules → issues → criteria. | Draft |
 | `epics.md` | 13 epics, critical path, milestones, delivery rules. | Draft |
+| `multi-user-ux-roadmap.md` | Multi-user collaboration (concurrency, notifications, approvals inbox, assignment, activity feed) and UX epics; role/branch test plan; single legal entity per install. | Proposed - planning only |
+| `../architecture/mcp-ai-assistant-blueprint.md` | Read-only MCP tool catalog, per-user token model, threat cases, staged acceptance; write tools BLOCKED. | Proposed - design only |
 | `issues/` | 54 dependency-ordered, PR-sized issues using `TASK_TEMPLATE.md`. | Draft |
 
 ## What exists vs. what is missing

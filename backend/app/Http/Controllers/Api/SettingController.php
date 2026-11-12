@@ -73,6 +73,12 @@ class SettingController extends ApiController
             $key = $setting['key'];
             $value = $setting['value'] ?? null;
 
+            if ($group === 'integrations') {
+                $errors[$key] = ['Integration settings are managed through PUT /integrations/settings; secrets are env-only.'];
+
+                continue;
+            }
+
             $error = $settings->accountMappingError($group, $key, $value);
             if ($error !== null) {
                 $errors[$key] = [$error];

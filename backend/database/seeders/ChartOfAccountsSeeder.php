@@ -37,6 +37,7 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '6400', 'name_ar' => 'مصروفات مكتبية وعمومية', 'name_en' => 'Office & General', 'type' => 'expense'],
             ['code' => '6500', 'name_ar' => 'مصروفات وعمولات بنكية', 'name_en' => 'Bank Charges', 'type' => 'expense'],
             ['code' => '6600', 'name_ar' => 'انتقالات وسفر', 'name_en' => 'Transport & Travel', 'type' => 'expense'],
+            ['code' => '6700', 'name_ar' => 'عمولات المبيعات', 'name_en' => 'Sales Commissions', 'type' => 'expense'],
             ['code' => '6800', 'name_ar' => 'مصروف الإهلاك', 'name_en' => 'Depreciation Expense', 'type' => 'expense'],
             ['code' => '6910', 'name_ar' => 'خسائر انخفاض قيمة الأصول', 'name_en' => 'Asset Impairment Loss', 'type' => 'expense'],
             ['code' => '6915', 'name_ar' => 'خسائر استبعاد الأصول', 'name_en' => 'Loss on Asset Disposal', 'type' => 'expense'],

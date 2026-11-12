@@ -76,6 +76,8 @@ class SequenceService
             'supplier_payment' => 'supplier_payment_prefix',
             'transfer' => 'transfer_prefix',
             'expense' => 'expense_prefix',
+            'commission' => 'commission_prefix',
+            'commission_payment' => 'commission_payment_prefix',
             'schedule' => 'schedule_prefix',
             'asset' => 'asset_prefix',
             'depreciation_run' => 'depreciation_run_prefix',

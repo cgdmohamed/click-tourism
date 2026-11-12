@@ -2,40 +2,93 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Modules\Core\Models\Branch;
-use App\Modules\CRM\Models\Lead;
-use App\Modules\CRM\Services\LeadService;
-use App\Modules\Integrations\Models\WebhookEvent;
+use App\Modules\Integrations\Services\IntegrationSettings;
+use App\Modules\Integrations\Services\MetaLeadIngestionService;
+use App\Modules\Integrations\Services\WhatsAppWebhookHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * Meta / WhatsApp webhooks (PRD FR-INT-*).
+ * Meta Lead Ads / WhatsApp Cloud API webhooks (PRD FR-INT-*).
  *
- * Live acceptance is blocked until credentials exist; the verification and
- * signature paths are fully implemented and covered by fixture tests.
+ * Both integrations are optional and DISABLED by default (settings
+ * `integrations.meta_leads_enabled` / `integrations.whatsapp_enabled`); a
+ * disabled integration answers 404 and ingests nothing. Secrets come from env.
+ * Live acceptance is blocked until credentials and Meta app review exist; the
+ * verification and signature paths are covered by fixture tests.
+ *
+ * UNVERIFIED (confirm in official Meta webhook docs): verification handshake
+ * parameters hub.mode / hub.verify_token / hub.challenge, and the
+ * `X-Hub-Signature-256: sha256=<HMAC-SHA256(raw body, app secret)>` header.
  */
 class WebhookController extends ApiController
 {
-    public function verifyMeta(Request $request): Response|JsonResponse
+    public function verifyMeta(Request $request, IntegrationSettings $settings): Response|JsonResponse
     {
-        return $this->verify($request, (string) config('services.meta.verify_token'));
+        if (! $settings->metaEnabled()) {
+            return $this->disabled();
+        }
+
+        $response = $this->verify($request, (string) config('services.meta.verify_token'));
+        if ($response->getStatusCode() === 200) {
+            $settings->markVerified('meta');
+        }
+
+        return $response;
     }
 
-    public function verifyWhatsApp(Request $request): Response|JsonResponse
+    public function verifyWhatsApp(Request $request, IntegrationSettings $settings): Response|JsonResponse
     {
-        return $this->verify($request, (string) config('services.whatsapp.verify_token'));
+        if (! $settings->whatsappEnabled()) {
+            return $this->disabled();
+        }
+
+        $response = $this->verify($request, (string) config('services.whatsapp.verify_token'));
+        if ($response->getStatusCode() === 200) {
+            $settings->markVerified('whatsapp');
+        }
+
+        return $response;
     }
 
-    public function receiveMeta(Request $request, LeadService $leads): JsonResponse
+    public function receiveMeta(Request $request, IntegrationSettings $settings, MetaLeadIngestionService $meta): JsonResponse
     {
-        return $this->receive($request, 'meta', (string) config('services.meta.app_secret'), 'facebook', $leads);
+        if (! $settings->metaEnabled()) {
+            return $this->disabled();
+        }
+        if ($failure = $this->rejectUnsigned($request, (string) config('services.meta.app_secret'))) {
+            return $failure;
+        }
+
+        $data = json_decode($request->getContent(), true);
+        if (! is_array($data)) {
+            return response()->json(['message' => 'Invalid JSON payload.', 'code' => 'invalid_payload'], 400);
+        }
+
+        return $this->ok(['status' => $meta->handleWebhook($data, $request->getContent())]);
     }
 
-    public function receiveWhatsApp(Request $request, LeadService $leads): JsonResponse
+    public function receiveWhatsApp(Request $request, IntegrationSettings $settings, WhatsAppWebhookHandler $whatsapp): JsonResponse
     {
-        return $this->receive($request, 'whatsapp', (string) config('services.whatsapp.app_secret'), 'whatsapp', $leads);
+        if (! $settings->whatsappEnabled()) {
+            return $this->disabled();
+        }
+        if ($failure = $this->rejectUnsigned($request, (string) config('services.whatsapp.app_secret'))) {
+            return $failure;
+        }
+
+        $data = json_decode($request->getContent(), true);
+        if (! is_array($data)) {
+            return response()->json(['message' => 'Invalid JSON payload.', 'code' => 'invalid_payload'], 400);
+        }
+
+        return $this->ok(['status' => $whatsapp->handle($data, $request->getContent())]);
+    }
+
+    private function disabled(): JsonResponse
+    {
+        return response()->json(['message' => 'This integration is disabled.', 'code' => 'integration_disabled'], 404);
     }
 
     private function verify(Request $request, string $expectedToken): Response|JsonResponse
@@ -58,87 +111,27 @@ class WebhookController extends ApiController
         return response($challenge, 200)->header('Content-Type', 'text/plain');
     }
 
-    private function receive(Request $request, string $provider, string $secret, string $source, LeadService $leads): JsonResponse
+    /** Returns an error response when the HMAC signature is missing/wrong, else null. */
+    private function rejectUnsigned(Request $request, string $secret): ?JsonResponse
     {
-        $payload = $request->getContent();
-        $signature = (string) $request->header('X-Hub-Signature-256', '');
-
         if ($secret === '') {
-            // A missing secret is a configuration error in production; only
-            // local/test environments may ingest unsigned fixture payloads.
-            if (app()->environment('production')) {
+            // A missing secret is a configuration error everywhere except
+            // local/test, which may ingest unsigned fixture payloads.
+            if (! app()->environment(['local', 'testing'])) {
                 return response()->json([
                     'message' => 'Webhook app secret is not configured.',
                     'code' => 'webhook_not_configured',
                 ], 503);
             }
-        } else {
-            $expected = 'sha256='.hash_hmac('sha256', $payload, $secret);
-            if (! hash_equals($expected, $signature)) {
-                return response()->json(['message' => 'Invalid signature.', 'code' => 'invalid_signature'], 403);
-            }
+
+            return null;
         }
 
-        $data = json_decode($payload, true) ?: [];
-        $messageId = (string) ($data['entry'][0]['changes'][0]['value']['messages'][0]['id'] ?? '');
-        // Deduplicate on the first message id when present; otherwise fall back
-        // to a payload hash so provider retries of the same event are no-ops.
-        $externalId = $messageId !== '' ? $messageId : hash('sha256', $payload);
-
-        $event = WebhookEvent::query()->firstOrCreate(
-            ['provider' => $provider, 'external_event_id' => $externalId],
-            ['payload' => $data, 'status' => 'received'],
-        );
-
-        if (! $event->wasRecentlyCreated) {
-            return $this->ok(['status' => 'duplicate']);
+        $expected = 'sha256='.hash_hmac('sha256', $request->getContent(), $secret);
+        if (! hash_equals($expected, (string) $request->header('X-Hub-Signature-256', ''))) {
+            return response()->json(['message' => 'Invalid signature.', 'code' => 'invalid_signature'], 403);
         }
 
-        try {
-            $this->ingestMessages($data, $provider, $source, $leads);
-            $event->update(['status' => 'processed', 'attempts' => $event->attempts + 1]);
-        } catch (\Throwable $exception) {
-            $event->update(['status' => 'failed', 'attempts' => $event->attempts + 1]);
-            report($exception);
-        }
-
-        return $this->ok(['status' => 'received']);
-    }
-
-    private function ingestMessages(array $data, string $provider, string $source, LeadService $leads): void
-    {
-        $branch = Branch::query()->where('is_active', true)->orderBy('id')->first();
-        if (! $branch) {
-            return;
-        }
-
-        foreach ($data['entry'] ?? [] as $entry) {
-            foreach ($entry['changes'] ?? [] as $change) {
-                $value = $change['value'] ?? [];
-                $contacts = collect($value['contacts'] ?? [])->keyBy('wa_id');
-
-                foreach ($value['messages'] ?? [] as $message) {
-                    $from = (string) ($message['from'] ?? '');
-                    if ($from === '') {
-                        continue;
-                    }
-
-                    $externalId = (string) ($message['id'] ?? '');
-                    if ($externalId !== '' && Lead::query()->where('external_id', $externalId)->exists()) {
-                        continue;
-                    }
-
-                    $leads->create([
-                        'name' => (string) ($contacts[$from]['profile']['name'] ?? $from),
-                        'phone' => $from,
-                        'source' => $source,
-                        'branch_id' => $branch->public_id,
-                        'consent' => true,
-                        'notes' => (string) ($message['text']['body'] ?? ''),
-                        'external_id' => $externalId ?: null,
-                    ]);
-                }
-            }
-        }
+        return null;
     }
 }
