@@ -9,7 +9,7 @@ import { Badge, Card, CardHeader, EmptyState, ErrorState, Input, Loading, PageHe
 import { Icon, type IconName } from '../components/icons'
 import { api, errorMessage } from '../lib/api'
 import { exponent, formatDate, formatMoney } from '../lib/format'
-import type { AttentionItem, DashboardSummary } from '../lib/types'
+import type { AttentionItem, DashboardSummary, PipelineReport } from '../lib/types'
 
 ChartJS.register(ArcElement, CategoryScale, Legend, LineElement, LinearScale, PointElement, Tooltip)
 
@@ -94,6 +94,19 @@ export default function Dashboard() {
     enabled: !!activeBranch && !invalidRange,
   })
   const data = summary.data
+  const pipeline = useQuery({
+    queryKey: ['dashboard-pipeline', activeBranch?.id, period, from, to],
+    queryFn: async () => {
+      const { data: response } = await api.get<{ data: PipelineReport }>('/reports/pipeline', {
+        params: {
+          period,
+          ...(period === 'customRange' ? { from, to } : {}),
+        },
+      })
+      return response.data
+    },
+    enabled: !!activeBranch && !invalidRange && can('leads.view'),
+  })
   const money = (amount: number | null | undefined, currency = data?.currency ?? 'EGP') =>
     formatMoney(amount, currency, locale)
   const major = (amount: number) => amount / 10 ** exponent(data?.currency ?? 'EGP')
@@ -195,6 +208,74 @@ export default function Dashboard() {
             <FinancialMetric icon="ledger" label={t('unreconciledBank')} value={data.unreconciled_bank_count} locale={locale} href="/reconciliation" negative={data.unreconciled_bank_count > 0} />
             <FinancialMetric icon="trendUp" label={t('netProfitLoss')} value={data.net_profit_minor} currency={data.currency} locale={locale} href="/reports" negative={data.net_profit_minor < 0} hint={locale === 'ar' ? 'نتيجة القيود المرحلة خلال الفترة' : 'Posted GL result for selected period'} />
           </section>
+
+          {can('leads.view') && (
+            <Card>
+              <CardHeader
+                title={locale === 'ar' ? 'مسار العملاء المحتملين' : 'Sales pipeline'}
+                subtitle={locale === 'ar' ? 'العملاء المسجلون خلال الفترة، بمرحلتهم الحالية' : 'Leads captured in the period, at their current stage'}
+                actions={<Link to="/leads" className="text-small font-medium text-brand-1-accent hover:underline">{locale === 'ar' ? 'فتح العملاء المحتملين' : 'Open leads'} ↗</Link>}
+              />
+              {pipeline.isLoading ? <Loading /> : null}
+              {pipeline.isError ? <ErrorState message={errorMessage(pipeline.error)} onRetry={() => void pipeline.refetch()} /> : null}
+              {pipeline.data && !pipeline.isLoading && (
+                pipeline.data.totals.captured === 0 ? <div className="p-4"><EmptyState /></div> : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-5">
+                      {[
+                        { label: locale === 'ar' ? 'المسجلون' : 'Captured', value: pipeline.data.totals.captured },
+                        { label: locale === 'ar' ? 'مفتوح' : 'Open', value: pipeline.data.totals.open },
+                        { label: locale === 'ar' ? 'فاز' : 'Won', value: pipeline.data.totals.won },
+                        { label: locale === 'ar' ? 'خسر' : 'Lost', value: pipeline.data.totals.lost },
+                        { label: locale === 'ar' ? 'نسبة الفوز' : 'Win rate', value: `${pipeline.data.totals.conversion_rate}%` },
+                      ].map((metric) => (
+                        <div key={metric.label} className="rounded-12 border border-border-subtle bg-surface-subtle p-3">
+                          <div className="text-small text-text-subtle">{metric.label}</div>
+                          <div className="mt-1 text-xl font-bold tabular-nums">{metric.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid gap-5 border-t border-border-subtle p-4 xl:grid-cols-3">
+                      <div>
+                        <h3 className="mb-3 text-small font-semibold text-text-default">{locale === 'ar' ? 'حسب المرحلة' : 'By stage'}</h3>
+                        <div className="space-y-3">
+                          {pipeline.data.by_stage.filter((stage) => stage.count > 0).map((stage) => (
+                            <div key={stage.stage}>
+                              <div className="flex items-center justify-between gap-2 text-small">
+                                <span className="min-w-0 truncate">{locale === 'ar' ? stage.name_ar : stage.name_en}</span>
+                                <span className="shrink-0 tabular-nums text-text-subtle">{stage.count} · {stage.share}%</span>
+                              </div>
+                              <div className="mt-1 h-2 rounded-full bg-surface-subtle" role="presentation">
+                                <div className="h-2 rounded-full bg-brand-1-accent" style={{ width: `${Math.max(stage.share, 2)}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="mb-3 text-small font-semibold text-text-default">{locale === 'ar' ? 'حسب المصدر' : 'By source'}</h3>
+                        {pipeline.data.by_source.map((source) => (
+                          <div key={source.source ?? 'unspecified'} className="flex items-center justify-between gap-2 border-b border-border-subtle py-2 text-small last:border-0">
+                            <span className="min-w-0 truncate">{locale === 'ar' ? source.name_ar : source.name_en}</span>
+                            <span className="shrink-0 tabular-nums text-text-subtle">{source.count} · {source.conversion_rate}%</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <h3 className="mb-3 text-small font-semibold text-text-default">{locale === 'ar' ? 'حسب المسؤول' : 'By owner'}</h3>
+                        {pipeline.data.by_owner.map((owner) => (
+                          <div key={owner.owner ?? 'unassigned'} className="flex items-center justify-between gap-2 border-b border-border-subtle py-2 text-small last:border-0">
+                            <span className="min-w-0 truncate">{owner.name ?? (locale === 'ar' ? 'غير مُسند' : 'Unassigned')}</span>
+                            <span className="shrink-0 tabular-nums text-text-subtle">{owner.count} · {owner.conversion_rate}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )
+              )}
+            </Card>
+          )}
 
           <section aria-label={locale === 'ar' ? 'المخططات المالية' : 'Financial charts'} className="grid gap-4 xl:grid-cols-2">
             <Card>

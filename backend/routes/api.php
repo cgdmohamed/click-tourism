@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\ManagementReportController;
 use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
+use App\Http\Controllers\Api\PipelineReportController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
@@ -375,6 +376,7 @@ Route::prefix('v1')->group(function () {
         Route::post('leads', [LeadController::class, 'store'])->middleware('permission:leads.create');
         Route::patch('leads/{lead}', [LeadController::class, 'update'])->middleware('permission:leads.update');
         Route::post('leads/{lead}/convert', [LeadController::class, 'convert'])->middleware('permission:leads.convert');
+        Route::get('reports/pipeline', PipelineReportController::class)->middleware('permission:leads.view');
 
         // Configurable lead sources and pipeline stages. Codes are the stable
         // key, so updates and deletes address the record by code.

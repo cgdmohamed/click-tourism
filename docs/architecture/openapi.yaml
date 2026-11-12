@@ -1969,6 +1969,30 @@ paths:
         '422': { $ref: '#/components/responses/Validation' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /reports/pipeline:
+    get:
+      tags: [CRM, Reports]
+      summary: Lead pipeline metrics by stage, source, and owner
+      description: >-
+        Cohort view of leads captured inside the selected period (by created_at)
+        using their current stage, status, owner, and source. Scoped to the
+        active branch (X-Branch-Id). `by_stage` and `by_source` sum to
+        `totals.captured`, so the report reconciles with the lead list.
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [today, thisMonth, lastMonth, customRange], default: thisMonth } }
+        - { name: from, in: query, description: 'Required with period=customRange', schema: { type: string, format: date } }
+        - { name: to, in: query, description: 'Required with period=customRange', schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Pipeline totals and breakdowns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PipelineReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
   /reports/trial-balance:
     get:
       tags: [Reports]
@@ -6768,6 +6792,57 @@ components:
         body: { type: string, nullable: true }
         actor: { $ref: '#/components/schemas/LeadOwner' }
         created_at: { type: string, format: date-time }
+    PipelineReport:
+      type: object
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        branch_id: { type: string, nullable: true }
+        totals:
+          type: object
+          properties:
+            captured: { type: integer }
+            open: { type: integer }
+            won: { type: integer }
+            lost: { type: integer }
+            converted: { type: integer }
+            unassigned: { type: integer }
+            conversion_rate: { type: number, description: 'won / captured * 100, one decimal' }
+        by_stage:
+          type: array
+          items:
+            type: object
+            properties:
+              stage: { type: string }
+              name_ar: { type: string }
+              name_en: { type: string }
+              is_won: { type: boolean }
+              is_lost: { type: boolean }
+              count: { type: integer }
+              share: { type: number }
+        by_source:
+          type: array
+          items:
+            type: object
+            properties:
+              source: { type: string, nullable: true }
+              name_ar: { type: string }
+              name_en: { type: string }
+              count: { type: integer }
+              won: { type: integer }
+              conversion_rate: { type: number }
+        by_owner:
+          type: array
+          items:
+            type: object
+            properties:
+              owner: { type: string, nullable: true, description: 'User public id; null for unassigned leads' }
+              name: { type: string, nullable: true }
+              count: { type: integer }
+              open: { type: integer }
+              won: { type: integer }
+              lost: { type: integer }
+              conversion_rate: { type: number }
     AssignmentRuleInput:
       type: object
       required: [strategy]
