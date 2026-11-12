@@ -1397,6 +1397,17 @@ paths:
         currency; the last row is the Total row with blank Code and Name (EN).
         Note that `Abnormal` was added after the first release, so consumers
         that read columns by position must select by header name.
+        All report export endpoints accept `format=csv|xlsx|pdf` and
+        `language=ar|en|bilingual`. XLSX money cells are numeric (number-formatted
+        to the currency exponent) and dates are real date cells; text that starts
+        with `=`, `+`, `-` or `@` is prefixed with an apostrophe in every format.
+        PDF uses the bundled DejaVu Sans font with Arabic shaping and right-to-left
+        layout, a letterhead from settings (`general.company_name_ar|en`, optional
+        `general.company_logo`, branch, period, currency), a repeated table header
+        and "page n / N" on every page, and is limited to 5,000 rows (422 beyond).
+        Exports share the `report-exports` throttle: 20 per minute per user,
+        6 per minute for PDF (429 beyond). Branch scope follows the active branch,
+        exactly as on screen.
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
@@ -2678,6 +2689,40 @@ paths:
         '200': { description: Schedule }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
+  /reports/fixed-assets/{report}/export:
+    get:
+      tags: [Fixed Assets, Reports]
+      summary: Fixed-asset report export (CSV, XLSX or PDF; requires assets.view and reports.export; audited)
+      description: >-
+        Server-side export of the same fixed-asset reports shown on screen, with the same
+        branch scope (`global=1` is honoured only for users with branches.view_all; it is
+        ignored for everyone else). Money columns are decimal strings in CSV and numeric
+        cells in XLSX; formula-like text is neutralised. PDF is limited to 5,000 rows.
+        Exports share the `report-exports` throttle (20 per minute per user, 6 per minute for PDF).
+        Report parameters match the on-screen endpoint: `roll-forward` and `movements` take
+        `from` and `to` (YYYY-MM); `carrying-values` takes `as_of` and `include_disposed`;
+        `reconciliation` takes `as_of`; `schedule` takes an optional `asset` public id.
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: string, enum: [roll-forward, carrying-values, movements, reconciliation, schedule] } }
+        - { name: from, in: query, description: 'YYYY-MM (roll-forward, movements)', schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+        - { name: to, in: query, description: 'YYYY-MM (roll-forward, movements)', schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+        - { name: as_of, in: query, description: 'carrying-values, reconciliation', schema: { type: string, format: date } }
+        - { name: include_disposed, in: query, schema: { type: boolean } }
+        - { name: asset, in: query, description: 'schedule: one asset (public id)', schema: { type: string } }
+        - { name: global, in: query, description: 'Installation-wide figures; requires branches.view_all', schema: { type: boolean } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200':
+          description: CSV (UTF-8 with BOM), XLSX workbook or PDF document
+          content:
+            text/csv: { schema: { type: string } }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   # ---------------------------------------------------------------------------
   # Operations added by the OpenAPI sync (docs/architecture README, "Contract

@@ -14,6 +14,8 @@ type Currency = { code: string; name: string; symbol: string; exponent: number; 
 const editable: Array<{ group: string; key: string; ar: string; en: string; type?: 'text' | 'select' | 'toggle'; options?: string[] }> = [
   { group: 'general', key: 'company_name_ar', ar: 'اسم الشركة (عربي)', en: 'Company name (Arabic)' },
   { group: 'general', key: 'company_name_en', ar: 'اسم الشركة (إنجليزي)', en: 'Company name (English)' },
+  { group: 'general', key: 'company_logo', ar: 'شعار التقارير (مسار PNG/JPEG داخل storage/app)', en: 'Report logo (PNG/JPEG path under storage/app)' },
+  { group: 'general', key: 'report_signoff', ar: 'سطور التوقيع في تقارير PDF', en: 'Sign-off lines on PDF reports', type: 'toggle', options: ['true', 'false'] },
   { group: 'general', key: 'base_currency', ar: 'العملة الأساسية', en: 'Base currency', type: 'select', options: ['EGP', 'SAR', 'USD'] },
   { group: 'general', key: 'locale', ar: 'اللغة الافتراضية', en: 'Default language', type: 'select', options: ['ar', 'en'] },
   { group: 'accounting', key: 'fiscal_year_start', ar: 'بداية السنة المالية (MM-DD)', en: 'Fiscal year start (MM-DD)' },
