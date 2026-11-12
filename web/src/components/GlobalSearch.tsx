@@ -124,7 +124,7 @@ export function GlobalSearch() {
         aria-label={t('globalSearch')}
         className="text-medium h-9 w-44 rounded-12 border border-border-default bg-surface-default ps-9 pe-3 text-text-default shadow-1 outline-none transition placeholder:text-text-placeholder focus:border-border-focus focus:ring-2 focus:ring-border-focus/25 sm:w-64"
       />
-      <kbd className="text-small pointer-events-none absolute end-2 top-1/2 hidden -translate-y-1/2 rounded-6 border border-border-subtle bg-surface-subtle px-1.5 py-0.5 font-medium text-text-subtlest sm:block">
+      <kbd className="text-small pointer-events-none absolute end-2 top-1/2 hidden -translate-y-1/2 rounded-6 border border-border-subtle bg-surface-subtle px-1.5 py-0.5 font-medium text-text-subtle sm:block">
         Ctrl K
       </kbd>
 

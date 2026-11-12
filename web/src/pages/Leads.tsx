@@ -126,6 +126,7 @@ export default function Leads() {
               setPage(1)
             }}
             className="max-w-[180px]"
+            aria-label={t('stage')}
           >
             <option value="">{locale === 'ar' ? 'كل المراحل' : 'All stages'}</option>
             {stages.map((stage) => (

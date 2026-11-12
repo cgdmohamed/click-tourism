@@ -352,6 +352,7 @@ export default function Bookings() {
               setPage(1)
             }}
             className="max-w-[180px]"
+            aria-label={t('status')}
           >
             <option value="">{locale === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
             {['draft', 'quoted', 'confirmed', 'in_progress', 'completed', 'closed', 'cancelled', 'no_show'].map((status) => (
