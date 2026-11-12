@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
+import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import { useBaseCurrency } from '../lib/useSetting'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
@@ -43,6 +44,7 @@ const bookingToOption = (booking: Booking): SelectOption => ({
 })
 
 export default function Payments() {
+  const currencyCodes = useActiveCurrencyCodes()
   const { t, locale } = useI18n()
   const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
@@ -493,9 +495,9 @@ export default function Payments() {
           </Field>
           <Field label={t('currency')} required>
             <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, invoice_id: '', amount: '', cash_account_id: '' })}>
-              <option value="EGP">EGP</option>
-              <option value="SAR">SAR</option>
-              <option value="USD">USD</option>
+              {currencyCodes.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
             </Select>
           </Field>
           <Field label={t('date')} required>

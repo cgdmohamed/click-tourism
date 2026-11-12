@@ -6,8 +6,10 @@ const TOKEN_KEY = 'tourism_erp_token'
 const LOCALE_KEY = 'tourism_erp_locale'
 const BRANCH_KEY = 'tourism_erp_branch'
 
+export const API_BASE: string = import.meta.env.VITE_API_URL ?? '/api/v1'
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? '/api/v1',
+  baseURL: API_BASE,
   headers: { Accept: 'application/json' },
   timeout: 30000,
 })

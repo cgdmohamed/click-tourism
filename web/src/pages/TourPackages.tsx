@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { toDecimal, toMinor, todayISO } from '../lib/format'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading,
@@ -35,6 +36,7 @@ const emptyForm = {
   destination: '', description: '', currency: 'EGP', base_price: '', estimated_cost: '',
 }
 export default function TourPackages() {
+  const currencyCodes = useActiveCurrencyCodes()
   const { locale } = useI18n()
   const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
@@ -187,7 +189,7 @@ export default function TourPackages() {
           </Field>
           <Field label={L('الوجهة', 'Destination')}><Input value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })}/></Field>
           <Field label={L('العملة', 'Currency')}><Select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
-            <option value="EGP">EGP</option><option value="SAR">SAR</option><option value="USD">USD</option>
+            {currencyCodes.map((code) => <option key={code} value={code}>{code}</option>)}
           </Select></Field>
           <Field label={L('السعر المبدئي للفرد', 'Base price per person')}><Input value={form.base_price} onChange={(e) => setForm({ ...form, base_price: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
           <Field label={L('التكلفة التقديرية للفرد', 'Estimated cost per person')}><Input value={form.estimated_cost} onChange={(e) => setForm({ ...form, estimated_cost: e.target.value })} inputMode="decimal" dir="ltr"/></Field>

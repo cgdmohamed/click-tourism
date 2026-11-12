@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
 import type { Booking, Paginated } from '../lib/types'
 import {
@@ -59,6 +60,7 @@ const emptyItem = (currency: string): DraftItem => ({
 })
 
 export default function Bookings() {
+  const currencyCodes = useActiveCurrencyCodes()
   const { t, locale } = useI18n()
   const { activeBranch, user, can } = useAuth()
   const { enabled: taxEnabled } = useTaxEnabled()
@@ -474,9 +476,9 @@ export default function Bookings() {
           </Field>
           <Field label={t('currency')} required>
             <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
-              <option value="EGP">EGP</option>
-              <option value="SAR">SAR</option>
-              <option value="USD">USD</option>
+              {currencyCodes.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
             </Select>
           </Field>
           {form.currency !== baseCurrency ? (

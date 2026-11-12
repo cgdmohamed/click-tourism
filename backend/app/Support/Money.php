@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * Immutable money value object. Amounts are integer minor units; currency
@@ -49,9 +51,35 @@ final class Money
         return new self($negative ? -$minor : $minor, $currency);
     }
 
+    /** @var array<string, int>|null */
+    private static ?array $configured = null;
+
+    /**
+     * Built-in exponents win; a currency created in Settings > Currencies uses
+     * its stored exponent (frozen once the currency is in use); anything else
+     * defaults to 2.
+     */
     public static function exponent(string $currency): int
     {
-        return self::EXPONENTS[strtoupper($currency)] ?? 2;
+        $code = strtoupper($currency);
+        if (isset(self::EXPONENTS[$code])) {
+            return self::EXPONENTS[$code];
+        }
+
+        if (self::$configured === null) {
+            try {
+                self::$configured = DB::table('currencies')->pluck('exponent', 'code')->map(fn ($e) => (int) $e)->all();
+            } catch (Throwable) {
+                return 2; // no database available (pure unit tests)
+            }
+        }
+
+        return self::$configured[$code] ?? 2;
+    }
+
+    public static function flushExponentCache(): void
+    {
+        self::$configured = null;
     }
 
     public function toDecimal(): string

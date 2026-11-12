@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
+use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\CashAccountController;
 use App\Http\Controllers\Api\CommissionController;
 use App\Http\Controllers\Api\CommissionRuleController;
@@ -54,6 +55,10 @@ Route::prefix('v1')->group(function () {
     Route::get('demo/status', [DemoStatusController::class, 'show'])->middleware('throttle:120,1');
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
+    // Public branding for the login page: company names and the logo image only.
+    Route::get('branding', [BrandingController::class, 'show'])->middleware('throttle:branding');
+    Route::get('branding/logo', [BrandingController::class, 'logo'])->middleware('throttle:branding');
+
     Route::get('health', [HealthController::class, 'show']);
     Route::get('ready', [HealthController::class, 'ready']);
 
@@ -74,6 +79,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('settings', [SettingController::class, 'index'])->middleware('permission:settings.view');
         Route::put('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
+        Route::post('settings/logo', [BrandingController::class, 'upload'])->middleware(['permission:settings.update', 'throttle:30,1']);
+        Route::delete('settings/logo', [BrandingController::class, 'destroy'])->middleware('permission:settings.update');
         Route::get('decisions', [SettingController::class, 'decisions'])->middleware('permission:settings.view');
         Route::post('decisions/{id}/resolve', [SettingController::class, 'resolveDecision'])->middleware('permission:settings.update');
 
@@ -82,6 +89,10 @@ Route::prefix('v1')->group(function () {
             ->middleware(['permission:audit.export', 'throttle:report-exports']);
 
         Route::get('currencies', [CurrencyController::class, 'index']);
+        Route::get('currencies/{code}', [CurrencyController::class, 'show'])->middleware('permission:settings.view');
+        Route::post('currencies', [CurrencyController::class, 'store'])->middleware('permission:settings.update');
+        Route::patch('currencies/{code}', [CurrencyController::class, 'update'])->middleware('permission:settings.update');
+        Route::delete('currencies/{code}', [CurrencyController::class, 'destroy'])->middleware('permission:settings.update');
         Route::get('fx-rates', [FxRateController::class, 'index'])->middleware('permission:settings.view');
         Route::post('fx-rates', [FxRateController::class, 'store'])->middleware('permission:settings.update');
 

@@ -49,6 +49,10 @@ class AppServiceProvider extends ServiceProvider
             'custody' => EmployeeCustody::class,
         ]);
 
+        // Public branding (login page): its own counter so it never consumes the
+        // login/demo-status budget that shares the default per-IP throttle key.
+        RateLimiter::for('branding', fn (Request $request) => Limit::perMinute(120)->by('branding:'.$request->ip()));
+
         // Report exports: 20 per minute per user, PDFs (the heaviest format)
         // additionally capped at 6 per minute. Keys are namespaced so other
         // throttled routes (search, ...) never consume the export budget.

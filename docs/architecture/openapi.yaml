@@ -281,9 +281,119 @@ paths:
   /currencies:
     get:
       tags: [Platform]
-      summary: List enabled currencies
+      summary: List currencies (active and inactive; pickers filter on is_active)
       responses:
         '200': { description: Currencies }
+    post:
+      tags: [Platform]
+      summary: Create a currency (settings.update, audited)
+      description: The code is 3 uppercase letters (ISO-like) and immutable after creation. Exponent 0-3.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CurrencyInput' }
+      responses:
+        '201': { description: Created (includes is_base and in_use) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /currencies/{code}:
+    parameters:
+      - { name: code, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 3 } }
+    get:
+      tags: [Platform]
+      summary: Read one currency with is_base and in_use (settings.view)
+      responses:
+        '200': { description: Currency }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Unknown currency }
+    patch:
+      tags: [Platform]
+      summary: Edit name, symbol, exponent or active flag (settings.update, audited)
+      description: >
+        The code cannot change. The exponent can change only while the currency is unused
+        (no fx rate, journal, document, account, cash account, booking, invoice, payment or any other
+        record references it; the base currency counts as used). The base currency cannot be deactivated.
+        Deactivated currencies stay on old documents but disappear from pickers for new ones.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CurrencyUpdate' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Unknown currency }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [Platform]
+      summary: Delete an unused currency (settings.update, audited)
+      description: Refused with 422 when the currency is the base currency or is referenced anywhere; deactivate it instead.
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Unknown currency }
+        '422': { $ref: '#/components/responses/Validation' }
+  /branding:
+    get:
+      tags: [Platform]
+      summary: Public company branding (login page); names and logo flag only, no secrets or paths
+      security: []
+      responses:
+        '200':
+          description: Branding
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      company_name_ar: { type: string }
+                      company_name_en: { type: string }
+                      has_logo: { type: boolean }
+                      logo_version: { type: string, nullable: true, description: Cache-busting token for the logo URL }
+  /branding/logo:
+    get:
+      tags: [Platform]
+      summary: Public company logo image (PNG or JPEG); 404 when no logo is set
+      security: []
+      responses:
+        '200':
+          description: The logo image
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+        '404': { description: No logo }
+  /settings/logo:
+    post:
+      tags: [Platform]
+      summary: Upload the report/letterhead logo (settings.update, audited)
+      description: >
+        multipart/form-data field "logo". PNG or JPEG only, decided from the file content (SVG, GIF and
+        others are rejected), at most 1 MB and 16-4000 px per side. Stored under storage/app/branding with a
+        random server-generated name; the previous uploaded file is deleted. Existing path values in
+        general.company_logo keep working.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo: { type: string, format: binary }
+      responses:
+        '200': { description: Branding after the change }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [Platform]
+      summary: Remove the logo and delete the uploaded file (settings.update, audited)
+      responses:
+        '200': { description: Branding after the change }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /fx-rates:
     get:
       tags: [Platform]
@@ -5005,6 +5115,21 @@ components:
         name_ar: { type: string }
         name_en: { type: string }
         accounting_mode: { type: string, enum: [dimension, customer, independent] }
+        is_active: { type: boolean }
+    CurrencyInput:
+      type: object
+      required: [code, name, exponent]
+      properties:
+        code: { type: string, pattern: '^[A-Z]{3}$', description: Immutable after creation }
+        name: { type: string, maxLength: 100 }
+        symbol: { type: string, nullable: true, maxLength: 10 }
+        exponent: { type: integer, minimum: 0, maximum: 3, description: Decimal places; frozen once the currency is in use }
+    CurrencyUpdate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        symbol: { type: string, nullable: true, maxLength: 10 }
+        exponent: { type: integer, minimum: 0, maximum: 3 }
         is_active: { type: boolean }
     BranchInput:
       type: object

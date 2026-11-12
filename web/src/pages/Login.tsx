@@ -5,12 +5,14 @@ import { useI18n } from '../i18n'
 import { useTheme } from '../theme'
 import { Button, Field, IconButton, InlineNotice, Input } from '../components/ui'
 import { Icon } from '../components/icons'
+import { BrandMark, useBrandName } from '../components/Brand'
 import { errorMessage } from '../lib/api'
 
 export default function Login() {
   const { user, loading, login } = useAuth()
   const { t, locale, toggleLocale } = useI18n()
   const { theme, toggleTheme } = useTheme()
+  const brand = useBrandName()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -41,11 +43,9 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-16 bg-brand-1-background text-brand-1-text shadow-2">
-              <Icon name="compass" size={26} />
-            </span>
+            <BrandMark className="h-12 w-12" iconSize={26} />
             <div>
-              <h1 className="heading-large text-brand-1-accent">{t('appName')}</h1>
+              <h1 className="heading-large text-brand-1-accent">{brand}</h1>
               <p className="text-medium mt-1 text-text-subtle">{t('appTagline')}</p>
             </div>
           </div>

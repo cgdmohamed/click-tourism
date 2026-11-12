@@ -9,6 +9,7 @@ import type {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { formatMoney } from '../lib/format'
+import { nextTabIndex } from '../lib/tabs'
 import { Icon } from './icons'
 import type { IconName } from './icons'
 
@@ -698,6 +699,88 @@ export function Pagination({
         {page} / {lastPage}
       </span>
       <IconButton icon="chevronRight" label={t('nextPage')} variant="secondary" disabled={page >= lastPage} onClick={() => onChange(page + 1)} />
+    </div>
+  )
+}
+
+export type TabItem = { id: string; label: string; icon?: IconName }
+
+/**
+ * Accessible tab bar (WAI-ARIA tabs, automatic activation). Arrow keys follow
+ * the visual direction (mirrored in RTL), Home/End jump to the ends, and the
+ * bar scrolls horizontally on narrow screens. Pair each tab with a `TabPanel`
+ * using the same `idPrefix`.
+ */
+export function Tabs({
+  tabs,
+  active,
+  onChange,
+  label,
+  idPrefix,
+}: {
+  tabs: TabItem[]
+  active: string
+  onChange: (id: string) => void
+  label: string
+  idPrefix: string
+}) {
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const current = tabs.findIndex((tab) => tab.id === active)
+    const rtl = listRef.current ? getComputedStyle(listRef.current).direction === 'rtl' : false
+    const next = nextTabIndex(event.key, current < 0 ? 0 : current, tabs.length, rtl)
+    if (next === null) return
+    event.preventDefault()
+    onChange(tabs[next].id)
+    window.requestAnimationFrame(() => document.getElementById(`${idPrefix}-tab-${tabs[next].id}`)?.focus())
+  }
+
+  return (
+    <div
+      ref={listRef}
+      role="tablist"
+      aria-label={label}
+      onKeyDown={onKeyDown}
+      className="no-print mb-6 flex gap-1 overflow-x-auto rounded-16 border border-border-subtle bg-surface-default p-1 shadow-1"
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === active
+        return (
+          <button
+            key={tab.id}
+            id={`${idPrefix}-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={`${idPrefix}-panel-${tab.id}`}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(tab.id)}
+            className={cx(
+              'text-small inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-12 px-3 py-2 font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-border-focus',
+              selected ? 'bg-surface-selected text-text-default' : 'text-text-subtle hover:bg-surface-hovered hover:text-text-default',
+            )}
+          >
+            {tab.icon ? <Icon name={tab.icon} className="h-4 w-4" /> : null}
+            {tab.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Panel for the active tab; render only the active one so its queries do not fire while hidden. */
+export function TabPanel({ idPrefix, id, children }: { idPrefix: string; id: string; children: ReactNode }) {
+  return (
+    <div
+      role="tabpanel"
+      id={`${idPrefix}-panel-${id}`}
+      aria-labelledby={`${idPrefix}-tab-${id}`}
+      tabIndex={0}
+      className="outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+    >
+      {children}
     </div>
   )
 }
