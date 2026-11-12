@@ -42,6 +42,7 @@ import ExchangeRates from './pages/ExchangeRates'
 import CostCenters from './pages/CostCenters'
 import TaxProfiles from './pages/TaxProfiles'
 import Imports from './pages/Imports'
+import Notifications from './pages/Notifications'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -91,6 +92,7 @@ export default function App() {
                   <Route path="reports" element={<Reports />} />
                   <Route path="leads" element={<Leads />} />
                   <Route path="assignment-rules" element={<AssignmentRules />} />
+                  <Route path="notifications" element={<Notifications />} />
                   <Route path="imports" element={<Imports />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="users" element={<Users />} />

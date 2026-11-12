@@ -24,13 +24,13 @@ Severity is about product risk, not effort.
 |---|---|---|---|
 | Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 1 (GAP-RPT-03 adjacent, export parity) | none |
 | Reports | Core ledger + statements + aging/statements + CSV/XLSX/PDF done | 6 | close RPT-01..05, then browser E2E |
-| CRM | Lead capture, rules, conversion, WhatsApp consent done | 6 | wire reassignment (P0), then pipeline/activities |
-| Core / auth | Users, roles, branches, settings, audit events, health, install | 4 | notifications, audit browsing, attachments decision |
+| CRM | Lead capture, rules, conversion, WhatsApp consent, notifications done | 5 | wire reassignment (P0), then pipeline/activities |
+| Core / auth | Users, roles, branches, settings, audit events, health, install, notifications | 3 | audit browsing, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
 | QA / release | 876 backend tests, 88 unit tests, 8 CI jobs | 4 | coverage gate, a11y, performance seed |
 | Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
 
-Counts include only tracked gaps below (36 total, 3 at P0).
+Counts include only tracked gaps below (34 total, 3 at P0).
 
 ## 3. Reports module
 
@@ -56,7 +56,7 @@ Implemented today: lead create/update/list, configurable sources/stages as data,
 | GAP-CRM-03 | P1 | No lead activity/timeline read API and no lead detail screen; activities are written but never displayed. | Only `index`, `store`, `update`, `convert` in `LeadController`; no `/lead-activities` route; no lead profile route in `web/src/App.tsx`. | `GET /leads/{lead}` with paginated activities and a detail page showing timeline, owner history, and consent state. | none |
 | GAP-CRM-04 | P1 | No duplicate detection for phone/email, so the same lead can be captured repeatedly. | No duplicate-normalisation logic in `LeadService`; AC-CRM-007 unmet. | Creating/importing a lead inside the configured window flags the match and links it instead of silently duplicating. | duplicate-window setting (default 30 days) |
 | GAP-CRM-05 | P1 | No pipeline metrics; `/reports/pipeline` does not exist. | No route; TE-043 unmet. | Pipeline metrics by stage/owner/source/branch/period, reconciles with lead data, visible on dashboard. | none |
-| GAP-CRM-06 | P2 | Reassignment/escalation produce no notification because no notification infrastructure exists. | No `Notifications` directory, no notifications table/migration, no route. AC-CRM-003 requires "notified". | In-app notification record + bell/list, created on reassign/escalate, with read state per user. | overlaps GAP-CORE-01 |
+| ~~GAP-CRM-06~~ | **P2 — closed** | Reassignment/escalation produced no notification because no notification infrastructure existed. Now reassignment notifies the new owner and escalation notifies branch users holding `leads.manage_rules`; the bell/list shows them with per-user read state. | `backend/app/Modules/Core/Services/NotificationService.php`; `backend/app/Modules/CRM/Services/LeadService.php`; `web/src/components/NotificationBell.tsx`; `web/src/pages/Notifications.tsx`; `backend/tests/Feature/NotificationTest.php`. | Closed by tests proving the new owner and supervisors receive the right notification and that read state is per user. | overlaps GAP-CORE-01 |
 
 ## 5. Core / platform
 
@@ -64,7 +64,7 @@ Implemented today: Sanctum auth with rate limiting, role/permission matrix incl.
 
 | ID | Sev | Gap | Evidence | Done when | Blocked by |
 |---|---|---|---|---|---|
-| GAP-CORE-01 | P1 | No in-app notifications anywhere, despite being a planned collaboration primitive. | No `notifications` migration/table, model, route, or UI. | Notification model, per-user list with read/unread, emitted by CRM reassignment and approval flows, tested. | none |
+| ~~GAP-CORE-01~~ | **P1 — closed** | No in-app notifications anywhere, despite being a planned collaboration primitive. Now `notifications` stores one row per recipient with a public id, branch, type, title/body, JSON entity reference and read timestamp; `GET /notifications`, `POST /notifications/read-all`, and `POST /notifications/{id}/read` serve only the signed-in user, and CRM reassignment/escalation plus invoice/expense approval emit records. | `backend/database/migrations/2026_11_23_000200_create_notifications_table.php`; `backend/app/Modules/Core/Models/Notification.php`; `backend/app/Modules/Core/Services/NotificationService.php`; `backend/app/Http/Controllers/Api/NotificationController.php`; `web/src/components/NotificationBell.tsx`; `web/src/pages/Notifications.tsx`; `backend/tests/Feature/NotificationTest.php`. | Closed by tests covering per-user isolation, unread counts, read/read-all, CRM reassignment and escalation, and invoice/expense approval emission. | none |
 | GAP-CORE-02 | P1 | Audit trail is write-only for operators: no API or screen to browse audit events (only the fixed-asset trail). | `Modules/Core/Models/AuditEvent.php` exists; only `fixed-assets/{asset}/audit-trail` is exposed. | `GET /audit-events` with actor/entity/date/branch filters, `audit.view` permission, export, and tests. | new permission + OpenAPI entry |
 | GAP-CORE-03 | P2 | Attachments are claimed by the module matrix but do not exist. | `docs/product/module-matrix.md` lists attachments under Core; no attachment table, route, or module. | Either implement document attachments (storage, virus/type limits, permission, audit) or remove the claim from the matrix. | decision to implement or de-scope |
 | GAP-CORE-04 | P3 | Users/roles/branches are editable, but there is no self-service session/token management screen. | No `/profile` sessions section; only `sanctum:prune-expired`. | Signed-in user can list and revoke their own devices. | none |
@@ -120,7 +120,7 @@ Order follows the module completion sequence; each step is one branch → one PR
 
 1. `agent/reports-close-gaps` — GAP-RPT-01, 03, 04; E2E for a report export (GAP-QA-01).
 2. `agent/crm-close-gaps` — GAP-CRM-01 (P0 scheduler) then 02, 03, 04, 05.
-3. `agent/core-notifications-audit` — GAP-CORE-01, 02; then GAP-CORE-03 decision.
+3. `agent/core-notifications-audit` — GAP-CORE-01 closed by `agent/core-notifications`; GAP-CORE-02 next; then GAP-CORE-03 decision.
 4. `agent/qa-harness` — GAP-QA-02, 03, 04, 05; remaining per-module E2E.
 5. `agent/docs-truth-pass` — GAP-DOC-01..05.
 6. Release rehearsal — re-run the PostgreSQL, compose, backup/restore, and N-1 upgrade jobs already in CI.

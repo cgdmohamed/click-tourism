@@ -7,6 +7,7 @@ use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Expenses\Models\Expense;
@@ -35,6 +36,7 @@ class ExpenseService
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
         private readonly TaxPolicy $taxPolicy,
+        private readonly NotificationService $notifications,
     ) {}
 
     /**
@@ -141,6 +143,8 @@ class ExpenseService
 
             $this->audit->log('expense.approved', $expense, ['status' => 'submitted'], ['status' => 'approved', 'journal' => $entry->number], $actorId);
 
+            $this->notifyRequester($expense, 'expense.approved', 'Expense '.$expense->number.' approved', 'The expense you submitted has been approved.', $actorId);
+
             return $expense->refresh()->load('category.account', 'cashAccount');
         });
     }
@@ -156,6 +160,8 @@ class ExpenseService
 
             $expense->update(['status' => 'rejected', 'rejection_reason' => $reason]);
             $this->audit->log('expense.rejected', $expense, ['status' => 'submitted'], ['status' => 'rejected', 'reason' => $reason], $actorId);
+
+            $this->notifyRequester($expense, 'expense.rejected', 'Expense '.$expense->number.' rejected', 'The expense you submitted was rejected: '.$reason, $actorId);
 
             return $expense->refresh()->load('category.account', 'cashAccount');
         });
@@ -217,6 +223,26 @@ class ExpenseService
     {
         $expense->update(['status' => 'submitted', 'submitted_by' => $actorId]);
         $this->audit->log('expense.submitted', $expense, ['status' => 'draft'], ['status' => 'submitted'], $actorId);
+    }
+
+    /**
+     * Tell whoever raised the expense what happened to it. The approver is
+     * skipped so a self-approved expense does not notify the same person.
+     */
+    private function notifyRequester(Expense $expense, string $type, string $title, string $body, ?int $actorId): void
+    {
+        $recipients = array_unique(array_filter([$expense->created_by, $expense->submitted_by]));
+
+        foreach ($recipients as $userId) {
+            if ($userId === $actorId) {
+                continue;
+            }
+
+            $this->notifications->send($userId, $type, $title, $body, [
+                'expense_id' => $expense->public_id,
+                'number' => $expense->number,
+            ], $expense->branch_id);
+        }
     }
 
     /** @return array<int, PostingLine> */

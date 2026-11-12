@@ -6,6 +6,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Models\AssignmentRule;
 use App\Modules\CRM\Models\Lead;
@@ -27,6 +28,7 @@ class LeadService
         private readonly SettingService $settings,
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function create(array $data, ?int $actorId = null): Lead
@@ -194,6 +196,18 @@ class LeadService
                         'owner_user_id' => $newOwner->id,
                         'attempt' => $attempts,
                     ]);
+                    $this->notifications->send(
+                        $newOwner->id,
+                        'lead.reassigned',
+                        'Lead reassigned to you',
+                        $locked->name.' was reassigned to you after '.$hours.' business hours of inactivity.',
+                        [
+                            'lead_id' => $locked->public_id,
+                            'lead_name' => $locked->name,
+                            'attempt' => $attempts,
+                        ],
+                        $branch->id,
+                    );
                     $count++;
 
                     return;
@@ -208,6 +222,18 @@ class LeadService
                     ]);
                     $this->activity($locked, 'escalated', 'Escalated to unassigned queue after '.$attempts.' attempts', null);
                     $this->audit->log('lead.escalated', $locked, ['owner_user_id' => $previous], ['attempts' => $attempts]);
+                    $this->notifications->notifyBranchPermission(
+                        $branch,
+                        'leads.manage_rules',
+                        'lead.escalated',
+                        'Lead escalated to the unassigned queue',
+                        $locked->name.' was escalated after '.$attempts.' reassignment attempts and needs attention.',
+                        [
+                            'lead_id' => $locked->public_id,
+                            'lead_name' => $locked->name,
+                            'attempts' => $attempts,
+                        ],
+                    );
                     $count++;
                 } else {
                     $locked->update(['reassignment_attempts' => $attempts, 'last_activity_at' => now()]);

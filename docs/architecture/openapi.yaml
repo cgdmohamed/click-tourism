@@ -2120,6 +2120,74 @@ paths:
         '200': { description: Converted }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List the signed-in user's in-app notifications
+      description: >
+        Newest first. `meta.unread_count` is the unread total for the user
+        regardless of pagination. Notifications are per user, never shared.
+      parameters:
+        - { name: unread, in: query, description: 'Only unread notifications', schema: { type: boolean } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Notifications and unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  meta:
+                    type: object
+                    properties:
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+                      total: { type: integer }
+                      per_page: { type: integer }
+                      unread_count: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark every notification of the signed-in user as read
+      responses:
+        '200':
+          description: Number of notifications updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      updated: { type: integer }
+                      unread_count: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark one notification as read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The updated notification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Notification' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+
   /webhooks/meta:
     get:
       tags: [Webhooks]
@@ -6273,6 +6341,22 @@ components:
         escalated_at: { type: string, format: date-time, nullable: true }
         converted_customer_id: { type: string, nullable: true }
         converted_booking_id: { type: string, nullable: true }
+    Notification:
+      type: object
+      properties:
+        id: { type: string, description: ULID public id }
+        type:
+          type: string
+          description: Stable event type, e.g. lead.reassigned, lead.escalated, invoice.approved, expense.approved
+        title: { type: string }
+        body: { type: string, nullable: true }
+        data:
+          type: object
+          additionalProperties: true
+          description: Entity reference used by the UI (lead_id, invoice_id, number, ...)
+        branch_id: { type: string, nullable: true }
+        read_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
     AssignmentRuleInput:
       type: object
       required: [strategy]
