@@ -58,7 +58,7 @@ class AssignmentRule extends Model
             'id' => $this->public_id,
             'priority' => $this->priority,
             'branch_id' => $this->branch?->public_id,
-            'source_id' => $this->source_id,
+            'source_id' => $this->source?->code,
             'service_category' => $this->service_category,
             'strategy' => $this->strategy,
             'target_user_id' => $this->target_user_id,

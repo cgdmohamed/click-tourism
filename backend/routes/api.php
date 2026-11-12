@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\InvoiceApplicationController;
 use App\Http\Controllers\Api\InvoiceCollectionController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntryController;
+use App\Http\Controllers\Api\LeadConfigController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\ManagementReportController;
 use App\Http\Controllers\Api\OpeningBalanceController;
@@ -373,6 +374,17 @@ Route::prefix('v1')->group(function () {
         Route::post('leads', [LeadController::class, 'store'])->middleware('permission:leads.create');
         Route::patch('leads/{lead}', [LeadController::class, 'update'])->middleware('permission:leads.update');
         Route::post('leads/{lead}/convert', [LeadController::class, 'convert'])->middleware('permission:leads.convert');
+
+        // Configurable lead sources and pipeline stages. Codes are the stable
+        // key, so updates and deletes address the record by code.
+        Route::get('lead-sources', [LeadConfigController::class, 'sources'])->middleware('permission:leads.view');
+        Route::post('lead-sources', [LeadConfigController::class, 'storeSource'])->middleware('permission:leads.manage_rules');
+        Route::patch('lead-sources/{source:code}', [LeadConfigController::class, 'updateSource'])->middleware('permission:leads.manage_rules');
+        Route::delete('lead-sources/{source:code}', [LeadConfigController::class, 'destroySource'])->middleware('permission:leads.manage_rules');
+        Route::get('lead-stages', [LeadConfigController::class, 'stages'])->middleware('permission:leads.view');
+        Route::post('lead-stages', [LeadConfigController::class, 'storeStage'])->middleware('permission:leads.manage_rules');
+        Route::patch('lead-stages/{stage:code}', [LeadConfigController::class, 'updateStage'])->middleware('permission:leads.manage_rules');
+        Route::delete('lead-stages/{stage:code}', [LeadConfigController::class, 'destroyStage'])->middleware('permission:leads.manage_rules');
 
         // Optional Meta / WhatsApp integrations (disabled by default; secrets are env-only).
         Route::get('integrations/status', [IntegrationController::class, 'status'])->middleware('permission:settings.view');
