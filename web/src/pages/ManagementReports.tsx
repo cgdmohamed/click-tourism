@@ -57,11 +57,12 @@ type Tax = {
   from: string
   to: string
   enabled: boolean
+  rate: string
+  inclusive: boolean
   rows: Array<{
-    tax_profile: { id: string; name: string; rate: string } | null
-    output_minor: number
-    input_minor: number
-    net_payable_minor: number
+    side: 'output' | 'input'
+    account: { code: string; name_ar: string; name_en: string }
+    amount_minor: number
   }>
   total_output_minor: number
   total_input_minor: number
@@ -268,31 +269,41 @@ export default function ManagementReportView({ report, data }: { report: Managem
     <>
       {header(text('Tax summary', 'ملخص الضرائب'), d)}
       {d.enabled ? null : <InlineNotice tone="warning">{text('Tax is disabled in settings.', 'الضريبة معطلة في الإعدادات.')}</InlineNotice>}
+      <p className="text-medium mb-3 text-text-subtle">
+        {text('Tax rate', 'نسبة الضريبة')}: {d.rate}% · {d.inclusive ? text('prices include tax', 'الأسعار شاملة الضريبة') : text('prices exclude tax', 'الأسعار غير شاملة الضريبة')}
+      </p>
       {d.rows.length === 0 ? (
         <EmptyState icon="chart" />
       ) : (
         <Table>
           <thead>
             <tr>
-              <Th>{text('Tax profile', 'الملف الضريبي')}</Th>
-              <Th className="text-end">{text('Output tax', 'ضريبة المخرجات')}</Th>
-              <Th className="text-end">{text('Input tax', 'ضريبة المدخلات')}</Th>
-              <Th className="text-end">{text('Net payable', 'الصافي المستحق')}</Th>
+              <Th>{text('Tax account', 'حساب الضريبة')}</Th>
+              <Th>{text('Side', 'النوع')}</Th>
+              <Th className="text-end">{text('Amount', 'المبلغ')}</Th>
             </tr>
           </thead>
           <tbody>
             {d.rows.map((row) => (
-              <tr key={row.tax_profile?.id ?? 'default'}>
-                <Td>{row.tax_profile ? `${row.tax_profile.name} (${row.tax_profile.rate}%)` : text('Default tax accounts', 'حسابات الضريبة الافتراضية')}</Td>
-                <Td className="text-end">{money(row.output_minor, d.currency)}</Td>
-                <Td className="text-end">{money(row.input_minor, d.currency)}</Td>
-                <Td className="text-end">{money(row.net_payable_minor, d.currency)}</Td>
+              <tr key={`${row.side}-${row.account.code}`}>
+                <Td>{`${row.account.code} · ${ar ? row.account.name_ar : row.account.name_en}`}</Td>
+                <Td>{row.side === 'output' ? text('Output tax', 'ضريبة المخرجات') : text('Input tax', 'ضريبة المدخلات')}</Td>
+                <Td className="text-end">{money(row.amount_minor, d.currency)}</Td>
               </tr>
             ))}
             <tr className="font-semibold">
-              <Td>{text('Total', 'الإجمالي')}</Td>
+              <Td>{text('Output tax', 'ضريبة المخرجات')}</Td>
+              <Td />
               <Td className="text-end">{money(d.total_output_minor, d.currency)}</Td>
+            </tr>
+            <tr className="font-semibold">
+              <Td>{text('Input tax', 'ضريبة المدخلات')}</Td>
+              <Td />
               <Td className="text-end">{money(d.total_input_minor, d.currency)}</Td>
+            </tr>
+            <tr className="font-semibold">
+              <Td>{text('Net payable', 'الصافي المستحق')}</Td>
+              <Td />
               <Td className="text-end">{money(d.total_net_payable_minor, d.currency)}</Td>
             </tr>
           </tbody>
