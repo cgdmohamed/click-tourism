@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { useI18n } from '../../i18n'
 import { api, errorMessage } from '../../lib/api'
 import { isValidCurrencyCode, normalizeCurrencyCode, type CurrencyDetail, type CurrencyRow } from '../../lib/currencies'
+import { availableCatalogue, catalogueFormValues, findCatalogueCurrency, OTHER_CURRENCY } from '../../lib/currencyCatalogue'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, IconButton, Input, Loading, Modal, Select, Table, Td, Th } from '../../components/ui'
 
 type FormState = { code: string; name: string; symbol: string; exponent: string }
@@ -22,6 +23,8 @@ export function CurrenciesTab() {
   const [formError, setFormError] = useState('')
   const [editing, setEditing] = useState<CurrencyRow | 'new' | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
+  // New currency: '' = nothing chosen yet, an ISO code from the catalogue, or OTHER_CURRENCY for manual entry.
+  const [pick, setPick] = useState('')
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'deactivate'; currency: CurrencyRow } | null>(null)
   const [confirmError, setConfirmError] = useState('')
 
@@ -104,6 +107,7 @@ export function CurrenciesTab() {
 
   const openNew = () => {
     setForm(emptyForm)
+    setPick('')
     setFormError('')
     setEditing('new')
   }
@@ -113,7 +117,15 @@ export function CurrenciesTab() {
     setEditing(currency)
   }
 
-  const formValid = form.name.trim() !== '' && (editing !== 'new' || isValidCurrencyCode(form.code))
+  const formValid = form.name.trim() !== '' && (editing !== 'new' || (pick !== '' && isValidCurrencyCode(form.code)))
+  const catalogue = availableCatalogue((currenciesQuery.data ?? []).map((currency) => currency.code))
+  const manualCode = editing === 'new' && pick === OTHER_CURRENCY
+
+  const choose = (value: string) => {
+    setPick(value)
+    const entry = value === OTHER_CURRENCY ? undefined : findCatalogueCurrency(value)
+    setForm(entry ? catalogueFormValues(entry) : emptyForm)
+  }
 
   return (
     <Card>
@@ -233,6 +245,28 @@ export function CurrenciesTab() {
           </p>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
+          {editing === 'new' ? (
+            <div className="sm:col-span-2">
+              <Field
+                label={L('العملة', 'Currency')}
+                required
+                hint={L(
+                  'رمز العملة (ISO) لا يُنشأ تلقائياً. اختر عملة من القائمة لتعبئة الرمز والاسم والخانات العشرية، أو اختر «أخرى» لإدخاله يدوياً.',
+                  'The ISO code cannot be generated. Pick a currency to fill the code, name, symbol and decimals, or choose Other to type it.',
+                )}
+              >
+                <Select value={pick} onChange={(event) => choose(event.target.value)}>
+                  <option value="">{L('اختر عملة…', 'Choose a currency…')}</option>
+                  {catalogue.map((entry) => (
+                    <option key={entry.code} value={entry.code}>
+                      {entry.code} — {ar ? entry.name_ar : entry.name}
+                    </option>
+                  ))}
+                  <option value={OTHER_CURRENCY}>{L('أخرى (إدخال يدوي)', 'Other (type the code)')}</option>
+                </Select>
+              </Field>
+            </div>
+          ) : null}
           <Field
             label={t('code')}
             required
@@ -240,6 +274,7 @@ export function CurrenciesTab() {
           >
             <Input
               value={form.code}
+              readOnly={!manualCode}
               disabled={editing !== 'new'}
               onChange={(event) => setForm({ ...form, code: normalizeCurrencyCode(event.target.value) })}
               dir="ltr"

@@ -37,7 +37,7 @@ class EmployeeImport extends AbstractRowDefinition
     public function columns(): array
     {
         return [
-            new ColumnDef('internal_code', 'Employee code', 'كود الموظف', 'string', true, ['max' => 40], 'EMP-001', 'Required, unique. Stored in upper case.', 'مطلوب وفريد. يُحفظ بحروف كبيرة.', ['code', 'internal code']),
+            new ColumnDef('internal_code', 'Employee code', 'كود الموظف', 'string', false, ['max' => 40], 'EMP-0001', 'Optional. Generated (EMP-0001, ...) when empty. When given it is the duplicate key, stored in upper case.', 'اختياري ويُنشأ تلقائياً عند تركه فارغاً. هو مفتاح التكرار عند إدخاله ويُحفظ بحروف كبيرة.', ['code', 'internal code']),
             new ColumnDef('name_ar', 'Name (Arabic)', 'الاسم (عربي)', 'string', true, ['max' => 255], 'أحمد علي', 'Required.', 'مطلوب.', ['name (ar)']),
             new ColumnDef('name_en', 'Name (English)', 'الاسم (إنجليزي)', 'string', true, ['max' => 255], 'Ahmed Ali', 'Required.', 'مطلوب.', ['name (en)']),
             new ColumnDef('category', 'Category', 'الفئة', 'enum', false, ['values' => Employee::categories(), 'map' => ['موظف' => 'staff', 'مدير' => 'executive', 'سائق' => 'driver', 'أخرى' => 'other']], 'staff', 'staff, executive, driver or other (default staff).', 'موظف، مدير، سائق أو أخرى (الافتراضي موظف).'),
@@ -59,17 +59,22 @@ class EmployeeImport extends AbstractRowDefinition
     protected function prepare(ImportContext $ctx): void
     {
         $this->index = [];
-        DB::table('employees')->orderBy('id')->select(['id', 'branch_id', 'internal_code'])
+        DB::table('employees')->orderBy('id')->select(['id', 'branch_id', 'internal_code', 'name_en'])
             ->chunkById(1000, function ($rows) {
                 foreach ($rows as $row) {
-                    $this->index[$this->normalise((string) $row->internal_code)] = ['id' => (int) $row->id, 'branch_id' => (int) $row->branch_id];
+                    $entry = ['id' => (int) $row->id, 'branch_id' => (int) $row->branch_id];
+                    $this->index[$this->normalise((string) $row->internal_code)] = $entry;
+                    $this->index['name:'.mb_strtolower(trim((string) $row->name_en))] ??= $entry;
                 }
             });
     }
 
     protected function keyFor(array $values): string
     {
-        return $this->normalise((string) $values['internal_code']);
+        $code = $this->normalise((string) ($values['internal_code'] ?? ''));
+
+        // Without a code the row can only match by name (so a re-import does not duplicate it).
+        return $code !== '' ? $code : 'name:'.mb_strtolower(trim((string) $values['name_en']));
     }
 
     protected function find(string $key): ?array
@@ -79,13 +84,13 @@ class EmployeeImport extends AbstractRowDefinition
 
     protected function summary(array $values): array
     {
-        return ['internal_code' => $this->keyFor($values), 'name_en' => $values['name_en'], 'name_ar' => $values['name_ar'], 'category' => $values['category'] ?? 'staff'];
+        return ['internal_code' => $this->normalise((string) ($values['internal_code'] ?? '')) ?: null, 'name_en' => $values['name_en'], 'name_ar' => $values['name_ar'], 'category' => $values['category'] ?? 'staff'];
     }
 
     protected function createRecord(array $values, ImportContext $ctx): void
     {
         $this->employees->createEmployee([
-            'internal_code' => $values['internal_code'],
+            'internal_code' => $values['internal_code'] ?? null,
             'name_ar' => $values['name_ar'],
             'name_en' => $values['name_en'],
             'category' => $values['category'] ?? Employee::CATEGORY_STAFF,

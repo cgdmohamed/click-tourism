@@ -13,6 +13,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  InlineNotice,
   Input,
   Loading,
   Modal,
@@ -24,6 +25,7 @@ import {
   Th,
 } from '../components/ui'
 import { Icon } from '../components/icons'
+import { createdWithCode } from '../lib/codes'
 
 const accountTypes: Account['type'][] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
@@ -78,6 +80,9 @@ export default function Accounts() {
   const [open, setOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  // True once the user typed their own code; until then the server's suggestion is shown and the code is left to it.
+  const [codeTouched, setCodeTouched] = useState(false)
   const [importError, setImportError] = useState('')
   const [importRowErrors, setImportRowErrors] = useState<ImportRowError[]>([])
   const [importPreview, setImportPreview] = useState<Array<{ row: number; code: string; name_ar: string; name_en: string; type: string; action: string }>>([])
@@ -102,10 +107,27 @@ export default function Accounts() {
     },
   })
 
+  // Suggested code for a new account (next free under the parent, or the next root of the type).
+  const suggestionQuery = useQuery({
+    queryKey: ['accounts', 'next-code', form.parent_id || null, form.parent_id ? null : form.type],
+    enabled: open && !editId,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: { code: string } }>('/accounts/next-code', {
+        params: form.parent_id ? { parent_id: form.parent_id } : { type: form.type },
+      })
+      return data.data.code
+    },
+  })
+  const suggestedCode = suggestionQuery.data ?? ''
+  const shownCode = editId || codeTouched ? form.code : suggestedCode
+
   const createOrUpdate = useMutation({
     mutationFn: async () => {
+      const { code, ...rest } = form
       const payload = {
-        ...form,
+        ...rest,
+        // On create the code is only sent when the user chose their own; otherwise the server generates it.
+        ...(editId ? { code } : codeTouched && code.trim() ? { code: code.trim() } : {}),
         parent_id: form.parent_id || null,
         classification: classificationsByType[form.type] ? form.classification || null : null,
       }
@@ -116,10 +138,12 @@ export default function Accounts() {
       const { data } = await api.post<{ data: Account }>('/accounts', payload)
       return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (account) => {
+      if (!editId) setNotice(createdWithCode(locale === 'ar', 'الحساب', 'Account', account.code))
       setOpen(false)
       setEditId(null)
       setError('')
+      setCodeTouched(false)
       setForm({
         code: '',
         name_ar: '',
@@ -266,6 +290,17 @@ export default function Accounts() {
     })
     setEditId(account.id)
     setError('')
+    setNotice('')
+    setCodeTouched(true)
+    setOpen(true)
+  }
+
+  const openNew = () => {
+    setEditId(null)
+    setError('')
+    setNotice('')
+    setCodeTouched(false)
+    setForm({ code: '', name_ar: '', name_en: '', type: 'asset', classification: '', parent_id: '', is_postable: true, is_active: true })
     setOpen(true)
   }
 
@@ -277,7 +312,7 @@ export default function Accounts() {
         icon="ledger"
         actions={
           <>
-            <Button icon="plus" onClick={() => setOpen(true)}>{t('newAccount')}</Button>
+            <Button icon="plus" onClick={openNew}>{t('newAccount')}</Button>
             <Button variant="secondary" icon="download" onClick={exportAccounts}>
               {t('exportAccounts')}
             </Button>
@@ -287,6 +322,12 @@ export default function Accounts() {
           </>
         }
       />
+
+      {notice ? (
+        <div className="mb-4" role="status">
+          <InlineNotice tone="positive">{notice}</InlineNotice>
+        </div>
+      ) : null}
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
@@ -410,12 +451,26 @@ export default function Accounts() {
         }
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('code')} required>
+          <Field
+            label={t('code')}
+            hint={
+              editId
+                ? undefined
+                : locale === 'ar'
+                  ? 'مقترح تلقائياً. يمكنك كتابة كود آخر إن رغبت.'
+                  : 'Suggested automatically. You may type your own code instead.'
+            }
+          >
             <Input
-              value={form.code}
-              onChange={(event) => setForm({ ...form, code: event.target.value })}
+              value={shownCode}
+              onChange={(event) => {
+                setCodeTouched(true)
+                setForm({ ...form, code: event.target.value })
+              }}
               dir="ltr"
-              disabled={!!editId}
+              maxLength={20}
+              readOnly={!!editId}
+              className="tabular"
             />
           </Field>
           <Field label={t('accountType')} required>

@@ -282,6 +282,7 @@ Route::prefix('v1')->group(function () {
         Route::get('accounts', [AccountController::class, 'index'])->middleware('permission:accounts.view');
         Route::post('accounts', [AccountController::class, 'store'])->middleware('permission:accounts.create');
         Route::patch('accounts/{account}', [AccountController::class, 'update'])->middleware('permission:accounts.update');
+        Route::get('accounts/next-code', [AccountController::class, 'nextCode'])->middleware('permission:accounts.create');
         Route::get('accounts/export', [AccountController::class, 'export'])->middleware('permission:accounts.view');
         Route::post('accounts/import', [AccountController::class, 'import'])->middleware('permission:accounts.update');
 

@@ -7,6 +7,7 @@ use App\Modules\CRM\Models\AssignmentRule;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\CRM\Models\LeadSource;
 use App\Modules\CRM\Models\LeadStage;
+use App\Support\CodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -34,7 +35,9 @@ class LeadConfigController extends ApiController
     public function storeSource(Request $request, AuditService $audit): JsonResponse
     {
         $data = $this->validateSource($request);
-        $source = LeadSource::query()->create($data + ['is_active' => $data['is_active'] ?? true]);
+        // Blank code: src-001, src-002, ... (lower-case like every lead code). Seeded codes ('other', ...) are never touched.
+        $source = CodeGenerator::create($data['code'] ?? null, 'lead_sources', 'code', 'SRC', 3, fn (string $code) => LeadSource::query()->create(
+            ['code' => strtolower($code)] + $data + ['is_active' => $data['is_active'] ?? true]));
 
         $audit->log('lead_source.created', $source, null, $source->toApiArray(), $this->actorId());
 
@@ -73,11 +76,13 @@ class LeadConfigController extends ApiController
     public function storeStage(Request $request, AuditService $audit): JsonResponse
     {
         $data = $this->validateStage($request);
-        $stage = LeadStage::query()->create($data + [
-            'sort_order' => $data['sort_order'] ?? 0,
-            'is_won' => $data['is_won'] ?? false,
-            'is_lost' => $data['is_lost'] ?? false,
-        ]);
+        // Blank code: stg-001, stg-002, ... (lower-case like every lead code). Seeded codes ('new', 'won', ...) are never touched.
+        $stage = CodeGenerator::create($data['code'] ?? null, 'lead_stages', 'code', 'STG', 3, fn (string $code) => LeadStage::query()->create(
+            ['code' => strtolower($code)] + $data + [
+                'sort_order' => $data['sort_order'] ?? 0,
+                'is_won' => $data['is_won'] ?? false,
+                'is_lost' => $data['is_lost'] ?? false,
+            ]));
 
         $audit->log('lead_stage.created', $stage, null, $stage->toApiArray(), $this->actorId());
 
@@ -130,7 +135,7 @@ class LeadConfigController extends ApiController
         ];
 
         if ($source === null) {
-            $rules['code'] = ['required', 'string', 'max:40', 'alpha_dash', Rule::unique('lead_sources', 'code')];
+            $rules['code'] = ['nullable', 'string', 'max:40', 'alpha_dash', Rule::unique('lead_sources', 'code')];
         }
 
         return $request->validate($rules);
@@ -152,7 +157,7 @@ class LeadConfigController extends ApiController
         ];
 
         if ($stage === null) {
-            $rules['code'] = ['required', 'string', 'max:40', 'alpha_dash', Rule::unique('lead_stages', 'code')];
+            $rules['code'] = ['nullable', 'string', 'max:40', 'alpha_dash', Rule::unique('lead_stages', 'code')];
         }
 
         $data = $request->validate($rules);

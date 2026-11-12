@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Services\AccountCodeService;
 use App\Modules\Accounting\Services\AccountImportService;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
@@ -102,10 +103,29 @@ class AccountController extends ApiController
         return $this->ok($accounts);
     }
 
-    public function store(Request $request, AuditService $audit): JsonResponse
+    /** Suggested code for a new account under an optional parent (the user may still type their own). */
+    public function nextCode(Request $request, AccountCodeService $codes): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'unique:accounts,code'],
+            'parent_id' => ['nullable', 'string'],
+            'type' => ['required_without:parent_id', 'nullable', Rule::in(['asset', 'liability', 'equity', 'revenue', 'expense'])],
+        ]);
+
+        $parent = ! empty($data['parent_id'])
+            ? Account::query()->where('public_id', $data['parent_id'])->first()
+            : null;
+        if (! empty($data['parent_id']) && ! $parent) {
+            return $this->errorResponse('Parent account not found.', 'parent_not_found', 422);
+        }
+
+        return $this->ok(['code' => $codes->suggest($parent, $parent?->type ?? $data['type'])]);
+    }
+
+    public function store(Request $request, AuditService $audit, AccountCodeService $codes): JsonResponse
+    {
+        $data = $request->validate([
+            // Optional: blank/omitted means the next free code under the parent (see nextCode()).
+            'code' => ['nullable', 'string', 'max:20', 'unique:accounts,code'],
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::in(['asset', 'liability', 'equity', 'revenue', 'expense'])],
@@ -127,8 +147,8 @@ class AccountController extends ApiController
             return $this->errorResponse('Parent account not found.', 'parent_not_found', 422);
         }
 
-        $account = Account::query()->create([
-            'code' => $data['code'],
+        $account = $codes->create($data['code'] ?? null, $parent, $data['type'], fn (string $code) => Account::query()->create([
+            'code' => $code,
             'name_ar' => $data['name_ar'],
             'name_en' => $data['name_en'],
             'type' => $data['type'],
@@ -137,7 +157,7 @@ class AccountController extends ApiController
             'currency_code' => isset($data['currency_code']) ? strtoupper($data['currency_code']) : null,
             'classification' => $data['classification'] ?? null,
             'is_active' => true,
-        ]);
+        ]));
 
         $audit->log('account.created', $account, null, $account->toApiArray(), $this->actorId());
 

@@ -25,7 +25,7 @@ tour packages, the chart of accounts and opening-balance lines. API contract:
 
 - **Duplicate policy** `skip | update | fail` (per row). Matching: customers by tax id, else email, else phone, else
   English name, inside the importing branch; suppliers likewise without tax id; employees by `internal_code`
-  (global, upper-cased); tour packages by `code`, else name + destination, inside the branch. Accounts keep the legacy
+  (global, upper-cased; the column is optional, a blank cell gets the next generated `EMP-0001`-style code and matches an existing employee by English name); tour packages by `code`, else name + destination, inside the branch. Accounts keep the legacy
   upsert-by-code default (`update`). A repeated key inside one file is always a row error (`duplicate_in_file`).
   `update` only overwrites columns that have a value; blank cells never erase data.
 - **Error policy** `on_error=skip` (default) imports valid rows; `abort` writes nothing if any row fails.

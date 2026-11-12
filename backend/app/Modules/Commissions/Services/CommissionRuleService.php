@@ -9,6 +9,7 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
+use App\Support\CodeGenerator;
 use DomainException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -37,9 +38,11 @@ class CommissionRuleService
     /** @param array<string, mixed> $data */
     public function create(array $data, ?int $actorId): CommissionRule
     {
-        return DB::transaction(function () use ($data, $actorId) {
-            $code = strtoupper(trim((string) $data['code']));
-            if (CommissionRule::query()->where('code', $code)->exists()) {
+        // A blank code is generated (RULE-001, ...); a supplied one is kept (upper-cased).
+        $supplied = strtoupper(trim((string) ($data['code'] ?? '')));
+
+        return CodeGenerator::create($supplied, 'commission_rules', 'code', 'RULE', 3, function (string $code) use ($data, $actorId, $supplied) {
+            if ($supplied !== '' && CommissionRule::query()->where('code', $code)->exists()) {
                 throw new DomainException("Commission rule {$code} already exists; create a new version instead.");
             }
 

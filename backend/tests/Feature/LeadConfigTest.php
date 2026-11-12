@@ -121,7 +121,8 @@ class LeadConfigTest extends TestCase
         $this->withHeaders($this->headers())
             ->postJson('/api/v1/lead-sources', ['name_ar' => 'بدون كود'])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['code', 'name_en']);
+            ->assertJsonValidationErrors(['name_en'])
+            ->assertJsonMissingValidationErrors(['code']);
     }
 
     public function test_it_updates_a_source_without_changing_its_code(): void

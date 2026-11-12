@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Support\CodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,19 +29,20 @@ class BranchController extends ApiController
     public function store(Request $request, AuditService $audit): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'unique:branches,code'],
+            // Optional: blank/omitted means the system generates BR-01, BR-02, ...
+            'code' => ['nullable', 'string', 'max:20', 'unique:branches,code'],
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'accounting_mode' => ['nullable', 'in:dimension,customer,independent'],
         ]);
 
-        $branch = Branch::query()->create([
-            'code' => strtoupper($data['code']),
+        $branch = CodeGenerator::create(strtoupper(trim((string) ($data['code'] ?? ''))), 'branches', 'code', 'BR', 2, fn (string $code) => Branch::query()->create([
+            'code' => $code,
             'name_ar' => $data['name_ar'],
             'name_en' => $data['name_en'],
             'accounting_mode' => $data['accounting_mode'] ?? 'dimension',
             'is_active' => true,
-        ]);
+        ]));
 
         $request->user()->branches()->syncWithoutDetaching([$branch->id]);
         $audit->log('branch.created', $branch, null, $branch->toApiArray(), $this->actorId());

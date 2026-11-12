@@ -5,9 +5,11 @@ import { useI18n } from '../../i18n'
 import { api, errorMessage } from '../../lib/api'
 import { localizedName } from '../../lib/names'
 import type { Branch } from '../../lib/types'
-import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Modal, Select, Table, Td, Th } from '../../components/ui'
+import { CodeField } from '../../components/CodeField'
+import { createdWithCode } from '../../lib/codes'
+import { Badge, Button, Card, CardHeader, ErrorState, Field, InlineNotice, Input, Loading, Modal, Select, Table, Td, Th } from '../../components/ui'
 
-const emptyBranch = { code: '', name_ar: '', name_en: '', accounting_mode: 'dimension' as Branch['accounting_mode'] }
+const emptyBranch = { name_ar: '', name_en: '', accounting_mode: 'dimension' as Branch['accounting_mode'] }
 
 export function BranchesTab() {
   const { t, locale } = useI18n()
@@ -16,6 +18,7 @@ export function BranchesTab() {
   const [branchOpen, setBranchOpen] = useState(false)
   const [branchForm, setBranchForm] = useState(emptyBranch)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   const branchesQuery = useQuery({
     queryKey: ['branches'],
@@ -30,7 +33,8 @@ export function BranchesTab() {
       const { data } = await api.post<{ data: Branch }>('/branches', branchForm)
       return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (branch) => {
+      setNotice(createdWithCode(locale === 'ar', 'الفرع', 'Branch', branch.code))
       setBranchOpen(false)
       setError('')
       setBranchForm(emptyBranch)
@@ -47,12 +51,23 @@ export function BranchesTab() {
         subtitle={locale === 'ar' ? 'كل فرع له نطاق بيانات وصلاحيات مستقل' : 'Each branch has its own data scope and permissions'}
         actions={
           can('branches.create') ? (
-            <Button variant="secondary" onClick={() => setBranchOpen(true)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setNotice('')
+                setBranchOpen(true)
+              }}
+            >
               {locale === 'ar' ? 'فرع جديد' : 'New branch'}
             </Button>
           ) : null
         }
       />
+      {notice ? (
+        <div className="m-4" role="status">
+          <InlineNotice tone="positive">{notice}</InlineNotice>
+        </div>
+      ) : null}
       {error && !branchOpen ? <p className="m-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
       {branchesQuery.isLoading ? <Loading /> : null}
       {branchesQuery.isError ? <ErrorState message={errorMessage(branchesQuery.error)} onRetry={() => void branchesQuery.refetch()} /> : null}
@@ -102,9 +117,7 @@ export function BranchesTab() {
       >
         {error ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('code')} required>
-            <Input value={branchForm.code} onChange={(event) => setBranchForm({ ...branchForm, code: event.target.value })} dir="ltr" />
-          </Field>
+          <CodeField label={t('code')} ar={locale === 'ar'} />
           <Field label={locale === 'ar' ? 'نمط المحاسبة' : 'Accounting mode'}>
             <Select
               value={branchForm.accounting_mode}

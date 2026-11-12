@@ -425,6 +425,21 @@ class ImportFrameworkTest extends TestCase
         $this->assertSame('driver', Employee::query()->where('internal_code', 'EMP-1')->value('category'));
     }
 
+    public function test_employees_import_generates_a_code_when_the_cell_is_blank(): void
+    {
+        $csv = "internal_code,name_ar,name_en\n,سعاد,Soad\nemp-0007,علي,Ali\n,منى,Mona\n";
+        $this->upload('employees', $csv, ['dry_run' => '0'])->assertJsonPath('data.created_count', 3);
+
+        $this->assertSame('EMP-0001', Employee::query()->where('name_en', 'Soad')->value('internal_code'));
+        $this->assertSame('EMP-0007', Employee::query()->where('name_en', 'Ali')->value('internal_code'));
+        $this->assertSame('EMP-0008', Employee::query()->where('name_en', 'Mona')->value('internal_code'));
+
+        // Re-importing a code-less row matches the existing employee by name instead of duplicating it.
+        $this->upload('employees', "internal_code,name_ar,name_en\n,سعاد,Soad\n", ['dry_run' => '0', 'duplicate_policy' => 'update'])
+            ->assertJsonPath('data.updated_count', 1);
+        $this->assertSame(3, Employee::query()->count());
+    }
+
     public function test_tour_packages_import(): void
     {
         $csv = "code,name,category,execution_type,destination,currency,base_price,estimated_cost\n"
