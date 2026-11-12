@@ -40,6 +40,7 @@ import FixedAssets from './pages/FixedAssets'
 import ExchangeRates from './pages/ExchangeRates'
 import CostCenters from './pages/CostCenters'
 import TaxProfiles from './pages/TaxProfiles'
+import Imports from './pages/Imports'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +89,7 @@ export default function App() {
                   <Route path="reports" element={<Reports />} />
                   <Route path="leads" element={<Leads />} />
                   <Route path="assignment-rules" element={<AssignmentRules />} />
+                  <Route path="imports" element={<Imports />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="users" element={<Users />} />
                   <Route path="roles" element={<Roles />} />

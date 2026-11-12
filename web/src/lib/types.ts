@@ -646,3 +646,81 @@ export type EmployeeProfile = {
   transactions: EmployeeTransaction[]
   statement: PartyStatement
 }
+
+export type ImportJobStatus = 'previewed' | 'queued' | 'running' | 'completed' | 'partial' | 'failed'
+
+export type ImportRowError = {
+  row: number
+  field: string | null
+  code: string
+  message: string
+  params?: Record<string, unknown>
+}
+
+export type ImportTemplateColumn = {
+  key: string
+  label_en: string
+  label_ar: string
+  type: string
+  required: boolean
+  allowed_values: string[] | null
+  max_length: number | null
+  example: string
+  description_en: string
+  description_ar: string
+}
+
+export type ImportTemplate = {
+  entity: string
+  version: number
+  label_en: string
+  label_ar: string
+  supports_duplicate_policy: boolean
+  default_duplicate_policy: 'skip' | 'update' | 'fail'
+  atomic: boolean
+  permissions: string[]
+  columns: ImportTemplateColumn[]
+  options: Array<{ key: string; label_en: string; label_ar: string; required: boolean }>
+}
+
+export type ImportTemplates = {
+  limits: { max_file_bytes: number; max_rows: number; formats: string[] }
+  templates: ImportTemplate[]
+}
+
+export type ImportPreviewRow = {
+  row: number
+  action: 'create' | 'update' | 'skip' | 'error'
+  message?: string
+  values: Record<string, unknown>
+}
+
+export type ImportJob = {
+  id: string
+  entity: string
+  template_version: number
+  status: ImportJobStatus
+  mode: 'dry_run' | 'commit'
+  duplicate_policy: 'skip' | 'update' | 'fail'
+  on_error: 'skip' | 'abort'
+  options: Record<string, unknown>
+  original_name: string
+  file_format: 'csv' | 'xlsx'
+  file_size: number
+  branch_id: string | null
+  created_by: string | null
+  total_rows: number
+  created_count: number
+  updated_count: number
+  skipped_count: number
+  error_count: number
+  preview?: ImportPreviewRow[]
+  errors?: ImportRowError[]
+  warnings?: Array<{ code: string; columns?: string[] }>
+  has_error_report: boolean
+  failure_code: string | null
+  failure_message: string | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+}

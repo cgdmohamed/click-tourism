@@ -21,6 +21,7 @@ tags:
   - name: Fixed Assets
   - name: Treasury
   - name: Parties
+  - name: Imports
   - name: Bookings
   - name: Payments
   - name: Reports
@@ -863,6 +864,216 @@ paths:
         '201': { description: Reversal posted }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /imports/templates:
+    get:
+      tags: [Imports]
+      summary: List the versioned import templates the caller may run
+      description: >-
+        Only entities for which the caller holds the create permission (customers.create,
+        suppliers.create, employees.manage, bookings.create, accounts.update,
+        opening_balances.manage) are listed. Each template carries its `version`, columns
+        (stable key plus English and Arabic header), upload options and the global file limits.
+      responses:
+        '200':
+          description: Templates and limits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      limits:
+                        type: object
+                        properties:
+                          max_file_bytes: { type: integer }
+                          max_rows: { type: integer }
+                          formats: { type: array, items: { type: string } }
+                      templates: { type: array, items: { $ref: '#/components/schemas/ImportTemplate' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /imports/templates/{entity}:
+    get:
+      tags: [Imports]
+      summary: Download a blank import template (CSV or XLSX, Arabic or English headers)
+      description: >-
+        Entities: customers, suppliers, employees, tour-packages, accounts, opening-balance-lines.
+        The file name carries the template version (`customers-template-v1-ar.csv`). CSV is UTF-8 with
+        BOM; XLSX adds a Guide sheet. Requires the entity's import permission.
+      parameters:
+        - { name: entity, in: path, required: true, schema: { type: string } }
+        - { name: format, in: query, required: false, schema: { type: string, enum: [csv, xlsx], default: csv } }
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [ar, en] }, description: 'Header language; defaults to the request locale' }
+      responses:
+        '200':
+          description: Template file
+          content:
+            text/csv: { schema: { type: string, format: binary } }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Unknown entity (`unknown_entity`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /imports:
+    get:
+      tags: [Imports]
+      summary: List import jobs of the current branch
+      description: Limited to the caller's branches and to entities the caller may import. Preview and error payloads are omitted; fetch a job for them.
+      parameters:
+        - { name: entity, in: query, required: false, schema: { type: string } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [previewed, queued, running, completed, partial, failed] } }
+        - { name: all_branches, in: query, required: false, schema: { type: boolean }, description: 'Include every branch the caller is assigned to' }
+        - { name: per_page, in: query, required: false, schema: { type: integer, maximum: 100 } }
+      responses:
+        '200':
+          description: Paged jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ImportJob' } }
+                  meta: { type: object, additionalProperties: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Imports]
+      summary: Upload a CSV/XLSX file; dry-run (default) or import directly
+      description: >-
+        The file is fully scanned before anything is stored: encoding (UTF-8 / UTF-16 with BOM),
+        size (`IMPORTS_MAX_FILE_BYTES`, default 5 MB), row count (`IMPORTS_MAX_ROWS`, default 10000),
+        cell length, header columns (key, English label, Arabic label or alias) and template version.
+        File problems reject the upload with 4xx and a `code` (`invalid_encoding`, `file_too_large`,
+        `too_many_rows`, `cell_too_long`, `missing_columns`, `duplicate_column`, `empty_file`,
+        `no_data_rows`, `unsupported_file_type`, `unreadable_file`, `unsupported_template_version`) and
+        no job is created. Small files are processed inside the request; larger ones are queued
+        (job status `queued`, poll `GET /imports/{id}`).
+        With `dry_run` true (default) the job ends in `previewed` and nothing is written; confirm it with
+        `POST /imports/{id}/confirm`. Rows containing spreadsheet formulas (leading `=`, `@`, or `+`/`-` followed by
+        non-numeric text, or a leading tab/CR) are rejected row by row with `formula_detected`.
+        Requires the entity's create permission, plus its update permission when `duplicate_policy` is `update`
+        (accounts: accounts.update; opening balances: opening_balances.manage). Throttled to 30 uploads per minute.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [entity, file]
+              properties:
+                entity: { type: string, enum: [customers, suppliers, employees, tour-packages, accounts, opening-balance-lines] }
+                file: { type: string, format: binary }
+                dry_run: { type: boolean, default: true }
+                duplicate_policy: { type: string, enum: [skip, update, fail], description: 'Default skip (accounts: update, for compatibility). Ignored for opening-balance-lines.' }
+                on_error: { type: string, enum: [skip, abort], default: skip, description: 'skip imports the valid rows (status partial); abort writes nothing when any row fails.' }
+                template_version: { type: integer, description: 'Reject the upload when it does not match the current version' }
+                options:
+                  type: object
+                  description: 'Entity options, sent as options[as_of_date]=YYYY-MM-DD and options[memo] (opening-balance-lines).'
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Job created (and already finished for small files)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ImportJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Unknown entity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: File larger than the configured limit (`file_too_large`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /imports/{job}:
+    get:
+      tags: [Imports]
+      summary: Import job status, counts, preview rows and first row errors
+      description: Requires the import permission of the job's entity and assignment to the job's branch. `preview` holds the first 50 rows; `errors` the first 200 row errors (the full list is in the error report).
+      parameters:
+        - { name: job, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ImportJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Unknown job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Imports]
+      summary: Discard a previewed import
+      description: Only a `previewed` job can be discarded; the stored upload and report are deleted. Other states return 409 `invalid_state`.
+      parameters:
+        - { name: job, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Discarded }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /imports/{job}/confirm:
+    post:
+      tags: [Imports]
+      summary: Confirm a previewed import and run it
+      description: >-
+        Moves the job `previewed` to `queued` atomically (a second call returns 409 `invalid_state`) and
+        re-validates every row at write time. Final statuses: `completed` (no row errors), `partial` (some rows
+        imported, some failed; see the error report), `failed` (nothing imported: all rows invalid, an atomic
+        entity such as accounts or opening balances had any error, or `on_error` was abort). Writes are audited
+        (`import.uploaded`, `import.previewed`, `import.confirmed`, `import.completed|partial|failed` plus the
+        per-record events); the uploaded file is deleted once the job is final.
+      parameters:
+        - { name: job, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Job after confirmation (queued for large files)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ImportJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /imports/{job}/errors:
+    get:
+      tags: [Imports]
+      summary: Download the partial-failure report (CSV)
+      description: One line per row error (`row`, `field`, `code`, `message`) followed by the original cell values. Cells that could run as spreadsheet formulas are neutralised with a leading apostrophe. 404 `no_error_report` when the job has no errors.
+      parameters:
+        - { name: job, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: CSV report
+          content:
+            text/csv: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: No report for this job
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /customers:
     get:
       tags: [Parties]
@@ -5611,3 +5822,87 @@ components:
         target_user_id: { type: [string, integer, 'null'] }
         max_leads_per_user: { type: integer, nullable: true }
         is_active: { type: boolean }
+    ImportTemplate:
+      type: object
+      properties:
+        entity: { type: string }
+        version: { type: integer, description: 'Bumped on incompatible column changes' }
+        label_en: { type: string }
+        label_ar: { type: string }
+        supports_duplicate_policy: { type: boolean }
+        default_duplicate_policy: { type: string, enum: [skip, update, fail] }
+        atomic: { type: boolean, description: 'All-or-nothing file (accounts, opening balances)' }
+        permissions: { type: array, items: { type: string } }
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label_en: { type: string }
+              label_ar: { type: string }
+              type: { type: string, enum: [string, email, phone, enum, bool, currency, money, int, decimal, date] }
+              required: { type: boolean }
+              allowed_values: { type: array, nullable: true, items: { type: string } }
+              max_length: { type: integer, nullable: true }
+              example: { type: string }
+              description_en: { type: string }
+              description_ar: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label_en: { type: string }
+              label_ar: { type: string }
+              required: { type: boolean }
+    ImportJob:
+      type: object
+      properties:
+        id: { type: string }
+        entity: { type: string }
+        template_version: { type: integer }
+        status: { type: string, enum: [previewed, queued, running, completed, partial, failed] }
+        mode: { type: string, enum: [dry_run, commit] }
+        duplicate_policy: { type: string, enum: [skip, update, fail] }
+        on_error: { type: string, enum: [skip, abort] }
+        options: { type: object, additionalProperties: true, description: 'Upload options; after an opening-balance import `result.opening_balance_batch_id` is the created draft batch.' }
+        original_name: { type: string }
+        file_format: { type: string, enum: [csv, xlsx] }
+        file_size: { type: integer }
+        branch_id: { type: string, nullable: true }
+        created_by: { type: string, nullable: true }
+        total_rows: { type: integer }
+        created_count: { type: integer }
+        updated_count: { type: integer }
+        skipped_count: { type: integer }
+        error_count: { type: integer, description: 'Number of rows with at least one error' }
+        preview:
+          type: array
+          description: First 50 rows with their planned or failed action
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              action: { type: string, enum: [create, update, skip, error] }
+              message: { type: string }
+              values: { type: object, additionalProperties: true }
+        errors:
+          type: array
+          description: First 200 row errors
+          items:
+            type: object
+            properties:
+              row: { type: integer, description: 'Spreadsheet row number; 0 for file-level errors' }
+              field: { type: string, nullable: true }
+              code: { type: string }
+              message: { type: string }
+              params: { type: object, additionalProperties: true }
+        warnings: { type: array, items: { type: object, additionalProperties: true }, description: 'e.g. unknown_columns that were ignored' }
+        has_error_report: { type: boolean }
+        failure_code: { type: string, nullable: true }
+        failure_message: { type: string, nullable: true }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
