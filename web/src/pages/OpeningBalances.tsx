@@ -26,6 +26,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { Icon } from '../components/icons'
 import PartyPicker from '../components/PartyPicker'
 import { statusLabel } from '../lib/labels'
@@ -121,7 +122,7 @@ export default function OpeningBalances() {
     () =>
       (accountsQuery.data ?? [])
         .filter((account) => account.is_postable && account.is_active)
-        .map((account) => ({ value: account.id, label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}` })),
+        .map((account) => ({ value: account.id, label: localizedName(account, locale), code: account.code })),
     [accountsQuery.data, locale],
   )
 

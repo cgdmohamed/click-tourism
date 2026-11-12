@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import type { SelectOption } from '../components/ui'
 import { useRemoteOptions } from './useRemoteOptions'
+import { localizedName } from './names'
 
 export type PartyKind = 'customer' | 'supplier' | 'employee'
 
@@ -34,7 +35,7 @@ export function usePartyOptions(
   const toOption = useCallback(
     (party: PartyRow): SelectOption => ({
       value: party.id,
-      label: locale === 'ar' ? party.name_ar : party.name_en,
+      label: localizedName(party, locale),
       hint: party.phone ?? party.internal_code ?? undefined,
     }),
     [locale],

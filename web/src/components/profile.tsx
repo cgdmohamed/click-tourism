@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import { Badge, Button, Card, CardHeader, EmptyState, InlineNotice, Money, Table, Td, Th, cx } from './ui'
 import { Icon } from './icons'
 import type { IconName } from './icons'
+import { localizedName } from '../lib/names'
 
 /** Shared building blocks for the customer / supplier / employee / invoice 360 views. */
 
@@ -273,7 +274,7 @@ export function StatementView({
             <p className="text-small mb-2 font-semibold uppercase tracking-wide text-text-subtlest">{t('subaccounts')}</p>
             <div className="flex flex-wrap gap-2">
               <Badge tone="brand">
-                {statement.control_account.code} · {locale === 'ar' ? statement.control_account.name_ar : statement.control_account.name_en}
+                {statement.control_account.code} · {localizedName(statement.control_account, locale)}
               </Badge>
               {statement.subaccounts.map((mapping) => (
                 <Badge key={mapping.id} tone="neutral">

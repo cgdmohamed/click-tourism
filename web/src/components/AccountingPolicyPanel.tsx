@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Account } from '../lib/types'
 import { Badge, Button, Card, CardHeader, ErrorState, Loading, Modal, SearchableSelect, Table, Td, Th } from './ui'
+import { localizedName } from '../lib/names'
 
 type Setting = { group: string; key: string; value: string | null; is_secret: boolean }
 type Mapping = { group: 'accounting' | 'assets'; key: string; type: Account['type']; ar: string; en: string }
@@ -99,8 +100,7 @@ export default function AccountingPolicyPanel() {
       .filter((account) => account.type === type)
       .map((account) => ({
         value: account.code,
-        label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
-        hint: `${account.name_ar} ${account.name_en}`,
+        label: localizedName(account, locale), code: account.code,
       }))
 
   const togglePolicy = useMutation({

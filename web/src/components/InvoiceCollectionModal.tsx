@@ -6,6 +6,7 @@ import { toDecimal, toMinor, todayISO } from '../lib/format'
 import { useBaseCurrency } from '../lib/useSetting'
 import type { PaymentMethod } from '../lib/types'
 import { Button, Field, Input, Modal, Money, SearchableSelect } from './ui'
+import { localizedName } from '../lib/names'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string }
 type ReceiptRow = { amount: string; methodId: string; accountId: string; paidAt: string; fxRate: string }
@@ -145,7 +146,7 @@ export function InvoiceCollectionModal({
                         const selected = methods.find((m) => m.id === methodId)
                         updateRow(index, { methodId, accountId: selected?.default_cash_account_id ?? '' })
                       }}
-                      options={methods.map((m) => ({ value: m.id, label: locale === 'ar' ? m.name_ar : m.name_en }))}
+                      options={methods.map((m) => ({ value: m.id, label: localizedName(m, locale) }))}
                       placeholder={L('اختر الطريقة', 'Select method')}
                     />
                   </Field>
@@ -153,7 +154,7 @@ export function InvoiceCollectionModal({
                     <SearchableSelect
                       value={row.accountId}
                       onChange={(accountId) => updateRow(index, { accountId })}
-                      options={availableAccounts.map((a) => ({ value: a.id, label: locale === 'ar' ? a.name_ar : a.name_en }))}
+                      options={availableAccounts.map((a) => ({ value: a.id, label: localizedName(a, locale) }))}
                       placeholder={L('اختر الحساب', 'Select account')}
                     />
                   </Field>

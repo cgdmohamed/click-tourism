@@ -23,6 +23,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 type AccountRef = { code?: string; name_ar?: string; name_en?: string }
 
@@ -768,7 +769,7 @@ export default function FixedAssets() {
                         <div>{categoryLabel(asset.category)}</div>
                         <div className="text-small text-text-subtle">{accountLabel(asset.category?.asset_account ?? null)}</div>
                       </Td>
-                      <Td>{asset.branch ? (locale === 'ar' ? asset.branch.name_ar : asset.branch.name_en) : '—'}</Td>
+                      <Td>{asset.branch ? (localizedName(asset.branch, locale)) : '—'}</Td>
                       <Td>
                         <Money amountMinor={asset.acquisition_value_base_minor} currency={baseCurrency(asset)} />
                       </Td>
@@ -1246,8 +1247,8 @@ export default function FixedAssets() {
                       {auditQuery.data.transfers.map((transfer) => (
                         <tr key={transfer.id}>
                           <Td>{formatDate(transfer.transfer_date, locale)}</Td>
-                          <Td>{transfer.from_branch ? (locale === 'ar' ? transfer.from_branch.name_ar : transfer.from_branch.name_en) : '—'}</Td>
-                          <Td>{transfer.to_branch ? (locale === 'ar' ? transfer.to_branch.name_ar : transfer.to_branch.name_en) : '—'}</Td>
+                          <Td>{transfer.from_branch ? (localizedName(transfer.from_branch, locale)) : '—'}</Td>
+                          <Td>{transfer.to_branch ? (localizedName(transfer.to_branch, locale)) : '—'}</Td>
                           <Td className="text-small text-text-subtle">{transfer.reason ?? '—'}</Td>
                         </tr>
                       ))}
@@ -1296,7 +1297,7 @@ export default function FixedAssets() {
               <option value="">{L('اختر تصنيفاً', 'Choose a category')}</option>
               {(categoriesQuery.data ?? []).map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.code} · {locale === 'ar' ? category.name_ar : category.name_en}
+                  {category.code} · {localizedName(category, locale)}
                 </option>
               ))}
             </Select>
@@ -1449,7 +1450,7 @@ export default function FixedAssets() {
                       .filter((branch) => branch.id !== lifecycle.asset.branch_id)
                       .map((branch) => (
                         <option key={branch.id} value={branch.id}>
-                          {locale === 'ar' ? branch.name_ar : branch.name_en}
+                          {localizedName(branch, locale)}
                         </option>
                       ))}
                   </Select>
@@ -1573,7 +1574,7 @@ export default function FixedAssets() {
               <Badge tone={statusTone(detail.status)}>{statusLabel(detail.status)}</Badge>
               <Badge tone="brand">{categoryLabel(detail.category)}</Badge>
               <span className="text-small text-text-subtle">
-                {L('الفرع', 'Branch')}: {detail.branch ? (locale === 'ar' ? detail.branch.name_ar : detail.branch.name_en) : '—'} ·{' '}
+                {L('الفرع', 'Branch')}: {detail.branch ? (localizedName(detail.branch, locale)) : '—'} ·{' '}
                 {L('الرسملة', 'Capitalized')}: {formatDate(detail.capitalization_date, locale)}
               </span>
             </div>

@@ -26,6 +26,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
 import { usePartyOptions } from '../lib/usePartyOptions'
 
@@ -207,11 +208,11 @@ export default function Documents() {
 
   const accountOptions = (accountsQuery.data ?? [])
     .filter((account) => account.is_postable && account.is_active)
-    .map((account) => ({ value: account.id, label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}` }))
+    .map((account) => ({ value: account.id, label: localizedName(account, locale), code: account.code }))
 
   const cashOptions = (cashQuery.data ?? [])
     .filter((account) => account.registered && account.is_active !== false)
-    .map((account) => ({ value: account.cash_account_id ?? account.id, label: locale === 'ar' ? account.name_ar : account.name_en }))
+    .map((account) => ({ value: account.cash_account_id ?? account.id, label: localizedName(account, locale) }))
 
   const updateLine = (index: number, patch: Partial<typeof emptyLine>) =>
     setForm((current) => ({

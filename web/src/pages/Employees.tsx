@@ -7,6 +7,7 @@ import type { Employee } from '../lib/types'
 import { employeeCategoryLabel } from '../lib/labels'
 import { Badge, Card, EmptyState, ErrorState, Input, Loading, PageHeader, Table, Td, Th } from '../components/ui'
 import { Icon } from '../components/icons'
+import { localizedName } from '../lib/names'
 
 export default function Employees() {
   const { t, locale } = useI18n()
@@ -72,9 +73,8 @@ export default function Employees() {
                   <Td className="font-medium" dir="ltr">{employee.internal_code}</Td>
                   <Td>
                     <Link to={`/employees/${employee.id}`} className="font-medium text-brand-1-accent hover:underline">
-                      {locale === 'ar' ? employee.name_ar : employee.name_en}
+                      {localizedName(employee, locale)}
                     </Link>
-                    <p className="text-small text-text-subtlest">{locale === 'ar' ? employee.name_en : employee.name_ar}</p>
                   </Td>
                   <Td>{employeeCategoryLabel(employee.category, locale)}</Td>
                   <Td dir="ltr">{employee.phone ?? '—'}</Td>

@@ -8,6 +8,7 @@ import { DecisionsPanel } from '../components/DecisionsPanel'
 import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import IntegrationsPanel from '../components/IntegrationsPanel'
 import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 type Setting = { group: string; key: string; value: string | null; is_secret: boolean }
 type Currency = { code: string; name: string; symbol: string; exponent: number; is_active: boolean }
@@ -278,8 +279,7 @@ export default function Settings() {
                 <tr key={branch.id}>
                   <Td className="tabular font-medium">{branch.code}</Td>
                   <Td>
-                    <p className="font-medium">{locale === 'ar' ? branch.name_ar : branch.name_en}</p>
-                    <p className="text-xs text-text-subtle">{locale === 'ar' ? branch.name_en : branch.name_ar}</p>
+                    <p className="font-medium">{localizedName(branch, locale)}</p>
                   </Td>
                   <Td>{branch.accounting_mode}</Td>
                   <Td>
