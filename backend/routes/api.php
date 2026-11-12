@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\LeadConfigController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\ManagementReportController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
@@ -388,6 +389,11 @@ Route::prefix('v1')->group(function () {
         Route::post('lead-stages', [LeadConfigController::class, 'storeStage'])->middleware('permission:leads.manage_rules');
         Route::patch('lead-stages/{stage:code}', [LeadConfigController::class, 'updateStage'])->middleware('permission:leads.manage_rules');
         Route::delete('lead-stages/{stage:code}', [LeadConfigController::class, 'destroyStage'])->middleware('permission:leads.manage_rules');
+
+        // In-app notifications for the signed-in user (GAP-CORE-01).
+        Route::get('notifications', [NotificationController::class, 'index']);
+        Route::post('notifications/read-all', [NotificationController::class, 'readAll']);
+        Route::post('notifications/{notification}/read', [NotificationController::class, 'read']);
 
         // Optional Meta / WhatsApp integrations (disabled by default; secrets are env-only).
         Route::get('integrations/status', [IntegrationController::class, 'status'])->middleware('permission:settings.view');

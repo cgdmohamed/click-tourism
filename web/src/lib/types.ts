@@ -855,3 +855,25 @@ export type AuditFilters = {
   from: string
   to: string
 }
+
+export type AppNotification = {
+  id: string
+  type: string
+  title: string
+  body: string | null
+  data: Record<string, unknown>
+  branch_id: string | null
+  read_at: string | null
+  created_at: string
+}
+
+export type AppNotificationList = {
+  data: AppNotification[]
+  meta: {
+    current_page: number
+    last_page: number
+    total: number
+    per_page: number
+    unread_count: number
+  }
+}
