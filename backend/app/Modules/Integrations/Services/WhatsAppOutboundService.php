@@ -10,6 +10,7 @@ use App\Modules\Integrations\Exceptions\OutboundRefusedException;
 use App\Modules\Integrations\Models\OutboxEvent;
 use App\Modules\Integrations\Models\WhatsAppMessage;
 use App\Modules\Parties\Models\Customer;
+use App\Support\PhoneNumber;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;

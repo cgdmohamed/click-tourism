@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Integrations\Services;
+namespace App\Support;
 
 /**
  * Phone helpers. Numbers are compared on a match key (last 9 digits) so

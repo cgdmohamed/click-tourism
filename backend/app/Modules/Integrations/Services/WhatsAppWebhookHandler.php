@@ -6,6 +6,7 @@ use App\Modules\CRM\Models\LeadActivity;
 use App\Modules\CRM\Services\LeadService;
 use App\Modules\Integrations\Models\WebhookEvent;
 use App\Modules\Integrations\Models\WhatsAppMessage;
+use App\Support\PhoneNumber;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
