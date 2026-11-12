@@ -148,16 +148,21 @@ jobs:
         run: sh docker/test-demo-restore.sh
       - name: Run financial integration tests on PostgreSQL
         run: |
-          php artisan test --filter="(PostingServiceTest|PaymentServiceTest|InvoiceTest|FinancialReportsReconciliationTest|SupplierSettlementTest|BookingServiceTest)"
+          php artisan test --filter="(PostingServiceTest|PaymentServiceTest|InvoiceTest|FinancialReportsReconciliationTest|SupplierSettlementTest|BookingServiceTest|InstallCommandTest|VerifyLedgerCommandTest|VerifyCredentialsCommandTest|UserSeederSafetyTest)"
+      # Release gate (docs/deployment/release-checklist.md): each rehearsal creates and
+      # drops its own erp_rehearsal_* databases, so it cannot disturb tourism_test.
+      - name: Release rehearsals (fresh install, backup/restore, N-1 upgrade, rollback)
+        working-directory: .
+        run: sh scripts/release/rehearse-all.sh
 
   coolify-compose-validate:
     name: Coolify Compose validation and API image build
     runs-on: ubuntu-latest
     env:
-      APP_KEY: "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      APP_KEY: "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" # scan-secrets: allow (CI placeholder, not a real key)
       APP_URL: "https://erp.example.invalid"
       POSTGRES_PASSWORD: "ci-only-production-password"
-      DEMO_APP_KEY: "base64:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="
+      DEMO_APP_KEY: "base64:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=" # scan-secrets: allow (CI placeholder, not a real key)
       DEMO_DB_PASSWORD: "ci-only-demo-password"
       DEMO_URL: "https://demo.example.invalid"
     steps:
@@ -172,7 +177,10 @@ jobs:
           sh -n backend/docker/demo-reset-loop.sh
           sh -n backend/docker/demo-restore-db.sh
           sh -n backend/docker/test-demo-restore.sh
+          for f in scripts/release/*.sh; do sh -n "$f"; done
       - name: Build Laravel nginx API image
         run: docker build -f deploy/Dockerfile.api -t click-tourism-api:ci .
       - name: Build Laravel PHP-FPM image
         run: docker build -f backend/Dockerfile -t click-tourism-backend:ci backend
+      - name: Secret and default-credential scan (repository and built backend image)
+        run: IMAGE=click-tourism-backend:ci sh scripts/release/scan-secrets.sh

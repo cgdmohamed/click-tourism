@@ -6,18 +6,57 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 /**
- * Baseline users for a fresh installation.
+ * Demonstration users (admin/accountant/sales/viewer @example.com).
  *
- * The passwords below are development defaults and MUST be changed during
- * deployment. Only the admin account is required in production; the others
- * demonstrate role separation and are safe to delete.
+ * These accounts exist only for the isolated demo and for local/test
+ * environments. The seeder FAILS CLOSED:
+ *   - it refuses to run in any other environment (production, staging, ...);
+ *     real installations create their first administrator with
+ *     `php artisan erp:install`;
+ *   - it refuses to run without an explicit DEMO_PASSWORD. There is no
+ *     built-in default password.
  */
 class UserSeeder extends Seeder
 {
+    /** True only inside the disposable demo container (see docker-compose.demo.coolify.yml). */
+    public static function isIsolatedDemo(): bool
+    {
+        $connection = config('database.default');
+
+        return filter_var(config('demo.enabled'), FILTER_VALIDATE_BOOL)
+            && config('app.env') === 'demo'
+            && config("database.connections.{$connection}.host") === 'demo-db'
+            && config("database.connections.{$connection}.database") === 'demo_erp';
+    }
+
+    /**
+     * Throws unless demo users may be created here: the isolated demo, or an
+     * explicitly local/testing environment.
+     */
+    public static function assertDemoUsersAllowed(): void
+    {
+        if (! self::isIsolatedDemo() && ! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException(
+                'Refusing to seed demo users with a shared password outside the isolated demo or a local/testing '
+                .'environment. Create the first administrator with: php artisan erp:install',
+            );
+        }
+    }
+
     public function run(): void
     {
+        self::assertDemoUsersAllowed();
+
+        $password = config('demo.password');
+        if (! is_string($password) || trim($password) === '') {
+            throw new RuntimeException(
+                'DEMO_PASSWORD is not set. Demo users are never created with a default password; set DEMO_PASSWORD explicitly.',
+            );
+        }
+
         $branches = Branch::query()->orderBy('id')->get();
 
         $users = [
@@ -29,19 +68,16 @@ class UserSeeder extends Seeder
 
         // In a disposable demo, accounts must always match the configured
         // credentials after a scheduled reset or an interrupted previous seed.
-        // Never overwrite real installation passwords on ordinary seeding.
-        $isIsolatedDemo = filter_var(env('DEMO_MODE', false), FILTER_VALIDATE_BOOL)
-            && env('APP_ENV') === 'demo'
-            && env('DB_HOST') === 'demo-db'
-            && env('DB_DATABASE') === 'demo_erp';
-        $demoPassword = $isIsolatedDemo ? Hash::make(env('DEMO_PASSWORD', 'password')) : null;
+        // Never overwrite existing passwords outside the isolated demo.
+        $isIsolatedDemo = self::isIsolatedDemo();
+        $hash = Hash::make($password);
 
         foreach ($users as $definition) {
             $user = User::query()->firstOrCreate(
                 ['email' => $definition['email']],
                 [
                     'name' => $definition['name'],
-                    'password' => $demoPassword ?? Hash::make(env('DEMO_PASSWORD', 'password')),
+                    'password' => $hash,
                     'locale' => 'ar',
                     'is_active' => true,
                 ],
@@ -50,7 +86,7 @@ class UserSeeder extends Seeder
             if ($isIsolatedDemo) {
                 $user->forceFill([
                     'name' => $definition['name'],
-                    'password' => $demoPassword,
+                    'password' => $hash,
                     'is_active' => true,
                 ])->save();
             }

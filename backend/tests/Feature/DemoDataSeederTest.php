@@ -31,6 +31,8 @@ class DemoDataSeederTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Demo users are never created without an explicit password.
+        config(['demo.password' => 'test-only-demo-password']);
         $this->seed(DatabaseSeeder::class);
         Permission::query()->firstOrCreate(
             ['name' => 'accounts.post', 'guard_name' => 'web']

@@ -13,6 +13,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // This seeder creates demo users and demo data. Fail BEFORE writing
+        // anything unless this is the isolated demo or a local/testing
+        // environment. Real installations use `php artisan erp:install`.
+        UserSeeder::assertDemoUsersAllowed();
+
         $this->call([
             SettingSeeder::class,
             BranchSeeder::class,

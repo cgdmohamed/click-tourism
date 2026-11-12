@@ -9,6 +9,7 @@ the only writer of the general ledger is
 ```powershell
 copy .env.example .env
 php artisan key:generate
+# Add DEMO_PASSWORD=<choose-one> to .env: demo users have no default password.
 php artisan migrate:fresh --seed
 php artisan serve --host=127.0.0.1 --port=8000
 ```

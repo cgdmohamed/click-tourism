@@ -21,6 +21,16 @@ if [ -z "${APP_KEY:-}" ]; then
     exit 1
 fi
 
+# Refuse well-known database passwords on a real (non-demo) installation.
+if [ "${DEMO_MODE:-false}" != "true" ] && [ "${APP_ENV:-production}" = "production" ]; then
+    case "$(printf '%s' "${DB_PASSWORD:-}" | tr 'A-Z' 'a-z')" in
+        ""|password|secret|root|admin|postgres|tourism|change-me|changeme|ci-test-only)
+            echo "FATAL: DB_PASSWORD is empty or a well-known default. Set POSTGRES_PASSWORD to a long random value." >&2
+            exit 1
+            ;;
+    esac
+fi
+
 # The demo upload volume is mounted at storage/app. A stale
 # storage/app/public -> /var/www/html/storage/app/public symlink loops back
 # into itself. Repair that link BEFORE invoking Artisan or starting PHP-FPM.

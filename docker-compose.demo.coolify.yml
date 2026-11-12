@@ -57,7 +57,7 @@ services:
       DEMO_SEED: "true"
       DEMO_MODE: "true"
       DEMO_RESET_SECONDS: "600"
-      DEMO_PASSWORD: ${DEMO_PASSWORD:-password}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-password} # scan-secrets: allow (throwaway shared password of the isolated public demo only)
       APP_OPTIMIZE: "true"
       META_APP_ID: ""
       META_APP_SECRET: ""
