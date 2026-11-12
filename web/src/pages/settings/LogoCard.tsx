@@ -82,7 +82,7 @@ export function LogoCard() {
           {src && broken !== src ? (
             <img src={src} alt={ar ? 'معاينة الشعار' : 'Logo preview'} className="max-h-full max-w-full object-contain" onError={() => setBroken(src)} />
           ) : (
-            <span className="text-small px-2 text-center text-text-subtlest">{ar ? 'لا يوجد شعار' : 'No logo'}</span>
+            <span className="text-small px-2 text-center text-text-subtle">{ar ? 'لا يوجد شعار' : 'No logo'}</span>
           )}
         </div>
         <div className="flex flex-col gap-3">
