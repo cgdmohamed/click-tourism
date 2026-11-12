@@ -3,12 +3,14 @@
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\Idempotent;
+use App\Http\Middleware\McpReadOnly;
 use App\Http\Middleware\SetLocale;
 use App\Modules\Imports\Support\ImportFileException;
 use App\Support\ApiResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
@@ -33,10 +35,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
             'idempotent' => Idempotent::class,
+            'mcp.readonly' => McpReadOnly::class,
             'permission' => PermissionMiddleware::class,
             'role' => RoleMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
+
+        // Deny out-of-scope MCP calls before route-model binding can answer 404.
+        $middleware->prependToPriorityList(before: SubstituteBindings::class, prepend: McpReadOnly::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(

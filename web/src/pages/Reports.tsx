@@ -332,7 +332,6 @@ export default function Reports() {
 
   const isLedger = report === 'general-ledger'
   const isStatement = report === 'party-statement'
-  const isCostCenterReport = report === 'cost-center-pl' || report === 'cost-center-unallocated'
 
   const query = useQuery({
     queryKey: ['report', report, params, activeBranch?.id],
@@ -408,7 +407,7 @@ export default function Reports() {
   })
 
   const canExport =
-    !isCostCenterReport && can('reports.export') &&
+    can('reports.export') &&
     (isLedger ? ledgerAccount !== '' : isStatement ? partyId !== '' : true)
 
   const download = async (format: 'csv' | 'xlsx' | 'pdf') => {

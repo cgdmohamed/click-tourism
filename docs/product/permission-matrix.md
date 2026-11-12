@@ -21,8 +21,8 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 | Role | Permissions | Intent |
 |---|---|---|
-| `admin` | 94 (all) | Full installation control, including user/role management and `branches.view_all`. |
-| `finance_manager` | 80 | Accountant scope plus posting own drafts, approval rights, and read-only visibility of the user/role directory (`users.view`, `roles.view`). |
+| `admin` | 95 (all) | Full installation control, including user/role management and `branches.view_all`. |
+| `finance_manager` | 81 | Accountant scope plus posting own drafts, approval rights, and read-only visibility of the user/role directory (`users.view`, `roles.view`). |
 | `senior_accountant` | 79 | Accountant scope plus posting/deleting own or branch journal drafts (maker-checker override, audited). |
 | `accountant` | 77 | Full accounting operations: CoA, periods, journals, parties, payments, reports — without user management or draft posting. |
 | `supervisor` | 30 | Sales scope plus staff visibility, exports, and the user directory (`users.view`). |
@@ -35,7 +35,7 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 ## 3. Matrix
 
-`✓` = granted. Derived mechanically from the seeder constants (94 permissions × 9 roles).
+`✓` = granted. Derived mechanically from the seeder constants (95 permissions × 9 roles).
 
 ### Branches & settings
 
@@ -253,9 +253,18 @@ Rules are effective-dated and versioned; an approved version is immutable. Maker
 | `roles.view` | ✓ | ✓ | — | — | — | — | — | — | — |
 | `roles.manage` | ✓ | — | — | — | — | — | — | — | — |
 
+### MCP gateway (ADR-0016)
+
+| Permission | admin | finance_manager | senior_accountant | accountant | supervisor | sales | reservations | cashier | viewer |
+|---|---|---|---|---|---|---|---|---|---|
+| `mcp.use` | ✓ | ✓ | — | — | — | — | — | — | — |
+
+`mcp.use` only allows creating read-only MCP tokens (`POST /mcp/tokens`). Calls made with such a token still need the normal view permission (`bookings.view`, `invoices.view`, ...) and branch assignment.
+
 ## 4. Known follow-ups
 
 - **DEC-017 (segregation of duties) is open.** Approvals are separated by *permission*, not by identity: a user holding both create and approve rights for a document can approve their own request (e.g. `refunds.create` + `refunds.approve` on the same actor). Enforcing maker ≠ approver remains a decision to close — see `decisions-needed.md` and the 2026-11-11 accountant sign-off packet.
-- **Sanctum token expiry and abilities are not yet enforced.** ADR-0006 calls for a dedicated ability/token for integration service accounts and login lockout; only deactivation and password-change revocation block tokens today.
+- **Sanctum abilities are enforced only for MCP tokens (`mcp:read`, ADR-0016); login tokens still carry `*`.** Expiry is enforced (ADR-0006 addendum).
+- ADR-0006 still calls for a dedicated ability/token for integration service accounts and login lockout; those remain open.
 - **Role sets are provisional pending owner review.** The implemented set (2026-11-12) supersedes the illustrative list in ADR-0006 §3 — see the ADR-0006 addendum. Naming and set tuning are expected during pilot onboarding.
 - **TOTP 2FA** is a later enhancement per ADR-0006; no permission gates it yet.

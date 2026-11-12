@@ -65,7 +65,7 @@ Status: Draft. Scope: self-hosted single-tenant installation. Method: asset inve
 
 ## 6. AI assistant / MCP gateway (proposed, not implemented)
 
-Status: design only; full detail in `mcp-ai-assistant-blueprint.md`. Nothing is enabled by default (`mcp.enabled` and `assistant.enabled` are off), no write tools exist, and no AI provider keys are stored in the repository.
+Status: **stage 1 implemented** (ADR-0016): token endpoints, `mcp.readonly` allowlist, per-token rate limit, audit, and a read-only gateway in `mcp-gateway/` with three tools. Full detail in `mcp-ai-assistant-blueprint.md`. No AI provider is integrated, no write tools exist, no transcripts are stored, contact details are masked by default (`mcp.mask_contacts`), and no keys are stored in the repository. Nothing is deployed unless a user creates a token and runs the gateway.
 
 New trust boundary: assistant client <-> MCP gateway (sidecar, no DB access) <-> Laravel API using the **end user's own** read-only token (`mcp:read` ability, 8h expiry). Authorization stays in Laravel (permission middleware + `BranchScope`).
 
@@ -84,4 +84,4 @@ Additional abuse cases to test (blueprint AT-1..AT-14):
 14. An MCP token cannot call any non-GET route or any export route.
 15. Cross-branch ids requested through the assistant return 403/404 and are audited.
 16. A deactivated or revoked user's MCP token fails immediately.
-17. A paged bulk read hits the row budget and is flagged.
+17. A paged bulk read hits the row budget and is flagged. (Stage 1 only has the per-token rate limit; the row budget and bulk-read flag are stage 2.)

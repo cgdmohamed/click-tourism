@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\DB;
 class SettingService
 {
     public const DEFAULTS = [
+        // MCP gateway (ADR-0016): contact details are masked in MCP token responses.
+        'mcp' => [
+            'mask_contacts' => 'true',
+        ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',
             'company_name_en' => 'Tourism ERP',
@@ -178,6 +182,10 @@ class SettingService
         ],
         'crm' => [
             'reassign_after_hours' => '24',
+            // A new capture matching an existing lead by normalized phone/email
+            // inside this many days is flagged and linked instead of silently
+            // duplicated. 0 disables duplicate detection (GAP-CRM-04).
+            'duplicate_window_days' => '30',
             'assignment_strategy' => 'least_loaded',
             'business_timezone' => 'Africa/Cairo',
             'business_days' => '1,2,3,4,5',

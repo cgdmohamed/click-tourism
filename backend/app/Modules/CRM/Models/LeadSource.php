@@ -12,4 +12,14 @@ class LeadSource extends Model
     {
         return ['is_active' => 'boolean'];
     }
+
+    public function toApiArray(): array
+    {
+        return [
+            'code' => $this->code,
+            'name_ar' => $this->name_ar,
+            'name_en' => $this->name_en,
+            'is_active' => (bool) $this->is_active,
+        ];
+    }
 }
