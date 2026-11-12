@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AccountingScheduleController;
 use App\Http\Controllers\Api\AssignmentRuleController;
+use App\Http\Controllers\Api\AuditEventController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
@@ -75,6 +76,10 @@ Route::prefix('v1')->group(function () {
         Route::put('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
         Route::get('decisions', [SettingController::class, 'decisions'])->middleware('permission:settings.view');
         Route::post('decisions/{id}/resolve', [SettingController::class, 'resolveDecision'])->middleware('permission:settings.update');
+
+        Route::get('audit-events', [AuditEventController::class, 'index'])->middleware('permission:audit.view');
+        Route::get('audit-events/export', [AuditEventController::class, 'export'])
+            ->middleware(['permission:audit.export', 'throttle:report-exports']);
 
         Route::get('currencies', [CurrencyController::class, 'index']);
         Route::get('fx-rates', [FxRateController::class, 'index'])->middleware('permission:settings.view');

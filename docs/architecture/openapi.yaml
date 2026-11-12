@@ -185,6 +185,63 @@ paths:
                     items: { $ref: '#/components/schemas/Decision' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /audit-events:
+    get:
+      tags: [Platform]
+      summary: Browse the append-only audit trail (requires audit.view)
+      description: |
+        Newest-first audit rows. Branch users see only the branches assigned to
+        them; holders of `branches.view_all` see every branch and may filter one.
+      parameters:
+        - { name: actor, in: query, schema: { type: string }, description: 'Actor public id, name or email fragment' }
+        - { name: action, in: query, schema: { type: string }, description: 'Action prefix, e.g. lead.' }
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: entity_id, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: branch, in: query, schema: { type: string }, description: 'Branch public id (must be an allowed branch)' }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - name: X-Branch-Id
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated audit events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditEventPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /audit-events/export:
+    get:
+      tags: [Platform]
+      summary: Export the filtered audit trail as CSV (requires audit.export)
+      description: 'Limited to 50,000 rows; the export itself is recorded as an `audit.exported` event.'
+      parameters:
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: entity_id, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: branch, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - name: X-Branch-Id
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: UTF-8 CSV attachment
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
   /health:
     get:
       tags: [Platform]
@@ -4682,6 +4739,44 @@ components:
         title_ar: { type: string }
         blocks: { type: string }
         status: { type: string, enum: [open, decided] }
+    AuditEvent:
+      type: object
+      properties:
+        id: { type: string }
+        action: { type: string, example: lead.created }
+        actor:
+          type: [object, 'null']
+          properties:
+            id: { type: string }
+            name: { type: string }
+            email: { type: string, format: email }
+        entity_type: { type: [string, 'null'], example: Lead }
+        entity_id: { type: [integer, 'null'] }
+        branch:
+          type: [object, 'null']
+          properties:
+            id: { type: string }
+            name: { type: string }
+            name_ar: { type: string }
+            name_en: { type: string }
+        before: { type: [object, 'null'], additionalProperties: true }
+        after: { type: [object, 'null'], additionalProperties: true }
+        ip: { type: [string, 'null'] }
+        request_id: { type: [string, 'null'] }
+        created_at: { type: [string, 'null'], format: date-time }
+    AuditEventPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEvent' }
+        meta:
+          type: object
+          properties:
+            current_page: { type: integer }
+            last_page: { type: integer }
+            total: { type: integer }
+            per_page: { type: integer }
     Health:
       type: object
       properties:

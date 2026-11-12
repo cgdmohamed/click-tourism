@@ -82,6 +82,7 @@ export function Layout() {
       items: [
         { to: '/users', label: t('users'), icon: 'users', permission: 'users.view' },
         { to: '/roles', label: t('rolesPermissions'), icon: 'shield', permission: 'roles.view' },
+        { to: '/audit-events', label: t('auditLog'), icon: 'shield', permission: 'audit.view' },
         { to: '/imports', label: locale === 'ar' ? 'استيراد البيانات' : 'Data import', icon: 'upload', anyPermission: IMPORT_PERMISSIONS },
         { to: '/exchange-rates', label: locale === 'ar' ? 'أسعار الصرف' : 'Exchange rates', icon: 'refresh', permission: 'settings.view' },
         { to: '/settings', label: t('settings'), icon: 'settings' },
