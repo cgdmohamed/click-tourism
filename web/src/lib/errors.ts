@@ -309,6 +309,22 @@ const RULES: Rule[] = [
   { pattern: /^Item (\d+): this bank and ledger line are already paired\.$/, ar: (m) => `العنصر ${m[1]}: بند البنك وبند الدفتر مطابقان مسبقاً.` },
   { pattern: /^Bank reconciliation needs a registered bank account, not a cash box\.$/, ar: 'التسوية البنكية تتطلب حساباً بنكياً مسجّلاً وليس صندوق نقدية.' },
 
+  // --- Currencies / company branding ---------------------------------------------
+  { pattern: /^The currency code must be exactly 3 letters \(A-Z\), for example USD\.$/, ar: 'رمز العملة يجب أن يكون 3 أحرف إنجليزية، مثل USD.' },
+  { pattern: /^This currency code already exists\.$/, ar: 'رمز العملة موجود بالفعل.' },
+  { pattern: /^The currency code cannot be changed after creation\.$/, ar: 'لا يمكن تغيير رمز العملة بعد إنشائها.' },
+  { pattern: /^The decimals of (\w+) cannot be changed because the currency is already in use\.$/, ar: (m) => `لا يمكن تغيير الخانات العشرية للعملة ${m[1]} لأنها مستخدمة بالفعل.` },
+  { pattern: /^The base currency (\w+) cannot be deactivated\.$/, ar: (m) => `لا يمكن إيقاف العملة الأساسية ${m[1]}.` },
+  { pattern: /^The base currency (\w+) cannot be deleted\.$/, ar: (m) => `لا يمكن حذف العملة الأساسية ${m[1]}.` },
+  { pattern: /^Currency (\w+) is referenced by existing records and cannot be deleted; deactivate it instead\.$/, ar: (m) => `العملة ${m[1]} مستخدمة في سجلات قائمة ولا يمكن حذفها؛ قم بإيقافها بدلاً من ذلك.` },
+  { pattern: /^The base currency must be an active currency\.$/, ar: 'يجب أن تكون العملة الأساسية عملة نشطة.' },
+  { pattern: /^The company name is required and must be at most 120 characters\.$/, ar: 'اسم الشركة مطلوب ولا يتجاوز 120 حرفاً.' },
+  { pattern: /^The logo must be a non-empty file of at most 1 MB\.$/, ar: 'يجب أن يكون الشعار ملفاً غير فارغ لا يتجاوز 1 ميجابايت.' },
+  { pattern: /^The logo field must not be greater than 1024 kilobytes\.$/, ar: 'يجب ألا يتجاوز حجم الشعار 1 ميجابايت.' },
+  { pattern: /^The logo must be a PNG or JPEG image \(SVG, GIF and other formats are not allowed\)\.$/, ar: 'يجب أن يكون الشعار صورة PNG أو JPEG فقط (لا يُسمح بـ SVG أو GIF).' },
+  { pattern: /^The logo dimensions must be between 16 and (\d+) pixels per side\.$/, ar: (m) => `يجب أن تكون أبعاد الشعار بين 16 و${m[1]} بكسل.` },
+  { pattern: /^The logo could not be stored\.$/, ar: 'تعذّر حفظ الشعار.' },
+
   // --- Generic ------------------------------------------------------------------
   { pattern: /^The given data was invalid\.$/, ar: 'البيانات المُدخلة غير صالحة.' },
   { pattern: /^Server Error$/, ar: 'حدث خطأ في الخادم.' },

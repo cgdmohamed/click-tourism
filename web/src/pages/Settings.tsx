@@ -1,72 +1,76 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import type { Branch } from '../lib/types'
+import { activeCurrencies, type CurrencyRow } from '../lib/currencies'
+import { resolveTab } from '../lib/tabs'
 import { DecisionsPanel } from '../components/DecisionsPanel'
 import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import IntegrationsPanel from '../components/IntegrationsPanel'
-import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
-import { localizedName } from '../lib/names'
+import { Button, Card, CardHeader, ErrorState, Loading, PageHeader, TabPanel, Tabs, type TabItem } from '../components/ui'
+import { BranchesTab } from './settings/BranchesTab'
+import { CurrenciesTab } from './settings/CurrenciesTab'
+import { FieldsGrid } from './settings/FieldsGrid'
+import { LogoCard } from './settings/LogoCard'
+import { editable, FORM_TABS, keyOf, pendingChanges, type Setting, type SettingsTab } from './settings/fields'
 
-type Setting = { group: string; key: string; value: string | null; is_secret: boolean }
-type Currency = { code: string; name: string; symbol: string; exponent: number; is_active: boolean }
-
-const editable: Array<{ group: string; key: string; ar: string; en: string; type?: 'text' | 'select' | 'toggle'; options?: string[] }> = [
-  { group: 'general', key: 'company_name_ar', ar: 'اسم الشركة (عربي)', en: 'Company name (Arabic)' },
-  { group: 'general', key: 'company_name_en', ar: 'اسم الشركة (إنجليزي)', en: 'Company name (English)' },
-  { group: 'general', key: 'company_logo', ar: 'شعار التقارير (مسار PNG/JPEG داخل storage/app)', en: 'Report logo (PNG/JPEG path under storage/app)' },
-  { group: 'general', key: 'report_signoff', ar: 'سطور التوقيع في تقارير PDF', en: 'Sign-off lines on PDF reports', type: 'toggle', options: ['true', 'false'] },
-  { group: 'general', key: 'base_currency', ar: 'العملة الأساسية', en: 'Base currency', type: 'select', options: ['EGP', 'SAR', 'USD'] },
-  { group: 'general', key: 'locale', ar: 'اللغة الافتراضية', en: 'Default language', type: 'select', options: ['ar', 'en'] },
-  { group: 'accounting', key: 'fiscal_year_start', ar: 'بداية السنة المالية (MM-DD)', en: 'Fiscal year start (MM-DD)' },
-  { group: 'accounting', key: 'rounding_policy', ar: 'سياسة التقريب', en: 'Rounding policy', type: 'select', options: ['half_up', 'bankers'] },
-  { group: 'accounting', key: 'credit_limit_policy', ar: 'سياسة حد الائتمان', en: 'Credit limit policy', type: 'select', options: ['off', 'warn', 'block'] },
-  { group: 'tax', key: 'enabled', ar: 'تفعيل الضريبة', en: 'Enable tax', type: 'toggle', options: ['true', 'false'] },
-  { group: 'tax', key: 'default_rate', ar: 'نسبة الضريبة (%)', en: 'Tax rate (%)' },
-  { group: 'tax', key: 'inclusive', ar: 'الأسعار شاملة الضريبة', en: 'Prices include tax', type: 'toggle', options: ['true', 'false'] },
-  { group: 'crm', key: 'reassign_after_hours', ar: 'إعادة توزيع العميل المحتمل بعد (ساعات)', en: 'Lead reassignment after (hours)' },
-  { group: 'crm', key: 'duplicate_window_days', ar: 'نافذة اكتشاف تكرار العميل المحتمل (أيام، 0 لتعطيلها)', en: 'Lead duplicate window (days, 0 disables)' },
-]
-
-const keyOf = (group: string, key: string) => `${group}.${key}`
+const TAB_PREFIX = 'settings'
 
 export default function Settings() {
   const { t, locale } = useI18n()
   const { can, refresh } = useAuth()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
-  const [branchOpen, setBranchOpen] = useState(false)
-  const [branchForm, setBranchForm] = useState({
-    code: '',
-    name_ar: '',
-    name_en: '',
-    accounting_mode: 'dimension' as Branch['accounting_mode'],
-  })
+  const ar = locale === 'ar'
+  const L = (a: string, e: string) => (ar ? a : e)
 
+  const tabs: Array<TabItem & { id: SettingsTab }> = [
+    { id: 'general', label: L('عام', 'General') },
+    { id: 'currencies', label: L('العملات', 'Currencies') },
+    { id: 'accounting', label: L('المحاسبة', 'Accounting') },
+    { id: 'tax', label: L('الضريبة', 'Tax') },
+    { id: 'crm', label: L('العملاء المحتملون', 'CRM') },
+    { id: 'branches', label: t('branches') },
+    ...(can('settings.view') ? [{ id: 'integrations' as const, label: L('التكاملات', 'Integrations') }] : []),
+    { id: 'decisions', label: L('القرارات', 'Decisions') },
+  ]
+  const active = resolveTab(searchParams.get('tab'), tabs.map((tab) => tab.id), 'general') as SettingsTab
+  const isFormTab = FORM_TABS.includes(active)
+
+  const selectTab = (id: string) => {
+    setError('')
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (id === 'general') next.delete('tab')
+        else next.set('tab', id)
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  // Only the tabs that edit key/value settings (and the Accounting policy panel) need GET /settings.
   const settingsQuery = useQuery({
     queryKey: ['settings'],
+    enabled: isFormTab,
     queryFn: async () => {
       const { data } = await api.get<{ data: Setting[] }>('/settings')
       return data.data
     },
   })
 
-  const branchesQuery = useQuery({
-    queryKey: ['branches'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Branch[] }>('/branches')
-      return data.data
-    },
-  })
-
+  // The base currency picker lists active currencies; only the General tab asks for them.
   const currenciesQuery = useQuery({
     queryKey: ['currencies'],
+    enabled: active === 'general',
     queryFn: async () => {
-      const { data } = await api.get<{ data: Currency[] }>('/currencies')
+      const { data } = await api.get<{ data: CurrencyRow[] }>('/currencies')
       return data.data
     },
   })
@@ -83,256 +87,128 @@ export default function Settings() {
     setDraft(values)
   }, [values])
 
+  const changes = useMemo(() => pendingChanges(draft, values), [draft, values])
+  const readOnly = !can('settings.update')
+
   const save = useMutation({
     mutationFn: async () => {
-      const settings = editable
-        .map((field) => ({
-          group: field.group,
-          key: field.key,
-          value: draft[keyOf(field.group, field.key)] ?? '',
-        }))
-        .filter((setting) => setting.value !== (values[keyOf(setting.group, setting.key)] ?? ''))
-      if (settings.length === 0) return null
-      const { data } = await api.put('/settings', { settings })
+      if (changes.length === 0) return null
+      const { data } = await api.put('/settings', { settings: changes })
       return data
     },
     onSuccess: async () => {
       setSaved(true)
       setError('')
       await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      // The saved company name, tax and base-currency flags are read elsewhere in the app.
+      await queryClient.invalidateQueries({ queryKey: ['branding'] })
+      await queryClient.invalidateQueries({ queryKey: ['feature-flags'] })
       await refresh()
       window.setTimeout(() => setSaved(false), 2500)
     },
     onError: (cause) => setError(errorMessage(cause)),
   })
 
-  const createBranch = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post<{ data: Branch }>('/branches', branchForm)
-      return data.data
-    },
-    onSuccess: async () => {
-      setBranchOpen(false)
-      setError('')
-      setBranchForm({ code: '', name_ar: '', name_en: '', accounting_mode: 'dimension' })
-      await queryClient.invalidateQueries({ queryKey: ['branches'] })
-      await refresh()
-    },
-    onError: (cause) => setError(errorMessage(cause)),
-  })
+  const onChange = (id: string, value: string) => setDraft((current) => ({ ...current, [id]: value }))
+  const fieldsOf = (group: string) => editable.filter((field) => field.group === group)
+  const baseOptions = useMemo(() => {
+    const codes = activeCurrencies(currenciesQuery.data).map((currency) => currency.code)
+    const current = values['general.base_currency']
+    return current && !codes.includes(current) ? [current, ...codes] : codes
+  }, [currenciesQuery.data, values])
 
-  const readOnly = !can('settings.update')
+  const formBody = (children: ReactNode) => (
+    <>
+      {settingsQuery.isLoading ? <Loading /> : null}
+      {settingsQuery.isError ? <ErrorState message={errorMessage(settingsQuery.error)} onRetry={() => void settingsQuery.refetch()} /> : null}
+      {settingsQuery.data ? children : null}
+    </>
+  )
 
   return (
     <div>
       <PageHeader
         title={t('settings')}
-        subtitle={locale === 'ar' ? 'إعدادات التثبيت والفروع والعملات' : 'Installation, branch, and currency configuration'}
+        subtitle={L('إعدادات التثبيت والفروع والعملات', 'Installation, branch, and currency configuration')}
         icon="settings"
         actions={
-          <Button icon="save" onClick={() => save.mutate()} disabled={readOnly || save.isPending}>
-            {save.isPending ? t('saving') : saved ? t('saved') : t('save')}
-          </Button>
+          isFormTab ? (
+            <Button icon="save" onClick={() => save.mutate()} disabled={readOnly || save.isPending || changes.length === 0}>
+              {save.isPending ? t('saving') : saved && changes.length === 0 ? t('saved') : t('save')}
+            </Button>
+          ) : null
         }
       />
 
-      {error ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+      {error ? (
+        <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text" role="alert">
+          {error}
+        </p>
+      ) : null}
       {readOnly ? (
         <p className="mb-4 rounded-12 border border-warning-border bg-warning-background px-3 py-2 text-medium text-warning-text">{t('permissionDenied')}</p>
       ) : null}
 
-      <DecisionsPanel />
+      <Tabs tabs={tabs} active={active} onChange={selectTab} label={t('settings')} idPrefix={TAB_PREFIX} />
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader title={locale === 'ar' ? 'الإعدادات العامة' : 'General settings'} />
-          {settingsQuery.isLoading ? <Loading /> : null}
-          {settingsQuery.isError ? (
-            <ErrorState message={errorMessage(settingsQuery.error)} onRetry={() => void settingsQuery.refetch()} />
-          ) : null}
-          {settingsQuery.data ? (
-            <div className="grid gap-4 px-5 py-5 sm:grid-cols-2">
-              {editable.map((field) => {
-                const id = keyOf(field.group, field.key)
-                const label = locale === 'ar' ? field.ar : field.en
-                if (field.type === 'toggle') {
-                  const checked = (draft[id] ?? 'false') === 'true'
-                  return (
-                    <Field key={id} label={label}>
-                      <label className="flex items-center gap-2 py-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={readOnly}
-                          onChange={(event) => setDraft({ ...draft, [id]: event.target.checked ? 'true' : 'false' })}
-                        />
-                        {checked ? (locale === 'ar' ? 'مفعّل' : 'Enabled') : locale === 'ar' ? 'معطّل' : 'Disabled'}
-                      </label>
-                    </Field>
-                  )
-                }
-                if (field.type === 'select') {
-                  const locked = id === 'general.base_currency' && values['general.base_currency_locked'] === 'true'
-                  return (
-                    <Field
-                      key={id}
-                      label={label}
-                      hint={locked ? (locale === 'ar' ? 'مقفلة: لا يمكن تغيير العملة الأساسية بعد ترحيل أول قيد يومية.' : 'Locked: the base currency cannot be changed after the first journal entry is posted.') : undefined}
-                    >
-                      <Select
-                        value={draft[id] ?? ''}
-                        disabled={readOnly || locked}
-                        onChange={(event) => setDraft({ ...draft, [id]: event.target.value })}
-                      >
-                        <option value="">—</option>
-                        {(field.options ?? []).map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                  )
-                }
-                return (
-                  <Field key={id} label={label}>
-                    <Input
-                      value={draft[id] ?? ''}
-                      disabled={readOnly}
-                      onChange={(event) => setDraft({ ...draft, [id]: event.target.value })}
-                      dir={field.key === 'company_name_ar' ? 'rtl' : 'ltr'}
-                    />
-                  </Field>
-                )
-              })}
-            </div>
-          ) : null}
-        </Card>
+      <TabPanel idPrefix={TAB_PREFIX} id={active}>
+        {active === 'general'
+          ? formBody(
+              <>
+                <Card>
+                  <CardHeader title={L('الشركة واللغة والعملة', 'Company, language and currency')} />
+                  <FieldsGrid
+                    fields={fieldsOf('general')}
+                    draft={draft}
+                    values={values}
+                    onChange={onChange}
+                    readOnly={readOnly}
+                    selectOptions={{ 'general.base_currency': baseOptions }}
+                  />
+                </Card>
+                <LogoCard />
+              </>,
+            )
+          : null}
 
-        <Card>
-          <CardHeader title={locale === 'ar' ? 'العملات' : 'Currencies'} />
-          {currenciesQuery.isLoading ? <Loading /> : null}
-          {currenciesQuery.isError ? (
-            <ErrorState message={errorMessage(currenciesQuery.error)} onRetry={() => void currenciesQuery.refetch()} />
-          ) : null}
-          {currenciesQuery.data ? (
-            <Table>
-              <thead>
-                <tr>
-                  <Th>{t('code')}</Th>
-                  <Th>{t('name')}</Th>
-                  <Th>{locale === 'ar' ? 'الخانات العشرية' : 'Decimals'}</Th>
-                  <Th>{t('status')}</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {currenciesQuery.data.map((currency) => (
-                  <tr key={currency.code}>
-                    <Td className="tabular font-medium">{currency.code}</Td>
-                    <Td>{currency.name}</Td>
-                    <Td className="tabular">{currency.exponent}</Td>
-                    <Td>
-                      <Badge tone={currency.is_active ? 'positive' : 'neutral'}>
-                        {currency.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
-                      </Badge>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          ) : null}
-        </Card>
-      </div>
+        {active === 'currencies' ? <CurrenciesTab /> : null}
 
-      <AccountingPolicyPanel />
+        {active === 'accounting'
+          ? formBody(
+              <>
+                <Card>
+                  <CardHeader title={L('السياسة المحاسبية', 'Accounting settings')} />
+                  <FieldsGrid fields={fieldsOf('accounting')} draft={draft} values={values} onChange={onChange} readOnly={readOnly} />
+                </Card>
+                <AccountingPolicyPanel />
+              </>,
+            )
+          : null}
 
-      {can('settings.view') ? <IntegrationsPanel /> : null}
+        {active === 'tax'
+          ? formBody(
+              <Card>
+                <CardHeader title={L('الضريبة', 'Tax')} />
+                <FieldsGrid fields={fieldsOf('tax')} draft={draft} values={values} onChange={onChange} readOnly={readOnly} />
+              </Card>,
+            )
+          : null}
 
-      <Card className="mt-6">
-        <CardHeader
-          title={t('branches')}
-          subtitle={locale === 'ar' ? 'كل فرع له نطاق بيانات وصلاحيات مستقل' : 'Each branch has its own data scope and permissions'}
-          actions={
-            can('branches.create') ? (
-              <Button variant="secondary" onClick={() => setBranchOpen(true)}>
-                {locale === 'ar' ? 'فرع جديد' : 'New branch'}
-              </Button>
-            ) : null
-          }
-        />
-        {branchesQuery.isLoading ? <Loading /> : null}
-        {branchesQuery.isError ? (
-          <ErrorState message={errorMessage(branchesQuery.error)} onRetry={() => void branchesQuery.refetch()} />
-        ) : null}
-        {branchesQuery.data ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>{t('code')}</Th>
-                <Th>{t('name')}</Th>
-                <Th>{locale === 'ar' ? 'نمط المحاسبة' : 'Accounting mode'}</Th>
-                <Th>{t('status')}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {branchesQuery.data.map((branch) => (
-                <tr key={branch.id}>
-                  <Td className="tabular font-medium">{branch.code}</Td>
-                  <Td>
-                    <p className="font-medium">{localizedName(branch, locale)}</p>
-                  </Td>
-                  <Td>{branch.accounting_mode}</Td>
-                  <Td>
-                    <Badge tone={branch.is_active ? 'positive' : 'neutral'}>
-                      {branch.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
-                    </Badge>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        ) : null}
-      </Card>
+        {active === 'crm'
+          ? formBody(
+              <Card>
+                <CardHeader title={L('العملاء المحتملون', 'CRM')} />
+                <FieldsGrid fields={fieldsOf('crm')} draft={draft} values={values} onChange={onChange} readOnly={readOnly} />
+              </Card>,
+            )
+          : null}
 
-      <Modal
-        open={branchOpen}
-        title={locale === 'ar' ? 'فرع جديد' : 'New branch'}
-        onClose={() => setBranchOpen(false)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setBranchOpen(false)}>
-              {t('cancel')}
-            </Button>
-            <Button disabled={createBranch.isPending} onClick={() => createBranch.mutate()}>
-              {createBranch.isPending ? t('saving') : t('save')}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('code')} required>
-            <Input value={branchForm.code} onChange={(event) => setBranchForm({ ...branchForm, code: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={locale === 'ar' ? 'نمط المحاسبة' : 'Accounting mode'}>
-            <Select
-              value={branchForm.accounting_mode}
-              onChange={(event) =>
-                setBranchForm({ ...branchForm, accounting_mode: event.target.value as Branch['accounting_mode'] })
-              }
-            >
-              <option value="dimension">{locale === 'ar' ? 'بُعد محاسبي' : 'Dimension'}</option>
-              <option value="customer">{locale === 'ar' ? 'كعميل' : 'As customer'}</option>
-              <option value="independent">{locale === 'ar' ? 'مستقل' : 'Independent'}</option>
-            </Select>
-          </Field>
-          <Field label={t('nameAr')} required>
-            <Input value={branchForm.name_ar} onChange={(event) => setBranchForm({ ...branchForm, name_ar: event.target.value })} />
-          </Field>
-          <Field label={t('nameEn')} required>
-            <Input value={branchForm.name_en} onChange={(event) => setBranchForm({ ...branchForm, name_en: event.target.value })} dir="ltr" />
-          </Field>
-        </div>
-      </Modal>
+        {active === 'branches' ? <BranchesTab /> : null}
+
+        {active === 'integrations' && can('settings.view') ? <IntegrationsPanel /> : null}
+
+        {active === 'decisions' ? <DecisionsPanel /> : null}
+      </TabPanel>
     </div>
   )
 }

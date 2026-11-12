@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
-import { Badge, Button, Card, CardHeader, Field, Modal, Select, Textarea } from './ui'
+import { Badge, Button, Card, CardHeader, Field, Loading, Modal, Select, Textarea } from './ui'
 
 type Resolution = {
   status: 'approved' | 'rejected' | 'deferred'
@@ -85,7 +85,15 @@ export function DecisionsPanel() {
     )
   }
 
-  if (!query.data || query.data.length === 0) return null
+  if (query.isLoading) return <Loading />
+  if (!query.data || query.data.length === 0) {
+    return (
+      <Card>
+        <CardHeader title={L('قرارات محاسبية', 'Accounting decisions')} />
+        <p className="text-medium px-5 py-5 text-text-subtle">{L('لا توجد قرارات معلّقة.', 'There are no decisions awaiting approval.')}</p>
+      </Card>
+    )
+  }
 
   return (
     <>

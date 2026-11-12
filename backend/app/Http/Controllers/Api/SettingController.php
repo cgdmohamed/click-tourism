@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\DecisionRegistry;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Money\Models\Currency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +64,7 @@ class SettingController extends ApiController
         ]);
 
         $this->validateAccountingPolicyValues($data['settings']);
+        $this->validateGeneralValues($data['settings']);
 
         $user = $request->user();
         $errors = [];
@@ -135,6 +137,36 @@ class SettingController extends ApiController
         $audit->log('settings.updated', null, $before, $settings->all(), $this->actorId());
 
         return $this->ok($settings->all());
+    }
+
+    /**
+     * Company names must not be blank (a blank value silently falls back to the
+     * built-in default) and the base currency must be an active currency.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function validateGeneralValues(array $items): void
+    {
+        foreach ($items as $index => $item) {
+            if (($item['group'] ?? null) !== 'general') {
+                continue;
+            }
+            $value = trim((string) ($item['value'] ?? ''));
+
+            if (in_array($item['key'], ['company_name_ar', 'company_name_en'], true) && ($value === '' || mb_strlen($value) > 120)) {
+                throw ValidationException::withMessages([
+                    "settings.{$index}.value" => 'The company name is required and must be at most 120 characters.',
+                ]);
+            }
+
+            if ($item['key'] === 'base_currency'
+                && strtoupper($value) !== app(SettingService::class)->baseCurrency()
+                && ! Currency::query()->whereKey(strtoupper($value))->where('is_active', true)->exists()) {
+                throw ValidationException::withMessages([
+                    "settings.{$index}.value" => 'The base currency must be an active currency.',
+                ]);
+            }
+        }
     }
 
     /**

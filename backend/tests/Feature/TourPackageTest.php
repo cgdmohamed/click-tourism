@@ -6,6 +6,7 @@ use App\Modules\Bookings\Models\TourDeparture;
 use App\Modules\Bookings\Models\TourPackage;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Money\Models\Currency;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -64,6 +65,17 @@ class TourPackageTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.available_seats', 4);
         $this->getJson("/api/v1/tour-packages/{$id}")
             ->assertOk()->assertJsonCount(1, 'data.departures');
+    }
+
+    public function test_new_packages_cannot_use_a_deactivated_currency(): void
+    {
+        Currency::query()->updateOrCreate(['code' => 'SAR'], ['name' => 'Saudi Riyal', 'exponent' => 2, 'is_active' => false]);
+
+        $this->withHeaders(['X-Branch-Id' => $this->branch->public_id])
+            ->postJson('/api/v1/tour-packages', [
+                'name' => 'Inactive currency trip', 'category' => 'domestic', 'execution_type' => 'fixed',
+                'currency' => 'SAR', 'base_price_minor' => 1000, 'estimated_cost_minor' => 500,
+            ])->assertStatus(422)->assertJsonValidationErrors('currency');
     }
 
     public function test_package_code_is_generated_unique_and_cannot_be_supplied_by_client(): void

@@ -8,6 +8,7 @@ use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class PaymentController extends ApiController
 {
@@ -91,7 +92,7 @@ class PaymentController extends ApiController
             'method' => ['nullable', 'in:cash,bank_transfer,card,wallet'],
             'payment_method_id' => ['nullable', 'string'],
             'amount_minor' => ['required', 'integer', 'min:1'],
-            'currency' => ['required', 'string', 'size:3'],
+            'currency' => ['required', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
             'fx_rate' => ['nullable', 'string'],
             'paid_at' => ['nullable', 'date'],
             'allocations' => ['nullable', 'array'],

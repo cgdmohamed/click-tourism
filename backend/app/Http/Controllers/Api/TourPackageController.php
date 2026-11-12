@@ -39,7 +39,7 @@ class TourPackageController extends ApiController
             'execution_type' => ['required', Rule::in(['fixed', 'private', 'standalone'])],
             'description' => ['nullable', 'string', 'max:5000'],
             'destination' => ['nullable', 'string', 'max:200'],
-            'currency' => ['required', 'string', 'size:3', Rule::exists('currencies', 'code')],
+            'currency' => ['required', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
             'base_price_minor' => ['required', 'integer', 'min:0'],
             'estimated_cost_minor' => ['required', 'integer', 'min:0'],
         ]);

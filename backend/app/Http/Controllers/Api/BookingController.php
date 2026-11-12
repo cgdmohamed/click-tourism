@@ -10,6 +10,7 @@ use App\Modules\Parties\Models\Customer;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BookingController extends ApiController
 {
@@ -63,7 +64,7 @@ class BookingController extends ApiController
             'pax_adults' => ['nullable', 'integer', 'min:1'],
             'pax_children' => ['nullable', 'integer', 'min:0'],
             'pax_infants' => ['nullable', 'integer', 'min:0'],
-            'currency' => ['required', 'string', 'size:3'],
+            'currency' => ['required', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
             'fx_rate' => ['nullable', 'string'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
@@ -72,8 +73,8 @@ class BookingController extends ApiController
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_cost_minor' => ['required', 'integer', 'min:0'],
             'items.*.unit_sell_minor' => ['required', 'integer', 'min:0'],
-            'items.*.cost_currency' => ['nullable', 'string', 'size:3'],
-            'items.*.sell_currency' => ['nullable', 'string', 'size:3'],
+            'items.*.cost_currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
+            'items.*.sell_currency' => ['nullable', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
             'items.*.supplier_id' => ['nullable', 'string'],
         ]);
 

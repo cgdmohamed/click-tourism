@@ -3,6 +3,8 @@ import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { useTheme } from '../theme'
+import { BrandMark, useBrandName } from './Brand'
+import { useSyncCurrencyExponents } from '../lib/useCurrencies'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationBell } from './NotificationBell'
 import { Icon } from './icons'
@@ -20,6 +22,8 @@ export function Layout() {
   const { user, loading, logout, branches, activeBranch, setActiveBranch, can } = useAuth()
   const { t, locale, toggleLocale } = useI18n()
   const { theme, toggleTheme } = useTheme()
+  const brand = useBrandName()
+  useSyncCurrencyExponents(Boolean(user))
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 
@@ -136,13 +140,11 @@ export function Layout() {
     </nav>
   )
 
-  const brand = (
+  const brandBlock = (
     <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-16 bg-brand-1-background text-brand-1-text shadow-2">
-        <Icon name="compass" size={22} />
-      </span>
+      <BrandMark className="h-10 w-10" />
       <div className="min-w-0">
-        <p className="heading-small truncate text-brand-1-accent">{t('appName')}</p>
+        <p className="heading-small truncate text-brand-1-accent">{brand}</p>
         <p className="text-small truncate text-text-subtle">{t('appTagline')}</p>
       </div>
     </div>
@@ -159,7 +161,7 @@ export function Layout() {
   return (
     <div className="flex min-h-screen bg-surface-canvas">
       <aside className="no-print hidden w-64 shrink-0 flex-col border-e border-border-subtle bg-surface-default lg:flex">
-        {brand}
+        {brandBlock}
         {nav}
         <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-3">
           <NavLink
@@ -184,10 +186,8 @@ export function Layout() {
           <aside className="flex h-full w-72 flex-col bg-surface-default" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-border-subtle px-4 py-4">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-12 bg-brand-1-background text-brand-1-text">
-                  <Icon name="compass" size={20} />
-                </span>
-                <p className="heading-small truncate text-brand-1-accent">{t('appName')}</p>
+                <BrandMark className="h-9 w-9" iconSize={20} />
+                <p className="heading-small truncate text-brand-1-accent">{brand}</p>
               </div>
               <IconButton icon="x" label={t('closeMenu')} onClick={() => setMobileOpen(false)} />
             </div>
@@ -201,7 +201,7 @@ export function Layout() {
           <div className="flex items-center gap-3">
             <IconButton icon="menu" label={t('openMenu')} variant="secondary" className="lg:hidden" onClick={() => setMobileOpen(true)} />
             <div className="hidden sm:block">
-              <p className="label text-text-default">{t('appName')}</p>
+              <p className="label text-text-default">{brand}</p>
               <p className="text-small text-text-subtle">{t('appTagline')}</p>
             </div>
           </div>

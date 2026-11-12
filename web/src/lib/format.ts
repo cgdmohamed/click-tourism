@@ -11,8 +11,16 @@ export const CURRENCY_EXPONENT: Record<string, number> = {
   JOD: 3,
 }
 
+/** Exponents of currencies created in Settings > Currencies (the built-in table above wins). */
+let configuredExponents: Record<string, number> = {}
+
+export function registerCurrencyExponents(rows: ReadonlyArray<{ code: string; exponent: number }>): void {
+  configuredExponents = Object.fromEntries(rows.map((row) => [row.code.toUpperCase(), row.exponent]))
+}
+
 export function exponent(currency: string): number {
-  return CURRENCY_EXPONENT[currency.toUpperCase()] ?? 2
+  const code = currency.toUpperCase()
+  return CURRENCY_EXPONENT[code] ?? configuredExponents[code] ?? 2
 }
 
 export function toMinor(amount: string | number, currency: string): number {

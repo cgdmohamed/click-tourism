@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { useActiveCurrencyCodes } from '../lib/useCurrencies'
+import { resolveCurrency } from '../lib/currencies'
+import { useBaseCurrency } from '../lib/useSetting'
 import { toDecimal, toMinor, todayISO } from '../lib/format'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading,
@@ -35,12 +38,18 @@ const emptyForm = {
   destination: '', description: '', currency: 'EGP', base_price: '', estimated_cost: '',
 }
 export default function TourPackages() {
+  const currencyCodes = useActiveCurrencyCodes()
   const { locale } = useI18n()
   const { activeBranch, can } = useAuth()
   const queryClient = useQueryClient()
   const L = (ar: string, en: string) => locale === 'ar' ? ar : en
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ ...emptyForm })
+  const baseCurrency = useBaseCurrency()
+  const draftCurrency = resolveCurrency(form.currency, currencyCodes, baseCurrency)
+  useEffect(() => {
+    if (open && form.currency !== draftCurrency) setForm((current) => ({ ...current, currency: draftCurrency }))
+  }, [open, form.currency, draftCurrency])
   const [departureFor, setDepartureFor] = useState<TourPackage | null>(null)
   const [departure, setDeparture] = useState({ starts_on: todayISO(), ends_on: '', capacity: '40' })
   const [error, setError] = useState('')
@@ -58,9 +67,9 @@ export default function TourPackages() {
       await api.post('/tour-packages', {
         name: form.name.trim(), category: form.category,
         execution_type: form.execution_type, destination: form.destination || null,
-        description: form.description || null, currency: form.currency,
-        base_price_minor: toMinor(form.base_price || '0', form.currency),
-        estimated_cost_minor: toMinor(form.estimated_cost || '0', form.currency),
+        description: form.description || null, currency: draftCurrency,
+        base_price_minor: toMinor(form.base_price || '0', draftCurrency),
+        estimated_cost_minor: toMinor(form.estimated_cost || '0', draftCurrency),
       })
     },
     onSuccess: async () => {
@@ -186,8 +195,8 @@ export default function TourPackages() {
             </Select>
           </Field>
           <Field label={L('الوجهة', 'Destination')}><Input value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })}/></Field>
-          <Field label={L('العملة', 'Currency')}><Select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
-            <option value="EGP">EGP</option><option value="SAR">SAR</option><option value="USD">USD</option>
+          <Field label={L('العملة', 'Currency')}><Select value={draftCurrency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
+            {currencyCodes.map((code) => <option key={code} value={code}>{code}</option>)}
           </Select></Field>
           <Field label={L('السعر المبدئي للفرد', 'Base price per person')}><Input value={form.base_price} onChange={(e) => setForm({ ...form, base_price: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
           <Field label={L('التكلفة التقديرية للفرد', 'Estimated cost per person')}><Input value={form.estimated_cost} onChange={(e) => setForm({ ...form, estimated_cost: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
