@@ -147,6 +147,19 @@ class McpTokenTest extends TestCase
         $this->as($spa)->postJson('/api/v1/mcp/tokens', ['name' => 'x', 'expires_in_minutes' => 60])->assertCreated();
     }
 
+    public function test_installation_maximum_also_caps_the_default_lifetime(): void
+    {
+        config(['mcp.token_default_minutes' => 480, 'mcp.token_max_minutes' => 60]);
+        $spa = $this->spaToken();
+
+        $created = $this->as($spa)->postJson('/api/v1/mcp/tokens', ['name' => 'default-lifetime'])->assertCreated();
+        $minutes = now()->diffInMinutes(Carbon::parse($created->json('data.expires_at')), false);
+        $this->assertLessThanOrEqual(60, (int) ceil($minutes));
+        $this->assertGreaterThan(55, (int) ceil($minutes));
+
+        $this->as($spa)->postJson('/api/v1/mcp/tokens', ['name' => 'too-long', 'expires_in_minutes' => 61])->assertStatus(422);
+    }
+
     public function test_an_mcp_token_can_call_only_the_three_allowlisted_get_routes(): void
     {
         $this->booking($this->branch);

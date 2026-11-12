@@ -48,7 +48,8 @@ class McpTokenController extends ApiController
         }
 
         $name = trim($data['name']);
-        $minutes = (int) ($data['expires_in_minutes'] ?? config('mcp.token_default_minutes'));
+        // The installation's maximum also caps the default lifetime (omitting expires_in_minutes must not bypass it).
+        $minutes = min($max, (int) ($data['expires_in_minutes'] ?? config('mcp.token_default_minutes')));
         $created = $user->createToken(self::PREFIX.$name, ['mcp:read'], now()->addMinutes($minutes));
 
         $audit->log('mcp.token_created', null, null, [

@@ -125,6 +125,32 @@ test('oversized lists are cut to the payload cap and flagged', () => {
   assert.ok(Buffer.byteLength(text) < 70 * 1024);
 });
 
+test('grouped search results are capped too (lists nested inside an object)', () => {
+  const groups = Array.from({ length: 5 }, (_, g) => ({
+    type: `group${g}`,
+    items: Array.from({ length: 5 }, (_, i) => ({
+      id: `id${g}${i}`,
+      title_en: '&'.repeat(255),
+      title_ar: '&'.repeat(255),
+      subtitle: '&'.repeat(255),
+    })),
+  }));
+  const uncapped = JSON.stringify(sanitizeValue({ groups }, { maskContacts: true, seen: new Set() }, 'data'), null, 1);
+  assert.ok(Buffer.byteLength(uncapped) > 64 * 1024, 'fixture must exceed the cap before truncation');
+  const text = buildEnvelope({ tool: 'erp_search', route: '/search', body: { data: { groups } } });
+  const payload = JSON.parse(text.split('<erp_data>\n')[1].split('\n</erp_data>')[0]);
+  assert.ok(Buffer.byteLength(JSON.stringify(payload, null, 1)) <= 64 * 1024);
+  assert.equal(payload.truncated, true);
+  assert.ok(payload.data.groups.length >= 1);
+});
+
+test('data with no list left to shrink is dropped and flagged rather than exceeding the cap', () => {
+  const text = buildEnvelope({ tool: 'erp_search', route: '/search', body: { data: Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`k${i}`, 'y'.repeat(400)])) } });
+  const payload = JSON.parse(text.split('<erp_data>\n')[1].split('\n</erp_data>')[0]);
+  assert.equal(payload.truncated, true);
+  assert.ok(Buffer.byteLength(text) < 70 * 1024);
+});
+
 test('callTool sends GET with the bearer token, tool header and pinned branch', async () => {
   const calls = [];
   const result = await callTool(
