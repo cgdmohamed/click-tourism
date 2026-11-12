@@ -1020,6 +1020,24 @@ paths:
         '200': { description: Updated booking }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
+  /bookings/{id}/invoice:
+    post:
+      tags: [Bookings]
+      summary: Create an invoice draft from the booking's service and tax snapshot
+      description: >-
+        Creates one linked customer invoice draft using the booked customer,
+        currency, service quantities and booked tax. Requires invoices.create.
+        On issue, if the booking already posted revenue, its journal entry is
+        reused only when the invoice matches the full booking value, currency,
+        customer and tax. Never posts duplicate revenue or receivables.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Invoice draft created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
   /bookings/{id}/transition:
     post:
       tags: [Bookings]
