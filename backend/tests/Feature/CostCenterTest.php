@@ -6,11 +6,15 @@ use App\Modules\Accounting\Models\CostCenter;
 use App\Modules\Accounting\Models\CostCenterAllocation;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalLine;
+use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
+use OpenSpout\Common\Entity\Cell;
+use OpenSpout\Common\Entity\Cell\NumericCell;
+use OpenSpout\Reader\XLSX\Reader;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\Support\BuildsAccounting;
@@ -24,7 +28,7 @@ class CostCenterTest extends TestCase
     private const PERMISSIONS = [
         'cost_centers.view', 'cost_centers.manage',
         'journal.view', 'journal.create',
-        'reports.view',
+        'reports.view', 'reports.export',
     ];
 
     protected function setUp(): void
@@ -83,6 +87,38 @@ class CostCenterTest extends TestCase
             "/api/v1/journal-lines/{$lineId}/cost-allocations",
             ['allocations' => $allocs]
         );
+    }
+
+    private function exportReport(string $report, array $query = []): TestResponse
+    {
+        return $this->withHeaders($this->headers())
+            ->get('/api/v1/reports/'.$report.'/export?'.http_build_query($query));
+    }
+
+    /** @return array<int, array<int, Cell>> */
+    private function readXlsx(string $content): array
+    {
+        $path = tempnam(sys_get_temp_dir(), 'xlsx');
+        file_put_contents($path, $content);
+        $reader = new Reader;
+        $reader->open($path);
+        $rows = [];
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rows[] = $row->getCells();
+            }
+        }
+        $reader->close();
+        @unlink($path);
+
+        return $rows;
+    }
+
+    private function minor(mixed $cell): int
+    {
+        $this->assertInstanceOf(NumericCell::class, $cell, 'Money must be a numeric cell, not text.');
+
+        return (int) round($cell->getValue() * 100);
     }
 
     public function test_create_cost_center_with_parent_and_hierarchy(): void
@@ -259,6 +295,107 @@ class CostCenterTest extends TestCase
         // Entry 2: debit 6100 (allocated) + credit 3200 (unallocated).
         $this->assertSame(3, $report['unallocated_line_count']);
         $this->assertSame(150000, $report['unallocated_total_minor']);
+    }
+
+    public function test_cost_center_profit_and_loss_exports_all_formats_with_totals_equal_to_json(): void
+    {
+        $center = $this->center(['code' => 'CC-EXP']);
+        $revenue = $this->postLine('4100', 0, 100000); // revenue credit
+        $expense = $this->postLine('6100', 40000, 0); // expense debit
+
+        $this->allocate($revenue['line_id'], [
+            ['cost_center_id' => $center['id'], 'allocation_type' => 'exact', 'amount_minor' => 100000],
+        ])->assertCreated();
+        $this->allocate($expense['line_id'], [
+            ['cost_center_id' => $center['id'], 'allocation_type' => 'exact', 'amount_minor' => 40000],
+        ])->assertCreated();
+
+        $from = now()->startOfMonth()->toDateString();
+        $to = now()->endOfMonth()->toDateString();
+
+        $json = $this->withHeaders($this->headers())->getJson(
+            "/api/v1/reports/cost-center-pl?from={$from}&to={$to}"
+        )->assertOk()->json('data');
+
+        // CSV: same figures as the JSON report, in base currency with two decimals.
+        $csv = $this->exportReport('cost-center-pl', ['from' => $from, 'to' => $to])->assertOk();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $csv->getContent());
+        $this->assertStringContainsString('1000.00', $csv->getContent());
+        $this->assertStringContainsString('400.00', $csv->getContent());
+        $this->assertStringContainsString('600.00', $csv->getContent());
+
+        // XLSX: the total row is numeric and equals the JSON grand totals exactly.
+        $rows = $this->readXlsx(
+            $this->exportReport('cost-center-pl', ['from' => $from, 'to' => $to, 'format' => 'xlsx'])->assertOk()->getContent()
+        );
+        $total = collect($rows)->first(fn (array $row) => ($row[0]->getValue() ?? null) === 'Total');
+        $this->assertNotNull($total);
+        $this->assertSame($json['grand_allocated_revenue_minor'], $this->minor($total[3]));
+        $this->assertSame($json['grand_allocated_expense_minor'], $this->minor($total[4]));
+        $this->assertSame($json['grand_allocated_net_minor'], $this->minor($total[5]));
+
+        $this->exportReport('cost-center-pl', ['from' => $from, 'to' => $to, 'format' => 'pdf'])
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+
+        $this->assertDatabaseHas('audit_events', ['action' => 'report.exported']);
+    }
+
+    public function test_cost_center_unallocated_report_exports_all_formats(): void
+    {
+        $this->postLine('6100', 50000, 0); // both lines remain unallocated
+        $from = now()->startOfMonth()->toDateString();
+        $to = now()->endOfMonth()->toDateString();
+
+        $json = $this->withHeaders($this->headers())->getJson(
+            "/api/v1/reports/cost-center-unallocated?from={$from}&to={$to}"
+        )->assertOk()->json('data');
+
+        $csv = $this->exportReport('cost-center-unallocated', ['from' => $from, 'to' => $to])->assertOk();
+        $this->assertStringContainsString('Allocation', $csv->getContent());
+        $this->assertStringContainsString('500.00', $csv->getContent());
+        $this->assertStringContainsString('1000.00', $csv->getContent());
+
+        $rows = $this->readXlsx(
+            $this->exportReport('cost-center-unallocated', ['from' => $from, 'to' => $to, 'format' => 'xlsx'])->assertOk()->getContent()
+        );
+        $total = collect($rows)->first(fn (array $row) => ($row[0]->getValue() ?? null) === 'Total');
+        $this->assertNotNull($total);
+        $this->assertSame($json['unallocated_total_minor'], $this->minor($total[3]));
+
+        $this->exportReport('cost-center-unallocated', ['from' => $from, 'to' => $to, 'format' => 'pdf'])
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+    }
+
+    public function test_cost_center_exports_require_reports_export_permission(): void
+    {
+        $from = now()->startOfMonth()->toDateString();
+        $to = now()->endOfMonth()->toDateString();
+
+        $viewer = User::factory()->create();
+        $viewer->branches()->attach($this->branch->id);
+        $viewer->givePermissionTo(['cost_centers.view']);
+
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($viewer);
+
+        foreach (['cost-center-pl', 'cost-center-unallocated'] as $report) {
+            $this->withHeaders($this->headers())
+                ->get("/api/v1/reports/{$report}/export?from={$from}&to={$to}")
+                ->assertStatus(403);
+        }
+        $this->assertSame(0, AuditEvent::query()->where('action', 'report.exported')->count());
+
+        $viewer->givePermissionTo('reports.export');
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($viewer);
+
+        foreach (['cost-center-pl', 'cost-center-unallocated'] as $report) {
+            $this->withHeaders($this->headers())
+                ->get("/api/v1/reports/{$report}/export?from={$from}&to={$to}")
+                ->assertOk();
+        }
     }
 
     public function test_allocations_only_against_posted_lines(): void

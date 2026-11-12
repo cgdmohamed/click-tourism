@@ -22,25 +22,25 @@ Severity is about product risk, not effort.
 
 | Module | State | Open gaps | Next action |
 |---|---|---|---|
-| Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 1 (GAP-RPT-03 adjacent, export parity) | none |
-| Reports | Core ledger + statements + aging/statements + CSV/XLSX/PDF done | 6 | close RPT-01..05, then browser E2E |
+| Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 0 | none |
+| Reports | Core ledger + statements + aging/statements + cost-center exports in CSV/XLSX/PDF | 5 | close RPT-01, 04, 05, then browser E2E |
 | CRM | Lead capture, rules, conversion, WhatsApp consent done; 24-hour reassignment scheduled | 5 | pipeline/activities (CRM-02..05) |
 | Core / auth | Users, roles, branches, settings, audit events, health, install | 4 | notifications, audit browsing, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
 | QA / release | 876 backend tests, 88 unit tests, 8 CI jobs | 4 | coverage gate, a11y, performance seed |
 | Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
 
-Counts include only tracked gaps below (31 total after closing GAP-CRM-01, 0 at P0).
+Counts include only tracked gaps below (30 total after closing GAP-CRM-01 and GAP-RPT-03, 0 at P0).
 
 ## 3. Reports module
 
-Implemented today: trial balance, general ledger, income statement, balance sheet, aging, aging reconciliation, party statement, dashboard summary, cost-center P&L and unallocated view. Exports are server-rendered CSV, XLSX, and PDF (`ReportExporter`, `ReportDocument`), audited as `report.exported`, branch-scoped, throttled, with a 50,000-row synchronous cap and a 5,000-row PDF cap.
+Implemented today: trial balance, general ledger, income statement, balance sheet, aging, aging reconciliation, party statement, dashboard summary, cost-center P&L and unallocated view. Exports are server-rendered CSV, XLSX, and PDF (`ReportExporter`, `ReportDocument`), audited as `report.exported`, branch-scoped, throttled, with a 50,000-row synchronous cap and a 5,000-row PDF cap. Every implemented report, including both cost-center reports, has an export route.
 
 | ID | Sev | Gap | Evidence | Done when | Blocked by |
 |---|---|---|---|---|---|
 | GAP-RPT-01 | P1 | Management report pack from EP-08 TE-040 is missing: profitability, sales by user/branch, commission, and tax summary reports. | `backend/routes/api.php:340-354` exposes only ledger/statement/aging reports; no `/reports/profitability`, `/reports/sales`, `/reports/commissions`, `/reports/tax`. | Each report exists in API + OpenAPI + report catalog + UI tab, reconciles to the ledger in a test, and exports in all three formats. | DEC-004/DEC-028 for tax presentation |
 | GAP-RPT-02 | P2 | Large exports are synchronous only; there is no `/exports` job resource, progress, or resumable download. | `ReportController::EXPORT_MAX_ROWS = 50000`; no queue job or `/exports` route. AC-RPT-007 is unmet. | Exports above a configured threshold queue, expose status, and produce the file only on success. | architect approval (new contract) |
-| GAP-RPT-03 | P2 | Cost-center reports cannot be exported at all. | No export route for `reports/cost-center-pl` / `cost-center-unallocated`; `web/src/pages/Reports.tsx:404` excludes `isCostCenterReport` from `canExport`. | Both cost-center reports export CSV/XLSX/PDF with filter parity and audit. | none |
+| ~~GAP-RPT-03~~ | **P2 — closed** | Cost-center reports could not be exported. Now both export CSV/XLSX/PDF with the same filters as the JSON reports, base-currency amounts, audit, branch scope, and the shared export throttle. | `backend/app/Http/Controllers/Api/CostCenterController.php` (`exportProfitAndLoss`, `exportUnallocated`); `backend/app/Modules/Reports/Services/ReportCsv.php` (`costCenterProfitAndLossRows`, `costCenterUnallocatedRows`); `backend/routes/api.php:164,166`; `web/src/pages/Reports.tsx` (`canExport`); `backend/tests/Feature/CostCenterTest.php`; `backend/tests/Feature/ReportExportReliabilityTest.php`. | Closed by the three-format export tests (XLSX totals equal JSON), permission test, and branch-isolation coverage. | none |
 | GAP-RPT-04 | P2 | GL drill-down opens the journal entry, not the source document page. | Documented limit in `issues/ep-08-reporting.md` TE-036; UI opens `/journal` entry modal. | Clicking a report row lands on the invoice/payment/expense record that produced it. | none |
 | GAP-RPT-05 | P2 | GL supplier filter silently misses booking-cost postings because those postings carry no supplier party. | TE-036 known limit; postings from `Bookings` do not set a supplier party (DEC-002). | Supplier filter returns all supplier-attributable cost rows, or the UI explains the exclusion. | DEC-002 |
 | GAP-RPT-06 | P3 | No scheduled delivery of reports (explicitly out of scope for TE-039, listed so it is not mistaken for a defect). | TE-039 "Scope out: Scheduled email delivery". | Keep out of scope until a decision adds it. | product decision |
@@ -118,7 +118,7 @@ Tracked here so they are never silently implemented or silently assumed "done".
 
 Order follows the module completion sequence; each step is one branch → one PR with tests.
 
-1. `agent/reports-close-gaps` — GAP-RPT-01, 03, 04; E2E for a report export (GAP-QA-01).
+1. `agent/reports-close-gaps` — GAP-RPT-01, 04; E2E for a report export (GAP-QA-01). GAP-RPT-03 closed by `agent/crm-reassignment`.
 2. `agent/crm-close-gaps` — GAP-CRM-02, 03, 04, 05 (GAP-CRM-01 closed by `agent/crm-reassignment`).
 3. `agent/core-notifications-audit` — GAP-CORE-01, 02; then GAP-CORE-03 decision.
 4. `agent/qa-harness` — GAP-QA-02, 03, 04, 05; remaining per-module E2E.

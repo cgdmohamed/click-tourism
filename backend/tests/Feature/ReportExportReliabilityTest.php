@@ -46,7 +46,7 @@ class ReportExportReliabilityTest extends TestCase
         parent::setUp();
         $this->buildAccounting();
 
-        $permissions = ['journal.view', 'journal.create', 'reports.view', 'reports.export', 'assets.view', 'assets.manage', 'assets.approve', 'accounts.view'];
+        $permissions = ['journal.view', 'journal.create', 'reports.view', 'reports.export', 'assets.view', 'assets.manage', 'assets.approve', 'accounts.view', 'cost_centers.view'];
         foreach ($permissions as $permission) {
             Permission::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
@@ -58,7 +58,7 @@ class ReportExportReliabilityTest extends TestCase
         ]);
         $this->otherUser = User::factory()->create();
         $this->otherUser->branches()->attach($this->otherBranch->id);
-        $this->otherUser->givePermissionTo(['journal.view', 'reports.view', 'reports.export', 'assets.view', 'accounts.view']);
+        $this->otherUser->givePermissionTo(['journal.view', 'reports.view', 'reports.export', 'assets.view', 'accounts.view', 'cost_centers.view']);
 
         $this->from = now()->startOfMonth()->toDateString();
         $this->to = now()->endOfMonth()->toDateString();
@@ -107,6 +107,8 @@ class ReportExportReliabilityTest extends TestCase
             'aging' => ['type' => 'ar', 'as_of' => $this->to],
             'aging-reconciliation' => ['type' => 'ar', 'as_of' => $this->to],
             'party-statement' => ['party_type' => 'customer', 'party_id' => $this->customer()->public_id, 'from' => $this->from, 'to' => $this->to],
+            'cost-center-pl' => ['from' => $this->from, 'to' => $this->to],
+            'cost-center-unallocated' => ['from' => $this->from, 'to' => $this->to],
             'fixed-assets/roll-forward' => ['from' => now()->format('Y-m'), 'to' => now()->format('Y-m')],
             'fixed-assets/carrying-values' => ['as_of' => $this->to],
             'fixed-assets/movements' => ['from' => now()->format('Y-m'), 'to' => now()->format('Y-m')],
@@ -296,7 +298,7 @@ class ReportExportReliabilityTest extends TestCase
     {
         $viewer = User::factory()->create();
         $viewer->branches()->attach($this->branch->id);
-        $viewer->givePermissionTo(['reports.view', 'assets.view', 'journal.view']);
+        $viewer->givePermissionTo(['reports.view', 'assets.view', 'journal.view', 'cost_centers.view']);
         Sanctum::actingAs($viewer);
 
         foreach ($this->allExports() as $report => $query) {

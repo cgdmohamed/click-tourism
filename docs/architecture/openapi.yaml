@@ -1042,6 +1042,41 @@ paths:
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
       responses:
         '200': { description: Unallocated lines }
+  /reports/cost-center-pl/export:
+    get:
+      tags: [Reports]
+      summary: Cost center profit and loss export (requires cost_centers.view and reports.export; audited)
+      description: >-
+        CSV layout: Code, Name (EN), Name (AR), Allocated revenue, Allocated
+        expense, Allocated net, Currency. The last row is the Total row.
+        Amounts are base-currency decimal strings (the report itself has no
+        currency). Same `format`/`language` options, 5,000-row PDF cap and
+        `report-exports` throttle as the other report exports.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200': { description: Cost center P&L export }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /reports/cost-center-unallocated/export:
+    get:
+      tags: [Reports]
+      summary: Unallocated cost center lines export (requires cost_centers.view and reports.export; audited)
+      description: >-
+        CSV layout: Entry no., Date, Account, Amount, Allocation, Currency.
+        The last row is the Total row. Amounts are base-currency decimal
+        strings. Same `format`/`language` options, 5,000-row PDF cap and
+        `report-exports` throttle as the other report exports.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200': { description: Unallocated lines export }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /fiscal-periods:
     get:
       tags: [Accounting]
