@@ -21,6 +21,10 @@ class SettingService
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',
             'company_name_en' => 'Tourism ERP',
+            // Letterhead logo for PDF reports: a PNG/JPEG path relative to storage/app, or a data URI. Empty = no logo.
+            'company_logo' => '',
+            // Print "Prepared by / Approved by / Date" lines at the end of PDF reports.
+            'report_signoff' => 'true',
             'base_currency' => 'EGP',
             'locale' => 'ar',
             'timezone' => 'Africa/Cairo',
@@ -89,6 +93,10 @@ class SettingService
             'refund_segregation' => 'false',
             'commission_trigger' => 'fully_collected',
             'commission_auto_post' => 'false',
+            // Commission expense (DEC-003: expense + payable). The payable is the
+            // beneficiary's party subaccount under the payables control account
+            // (ADR-0015). Existing installs create 6700 with accounting:ensure-accounts.
+            'commission_expense_account_code' => '6700',
             // PENDING ACCOUNTANT APPROVAL (DEC-008): revaluation posting is
             // disabled until accounts, eligibility and reversal policy sign-off.
             'fx_revaluation_enabled' => 'false',
@@ -126,6 +134,11 @@ class SettingService
             // invoice cannot approve it, matching the expense and voucher
             // rules. Odoo/Zoho approvals are per document type; this
             // installation keeps the control on by default.
+            'segregation' => 'true',
+        ],
+        'commissions' => [
+            // The person who created or submitted a rule, or overrode a
+            // commission amount, cannot approve it (maker-checker, as for expenses).
             'segregation' => 'true',
         ],
         'employees' => [
@@ -172,6 +185,27 @@ class SettingService
             'reassignment_max_attempts' => '3',
             'meaningful_activity_types' => 'note,call,email,whatsapp,stage_changed',
         ],
+        // Optional Meta Lead Ads / WhatsApp Cloud API integrations (ADR-0010).
+        // Everything is OFF by default. Non-secret ids only: app secrets,
+        // verify tokens and access tokens come from env (config/services.php)
+        // and are never stored here.
+        'integrations' => [
+            'meta_leads_enabled' => 'false',
+            'meta_page_id' => '',
+            'meta_default_branch_id' => '',
+            // JSON object {"<form_id>": "<branch public id>"}; optional.
+            'meta_form_branch_map' => '',
+            // UNVERIFIED: confirm the current supported Graph API version.
+            'meta_graph_version' => 'v21.0',
+            'meta_webhook_verified_at' => '',
+            'whatsapp_enabled' => 'false',
+            'whatsapp_outbound_enabled' => 'false',
+            'whatsapp_phone_number_id' => '',
+            'whatsapp_business_account_id' => '',
+            'whatsapp_graph_version' => 'v21.0',
+            'whatsapp_webhook_verified_at' => '',
+            'whatsapp_stop_keywords' => 'stop,unsubscribe,إيقاف,الغاء',
+        ],
         'documents' => [
             'default_language' => 'bilingual',
             // DEC-017 (work order 02): the person who submitted a voucher
@@ -189,6 +223,8 @@ class SettingService
             'supplier_payment_prefix' => 'PV',
             'transfer_prefix' => 'TR',
             'expense_prefix' => 'EX',
+            'commission_prefix' => 'CM',
+            'commission_payment_prefix' => 'CP',
             'customer_invoice_prefix' => 'INV',
             'supplier_invoice_prefix' => 'BIL',
             'credit_note_prefix' => 'CN',
@@ -219,6 +255,7 @@ class SettingService
             'supplier_advance_account_code' => 'asset',
             'revenue_account_code' => 'revenue',
             'cost_account_code' => 'expense',
+            'commission_expense_account_code' => 'expense',
             'tax_payable_account_code' => 'liability',
             'output_tax_account_code' => 'liability',
             'input_tax_account_code' => 'asset',
@@ -249,7 +286,7 @@ class SettingService
     ];
 
     /** Accounting-policy switches that need the accounting.approve_policy permission. */
-    public const POLICY_KEYS = ['accounting_policy_approved', 'auto_post_bookings'];
+    public const POLICY_KEYS = ['accounting_policy_approved', 'auto_post_bookings', 'commission_auto_post'];
 
     /**
      * Returns an error message when $value is not a valid account for the

@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\PartyAccount;
 use App\Modules\Parties\Models\Supplier;
 use DomainException;
@@ -113,11 +114,12 @@ class PartyLedgerService
         return $control->code.str_pad((string) ($suffix + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    private function party(string $partyType, int $partyId): Customer|Supplier
+    private function party(string $partyType, int $partyId): Customer|Supplier|Employee
     {
         $party = match ($partyType) {
             'customer' => Customer::query()->find($partyId),
             'supplier' => Supplier::query()->find($partyId),
+            'employee' => Employee::query()->find($partyId),
             default => throw new DomainException("Unsupported party type: {$partyType}"),
         };
 

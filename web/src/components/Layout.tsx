@@ -57,6 +57,7 @@ export function Layout() {
         { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
         { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
         { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
+        { to: '/commissions', label: locale === 'ar' ? 'العمولات' : 'Commissions', icon: 'coins', permission: 'commissions.view' },
         { to: '/payments', label: locale === 'ar' ? 'تحصيلات العملاء' : 'Customer collections', icon: 'creditCard', permission: 'payments.view' },
         { to: '/payment-methods', label: locale === 'ar' ? 'طرق الدفع' : 'Payment methods', icon: 'wallet', permission: 'payments.view' },
         { to: '/supplier-settlements', label: t('supplierSettlements'), icon: 'handshake' },

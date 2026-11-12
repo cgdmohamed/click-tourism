@@ -3,12 +3,19 @@
 namespace App\Providers;
 
 use App\Modules\Core\Services\RoundingPolicy;
+use App\Modules\Integrations\Adapters\GraphMetaLeadFetcher;
+use App\Modules\Integrations\Adapters\GraphWhatsAppSender;
+use App\Modules\Integrations\Contracts\MetaLeadFetcher;
+use App\Modules\Integrations\Contracts\WhatsAppSender;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\EmployeeAdvance;
 use App\Modules\Parties\Models\EmployeeCustody;
 use App\Modules\Parties\Models\Supplier;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -20,6 +27,10 @@ class AppServiceProvider extends ServiceProvider
     {
         // Resolved once per request/job; SettingService::set() flushes it.
         $this->app->scoped(RoundingPolicy::class);
+
+        // Integrations sit behind adapter interfaces; tests swap or Http::fake these.
+        $this->app->bind(MetaLeadFetcher::class, GraphMetaLeadFetcher::class);
+        $this->app->bind(WhatsAppSender::class, GraphWhatsAppSender::class);
     }
 
     /**
@@ -37,5 +48,18 @@ class AppServiceProvider extends ServiceProvider
             'advance' => EmployeeAdvance::class,
             'custody' => EmployeeCustody::class,
         ]);
+
+        // Report exports: 20 per minute per user, PDFs (the heaviest format)
+        // additionally capped at 6 per minute. Keys are namespaced so other
+        // throttled routes (search, ...) never consume the export budget.
+        RateLimiter::for('report-exports', function (Request $request): array {
+            $who = (string) ($request->user()?->getAuthIdentifier() ?? $request->ip());
+            $limits = [Limit::perMinute(20)->by('report-exports:'.$who)];
+            if ($request->query('format') === 'pdf') {
+                $limits[] = Limit::perMinute(6)->by('report-exports-pdf:'.$who);
+            }
+
+            return $limits;
+        });
     }
 }

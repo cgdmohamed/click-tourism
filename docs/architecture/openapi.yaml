@@ -17,6 +17,7 @@ tags:
   - name: IAM
   - name: Platform
   - name: Accounting
+  - name: Commissions
   - name: Schedules
   - name: Fixed Assets
   - name: Treasury
@@ -522,6 +523,276 @@ paths:
               required: [reason]
               properties:
                 reason: { type: string, minLength: 3, maxLength: 255 }
+      responses:
+        '200': { description: Reversed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules:
+    get:
+      tags: [Commissions]
+      summary: List commission rule versions
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, pending_approval, approved, rejected, retired] } }
+        - { name: beneficiary_type, in: query, schema: { type: string, enum: [employee, agent, branch] } }
+        - { name: code, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Rules }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Commissions]
+      summary: Create a draft commission rule (version 1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommissionRuleInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}:
+    get:
+      tags: [Commissions]
+      summary: Get a commission rule version
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Rule }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Commissions]
+      summary: Edit a draft or rejected rule version (approved versions are immutable)
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommissionRuleInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [Commissions]
+      summary: Delete a draft rule version
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/new-version:
+    post:
+      tags: [Commissions]
+      summary: Start the next version of a rule as a draft
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Draft version }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/submit:
+    post:
+      tags: [Commissions]
+      summary: Submit a draft rule for approval
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Submitted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/approve:
+    post:
+      tags: [Commissions]
+      summary: 'Approve a submitted rule (the previous version ends the day before this one starts)'
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/reject:
+    post:
+      tags: [Commissions]
+      summary: Reject a submitted rule
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Rejected }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/retire:
+    post:
+      tags: [Commissions]
+      summary: Disable an approved rule (existing accruals are untouched)
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Retired }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions:
+    get:
+      tags: [Commissions]
+      summary: List commission accruals of the current branch
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [accrued, approved, posted, paid, rejected, reversed, cancelled] } }
+        - { name: beneficiary_type, in: query, schema: { type: string, enum: [employee, agent, branch] } }
+        - { name: booking_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Commissions }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /commissions/beneficiaries:
+    get:
+      tags: [Commissions]
+      summary: Beneficiaries with commission activity and their payable totals
+      parameters:
+        - { name: beneficiary_type, in: query, schema: { type: string, enum: [employee, agent, branch] } }
+      responses:
+        '200': { description: One row per beneficiary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /commissions/statement:
+    get:
+      tags: [Commissions]
+      summary: Commission statement of one beneficiary (accruals, payouts, reversals)
+      parameters:
+        - { name: beneficiary_type, in: query, required: true, schema: { type: string, enum: [employee, agent, branch] } }
+        - { name: beneficiary_id, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Statement }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Beneficiary not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}:
+    get:
+      tags: [Commissions]
+      summary: Get a commission with its payments
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Commission }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /commissions/{commission}/override:
+    post:
+      tags: [Commissions]
+      summary: 'Propose a different amount (takes effect once someone else approves)'
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [amount_minor, reason], properties: { amount_minor: { type: integer, minimum: 0 }, reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Overridden }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/approve:
+    post:
+      tags: [Commissions]
+      summary: 'Approve an accrued commission (posts it when commission_auto_post is on and the accounting policy is approved)'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/reject:
+    post:
+      tags: [Commissions]
+      summary: Reject an accrued commission
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Rejected }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/post:
+    post:
+      tags: [Commissions]
+      summary: 'Post an approved commission through the ledger (Dr commission expense, Cr beneficiary payable; idempotent)'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Posted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/pay:
+    post:
+      tags: [Commissions]
+      summary: 'Pay (part of) a posted commission (Dr payable, Cr cash or bank; idempotent)'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [cash_account_id], properties: { cash_account_id: { type: string }, amount_minor: { type: integer, minimum: 1 }, paid_on: { type: string, format: date }, reference: { type: string, maxLength: 255 } } }
+      responses:
+        '201': { description: Payment }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/reverse:
+    post:
+      tags: [Commissions]
+      summary: 'Reverse a commission (cancels an unposted accrual, reverses a posted one in the ledger)'
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
       responses:
         '200': { description: Reversed }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1608,6 +1879,17 @@ paths:
         currency; the last row is the Total row with blank Code and Name (EN).
         Note that `Abnormal` was added after the first release, so consumers
         that read columns by position must select by header name.
+        All report export endpoints accept `format=csv|xlsx|pdf` and
+        `language=ar|en|bilingual`. XLSX money cells are numeric (number-formatted
+        to the currency exponent) and dates are real date cells; text that starts
+        with `=`, `+`, `-` or `@` is prefixed with an apostrophe in every format.
+        PDF uses the bundled DejaVu Sans font with Arabic shaping and right-to-left
+        layout, a letterhead from settings (`general.company_name_ar|en`, optional
+        `general.company_logo`, branch, period, currency), a repeated table header
+        and "page n / N" on every page, and is limited to 5,000 rows (422 beyond).
+        Exports share the `report-exports` throttle: 20 per minute per user,
+        6 per minute for PDF (429 beyond). Branch scope follows the active branch,
+        exactly as on screen.
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
@@ -1815,30 +2097,155 @@ paths:
     get:
       tags: [Webhooks]
       security: []
-      summary: Meta webhook verification challenge
+      summary: Meta webhook verification challenge (404 while the integration is disabled)
+      description: >
+        Optional integration, disabled by default (integrations.meta_leads_enabled).
+        Verification handshake parameters (hub.mode, hub.verify_token, hub.challenge)
+        are UNVERIFIED against current Meta docs. The verify token comes from env only.
       responses:
         '200': { description: Challenge echoed }
+        '403': { description: Verification token mismatch }
+        '404': { description: Integration disabled }
+        '503': { description: Verify token not configured }
     post:
       tags: [Webhooks]
       security: []
-      summary: Meta Lead Ads event (signature verified, deduplicated)
+      summary: Meta Lead Ads leadgen event (HMAC signature verified, deduplicated per leadgen id)
+      description: >
+        Requires header X-Hub-Signature-256 = sha256=HMAC-SHA256(raw body, app secret).
+        Each leadgen id is stored once, fetched through the Graph API adapter by a queued
+        job (retry with backoff) and turned into a CRM lead with source "facebook"
+        (deduplicated by external id and phone/email). Replays return status "duplicate".
       responses:
-        '200': { description: Accepted or duplicate }
+        '200': { description: 'Accepted or duplicate; body {data:{status: received|duplicate}}' }
+        '400': { description: Invalid JSON payload }
         '403': { description: Invalid signature }
+        '404': { description: Integration disabled }
+        '503': { description: App secret not configured }
   /webhooks/whatsapp:
     get:
       tags: [Webhooks]
       security: []
-      summary: WhatsApp webhook verification challenge
+      summary: WhatsApp webhook verification challenge (404 while the integration is disabled)
       responses:
         '200': { description: Challenge echoed }
+        '403': { description: Verification token mismatch }
+        '404': { description: Integration disabled }
+        '503': { description: Verify token not configured }
     post:
       tags: [Webhooks]
       security: []
-      summary: WhatsApp inbound message (signature verified, deduplicated)
+      summary: WhatsApp inbound messages and delivery statuses (signature verified, deduplicated)
+      description: >
+        Inbound messages are logged and linked to a lead/customer by phone (unknown
+        senders become a "whatsapp" lead); statuses update outbound messages
+        (sent, delivered, read, failed) and never move backwards. This is a message log,
+        not a chat inbox. Stored webhook payloads are redacted.
       responses:
-        '200': { description: Accepted or duplicate }
+        '200': { description: 'Accepted or duplicate; body {data:{status: received|duplicate}}' }
+        '400': { description: Invalid JSON payload }
         '403': { description: Invalid signature }
+        '404': { description: Integration disabled }
+        '503': { description: App secret not configured }
+
+  /integrations/status:
+    get:
+      tags: [Integrations]
+      summary: Integration settings, webhook URLs and verification status (settings.view)
+      description: >
+        Secrets are never returned; env-provided secrets are reported only as
+        configured booleans (app_secret, verify_token, access_token).
+      responses:
+        '200': { description: Meta and WhatsApp status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /integrations/settings:
+    put:
+      tags: [Integrations]
+      summary: Update non-secret integration settings (settings.update, audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                meta_leads_enabled: { type: boolean }
+                meta_page_id: { type: string, nullable: true }
+                meta_default_branch_id: { type: string, nullable: true }
+                meta_form_branch_map: { type: string, nullable: true, description: 'JSON object {form_id: branch_public_id}' }
+                meta_graph_version: { type: string, nullable: true, example: v21.0 }
+                whatsapp_enabled: { type: boolean }
+                whatsapp_outbound_enabled: { type: boolean }
+                whatsapp_phone_number_id: { type: string, nullable: true }
+                whatsapp_business_account_id: { type: string, nullable: true }
+                whatsapp_graph_version: { type: string, nullable: true }
+                whatsapp_stop_keywords: { type: string, nullable: true }
+      responses:
+        '200': { description: Updated status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /integrations/whatsapp/messages:
+    get:
+      tags: [Integrations]
+      summary: WhatsApp message log (leads.view; branch scoped)
+      parameters:
+        - { name: lead_id, in: query, schema: { type: string } }
+        - { name: customer_id, in: query, schema: { type: string } }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        '200': { description: Messages }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Integrations]
+      summary: Queue an outbound WhatsApp text or template message (leads.update)
+      description: >
+        Staff-triggered only (no auto-messaging). Refused with 422 and a code of
+        integration_disabled, invalid_phone, consent_missing, consent_withdrawn or
+        outside_service_window (free text outside the 24h window needs a template).
+        Send an Idempotency-Key header to make retries safe. Returns 202 with the
+        queued message; delivery is asynchronous with retry/backoff.
+      parameters:
+        - { name: Idempotency-Key, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                lead_id: { type: string }
+                customer_id: { type: string }
+                type: { type: string, enum: [text, template] }
+                body: { type: string }
+                template_name: { type: string }
+                language: { type: string, example: en_US }
+                components: { type: array, items: { type: object } }
+      responses:
+        '202': { description: Message queued }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Refused or validation error (see code) }
+  /integrations/whatsapp/consents:
+    post:
+      tags: [Integrations]
+      summary: Record a WhatsApp opt-in or opt-out for a lead or customer (leads.update, audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, source]
+              properties:
+                lead_id: { type: string }
+                customer_id: { type: string }
+                status: { type: string, enum: [opt_in, opt_out] }
+                source: { type: string, enum: [lead_form, in_person, phone_call, written, website, manual] }
+                note: { type: string }
+      responses:
+        '201': { description: Recorded }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /employees:
     get:
@@ -2889,6 +3296,40 @@ paths:
         '200': { description: Schedule }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
+  /reports/fixed-assets/{report}/export:
+    get:
+      tags: [Fixed Assets, Reports]
+      summary: Fixed-asset report export (CSV, XLSX or PDF; requires assets.view and reports.export; audited)
+      description: >-
+        Server-side export of the same fixed-asset reports shown on screen, with the same
+        branch scope (`global=1` is honoured only for users with branches.view_all; it is
+        ignored for everyone else). Money columns are decimal strings in CSV and numeric
+        cells in XLSX; formula-like text is neutralised. PDF is limited to 5,000 rows.
+        Exports share the `report-exports` throttle (20 per minute per user, 6 per minute for PDF).
+        Report parameters match the on-screen endpoint: `roll-forward` and `movements` take
+        `from` and `to` (YYYY-MM); `carrying-values` takes `as_of` and `include_disposed`;
+        `reconciliation` takes `as_of`; `schedule` takes an optional `asset` public id.
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: string, enum: [roll-forward, carrying-values, movements, reconciliation, schedule] } }
+        - { name: from, in: query, description: 'YYYY-MM (roll-forward, movements)', schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+        - { name: to, in: query, description: 'YYYY-MM (roll-forward, movements)', schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+        - { name: as_of, in: query, description: 'carrying-values, reconciliation', schema: { type: string, format: date } }
+        - { name: include_disposed, in: query, schema: { type: boolean } }
+        - { name: asset, in: query, description: 'schedule: one asset (public id)', schema: { type: string } }
+        - { name: global, in: query, description: 'Installation-wide figures; requires branches.view_all', schema: { type: boolean } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200':
+          description: CSV (UTF-8 with BOM), XLSX workbook or PDF document
+          content:
+            text/csv: { schema: { type: string } }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   # ---------------------------------------------------------------------------
   # Operations added by the OpenAPI sync (docs/architecture README, "Contract
@@ -4571,6 +5012,24 @@ components:
         payee_name: { type: string }
         cash_account_id: { type: string }
         submit: { type: boolean, default: false }
+    CommissionRuleInput:
+      type: object
+      description: Rates are basis points (10000 = 100%); fixed amounts are base-currency minor units. code is required on create only.
+      required: [name_ar, name_en, beneficiary_type, basis, effective_from]
+      properties:
+        code: { type: string, maxLength: 40, description: Identifies the rule across versions; create only }
+        name_ar: { type: string }
+        name_en: { type: string }
+        beneficiary_type: { type: string, enum: [employee, agent, branch] }
+        beneficiary_id: { type: string, nullable: true, description: 'Employee, agent (supplier) or branch public id. Null = booking owner (employee) or booking branch (branch); required for agents.' }
+        basis: { type: string, enum: [percent_revenue, percent_margin, fixed] }
+        rate_bp: { type: integer, minimum: 1, maximum: 10000, nullable: true }
+        fixed_minor: { type: integer, minimum: 1, nullable: true }
+        branch_id: { type: string, nullable: true, description: Only bookings of this branch }
+        service_type: { type: string, nullable: true, enum: [flight, hotel, transport, visa, program, other] }
+        allow_cross_branch: { type: boolean, default: false, description: Pay a beneficiary attached to another branch }
+        effective_from: { type: string, format: date }
+        effective_to: { type: string, format: date, nullable: true }
     ExpenseCategory:
       type: object
       properties:

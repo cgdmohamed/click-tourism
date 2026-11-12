@@ -4,15 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\CostCenter;
-use App\Modules\Core\Services\AuditService;
-use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Reports\Services\AgingReconciliationService;
 use App\Modules\Reports\Services\PartyStatementService;
 use App\Modules\Reports\Services\ReportCsv;
-use App\Modules\Reports\Services\ReportDocument;
+use App\Modules\Reports\Services\ReportExporter;
 use App\Modules\Reports\Services\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,8 +39,9 @@ class ReportController extends ApiController
         ));
     }
 
-    public function exportTrialBalance(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    public function exportTrialBalance(Request $request, ReportService $reports, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $this->validateTrialBalance($request);
         $report = $reports->trialBalance(
             $data['from'],
@@ -55,12 +54,11 @@ class ReportController extends ApiController
             $data['adjustments'],
         );
 
-        $audit->log('report.exported', null, null, ['report' => 'trial-balance'] + $data, $this->actorId());
-
-        return $this->exportResponse($request,
-            $csv->trialBalance($report),
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'trial-balance', $data,
+            $csv->trialBalanceRows($report),
             "trial-balance_{$data['from']}_{$data['to']}",
             'Trial Balance / ميزان المراجعة',
+            ['period' => "{$data['from']} - {$data['to']}", 'currency' => $report['currency']],
         );
     }
 
@@ -85,8 +83,9 @@ class ReportController extends ApiController
         ]);
     }
 
-    public function exportGeneralLedger(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    public function exportGeneralLedger(Request $request, ReportService $reports, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $this->validateGeneralLedger($request, paginated: false);
 
         $result = $reports->generalLedger(
@@ -99,19 +98,16 @@ class ReportController extends ApiController
             ]);
         }
 
-        $audit->log('report.exported', null, null, [
-            'report' => 'general-ledger',
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'general-ledger', [
             'account' => $data['account']->public_id,
             'from' => $data['from'],
             'to' => $data['to'],
             'currency' => $data['currency'],
-            'rows' => $result['total'],
-        ], $this->actorId());
-
-        return $this->exportResponse($request,
-            $csv->generalLedger($result),
+        ],
+            $csv->generalLedgerRows($result),
             "general-ledger_{$data['account']->code}_{$data['from']}_{$data['to']}",
             'General Ledger / دفتر الأستاذ',
+            ['period' => "{$data['from']} - {$data['to']}", 'currency' => $result['summary']['currency']],
         );
     }
 
@@ -133,17 +129,20 @@ class ReportController extends ApiController
         ));
     }
 
-    public function exportIncomeStatement(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    public function exportIncomeStatement(Request $request, ReportService $reports, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $request->validate([
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
         ]);
 
         $report = $reports->incomeStatement($data['from'], $data['to'], $this->branch());
-        $audit->log('report.exported', null, null, ['report' => 'income-statement'] + $data, $this->actorId());
 
-        return $this->exportResponse($request, $csv->incomeStatement($report), "income-statement_{$data['from']}_{$data['to']}", 'Income Statement / قائمة الدخل');
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'income-statement', $data,
+            $csv->incomeStatementRows($report), "income-statement_{$data['from']}_{$data['to']}", 'Income Statement / قائمة الدخل',
+            ['period' => "{$data['from']} - {$data['to']}", 'currency' => $report['currency']],
+        );
     }
 
     public function balanceSheet(Request $request, ReportService $reports): JsonResponse
@@ -156,16 +155,19 @@ class ReportController extends ApiController
         return $this->ok($reports->balanceSheet($data['as_of'], $this->branch(), $data['compare_as_of'] ?? null));
     }
 
-    public function exportBalanceSheet(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    public function exportBalanceSheet(Request $request, ReportService $reports, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $request->validate([
             'as_of' => ['required', 'date'],
         ]);
 
         $report = $reports->balanceSheet($data['as_of'], $this->branch());
-        $audit->log('report.exported', null, null, ['report' => 'balance-sheet'] + $data, $this->actorId());
 
-        return $this->exportResponse($request, $csv->balanceSheet($report), "balance-sheet_{$data['as_of']}", 'Balance Sheet / المركز المالي');
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'balance-sheet', $data,
+            $csv->balanceSheetRows($report), "balance-sheet_{$data['as_of']}", 'Balance Sheet / المركز المالي',
+            ['period' => 'As of '.$data['as_of'], 'currency' => $report['currency']],
+        );
     }
 
     public function aging(Request $request, ReportService $reports): JsonResponse
@@ -178,17 +180,20 @@ class ReportController extends ApiController
         return $this->ok($reports->aging($data['type'], $data['as_of'], $this->branch()));
     }
 
-    public function exportAging(Request $request, ReportService $reports, ReportCsv $csv, AuditService $audit): Response
+    public function exportAging(Request $request, ReportService $reports, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $request->validate([
             'type' => ['required', 'in:ar,ap'],
             'as_of' => ['required', 'date'],
         ]);
 
         $report = $reports->aging($data['type'], $data['as_of'], $this->branch());
-        $audit->log('report.exported', null, null, ['report' => 'aging'] + $data, $this->actorId());
 
-        return $this->exportResponse($request, $csv->aging($report), "aging-{$data['type']}_{$data['as_of']}", 'Aging / أعمار الديون');
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'aging', $data,
+            $csv->agingRows($report), "aging-{$data['type']}_{$data['as_of']}", 'Aging / أعمار الديون',
+            ['period' => 'As of '.$data['as_of'], 'currency' => $report['currency']],
+        );
     }
 
     public function agingReconciliation(Request $request, AgingReconciliationService $reconciliation): JsonResponse
@@ -201,17 +206,20 @@ class ReportController extends ApiController
         return $this->ok($reconciliation->reconcile($data['type'], $data['as_of'], $this->branch()));
     }
 
-    public function exportAgingReconciliation(Request $request, AgingReconciliationService $reconciliation, ReportCsv $csv, AuditService $audit): Response
+    public function exportAgingReconciliation(Request $request, AgingReconciliationService $reconciliation, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $request->validate([
             'type' => ['required', 'in:ar,ap'],
             'as_of' => ['required', 'date'],
         ]);
 
         $report = $reconciliation->reconcile($data['type'], $data['as_of'], $this->branch());
-        $audit->log('report.exported', null, null, ['report' => 'aging-reconciliation'] + $data, $this->actorId());
 
-        return $this->exportResponse($request, $csv->agingReconciliation($report), "aging-reconciliation-{$data['type']}_{$data['as_of']}", 'Aging Reconciliation / مطابقة الأعمار');
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'aging-reconciliation', $data,
+            $csv->agingReconciliationRows($report), "aging-reconciliation-{$data['type']}_{$data['as_of']}", 'Aging Reconciliation / مطابقة الأعمار',
+            ['period' => 'As of '.$data['as_of'], 'currency' => $report['currency']],
+        );
     }
 
     public function partyStatement(Request $request, PartyStatementService $statements): JsonResponse
@@ -242,8 +250,9 @@ class ReportController extends ApiController
         ]);
     }
 
-    public function exportPartyStatement(Request $request, PartyStatementService $statements, ReportCsv $csv, AuditService $audit): Response
+    public function exportPartyStatement(Request $request, PartyStatementService $statements, ReportCsv $csv, ReportExporter $exporter): Response
     {
+        $options = $exporter->options($request);
         $data = $this->validatePartyStatement($request, paginated: false);
 
         $report = $statements->statement(
@@ -263,19 +272,16 @@ class ReportController extends ApiController
             ]);
         }
 
-        $audit->log('report.exported', null, null, [
-            'report' => 'party-statement',
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'party-statement', [
             'party_type' => $data['party_type'],
             'party_id' => $data['party_id'],
             'from' => $data['from'],
             'to' => $data['to'],
-            'rows' => $report['total'],
-        ], $this->actorId());
-
-        return $this->exportResponse($request,
-            $csv->partyStatement($report),
+        ],
+            $csv->partyStatementRows($report),
             "party-statement-{$data['party_type']}-{$data['party_id']}_{$data['from']}_{$data['to']}",
             'Party Statement / كشف حساب طرف',
+            ['period' => "{$data['from']} - {$data['to']}", 'currency' => $report['currency']],
         );
     }
 
@@ -428,29 +434,5 @@ class ReportController extends ApiController
             $request->request->remove('currency');
             $request->query->remove('currency');
         }
-    }
-
-    private function exportResponse(Request $request, string $csv, string $basename, string $title): Response
-    {
-        $options = $request->validate([
-            'format' => ['nullable', 'in:csv,xlsx,pdf'],
-            'language' => ['nullable', 'in:ar,en,bilingual'],
-        ]);
-        $format = $options['format'] ?? 'csv';
-        $language = $options['language'] ?? 'bilingual';
-        $documents = new ReportDocument(app(SettingService::class));
-        [$content, $contentType] = match ($format) {
-            'xlsx' => [$documents->xlsx($csv), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-            'pdf' => [$documents->pdf($csv, $title, $language), 'application/pdf'],
-            default => [$csv, 'text/csv; charset=UTF-8'],
-        };
-        $filename = preg_replace('/[^A-Za-z0-9._-]/', '_', $basename).'.'.$format;
-
-        return response($content, 200, [
-            'Content-Type' => $contentType,
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-            'Cache-Control' => 'no-store',
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
     }
 }

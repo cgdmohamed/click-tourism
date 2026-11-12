@@ -43,6 +43,18 @@ class ReportCsvTest extends TestCase
         $this->assertSame('عميل', $csv->cell('عميل'));
     }
 
+    public function test_generated_money_and_dates_are_never_prefixed_and_newlines_are_neutralised(): void
+    {
+        $csv = new ReportCsv;
+
+        $this->assertSame('-12.50', $csv->cell($csv->money(-1250, 2)));
+        $this->assertSame('-0.005', $csv->cell($csv->money(-5, 3)));
+        $this->assertSame('2026-03-05', $csv->cell($csv->date('2026-03-05 10:00:00')));
+        $this->assertSame('', $csv->cell($csv->date(null)));
+        $this->assertSame("'\n=1+1", $csv->cell("\n=1+1"));
+        $this->assertSame('a=b', $csv->cell('a=b'));
+    }
+
     public function test_the_output_starts_with_a_utf8_bom(): void
     {
         $this->assertStringStartsWith("\xEF\xBB\xBF", (new ReportCsv)->build([['a', 'b']]));

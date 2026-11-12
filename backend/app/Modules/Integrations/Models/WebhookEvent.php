@@ -12,10 +12,12 @@ class WebhookEvent extends Model
         'payload',
         'status',
         'attempts',
+        'processed_at',
+        'last_error',
     ];
 
     protected function casts(): array
     {
-        return ['payload' => 'array'];
+        return ['payload' => 'array', 'processed_at' => 'datetime'];
     }
 }

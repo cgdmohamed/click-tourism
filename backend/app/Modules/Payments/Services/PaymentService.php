@@ -9,6 +9,7 @@ use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Accounting\Services\RealizedFxService;
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Commissions\Services\CommissionService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -42,6 +43,7 @@ class PaymentService
         private readonly AuditService $audit,
         private readonly PartyLedgerService $ledger,
         private readonly RealizedFxService $realizedFx,
+        private readonly CommissionService $commissions,
     ) {}
 
     public function record(array $data, ?int $actorId = null, ?string $idempotencyKey = null): Payment
@@ -137,6 +139,9 @@ class PaymentService
 
             $this->postReceipt($payment, $cashAccount, $actorId, $allocations);
             $this->audit->log('payment.recorded', $payment, null, $payment->toApiArray(), $actorId);
+            foreach ($allocations as $allocation) {
+                $this->commissions->syncBooking($allocation['booking'], $actorId);
+            }
 
             return $payment->refresh()->load('allocations');
         });
@@ -225,6 +230,9 @@ class PaymentService
             $payment->update(['unallocated_minor' => $available]);
             if ($changes !== []) {
                 $this->audit->log('payment.allocated', $payment, null, ['allocations' => $changes], $actorId);
+                foreach (array_keys($seen) as $bookingPublicId) {
+                    $this->commissions->syncBooking(Booking::query()->where('public_id', $bookingPublicId)->value('id'), $actorId);
+                }
             }
 
             return $payment->refresh()->load('allocations');
@@ -264,6 +272,7 @@ class PaymentService
             $this->audit->log('payment.unallocated', $payment, null, [
                 'booking_id' => $bookingPublicId, 'amount_minor' => $released,
             ], $actorId);
+            $this->commissions->syncBooking($booking, $actorId);
 
             return $payment->refresh()->load('allocations');
         });
@@ -372,8 +381,12 @@ class PaymentService
                 $this->posting->reverse($entry, $reason, $actorId);
             }
 
+            $affectedBookings = PaymentAllocation::query()->where('payment_id', $payment->id)->pluck('booking_id');
             PaymentAllocation::query()->where('payment_id', $payment->id)->delete();
             $payment->update(['status' => 'cancelled', 'unallocated_minor' => 0]);
+            foreach ($affectedBookings as $affectedBookingId) {
+                $this->commissions->syncBooking((int) $affectedBookingId, $actorId);
+            }
             $this->audit->log('payment.cancelled', $payment, ['status' => 'posted'], [
                 'status' => 'cancelled', 'reason' => $reason, 'reversed_entries' => $entries->count(),
             ], $actorId);
@@ -552,6 +565,9 @@ class PaymentService
             ));
 
             $this->audit->log('refund.approved', $refund, ['status' => 'requested'], ['status' => 'approved'], $actorId);
+            if ($refund->booking_id !== null) {
+                $this->commissions->syncBooking((int) $refund->booking_id, $actorId);
+            }
 
             return $refund->refresh();
         });
