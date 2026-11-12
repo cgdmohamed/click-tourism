@@ -24,7 +24,6 @@ use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\CreditLimitService;
 use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\PaymentAllocation;
-use App\Modules\Tax\Models\TaxProfile;
 use App\Modules\Tax\Services\TaxPolicy;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -687,29 +686,12 @@ class BookingService
         $grossSell = $quantity * $unitSell;
         $grossCost = $quantity * $unitCost;
 
-        // Settings `tax.enabled`: when off, items never carry tax (any profile
-        // is ignored). When on, a missing profile falls back to `tax.default_rate`
-        // (percent, exclusive); an explicit profile always wins.
-        $taxProfile = null;
-        if ($this->taxPolicy->enabled() && ! empty($item['tax_profile_id'])) {
-            // Accepts the public id (preferred) or the legacy internal numeric id.
-            $ref = (string) $item['tax_profile_id'];
-            $taxProfile = TaxProfile::query()
-                ->where(fn ($query) => $query->where('public_id', $ref)->orWhere('id', ctype_digit($ref) ? (int) $ref : 0))
-                ->first();
-            if (! $taxProfile) {
-                throw new DomainException('Tax profile not found.');
-            }
-        }
-
-        $rate = '0';
-        if ($taxProfile) {
-            $rate = (string) $taxProfile->rate;
-        } elseif ($this->taxPolicy->enabled() && empty($item['tax_profile_id'])) {
-            $rate = $this->taxPolicy->defaultRate();
-        }
-        $inclusive = $taxProfile?->is_inclusive ?? false;
-        $tax = $this->taxFor($grossSell, $rate, $inclusive);
+        // One tax per installation (settings tax.*). A tax_profile_id sent by an
+        // old client is ignored; new items never reference a profile.
+        $enabled = $this->taxPolicy->enabled();
+        $rate = $enabled ? $this->taxPolicy->rate() : '0';
+        $inclusive = $enabled && $this->taxPolicy->inclusive();
+        $tax = $this->taxPolicy->taxOn($grossSell);
 
         $supplier = ! empty($item['supplier_id'])
             ? Supplier::query()->where('public_id', $item['supplier_id'])->first()
@@ -727,24 +709,12 @@ class BookingService
             'unit_sell_minor' => $unitSell,
             'cost_currency' => strtoupper($item['cost_currency'] ?? $currency),
             'sell_currency' => strtoupper($item['sell_currency'] ?? $currency),
-            'tax_profile_id' => $taxProfile?->id,
+            'tax_profile_id' => null,
             'tax_rate_snapshot' => $rate,
             'tax_minor' => $tax,
             'total_sell_minor' => $grossSell + ($inclusive ? 0 : $tax),
             'total_cost_minor' => $grossCost,
         ];
-    }
-
-    private function taxFor(int $grossMinor, string $rate, bool $inclusive): int
-    {
-        if (bccomp($rate, '0', 4) <= 0) {
-            return 0;
-        }
-
-        $divisor = $inclusive ? bcadd('100', $rate, 6) : '100';
-        $raw = bcdiv(bcmul((string) $grossMinor, $rate, 8), $divisor, 8);
-
-        return (int) bcdiv(bcadd($raw, '0.5', 8), '1', 0);
     }
 
     private function history(Booking $booking, ?string $from, string $to, ?string $reason, ?int $actorId): void

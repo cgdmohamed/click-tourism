@@ -177,6 +177,7 @@ class ExpenseController extends ApiController
             'expense_date' => [$required, 'date'],
             'amount_minor' => [$required, 'integer', 'min:1'],
             'tax_minor' => ['nullable', 'integer', 'min:0'],
+            'tax_applied' => ['sometimes', 'boolean'],
             'currency' => [$required, 'string', 'size:3', Rule::exists('currencies', 'code')],
             'fx_rate' => ['nullable', 'numeric', 'gt:0'],
             'description' => [$required, 'string', 'max:255'],

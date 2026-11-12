@@ -260,6 +260,26 @@ class InvoiceTest extends TestCase
             ->assertJsonPath('data.total_minor', 100000);
     }
 
+    public function test_inclusive_tax_setting_extracts_tax_from_the_entered_line_amount(): void
+    {
+        $settings = app(SettingService::class);
+        $settings->set('tax', 'enabled', 'true');
+        $settings->set('tax', 'default_rate', '15');
+        $settings->set('tax', 'inclusive', 'true');
+
+        $payload = $this->customerInvoicePayload();
+        $payload['lines'][0]['tax_applied'] = true;
+
+        // 115000 entered, 15% inside: 15000 tax, 100000 net.
+        $payload['lines'][0]['credit_minor'] = 115000;
+        unset($payload['lines'][0]['unit_price_minor'], $payload['lines'][0]['quantity']);
+
+        $this->create($payload)->assertCreated()
+            ->assertJsonPath('data.subtotal_minor', 100000)
+            ->assertJsonPath('data.tax_minor', 15000)
+            ->assertJsonPath('data.total_minor', 115000);
+    }
+
     public function test_customer_invoice_lifecycle_posts_to_customer_subaccount(): void
     {
         $payload = $this->customerInvoicePayload();

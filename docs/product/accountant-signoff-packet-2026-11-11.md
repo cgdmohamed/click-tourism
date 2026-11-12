@@ -63,7 +63,7 @@ Each section states what the software does today, the exact knob behind it, and 
 
 ### 2.3 Tax (DEC-009, DEC-021, DEC-032, DEC-036)
 
-- **Today:** `tax.enabled = false` and `tax.default_rate = 0`. Booking items choose a tax profile (rate with up to four decimals plus an `is_inclusive` flag); customer invoice lines carry an explicit `tax_minor` and a tax account instead of a profile. The booking form only offers a tax profile when tax is enabled, and the server rejects any non-zero tax while it is disabled. The server rounds half-up to the minor unit and the web form mirrors the same rule (pinned by tests on both sides).
+- **Today:** `tax.enabled = false` and `tax.default_rate = 0`. The installation has exactly one tax, defined only in Settings: `tax.enabled`, `tax.default_rate` (0-100) and `tax.inclusive`. Bookings, invoices, expenses and vouchers compute tax from those settings; there is no per-item tax choice, and the server rejects any non-zero tax while it is disabled. The server rounds half-up to the minor unit and the web form mirrors the same rule (pinned by tests on both sides).
 - **Mappings to confirm:** output tax / tax payable `2200`, input tax `1160`, and whether input tax on expenses is recoverable at all.
 - **Needs from you:** the tax point (invoice date vs. service date vs. payment), the default rate, whether prices are quoted inclusive, and the treatment of withholding on commissions.
 - **Blocks:** `tax.enabled`; commission tax lines; expense input tax.

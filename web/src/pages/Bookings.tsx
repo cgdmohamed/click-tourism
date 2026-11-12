@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
-import type { Booking, Paginated, TaxProfile } from '../lib/types'
+import type { Booking, Paginated } from '../lib/types'
 import {
   Badge,
   Button,
@@ -28,7 +28,7 @@ import PartyPicker from '../components/PartyPicker'
 import QuickCreateCustomer from '../components/QuickCreateCustomer'
 import { statusLabel } from '../lib/labels'
 import { taxMinor } from '../lib/tax'
-import { useBaseCurrency, useDefaultTaxRate, useTaxEnabled } from '../lib/useSetting'
+import { useBaseCurrency, useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
@@ -44,7 +44,6 @@ type DraftItem = {
   unit_sell: string
   cost_currency: string
   sell_currency: string
-  tax_profile_id: string
 }
 
 const emptyItem = (currency: string): DraftItem => ({
@@ -57,7 +56,6 @@ const emptyItem = (currency: string): DraftItem => ({
   unit_sell: '0',
   cost_currency: currency,
   sell_currency: currency,
-  tax_profile_id: '',
 })
 
 export default function Bookings() {
@@ -65,6 +63,7 @@ export default function Bookings() {
   const { activeBranch, user, can } = useAuth()
   const { enabled: taxEnabled } = useTaxEnabled()
   const { rate: defaultTaxRate } = useDefaultTaxRate()
+  const taxInclusive = useTaxInclusive()
   const baseCurrency = useBaseCurrency()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
@@ -134,26 +133,15 @@ export default function Bookings() {
         unitCost: toDecimal(tour.estimated_cost_minor, tour.currency),
       })))
 
-  const taxProfilesQuery = useQuery({
-    queryKey: ['tax-profiles'],
-    enabled: open && taxEnabled,
-    queryFn: async () => {
-      const { data } = await api.get<{ data: TaxProfile[] }>('/tax-profiles')
-      return data.data
-    },
-  })
-  const taxProfiles = useMemo(() => taxProfilesQuery.data ?? [], [taxProfilesQuery.data])
-
   const itemAmounts = useCallback(
     (item: DraftItem) => {
       const quantity = Number.parseInt(item.quantity || '0', 10) || 0
       const gross = toMinor(item.unit_sell || '0', item.sell_currency) * quantity
       const cost = toMinor(item.unit_cost || '0', item.cost_currency) * quantity
-      const profile = taxEnabled ? taxProfiles.find((candidate) => candidate.id === item.tax_profile_id) : undefined
-      const tax = taxEnabled ? taxMinor(gross, profile?.rate ?? defaultTaxRate, profile?.is_inclusive ?? false) : 0
-      return { cost, tax, sell: gross + (profile?.is_inclusive ? 0 : tax) }
+      const tax = taxEnabled ? taxMinor(gross, defaultTaxRate, taxInclusive) : 0
+      return { cost, tax, sell: gross + (taxInclusive ? 0 : tax) }
     },
-    [taxProfiles, taxEnabled, defaultTaxRate],
+    [taxEnabled, defaultTaxRate, taxInclusive],
   )
 
   const totals = useMemo(() => {
@@ -193,7 +181,6 @@ export default function Bookings() {
           unit_sell_minor: toMinor(item.unit_sell || '0', item.sell_currency),
           cost_currency: item.cost_currency,
           sell_currency: item.sell_currency,
-          tax_profile_id: taxEnabled ? item.tax_profile_id || null : null,
         })),
       }
       if (editTarget) {
@@ -300,7 +287,6 @@ export default function Bookings() {
         unit_sell: toDecimal(item.unit_sell_minor, item.sell_currency ?? booking.currency),
         cost_currency: item.cost_currency ?? booking.currency,
         sell_currency: item.sell_currency ?? booking.currency,
-        tax_profile_id: item.tax_profile_id ?? '',
       })),
     )
     setOpen(true)
@@ -560,18 +546,9 @@ export default function Bookings() {
                 />
               </div>
               <div className="sm:col-span-4">
-                {taxEnabled ? (
-                  <Select value={item.tax_profile_id} onChange={(event) => updateItem(index, { tax_profile_id: event.target.value })} aria-label={t('tax')}>
-                    <option value="">{t('tax')}: {t('none')}</option>
-                    {taxProfiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name} ({Number(profile.rate)}%{profile.is_inclusive ? (locale === 'ar' ? '، شامل' : ', inclusive') : ''})
-                      </option>
-                    ))}
-                  </Select>
-                ) : (
+                {!taxEnabled ? (
                   <p className="text-small text-text-subtle">{locale === 'ar' ? 'الضريبة معطلة في الإعدادات.' : 'Tax is disabled in settings.'}</p>
-                )}
+                ) : null}
               </div>
               <div className="text-small self-center text-text-subtle sm:col-span-7">
                 {taxEnabled ? `${t('tax')}: ${toDecimal(itemAmounts(item).tax, item.sell_currency)} ${item.sell_currency}` : ''}

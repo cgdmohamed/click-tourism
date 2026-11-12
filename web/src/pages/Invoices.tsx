@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
-import { useDefaultTaxRate, useTaxEnabled } from '../lib/useSetting'
+import { useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import { taxMinor } from '../lib/tax'
 import {
   Badge,
@@ -200,11 +200,14 @@ export default function Invoices() {
 
   const { enabled: taxEnabled, loaded: taxFlagLoaded } = useTaxEnabled()
   const { rate: defaultTaxRate, loaded: taxRateLoaded } = useDefaultTaxRate()
+  const taxInclusive = useTaxInclusive()
   const lineTax = (line: typeof emptyLine) =>
-    taxEnabled && line.tax_applied ? taxMinor(lineSubtotal(line), defaultTaxRate, false) : 0
+    taxEnabled && line.tax_applied ? taxMinor(lineSubtotal(line), defaultTaxRate, taxInclusive) : 0
 
-  const formSubtotal = form.lines.reduce((sum, line) => sum + lineSubtotal(line), 0)
+  const formGross = form.lines.reduce((sum, line) => sum + lineSubtotal(line), 0)
   const formTax = form.lines.reduce((sum, line) => sum + lineTax(line), 0)
+  // Inclusive: entered amounts already contain the tax, so the total is the entered sum.
+  const formSubtotal = taxInclusive ? formGross - formTax : formGross
   const formTotal = formSubtotal + formTax
 
   const create = useMutation({
@@ -541,7 +544,7 @@ export default function Invoices() {
                       </Field>
                     </div>
                     <div className="sm:col-span-2">
-                      <Field label={L('تطبيق الضريبة', 'Apply tax')}>
+                      {taxEnabled ? <Field label={L('تطبيق الضريبة', 'Apply tax')}>
                         <label className="flex items-center gap-2 text-small">
                           <span className="relative inline-flex h-5 w-9 shrink-0">
                             <input type="checkbox" role="switch" className="peer sr-only" checked={taxEnabled && line.tax_applied}
@@ -550,9 +553,9 @@ export default function Invoices() {
                             <span className="absolute inset-0 rounded-full bg-border-default transition-colors peer-checked:bg-brand-1 peer-disabled:opacity-40" />
                             <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
                           </span>
-                          {L('ضريبة', 'VAT')} {defaultTaxRate}% — {L('تلقائي', 'Automatic')}
+                          {L('ضريبة', 'VAT')} {defaultTaxRate}%{taxInclusive ? L(' (شاملة)', ' (inclusive)') : ''} — {L('تلقائي', 'Automatic')}
                         </label>
-                      </Field>
+                      </Field> : null}
                     </div>
                   </>
                 ) : (
@@ -589,7 +592,7 @@ export default function Invoices() {
                       />
                     </div>
                     <div className="sm:col-span-1">
-                      <label className="flex items-center gap-1 text-small" title={L('الضريبة من الإعدادات', 'Tax from settings')}>
+                      {taxEnabled ? <label className="flex items-center gap-1 text-small" title={L('الضريبة من الإعدادات', 'Tax from settings')}>
                         <span className="relative inline-flex h-5 w-9 shrink-0">
                           <input type="checkbox" role="switch" className="peer sr-only" checked={taxEnabled && line.tax_applied}
                             disabled={!taxEnabled || !taxRateLoaded || Number(defaultTaxRate) <= 0}
@@ -598,7 +601,7 @@ export default function Invoices() {
                           <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
                         </span>
                         {defaultTaxRate}%
-                      </label>
+                      </label> : null}
                     </div>
                   </>
                 )}
@@ -619,7 +622,7 @@ export default function Invoices() {
               <span>
                 {L('المجموع الفرعي', 'Subtotal')}: <Money amountMinor={formSubtotal} currency={form.currency} />
               </span>
-              <span>{L('الضريبة', 'Tax')}: <Money amountMinor={formTax} currency={form.currency} /></span>
+              {taxEnabled ? <span>{L('الضريبة', 'Tax')}: <Money amountMinor={formTax} currency={form.currency} /></span> : null}
               <span className="font-semibold">
                 {L('المجموع', 'Total')}: <Money amountMinor={formTotal} currency={form.currency} />
               </span>

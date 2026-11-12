@@ -75,7 +75,6 @@ class BookingController extends ApiController
             'items.*.cost_currency' => ['nullable', 'string', 'size:3'],
             'items.*.sell_currency' => ['nullable', 'string', 'size:3'],
             'items.*.supplier_id' => ['nullable', 'string'],
-            'items.*.tax_profile_id' => ['nullable', 'regex:/^[0-9A-Za-z]+$/'],
         ]);
 
         $booking = $bookings->create($data, $this->actorId());
@@ -113,7 +112,6 @@ class BookingController extends ApiController
             'items.*.cost_currency' => ['nullable', 'string', 'size:3'],
             'items.*.sell_currency' => ['nullable', 'string', 'size:3'],
             'items.*.supplier_id' => ['nullable', 'string'],
-            'items.*.tax_profile_id' => ['nullable', 'regex:/^[0-9A-Za-z]+$/'],
         ]);
 
         $booking = $bookings->update($booking, $data, $this->actorId());

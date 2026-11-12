@@ -23,11 +23,11 @@ runs once, inside one transaction, and writes:
 | Fiscal calendar | `accounting.fiscal_year_start` (MM-DD) and the fiscal year containing today with 12 open periods |
 | Chart of accounts | the product default chart, cash and bank accounts registered in the base currency, expense categories |
 | Roles and permissions | `admin`, `accountant`, `senior_accountant`, `sales`, `viewer` |
-| Reference data | one branch `HQ` (name configurable), currencies, CRM sources and pipeline stages, a zero-rate "No tax" profile |
+| Reference data | one branch `HQ` (name configurable), currencies, CRM sources and pipeline stages, tax settings (`tax.enabled`, `tax.default_rate`, `tax.inclusive`; the installation has exactly one tax) |
 | Initial administrator | role `admin`, attached to `HQ`; audit event `installation.completed` (no secrets) |
 
 It never creates demo users, sample customers, bookings, a second branch or a
-jurisdiction-specific tax profile. The accounting policy stays **unapproved**
+tax profile (tax is one rate in Settings, off with rate 0 by default). The accounting policy stays **unapproved**
 (auto-posting off) until an accountant signs off in the application.
 
 Fail-closed rules (all covered by `InstallCommandTest`):
@@ -45,7 +45,7 @@ Fail-closed rules (all covered by `InstallCommandTest`):
 
 Every option has an environment fallback for automation
 (`ERP_COMPANY_NAME`, `ERP_COMPANY_NAME_AR`, `ERP_LOGO_PATH`, `ERP_BASE_CURRENCY`,
-`ERP_FISCAL_START`, `ERP_TIMEZONE`, `ERP_LOCALE`, `ERP_TAX_ENABLED`,
+`ERP_FISCAL_START`, `ERP_TIMEZONE`, `ERP_LOCALE`, `ERP_TAX_ENABLED`, `ERP_TAX_RATE` (0-100), `ERP_TAX_INCLUSIVE`,
 `ERP_BRANCH_NAME`, `ERP_ADMIN_NAME`, `ERP_ADMIN_EMAIL`). Supported base
 currencies are the seeded ones: EGP, SAR, USD, EUR, AED, KWD. The base currency
 is locked once the first journal entry is posted.

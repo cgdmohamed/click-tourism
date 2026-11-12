@@ -53,7 +53,7 @@ const emptyForm = {
   category_id: '',
   expense_date: todayISO(),
   amount: '',
-  tax: '',
+  tax_applied: false,
   currency: 'EGP',
   fx_rate: '',
   description: '',
@@ -125,7 +125,7 @@ export default function Expenses() {
           category_id: form.category_id,
           expense_date: form.expense_date,
           amount_minor: toMinor(form.amount, form.currency),
-          tax_minor: taxEnabled && form.tax ? toMinor(form.tax, form.currency) : 0,
+          tax_applied: taxEnabled && form.tax_applied,
           currency: form.currency,
           fx_rate: form.fx_rate || undefined,
           description: form.description,
@@ -312,12 +312,14 @@ export default function Expenses() {
           <Field label={L('سعر الصرف (للعملات الأجنبية)', 'Exchange rate (foreign currency)')}>
             <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
-          <Field label={`${L('الإجمالي شامل الضريبة', 'Total incl. tax')} (${form.currency})`} required>
+          <Field label={`${L('المبلغ', 'Amount')} (${form.currency})`} required>
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
-          <Field label={L('منها ضريبة مدخلات', 'Of which input tax')} hint={!taxEnabled ? L('الضريبة معطّلة في الإعدادات.', 'Tax is disabled in settings.') : undefined}>
-            <Input value={taxEnabled ? form.tax : ''} onChange={(event) => setForm({ ...form, tax: event.target.value })} inputMode="decimal" dir="ltr" disabled={!taxEnabled} />
-          </Field>
+          {taxEnabled ? (
+            <Field label={L('تطبيق ضريبة المدخلات', 'Apply input tax')} hint={L('النسبة ونوع الاحتساب من الإعدادات.', 'Rate and inclusive/exclusive come from settings.')}>
+              <input type="checkbox" checked={form.tax_applied} onChange={(event) => setForm({ ...form, tax_applied: event.target.checked })} />
+            </Field>
+          ) : null}
           <Field label={L('الدفع', 'Paid')} required>
             <Select value={form.paid_from} onChange={(event) => setForm({ ...form, paid_from: event.target.value as 'cash' | 'supplier' })}>
               <option value="cash">{L('من خزينة / بنك', 'From cash / bank')}</option>

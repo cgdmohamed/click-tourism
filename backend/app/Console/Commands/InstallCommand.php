@@ -24,6 +24,8 @@ class InstallCommand extends Command
         {--timezone=UTC : IANA timezone. Env ERP_TIMEZONE}
         {--locale=en : Default language (ar or en). Env ERP_LOCALE}
         {--tax-enabled : Turn tax calculation on (default off). Env ERP_TAX_ENABLED}
+        {--tax-rate= : The single tax rate in percent, 0-100 (default 0). Env ERP_TAX_RATE}
+        {--tax-inclusive : Entered prices already include tax (default exclusive). Env ERP_TAX_INCLUSIVE}
         {--branch-name=Head Office : Head-office branch name (English). Env ERP_BRANCH_NAME}
         {--admin-name=Administrator : Administrator display name. Env ERP_ADMIN_NAME}
         {--admin-email= : Administrator e-mail. Env ERP_ADMIN_EMAIL}
@@ -55,6 +57,8 @@ class InstallCommand extends Command
             'timezone' => $this->value('timezone', 'ERP_TIMEZONE', 'UTC'),
             'locale' => $this->value('locale', 'ERP_LOCALE', 'en'),
             'tax_enabled' => $this->option('tax-enabled') || filter_var(env('ERP_TAX_ENABLED', false), FILTER_VALIDATE_BOOL),
+            'tax_rate' => $this->value('tax-rate', 'ERP_TAX_RATE', '0'),
+            'tax_inclusive' => $this->option('tax-inclusive') || filter_var(env('ERP_TAX_INCLUSIVE', false), FILTER_VALIDATE_BOOL),
             'branch_name_en' => $this->value('branch-name', 'ERP_BRANCH_NAME', 'Head Office'),
             'branch_name_ar' => null,
             'admin_name' => $this->value('admin-name', 'ERP_ADMIN_NAME', 'Administrator'),

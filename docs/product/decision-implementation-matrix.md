@@ -2,6 +2,7 @@
 
 | Decision | Previous state | Required change | Final implementation status | Accountant approval | Related files |
 |---|---|---|---|---|---|
+| DEC-009/021/032/036 (tax) | Per-item tax profiles with effective dates | One tax per installation: settings `tax.enabled`, `tax.default_rate`, `tax.inclusive`; profiles page/endpoint removed, `tax_profile_id` ignored; effective-dating dropped | Implemented (agent/single-tax-setting); posting accounts unchanged | Pending (rate/inclusive policy) | `TaxPolicy.php`, `BookingService.php`, `SettingController.php` |
 | DEC-004 | No guarded trigger default | Configurable trigger, fully-collected default | Implemented (agent/commissions): rules, accrual on full collection, approval, posting behind `accounting_policy_approved` and `commission_auto_post=false`, reversal, payout | Pending for production posting | `docs/architecture/commissions.md` |
 | DEC-008 | No explicit revaluation guard | Revaluation/reversal configuration | Disabled settings only; no posting | Pending | `SettingService.php` |
 | DEC-014 | Branch dimension and access existed | Record selected one-ledger model without activating clearing | Existing separation retained; inter-branch posting limited to fixed-asset transfers (clearing accounts 1180/2160, see fixed-assets audit item 18) | Pending | ADR-0005, `BranchScope` |

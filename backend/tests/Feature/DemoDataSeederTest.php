@@ -111,7 +111,7 @@ class DemoDataSeederTest extends TestCase
         $this->assertSame(5, $dashboard['open_bookings']);
         $this->assertSame(3, $dashboard['confirmed_bookings']);
         $this->assertSame(DemoDataSeeder::EXPECTED_COLLECTIONS_MINOR, $dashboard['collected_minor']);
-        $this->assertSame(800_000, $dashboard['overdue_minor']);
+        $this->assertSame(982_000, $dashboard['overdue_minor']);
     }
 
     public function test_legacy_invoice_sequence_prefix_is_healed_without_resetting_its_number(): void

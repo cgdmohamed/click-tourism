@@ -7,6 +7,9 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Tax\Models\TaxProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Laravel\Sanctum\Sanctum;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -21,24 +24,15 @@ class TaxSettingTest extends TestCase
         $this->buildAccounting();
     }
 
-    private function settings(bool $enabled, string $defaultRate = '0'): void
+    private function settings(bool $enabled, string $rate = '0', bool $inclusive = false): void
     {
-        app(SettingService::class)->set('tax', 'enabled', $enabled ? 'true' : 'false');
-        app(SettingService::class)->set('tax', 'default_rate', $defaultRate);
+        $settings = app(SettingService::class);
+        $settings->set('tax', 'enabled', $enabled ? 'true' : 'false');
+        $settings->set('tax', 'default_rate', $rate);
+        $settings->set('tax', 'inclusive', $inclusive ? 'true' : 'false');
     }
 
-    private function profile(string $rate = '14.0000'): TaxProfile
-    {
-        return TaxProfile::query()->create([
-            'name' => 'VAT '.$rate,
-            'rate' => $rate,
-            'is_inclusive' => false,
-            'effective_from' => Carbon::now()->startOfYear()->toDateString(),
-            'is_active' => true,
-        ]);
-    }
-
-    private function booking(?int $profileId = null)
+    private function booking(array $item = [])
     {
         return app(BookingService::class)->create([
             'branch_id' => $this->branch->public_id,
@@ -46,65 +40,86 @@ class TaxSettingTest extends TestCase
             'start_date' => Carbon::now()->addDays(5)->toDateString(),
             'currency' => 'EGP',
             'fx_rate' => '1',
-            'items' => [[
+            'items' => [array_merge([
                 'service_type' => 'hotel',
                 'description' => 'Hotel',
                 'quantity' => 1,
                 'unit_cost_minor' => 50000,
                 'unit_sell_minor' => 100000,
-                'tax_profile_id' => $profileId,
-            ]],
+            ], $item)],
         ], $this->user->id);
     }
 
-    public function test_disabled_tax_ignores_profile_and_default_rate(): void
+    public function test_disabled_tax_adds_nothing(): void
     {
         $this->settings(false, '10');
 
-        $booking = $this->booking($this->profile()->id);
-        $item = $booking->items->first();
+        $booking = $this->booking();
 
         $this->assertSame(0, $booking->tax_minor);
         $this->assertSame(100000, $booking->total_sell_minor);
-        $this->assertNull($item->tax_profile_id);
-        $this->assertSame(0, $item->tax_minor);
+        $this->assertSame(0, $booking->items->first()->tax_minor);
     }
 
-    public function test_enabled_tax_applies_default_rate_when_no_profile(): void
+    public function test_exclusive_rate_is_added_on_top(): void
     {
         $this->settings(true, '10');
 
         $booking = $this->booking();
-        $item = $booking->items->first();
 
         $this->assertSame(10000, $booking->tax_minor);
         $this->assertSame(110000, $booking->total_sell_minor);
-        $this->assertNull($item->tax_profile_id);
-        $this->assertSame(10.0, (float) $item->tax_rate_snapshot);
+        $this->assertSame(10.0, (float) $booking->items->first()->tax_rate_snapshot);
     }
 
-    public function test_enabled_with_zero_default_rate_adds_no_tax(): void
+    public function test_inclusive_rate_is_extracted_from_the_price(): void
+    {
+        $this->settings(true, '14', true);
+
+        $booking = $this->booking();
+
+        // 100000 * 14 / 114 = 12280.7 -> 12281
+        $this->assertSame(12281, $booking->tax_minor);
+        $this->assertSame(100000, $booking->total_sell_minor);
+    }
+
+    public function test_enabled_with_zero_rate_adds_no_tax(): void
     {
         $this->settings(true, '0');
 
         $this->assertSame(0, $this->booking()->tax_minor);
     }
 
-    public function test_profile_overrides_default_rate(): void
+    public function test_a_legacy_tax_profile_id_is_ignored(): void
     {
         $this->settings(true, '10');
+        $profile = TaxProfile::query()->create(['name' => 'Old 14', 'effective_from' => '2026-01-01', 'rate' => '14.0000', 'is_inclusive' => false, 'is_active' => true]);
 
-        $booking = $this->booking($this->profile('14.0000')->id);
+        $item = $this->booking(['tax_profile_id' => $profile->public_id])->items->first();
 
-        $this->assertSame(14000, $booking->tax_minor);
-        $this->assertSame(114000, $booking->total_sell_minor);
-        $this->assertSame(14.0, (float) $booking->items->first()->tax_rate_snapshot);
+        $this->assertSame(10000, $item->tax_minor);
+        $this->assertNull($item->tax_profile_id);
     }
 
-    public function test_zero_rate_profile_means_explicitly_no_tax(): void
+    public function test_settings_api_validates_the_tax_rate_and_flags(): void
     {
-        $this->settings(true, '10');
+        $permission = Permission::query()->firstOrCreate(['name' => 'settings.update', 'guard_name' => 'web']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->user->givePermissionTo($permission);
+        Sanctum::actingAs($this->user);
 
-        $this->assertSame(0, $this->booking($this->profile('0.0000')->id)->tax_minor);
+        foreach (['101', '-1', 'abc', ''] as $bad) {
+            $this->putJson('/api/v1/settings', ['settings' => [['group' => 'tax', 'key' => 'default_rate', 'value' => $bad]]])
+                ->assertStatus(422);
+        }
+        $this->putJson('/api/v1/settings', ['settings' => [['group' => 'tax', 'key' => 'inclusive', 'value' => 'maybe']]])
+            ->assertStatus(422);
+
+        $this->putJson('/api/v1/settings', ['settings' => [
+            ['group' => 'tax', 'key' => 'default_rate', 'value' => '14'],
+            ['group' => 'tax', 'key' => 'inclusive', 'value' => 'true'],
+        ]])->assertOk();
+        $this->assertSame('14', app(SettingService::class)->get('tax', 'default_rate'));
+        $this->assertDatabaseHas('audit_events', ['action' => 'settings.updated']);
     }
 }

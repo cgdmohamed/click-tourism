@@ -368,7 +368,6 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
                         <Td className="text-end tabular">{formatMoney(item.unit_sell_minor, item.sell_currency, locale)}</Td>
                         <Td className="text-end tabular">
                           {formatMoney(item.tax_minor ?? 0, booking.currency, locale)}
-                          {item.tax_profile_name ? <div className="text-small text-text-subtle">{item.tax_profile_name}</div> : null}
                         </Td>
                         <Td className="text-end tabular">{formatMoney(item.total_sell_minor ?? 0, item.sell_currency, locale)}</Td>
                       </tr>
