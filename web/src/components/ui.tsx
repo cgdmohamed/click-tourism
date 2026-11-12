@@ -6,7 +6,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { formatMoney } from '../lib/format'
 import { nextTabIndex } from '../lib/tabs'
@@ -131,7 +131,11 @@ export type SelectOption = {
   value: string
   label: string
   hint?: string
+  /** Optional account/cost-center style code: shown as secondary monospace text before the label. */
+  code?: string
 }
+
+const optionText = (option: SelectOption) => (option.code ? `${option.code} — ${option.label}` : option.label)
 
 /**
  * Combobox for API-driven option lists.
@@ -176,6 +180,8 @@ export function SearchableSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef(onSearch)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [shift, setShift] = useState(0)
 
   useEffect(() => {
     searchRef.current = onSearch
@@ -193,7 +199,7 @@ export function SearchableSelect({
     const needle = query.trim().toLowerCase()
     const filtered = needle
       ? options.filter(
-          (option) => option.label.toLowerCase().includes(needle) || (option.hint ?? '').toLowerCase().includes(needle),
+          (option) => optionText(option).toLowerCase().includes(needle) || (option.hint ?? '').toLowerCase().includes(needle),
         )
       : options
     return clearLabel ? [{ value: '', label: clearLabel }, ...filtered] : filtered
@@ -218,6 +224,21 @@ export function SearchableSelect({
       document.removeEventListener('touchstart', onPointerDown)
     }
   }, [open])
+
+  // Keep the panel inside the viewport (it can be wider than a narrow trigger near a screen edge).
+  useLayoutEffect(() => {
+    if (!open || !panelRef.current) {
+      setShift(0)
+      return
+    }
+    const rect = panelRef.current.getBoundingClientRect()
+    const base = rect.left - shift
+    const margin = 8
+    let next = 0
+    if (base < margin) next = margin - base
+    else if (base + rect.width > window.innerWidth - margin) next = window.innerWidth - margin - (base + rect.width)
+    if (next !== shift) setShift(next)
+  }, [open, rows.length, shift])
 
   // The search box takes focus when the list opens.
   useEffect(() => {
@@ -283,22 +304,26 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         // role=combobox does not take its name from content, so name it explicitly (label/placeholder + current value).
-        aria-label={[ariaLabel ?? placeholder ?? t('search'), selected?.label].filter(Boolean).join(': ')}
+        aria-label={[ariaLabel ?? placeholder ?? t('search'), selected ? optionText(selected) : undefined].filter(Boolean).join(': ')}
         disabled={disabled}
         className={cx(controlBase, 'flex h-9 items-center justify-between gap-2 pe-2 text-start')}
         onClick={toggle}
         onKeyDown={onTriggerKeyDown}
       >
-        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-placeholder')}>
-          {selected?.label ?? placeholder ?? ''}
+        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-placeholder')} title={selected ? optionText(selected) : undefined}>
+          {selected ? optionText(selected) : placeholder ?? ''}
         </span>
         <Icon name="chevronDown" className={cx('h-4 w-4 shrink-0 text-text-subtle transition', open && 'rotate-180')} />
       </button>
       {open ? (
         // preventDefault on click: this panel sits inside a <label> (Field), and a click on its
         // padding would otherwise be forwarded to the trigger and re-open the list.
+        // Wide enough to read account names (min 20rem or the trigger width), clamped to the viewport and
+        // nudged back on-screen in either direction (LTR/RTL) once measured.
         <div
-          className="absolute z-50 mt-1 w-full rounded-12 border border-border-default bg-surface-default shadow-3"
+          ref={panelRef}
+          className="absolute start-0 z-50 mt-1 w-max min-w-[max(100%,min(20rem,calc(100vw-2rem)))] max-w-[calc(100vw-2rem)] rounded-12 border border-border-default bg-surface-default shadow-3"
+          style={{ translate: shift ? `${shift}px 0` : undefined }}
           onClick={(event) => event.preventDefault()}
         >
           <div className="border-b border-border-subtle p-2">
@@ -327,15 +352,20 @@ export function SearchableSelect({
                   role="option"
                   aria-selected={option.value === value}
                   className={cx(
-                    'text-medium flex w-full items-center justify-between gap-2 rounded-8 px-3 py-2 text-start transition',
+                    'text-medium flex w-full items-start gap-2 rounded-8 px-3 py-2 text-start transition',
                     option.value === value ? 'bg-surface-selected text-text-default' : 'text-text-default',
                     index === activeIndex ? 'bg-surface-hovered' : null,
                   )}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => select(option)}
                 >
-                  <span className="truncate">{option.label}</span>
-                  {option.hint ? <span className="text-small truncate text-text-subtle">{option.hint}</span> : null}
+                  {option.code ? (
+                    <span dir="ltr" className="tabular text-small shrink-0 pt-px font-mono text-text-subtle">{option.code}</span>
+                  ) : null}
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words">{option.label}</span>
+                    {option.hint ? <span className="text-small block break-words text-text-subtle">{option.hint}</span> : null}
+                  </span>
                 </button>
               ))
             )}

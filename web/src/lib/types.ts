@@ -46,6 +46,11 @@ export type Account = {
   balance_minor?: number
   /** Set when the account is the receivable/payable control account. */
   control_party_type?: 'customer' | 'supplier' | null
+  /** Party subledger accounts (ADR-0015): the owning party, null on ordinary accounts. */
+  party_type?: 'customer' | 'supplier' | 'employee' | null
+  party_role?: string | null
+  party_name_ar?: string | null
+  party_name_en?: string | null
 }
 
 export type JournalLine = {
@@ -252,6 +257,58 @@ export type Lead = {
   status: string
   created_at: string
   last_activity_at?: string | null
+  duplicate_of?: { id: string; name: string } | null
+  duplicate_reason?: string | null
+}
+
+export type LeadSourceConfig = {
+  code: string
+  name_ar: string
+  name_en: string
+  is_active: boolean
+}
+
+export type LeadStageConfig = {
+  code: string
+  name_ar: string
+  name_en: string
+  sort_order: number
+  is_won: boolean
+  is_lost: boolean
+}
+
+export type LeadOwner = {
+  id: string
+  name: string
+}
+
+export type LeadActivity = {
+  id: number
+  type: string
+  body?: string | null
+  actor: LeadOwner | null
+  created_at: string
+}
+
+export type LeadOwnerChange = {
+  action: 'assigned' | 'reassigned' | 'escalated'
+  from: LeadOwner | null
+  to: LeadOwner | null
+  attempt: number | null
+  at: string
+}
+
+export type LeadDetail = Lead & {
+  service_category?: string | null
+  consent: boolean
+  notes?: string | null
+  reassignment_attempts: number
+  escalated_at?: string | null
+  converted_customer_id?: string | null
+  converted_booking_id?: string | null
+  owner: LeadOwner | null
+  owner_history: LeadOwnerChange[]
+  activities: LeadActivity[]
 }
 
 export type AssignmentRule = {
@@ -350,6 +407,47 @@ export type DashboardSummary = {
   period_to: string
   attention_items: AttentionItem[]
   as_of: string
+}
+
+export type PipelineReport = {
+  from: string
+  to: string
+  branch_id: string | null
+  totals: {
+    captured: number
+    open: number
+    won: number
+    lost: number
+    converted: number
+    unassigned: number
+    conversion_rate: number
+  }
+  by_stage: Array<{
+    stage: string
+    name_ar: string
+    name_en: string
+    is_won: boolean
+    is_lost: boolean
+    count: number
+    share: number
+  }>
+  by_source: Array<{
+    source: string | null
+    name_ar: string
+    name_en: string
+    count: number
+    won: number
+    conversion_rate: number
+  }>
+  by_owner: Array<{
+    owner: string | null
+    name: string | null
+    count: number
+    open: number
+    won: number
+    lost: number
+    conversion_rate: number
+  }>
 }
 
 export type Paginated<T> = {
@@ -761,4 +859,26 @@ export type AuditFilters = {
   branch: string
   from: string
   to: string
+}
+
+export type AppNotification = {
+  id: string
+  type: string
+  title: string
+  body: string | null
+  data: Record<string, unknown>
+  branch_id: string | null
+  read_at: string | null
+  created_at: string
+}
+
+export type AppNotificationList = {
+  data: AppNotification[]
+  meta: {
+    current_page: number
+    last_page: number
+    total: number
+    per_page: number
+    unread_count: number
+  }
 }

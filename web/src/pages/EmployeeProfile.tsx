@@ -8,9 +8,10 @@ import { employeeCategoryLabel, employeeTransactionLabel, statusLabel } from '..
 import type { EmployeeProfile as EmployeeProfilePayload } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, InlineNotice, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat, ProfileTabs, StatementView } from '../components/profile'
+import { localizedName } from '../lib/names'
 
 function nameOf(party: { name_ar: string; name_en: string }, locale: 'ar' | 'en') {
-  return (locale === 'ar' ? party.name_ar : party.name_en) || party.name_ar || party.name_en
+  return (localizedName(party, locale)) || party.name_ar || party.name_en
 }
 
 function initialsOf(name: string) {

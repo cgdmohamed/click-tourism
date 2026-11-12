@@ -26,6 +26,7 @@ import {
   Td,
   Th,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 const emptyFilters: AuditFilters = {
   actor: '',
@@ -170,7 +171,7 @@ export default function AuditLog() {
               <option value="">{t('allBranches')}</option>
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.id}>
-                  {locale === 'ar' ? branch.name_ar : branch.name_en}
+                  {localizedName(branch, locale)}
                 </option>
               ))}
             </Select>

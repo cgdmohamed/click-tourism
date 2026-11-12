@@ -8,6 +8,7 @@ import { supplierCategories, supplierCategoryLabel } from '../lib/labels'
 import type { Paginated, Supplier } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
 import { Icon } from '../components/icons'
+import { localizedName } from '../lib/names'
 
 const categories = supplierCategories
 
@@ -105,9 +106,8 @@ export default function Suppliers() {
                 <tr key={supplier.id}>
                   <Td>
                     <Link to={`/suppliers/${supplier.id}`} className="font-medium text-brand-1-accent hover:underline">
-                      {locale === 'ar' ? supplier.name_ar : supplier.name_en}
+                      {localizedName(supplier, locale)}
                     </Link>
-                    <p className="text-xs text-text-subtle">{locale === 'ar' ? supplier.name_en : supplier.name_ar}</p>
                   </Td>
                   <Td>{categoryLabel(supplier.category)}</Td>
                   <Td dir="ltr">{supplier.phone ?? '—'}</Td>

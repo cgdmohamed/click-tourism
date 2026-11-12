@@ -13,7 +13,7 @@ Originally produced by step `01-product-discovery`; now maintained alongside the
 | `gap-register.md` | Verified list of remaining implementation, QA, and documentation gaps with evidence, severity, and remediation order. | Living |
 | `epics.md` | 13 epics, critical path, milestones, delivery rules. | Draft |
 | `multi-user-ux-roadmap.md` | Multi-user collaboration (concurrency, notifications, approvals inbox, assignment, activity feed) and UX epics; role/branch test plan; single legal entity per install. | Proposed - planning only |
-| `../architecture/mcp-ai-assistant-blueprint.md` | Read-only MCP tool catalog, per-user token model, threat cases, staged acceptance; write tools BLOCKED. | Proposed - design only |
+| `../architecture/mcp-ai-assistant-blueprint.md` | Read-only MCP tool catalog, per-user token model, threat cases, staged acceptance; write tools BLOCKED. | Stage 1 implemented (ADR-0016); stages 2-4 proposed |
 | `issues/` | 54 dependency-ordered, PR-sized issues; each `TE-###` carries a Status line (done / partial / not started / blocked). | Living |
 
 ## What exists vs. what is missing

@@ -25,6 +25,7 @@ import {
   statusTone,
   type SelectOption,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { ReasonModal } from '../components/ReasonModal'
 import { statusLabel } from '../lib/labels'
 
@@ -187,7 +188,7 @@ export default function Journal() {
       customer: merge(
         (customersQuery.data ?? []).map((customer) => ({
           value: customer.id,
-          label: ar ? customer.name_ar : customer.name_en,
+          label: localizedName(customer, ar ? 'ar' : 'en'),
           hint: customer.phone,
         })),
         pickedParties.customer,
@@ -195,7 +196,7 @@ export default function Journal() {
       supplier: merge(
         (suppliersQuery.data ?? []).map((supplier) => ({
           value: supplier.id,
-          label: ar ? supplier.name_ar : supplier.name_en,
+          label: localizedName(supplier, ar ? 'ar' : 'en'),
           hint: supplier.phone,
         })),
         pickedParties.supplier,
@@ -204,7 +205,7 @@ export default function Journal() {
   }, [customersQuery.data, suppliersQuery.data, pickedParties, ar])
 
   const costCenterOptions = useMemo(
-    () => (costCentersQuery.data ?? []).map((center) => ({ value: center.id, label: `${center.code} — ${ar ? center.name_ar : center.name_en}` })),
+    () => (costCentersQuery.data ?? []).map((center) => ({ value: center.id, label: localizedName(center, ar ? 'ar' : 'en'), code: center.code })),
     [costCentersQuery.data, ar],
   )
 
@@ -553,7 +554,7 @@ export default function Journal() {
                       placeholder={t('selectAccount')}
                       options={postableAccounts.map((account) => ({
                         value: account.id,
-                        label: `${account.code} — ${ar ? account.name_ar : account.name_en}`,
+                        label: localizedName(account, ar ? 'ar' : 'en'), code: account.code,
                       }))}
                     />
                   </div>
@@ -703,7 +704,7 @@ export default function Journal() {
                 {(detail.lines ?? []).map((line) => (
                   <tr key={line.id}>
                     <Td className="tabular">
-                      {line.account ? `${line.account.code} — ${locale === 'ar' ? line.account.name_ar : line.account.name_en}` : '—'}
+                      {line.account ? `${line.account.code} — ${localizedName(line.account, locale)}` : '—'}
                     </Td>
                     <Td>{line.description ?? '—'}</Td>
                     <Td className="text-end tabular">{line.debit_minor ? toDecimal(line.debit_minor, detail.currency) : '—'}</Td>

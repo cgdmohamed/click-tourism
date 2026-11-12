@@ -1,4 +1,5 @@
 import type { Locale } from '../i18n'
+import { localizedName } from './names'
 
 export type BeneficiaryType = 'employee' | 'agent' | 'branch'
 export type CommissionBasis = 'percent_revenue' | 'percent_margin' | 'fixed'
@@ -145,5 +146,5 @@ export const basisLabel = (value: string, locale: Locale) => pick(bases, value, 
 
 export function beneficiaryName(ref: BeneficiaryRef | null | undefined, locale: Locale, fallback: string): string {
   if (!ref) return fallback
-  return (locale === 'ar' ? ref.name_ar : ref.name_en) ?? ref.name_en ?? ref.name_ar ?? fallback
+  return localizedName(ref, locale, fallback)
 }

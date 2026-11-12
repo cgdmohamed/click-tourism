@@ -12,6 +12,7 @@ use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
@@ -47,6 +48,7 @@ class InvoiceService
         private readonly PartyLedgerService $ledger,
         private readonly CreditLimitService $creditLimits,
         private readonly TaxPolicy $taxPolicy,
+        private readonly NotificationService $notifications,
     ) {}
 
     /**
@@ -326,6 +328,21 @@ class InvoiceService
 
             $invoice->update(['status' => 'approved', 'approved_by' => $actorId, 'approved_at' => now()]);
             $this->audit->log('invoice.approved', $invoice, ['status' => 'submitted'], ['status' => 'approved'], $actorId);
+
+            if ($invoice->created_by !== null && $invoice->created_by !== $actorId) {
+                $this->notifications->send(
+                    $invoice->created_by,
+                    'invoice.approved',
+                    'Invoice '.$invoice->number.' approved',
+                    'The invoice you submitted has been approved.',
+                    [
+                        'invoice_id' => $invoice->public_id,
+                        'number' => $invoice->number,
+                        'status' => 'approved',
+                    ],
+                    $invoice->branch_id,
+                );
+            }
 
             return $invoice->refresh()->load('lines.account');
         });

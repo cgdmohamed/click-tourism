@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { Badge, Button, Card, CardHeader, Field, InlineNotice, Input, Select } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader } from '../components/profile'
+import { localizedName } from '../lib/names'
 
 function initialsOf(name: string) {
   return (
@@ -64,7 +65,7 @@ export default function Profile() {
   if (!user) return null
 
   const branchName = (branch: { name_ar: string; name_en: string }) =>
-    locale === 'ar' ? branch.name_ar : branch.name_en
+    localizedName(branch, locale)
 
   const submitPassword = () => {
     const errors: Record<string, string> = {}

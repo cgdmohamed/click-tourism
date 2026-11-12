@@ -6,9 +6,11 @@ import { useTheme } from '../theme'
 import { BrandMark, useBrandName } from './Brand'
 import { useSyncCurrencyExponents } from '../lib/useCurrencies'
 import { GlobalSearch } from './GlobalSearch'
+import { NotificationBell } from './NotificationBell'
 import { Icon } from './icons'
 import type { IconName } from './icons'
 import { cx, IconButton, Spinner } from './ui'
+import { localizedName } from '../lib/names'
 
 type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[] }
 
@@ -77,6 +79,7 @@ export function Layout() {
         { to: '/tour-packages', label: locale === 'ar' ? 'البرامج والرحلات' : 'Tours & Packages', icon: 'plane', permission: 'bookings.view' },
         { to: '/bookings', label: t('bookings'), icon: 'plane' },
         { to: '/leads', label: t('crm'), icon: 'target' },
+        { to: '/lead-settings', label: locale === 'ar' ? 'مصادر ومراحل العملاء' : 'Lead sources & stages', icon: 'listChecks', permission: 'leads.manage_rules' },
         { to: '/assignment-rules', label: t('assignmentRules'), icon: 'target', permission: 'leads.manage_rules' },
       ],
     },
@@ -205,6 +208,7 @@ export function Layout() {
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             <GlobalSearch />
+            <NotificationBell />
             {branches.length > 1 ? (
               <label className="text-small flex items-center gap-2 text-text-subtle">
                 <Icon name="building" className="h-4 w-4" />
@@ -216,7 +220,7 @@ export function Layout() {
                 >
                   {branches.map((branch) => (
                     <option key={branch.id} value={branch.id}>
-                      {locale === 'ar' ? branch.name_ar : branch.name_en}
+                      {localizedName(branch, locale)}
                     </option>
                   ))}
                 </select>

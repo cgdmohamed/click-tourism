@@ -23,6 +23,7 @@ export const editable: SettingField[] = [
   { group: 'tax', key: 'default_rate', ar: 'نسبة الضريبة (%)', en: 'Tax rate (%)' },
   { group: 'tax', key: 'inclusive', ar: 'الأسعار شاملة الضريبة', en: 'Prices include tax', type: 'toggle', options: ['true', 'false'] },
   { group: 'crm', key: 'reassign_after_hours', ar: 'إعادة توزيع العميل المحتمل بعد (ساعات)', en: 'Lead reassignment after (hours)' },
+  { group: 'crm', key: 'duplicate_window_days', ar: 'نافذة اكتشاف تكرار العميل المحتمل (أيام، 0 لتعطيلها)', en: 'Lead duplicate window (days, 0 disables)' },
 ]
 
 export const keyOf = (group: string, key: string) => `${group}.${key}`

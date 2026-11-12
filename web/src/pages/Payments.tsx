@@ -31,6 +31,7 @@ import {
   statusTone,
   type SelectOption,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
 import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
@@ -338,8 +339,8 @@ export default function Payments() {
                 <tr key={payment.id}>
                   <Td className="font-medium">{payment.number}</Td>
                   <Td>{formatDate(payment.paid_at, locale)}</Td>
-                  <Td>{payment.customer ? (locale === 'ar' ? payment.customer.name_ar : payment.customer.name_en) : payment.customer_id}</Td>
-                  <Td>{payment.payment_method ? (locale === 'ar' ? payment.payment_method.name_ar : payment.payment_method.name_en || payment.payment_method.name_ar) : paymentMethodLabel(payment.method, locale)}</Td>
+                  <Td>{payment.customer ? (localizedName(payment.customer, locale)) : payment.customer_id}</Td>
+                  <Td>{payment.payment_method ? (localizedName(payment.payment_method, locale) || payment.payment_method.name_ar) : paymentMethodLabel(payment.method, locale)}</Td>
                   <Td>
                     <Badge tone={statusTone(payment.status)}>{statusLabel(payment.status, locale)}</Badge>
                   </Td>
@@ -471,7 +472,7 @@ export default function Payments() {
                 })
                 .map((account) => ({
                   value: account.id,
-                  label: `${locale === 'ar' ? account.name_ar : account.name_en} (${account.currency})`,
+                  label: `${localizedName(account, locale)} (${account.currency})`,
                 }))}
             />
           </Field>
@@ -480,7 +481,7 @@ export default function Payments() {
               <option value="">{locale === 'ar' ? 'بدون طريقة محددة' : 'Unspecified method'}</option>
               {(methodsQuery.data ?? []).map((method) => (
                 <option key={method.id} value={method.id}>
-                  {locale === 'ar' ? method.name_ar : method.name_en}
+                  {localizedName(method, locale)}
                 </option>
               ))}
             </Select>

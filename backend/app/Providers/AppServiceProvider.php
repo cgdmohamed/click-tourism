@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\McpReadOnly;
 use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Integrations\Adapters\GraphMetaLeadFetcher;
 use App\Modules\Integrations\Adapters\GraphWhatsAppSender;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -64,6 +66,18 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $limits;
+        });
+
+        // MCP tokens (mcp:read only): 60 requests/minute per token (ADR-0016).
+        // Other tokens (SPA) are not limited by this limiter.
+        RateLimiter::for('mcp-read', function (Request $request): Limit {
+            $token = $request->user()?->currentAccessToken();
+
+            if (! $token instanceof PersonalAccessToken || ! McpReadOnly::isMcpToken($token)) {
+                return Limit::none();
+            }
+
+            return Limit::perMinute((int) config('mcp.rate_limit_per_minute', 60))->by('mcp-read:'.$token->getKey());
         });
     }
 }

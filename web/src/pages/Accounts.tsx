@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { localizedName } from '../lib/names'
 import type { Account, AccountClassification } from '../lib/types'
 import {
   Badge,
   Button,
   Card,
+  cx,
   EmptyState,
   ErrorState,
   Field,
@@ -70,6 +72,9 @@ export default function Accounts() {
   const { t, locale } = useI18n()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  // Tree state: per-node overrides on top of the default (groups with party sub-accounts start collapsed).
+  const [bulk, setBulk] = useState<'all' | 'none' | null>(null)
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
   const [open, setOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -168,14 +173,80 @@ export default function Accounts() {
     URL.revokeObjectURL(url)
   }
 
-  const filtered = useMemo(() => {
+  const ar = locale === 'ar'
+
+  const tree = useMemo(() => {
     const rows = query.data ?? []
+    const byId = new Map(rows.map((account) => [account.id, account]))
+    const children = new Map<string, Account[]>()
+    const roots: Account[] = []
+    for (const account of rows) {
+      if (account.parent_id && byId.has(account.parent_id)) {
+        const list = children.get(account.parent_id) ?? []
+        list.push(account)
+        children.set(account.parent_id, list)
+      } else {
+        roots.push(account)
+      }
+    }
+    return { byId, children, roots }
+  }, [query.data])
+
+  /** Ids to show while searching (matches plus their ancestors) and the ancestors that must be open. */
+  const searchState = useMemo(() => {
     const needle = search.trim().toLowerCase()
-    if (!needle) return rows
-    return rows.filter((account) =>
-      [account.code, account.name_ar, account.name_en].some((value) => value?.toLowerCase().includes(needle)),
-    )
-  }, [query.data, search])
+    if (!needle) return null
+    const visible = new Set<string>()
+    const open = new Set<string>()
+    let matches = 0
+    for (const account of query.data ?? []) {
+      const haystack = [account.code, account.name_ar, account.name_en, account.party_name_ar, account.party_name_en]
+      if (!haystack.some((value) => value?.toLowerCase().includes(needle))) continue
+      matches += 1
+      visible.add(account.id)
+      let parent = account.parent_id ? tree.byId.get(account.parent_id) : undefined
+      while (parent && !open.has(parent.id)) {
+        visible.add(parent.id)
+        open.add(parent.id)
+        parent = parent.parent_id ? tree.byId.get(parent.parent_id) : undefined
+      }
+    }
+    return { visible, open, matches }
+  }, [query.data, search, tree])
+
+  const isExpanded = (account: Account) => {
+    if (searchState?.open.has(account.id)) return true
+    if (account.id in overrides) return overrides[account.id]
+    if (bulk) return bulk === 'all'
+    return !(tree.children.get(account.id) ?? []).some((child) => child.party_type)
+  }
+
+  const rowsToRender = useMemo(() => {
+    const out: Array<{ account: Account; depth: number; childCount: number; expanded: boolean }> = []
+    const walk = (account: Account, depth: number) => {
+      if (searchState && !searchState.visible.has(account.id)) return
+      const kids = (tree.children.get(account.id) ?? []).filter((child) => !searchState || searchState.visible.has(child.id))
+      const allKids = tree.children.get(account.id) ?? []
+      const expanded = isExpanded(account)
+      out.push({ account, depth, childCount: allKids.length, expanded })
+      if (expanded) kids.forEach((child) => walk(child, depth + 1))
+    }
+    tree.roots.forEach((account) => walk(account, 0))
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tree, searchState, overrides, bulk])
+
+  const partyTypeLabel = (type: NonNullable<Account['party_type']>) =>
+    type === 'customer' ? (ar ? 'عميل' : 'Customer') : type === 'supplier' ? (ar ? 'مورد' : 'Supplier') : ar ? 'موظف' : 'Employee'
+  const partyName = (account: Account) => localizedName({ name_ar: account.party_name_ar, name_en: account.party_name_en }, locale)
+
+  const toggleNode = (account: Account, expanded: boolean) => {
+    setOverrides((current) => ({ ...current, [account.id]: !expanded }))
+  }
+  const expandAll = () => { setBulk('all'); setOverrides({}) }
+  const collapseAll = () => { setBulk('none'); setOverrides({}) }
+  const hasGroups = tree.children.size > 0
+  const shownCount = searchState ? searchState.matches : (query.data ?? []).length
 
   const typeLabel = (type: Account['type']) => {
     if (locale === 'en') return type
@@ -225,19 +296,25 @@ export default function Accounts() {
             placeholder={t('search')}
             className="max-w-xs"
           />
-          <span className="text-xs text-text-subtle">{filtered.length}</span>
+          <span className="text-xs text-text-subtle">{shownCount}</span>
+          {hasGroups ? (
+            <div className="ms-auto flex items-center gap-2">
+              <Button variant="secondary" icon="chevronDown" onClick={expandAll}>{ar ? 'توسيع الكل' : 'Expand all'}</Button>
+              <Button variant="secondary" icon="chevronRight" onClick={collapseAll}>{ar ? 'طي الكل' : 'Collapse all'}</Button>
+            </div>
+          ) : null}
         </div>
 
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && filtered.length === 0 ? <EmptyState /> : null}
+        {query.data && rowsToRender.length === 0 ? <EmptyState /> : null}
 
-        {filtered.length > 0 ? (
+        {rowsToRender.length > 0 ? (
           <Table>
             <thead>
               <tr>
                 <Th>{t('code')}</Th>
-                <Th>{t('name')}</Th>
+                <Th className="min-w-[18rem]">{t('name')}</Th>
                 <Th>{t('accountType')}</Th>
                 <Th>{locale === 'ar' ? 'التصنيف' : 'Classification'}</Th>
                 <Th>{t('postable')}</Th>
@@ -246,12 +323,41 @@ export default function Accounts() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((account) => (
-                <tr key={account.id}>
-                  <Td className="tabular font-medium">{account.code}</Td>
+              {rowsToRender.map(({ account, depth, childCount, expanded }) => (
+                <tr key={account.id} className={cx(account.party_type ? 'bg-surface-subtle/40' : childCount > 0 && 'font-medium')}>
+                  <Td className="tabular whitespace-nowrap font-mono font-medium" dir="ltr">{account.code}</Td>
                   <Td>
-                    <span className="font-medium">{locale === 'ar' ? account.name_ar : account.name_en}</span>
-                    <span className="ms-2 text-xs text-text-subtle">{locale === 'ar' ? account.name_en : account.name_ar}</span>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ paddingInlineStart: `${depth * 1.75}rem` }}>
+                      {childCount > 0 ? (
+                        <button
+                          type="button"
+                          className="-ms-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-6 text-text-subtle hover:bg-surface-hovered"
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? (ar ? 'طي' : 'Collapse') : ar ? 'توسيع' : 'Expand'} ${account.code}`}
+                          onClick={() => toggleNode(account, expanded)}
+                        >
+                          <Icon name={expanded ? 'chevronDown' : 'chevronRight'} className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <span className="inline-block h-6 w-5 shrink-0" aria-hidden="true" />
+                      )}
+                      <span className={account.party_type ? undefined : 'font-medium'}>{localizedName(account, locale)}</span>
+                      {account.party_type ? (
+                        <Badge tone="brand">
+                          <span className="whitespace-nowrap">
+                            {partyTypeLabel(account.party_type)}
+                            {partyName(account) ? ` · ${partyName(account)}` : ''}
+                          </span>
+                        </Badge>
+                      ) : null}
+                      {childCount > 0 ? (
+                        <Badge>
+                          <span className="whitespace-nowrap">
+                            {ar ? (childCount === 1 ? 'حساب فرعي واحد' : `${childCount} حسابات فرعية`) : `${childCount} sub-account${childCount === 1 ? '' : 's'}`}
+                          </span>
+                        </Badge>
+                      ) : null}
+                    </div>
                   </Td>
                   <Td>{typeLabel(account.type)}</Td>
                   <Td>
@@ -346,7 +452,8 @@ export default function Accounts() {
               clearLabel="—"
               options={(query.data ?? []).filter((a) => a.id !== editId).map((account) => ({
                 value: account.id,
-                label: `${account.code} — ${locale === 'ar' ? account.name_ar : account.name_en}`,
+                label: localizedName(account, locale),
+                code: account.code,
               }))}
             />
           </Field>

@@ -25,6 +25,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 
 type BankAccount = {
   id: string
@@ -313,7 +314,7 @@ export default function Reconciliation() {
     setNotice('')
   }, [selectedId])
 
-  const name = (account?: BankAccount | null) => (account ? (locale === 'ar' ? account.name_ar : account.name_en) : '—')
+  const name = (account?: BankAccount | null) => (account ? (localizedName(account, locale)) : '—')
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['reconciliations'] })

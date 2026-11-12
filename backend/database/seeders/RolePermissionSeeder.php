@@ -99,6 +99,7 @@ class RolePermissionSeeder extends Seeder
             'expenses.approve', 'documents.approve', 'schedules.approve',
             'assets.approve', 'reconciliation.approve',
             'users.view', 'roles.view',
+            'mcp.use',
         ],
         // Reservations desk: bookings and parties without accounting power.
         'reservations' => [
@@ -165,6 +166,8 @@ class RolePermissionSeeder extends Seeder
         'assets.view', 'assets.manage', 'assets.approve',
         'users.view', 'users.manage',
         'roles.view', 'roles.manage',
+        // MCP gateway stage 1 (ADR-0016): may create own read-only MCP tokens.
+        'mcp.use',
     ];
 
     /**

@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Services\AccountImportService;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Parties\Models\PartyAccount;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,48 @@ class AccountController extends ApiController
         return array_merge(...array_values(Account::CLASSIFICATIONS));
     }
 
+    /**
+     * Party subledger tags (ADR-0015) for the given account ids, in a constant number of queries:
+     * one batched lookup of the links, then one batched lookup of names per party type.
+     *
+     * @param  list<int>  $accountIds
+     * @return array<int, array{party_type: string, party_role: string, party_name_ar: ?string, party_name_en: ?string}>
+     */
+    private function partyTagsFor(array $accountIds): array
+    {
+        $partyTables = ['customer' => 'customers', 'supplier' => 'suppliers', 'employee' => 'employees'];
+        $links = collect();
+        foreach (array_chunk($accountIds, 500) as $chunk) {
+            $links = $links->merge(PartyAccount::query()->whereIn('account_id', $chunk)->get(['account_id', 'party_type', 'party_id', 'role']));
+        }
+
+        $names = [];
+        foreach ($links->groupBy('party_type') as $type => $group) {
+            $table = $partyTables[$type] ?? null;
+            if ($table === null) {
+                continue;
+            }
+            foreach (array_chunk($group->pluck('party_id')->unique()->all(), 500) as $chunk) {
+                foreach (DB::table($table)->whereIn('id', $chunk)->get(['id', 'name_ar', 'name_en']) as $party) {
+                    $names[$type][$party->id] = $party;
+                }
+            }
+        }
+
+        $tags = [];
+        foreach ($links as $link) {
+            $party = $names[$link->party_type][$link->party_id] ?? null;
+            $tags[$link->account_id] = [
+                'party_type' => $link->party_type,
+                'party_role' => $link->role,
+                'party_name_ar' => $party->name_ar ?? null,
+                'party_name_en' => $party->name_en ?? null,
+            ];
+        }
+
+        return $tags;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $controlParty = [
@@ -42,14 +85,19 @@ class AccountController extends ApiController
         ];
 
         $accounts = Account::query()
+            ->with('parent:id,public_id')
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
                 $query, ['code', 'name_ar', 'name_en'], $search))
             ->orderBy('code')
-            ->get()
-            ->map(fn (Account $account) => $account->toApiArray() + [
-                'control_party_type' => $controlParty[$account->code] ?? null,
-            ]);
+            ->get();
+
+        $partyByAccount = $this->partyTagsFor($accounts->pluck('id')->all());
+        $noParty = ['party_type' => null, 'party_role' => null, 'party_name_ar' => null, 'party_name_en' => null];
+
+        $accounts = $accounts->map(fn (Account $account) => $account->toApiArray() + [
+            'control_party_type' => $controlParty[$account->code] ?? null,
+        ] + ($partyByAccount[$account->id] ?? $noParty));
 
         return $this->ok($accounts);
     }

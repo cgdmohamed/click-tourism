@@ -27,6 +27,7 @@ import {
   Th,
   statusTone,
 } from '../components/ui'
+import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
 
 type Category = { id: string; code: string; name_ar: string; name_en: string; account_code: string }
@@ -115,7 +116,7 @@ export default function Expenses() {
   })
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['expenses'] })
-  const catName = (category?: Category | null) => (category ? (locale === 'ar' ? category.name_ar : category.name_en) : '—')
+  const catName = (category?: Category | null) => (category ? (localizedName(category, locale)) : '—')
 
   const create = useMutation({
     mutationFn: async (submit: boolean) => {
@@ -174,7 +175,7 @@ export default function Expenses() {
 
   const cashOptions = (cashQuery.data ?? [])
     .filter((account) => account.registered && account.is_active !== false && account.currency === form.currency)
-    .map((account) => ({ value: account.cash_account_id ?? account.id, label: locale === 'ar' ? account.name_ar : account.name_en }))
+    .map((account) => ({ value: account.cash_account_id ?? account.id, label: localizedName(account, locale) }))
 
   const data = expensesQuery.data
 

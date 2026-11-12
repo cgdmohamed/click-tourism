@@ -1,4 +1,5 @@
 import type { Branch, RoleRecord, UserAccount } from './types'
+import { localizedName } from './names'
 
 /**
  * Pure identity-and-access logic shared by the Users and Roles pages:
@@ -91,7 +92,7 @@ export function primaryBranchOptions(
   const chosen = new Set(selected)
   return branches
     .filter((branch) => chosen.has(branch.id))
-    .map((branch) => ({ value: branch.id, label: locale === 'ar' ? branch.name_ar : branch.name_en }))
+    .map((branch) => ({ value: branch.id, label: localizedName(branch, locale) }))
 }
 
 /**

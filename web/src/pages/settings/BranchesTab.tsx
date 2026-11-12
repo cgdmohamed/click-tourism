@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../../auth/AuthProvider'
 import { useI18n } from '../../i18n'
 import { api, errorMessage } from '../../lib/api'
+import { localizedName } from '../../lib/names'
 import type { Branch } from '../../lib/types'
 import { Badge, Button, Card, CardHeader, ErrorState, Field, Input, Loading, Modal, Select, Table, Td, Th } from '../../components/ui'
 
@@ -70,8 +71,7 @@ export function BranchesTab() {
               <tr key={branch.id}>
                 <Td className="tabular font-medium">{branch.code}</Td>
                 <Td>
-                  <p className="font-medium">{locale === 'ar' ? branch.name_ar : branch.name_en}</p>
-                  <p className="text-xs text-text-subtle">{locale === 'ar' ? branch.name_en : branch.name_ar}</p>
+                  <p className="font-medium">{localizedName(branch, locale)}</p>
                 </Td>
                 <Td>{branch.accounting_mode}</Td>
                 <Td>

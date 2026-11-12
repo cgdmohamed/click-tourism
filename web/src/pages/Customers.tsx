@@ -8,6 +8,7 @@ import { toMinor } from '../lib/format'
 import type { Customer, Paginated } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
 import { Icon } from '../components/icons'
+import { localizedName } from '../lib/names'
 
 export default function Customers() {
   const { t, locale } = useI18n()
@@ -106,9 +107,8 @@ export default function Customers() {
                 <tr key={customer.id}>
                   <Td>
                     <Link to={`/customers/${customer.id}`} className="font-medium text-brand-1-accent hover:underline">
-                      {locale === 'ar' ? customer.name_ar : customer.name_en}
+                      {localizedName(customer, locale)}
                     </Link>
-                    <p className="text-xs text-text-subtle">{locale === 'ar' ? customer.name_en : customer.name_ar}</p>
                   </Td>
                   <Td dir="ltr">{customer.phone ?? '—'}</Td>
                   <Td dir="ltr">{customer.email ?? '—'}</Td>
