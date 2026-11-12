@@ -164,6 +164,19 @@ docker compose up -d --build backend api web  # with previous tag
 docker compose exec backend php artisan up
 ```
 
+### Scripted rehearsals and ledger verification
+
+`php artisan erp:verify-ledger [--json]` is a read-only check (entries balanced in
+base and transaction currency, trial balance zero, no orphan lines, no empty or
+invalid entries) whose `fingerprint` must be identical before and after a restore
+or an upgrade. `php artisan erp:verify-credentials` fails on known default
+passwords and on `@example.com` demo accounts. `scripts/release/rehearse-all.sh`
+runs fresh install, backup/restore, N-1 upgrade and rollback against scratch
+PostgreSQL databases; `scripts/release/scan-secrets.sh` scans the repository and
+a built image. The release gate with exact commands and the PASS/FAIL record is
+`docs/deployment/release-checklist.md`; first-run setup (`php artisan erp:install`)
+is documented in `docs/deployment/clean-install-acceptance.md`.
+
 ## 4. Health Checks
 
 - `GET /api/v1/health` — public, reports app/database/cache/Redis/scheduler status

@@ -1,9 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\HealthController;
-use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
-use Database\Seeders\ProductionBootstrapSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Inspiring;
@@ -98,7 +96,12 @@ Artisan::command('demo:ensure-users {--verify-only}', function () {
         Artisan::call('db:seed', ['--class' => UserSeeder::class, '--force' => true]);
     }
 
-    $password = (string) env('DEMO_PASSWORD', 'password');
+    $password = (string) config('demo.password');
+    if ($password === '') {
+        $this->error('DEMO_PASSWORD is not set; demo users are never created with a default password.');
+
+        return 1;
+    }
     foreach ([
         'admin@example.com' => 'admin',
         'accountant@example.com' => 'accountant',
@@ -120,52 +123,18 @@ Artisan::command('demo:ensure-users {--verify-only}', function () {
 })->purpose('Repair and verify isolated demo user accounts');
 
 /**
- * Production bootstrap: no demo user credentials. Run interactively through
- * Coolify terminal once, after the first migration has completed.
+ * Deprecated alias kept for existing runbooks: delegates to `erp:install`,
+ * which also creates the company profile and fiscal calendar. The password is
+ * read from ERP_ADMIN_PASSWORD(_FILE) or a masked prompt, never from a default.
  */
 Artisan::command('setup:admin {email} {--name=Administrator}', function () {
-    if (config('demo.enabled') || config('app.env') === 'demo') {
-        $this->error('Production admin bootstrap cannot be used in demo mode.');
+    $this->warn('setup:admin is deprecated; use `php artisan erp:install`.');
 
-        return 1;
-    }
-
-    $email = strtolower(trim((string) $this->argument('email')));
-    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $this->error('Provide a valid admin email address.');
-
-        return 1;
-    }
-    if (User::query()->where('email', $email)->exists()) {
-        $this->error('This email is already registered. Use the user management workflow.');
-
-        return 1;
-    }
-
-    $password = (string) $this->secret('Enter an initial admin password (minimum 12 characters)');
-    if (strlen($password) < 12) {
-        $this->error('Password must contain at least 12 characters.');
-
-        return 1;
-    }
-
-    Artisan::call('db:seed', ['--class' => ProductionBootstrapSeeder::class, '--force' => true]);
-
-    $user = User::query()->create([
-        'name' => (string) $this->option('name'),
-        'email' => $email,
-        'password' => Hash::make($password),
-        'locale' => 'ar',
-        'is_active' => true,
-    ]);
-    $user->assignRole('admin');
-    $branch = Branch::query()->where('code', 'HQ')->firstOrFail();
-    $user->branches()->syncWithoutDetaching([$branch->id]);
-
-    $this->info('Initial production admin created. No demo accounts were installed.');
-
-    return 0;
-})->purpose('Securely initialize production reference data and first admin');
+    return $this->call('erp:install', array_filter([
+        '--admin-email' => $this->argument('email'),
+        '--admin-name' => $this->option('name'),
+    ]));
+})->purpose('Deprecated alias of erp:install');
 
 /**
  * Re-applies roles and permissions on an existing installation after an

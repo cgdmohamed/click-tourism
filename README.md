@@ -93,6 +93,8 @@ Composer 2.x; Node 20+ and npm.
 cd backend
 copy .env.example .env          # if .env is missing
 php artisan key:generate
+# Demo users need an explicit password; there is no built-in default.
+# Add a line such as DEMO_PASSWORD=<choose-one> to backend/.env first.
 php artisan migrate:fresh --seed
 php artisan serve --host=127.0.0.1 --port=8000
 
@@ -105,7 +107,8 @@ npm run dev -- --host 127.0.0.1 --port 5173
 Open <http://127.0.0.1:5173>. The Vite dev server proxies `/api/v1` to
 `http://127.0.0.1:8000`.
 
-Demo users (all use password `password`):
+Demo users (all use the password you set in `DEMO_PASSWORD`; seeding refuses to
+run without it and refuses outside `local`/`testing`/the isolated demo):
 
 | Email | Role |
 | --- | --- |
@@ -153,8 +156,10 @@ Behaviour worth knowing:
   `php artisan migrate --force`, links storage and caches config/routes
   (`APP_OPTIMIZE=true`). Set `RUN_MIGRATIONS=false` for a container that must
   not migrate (for example a read-only replica or an existing database).
-- Demo data is **not** seeded in production. Set `SEED_DEMO=true` for a demo
-  installation, then set it back to `false`.
+- Demo data is **not** seeded in production, and `db:seed` refuses to run there.
+  Create the company profile and the first administrator once with
+  `php artisan erp:install` (see `docs/deployment/clean-install-acceptance.md`).
+  Release gate: `docs/deployment/release-checklist.md`.
 - `APP_KEY` is mandatory; the container refuses to start without it.
 - Back up `pgdata` with `docker compose exec db pg_dump -U tourism tourism_erp`
   and test restores before go-live.

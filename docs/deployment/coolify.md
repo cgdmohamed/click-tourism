@@ -19,12 +19,18 @@ Neither PostgreSQL, Redis, backend nor API should have public ports.
 4. Deploy and verify `https://erp.example.com/api/v1/ready`.
 5. Production has persistent `production_pgdata`, `production_redis` and
    `production_uploads` volumes. Back up and test restores before onboarding.
-6. Open the Coolify terminal for service `backend` and run
-   `php artisan setup:admin admin@your-domain.example --name="System Administrator"`.
-   Enter a unique administrator password of 12+ characters at the masked prompt.
-   This initializes reference data, roles and the first admin but **never**
-   installs sample customer records or demo login accounts. Do NOT enable
-   `SEED_DEMO` on production.
+6. Open the Coolify terminal for service `backend` and run once:
+   `php artisan erp:install --company-name="Your Company" --base-currency=EGP --fiscal-start=01-01 --timezone=Africa/Cairo --admin-email=admin@your-domain.example`
+   and type a unique administrator password (12+ characters) at the masked
+   prompt. This creates the company profile, chart of accounts, roles, fiscal
+   calendar and the first administrator, but **never** sample customer records or
+   demo login accounts, and there is no default password: without a password the
+   command fails. It runs once; a second run is refused. (`setup:admin` still
+   works as a deprecated alias.) Do NOT enable `SEED_DEMO` on production.
+   Afterwards run `php artisan erp:verify-credentials` and
+   `php artisan erp:verify-ledger`. Full procedure and the release gate:
+   [`clean-install-acceptance.md`](clean-install-acceptance.md),
+   [`release-checklist.md`](release-checklist.md).
 7. Review the unresolved accountant sign-offs before live financial posting.
 
 ## 2. Disposable public demo (separate project!)
