@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -176,7 +176,11 @@ export default function Leads() {
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id}>
-                  <Td className="font-medium">{lead.name}</Td>
+                  <Td className="font-medium">
+                    <Link to={`/leads/${lead.id}`} className="text-brand-1-accent hover:underline">
+                      {lead.name}
+                    </Link>
+                  </Td>
                   <Td dir="ltr">{lead.phone ?? '—'}</Td>
                   <Td>{sourceLabel(lead.source)}</Td>
                   <Td>{stageLabel(lead.stage)}</Td>

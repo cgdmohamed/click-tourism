@@ -270,6 +270,40 @@ export type LeadStageConfig = {
   is_lost: boolean
 }
 
+export type LeadOwner = {
+  id: string
+  name: string
+}
+
+export type LeadActivity = {
+  id: number
+  type: string
+  body?: string | null
+  actor: LeadOwner | null
+  created_at: string
+}
+
+export type LeadOwnerChange = {
+  action: 'assigned' | 'reassigned' | 'escalated'
+  from: LeadOwner | null
+  to: LeadOwner | null
+  attempt: number | null
+  at: string
+}
+
+export type LeadDetail = Lead & {
+  service_category?: string | null
+  consent: boolean
+  notes?: string | null
+  reassignment_attempts: number
+  escalated_at?: string | null
+  converted_customer_id?: string | null
+  converted_booking_id?: string | null
+  owner: LeadOwner | null
+  owner_history: LeadOwnerChange[]
+  activities: LeadActivity[]
+}
+
 export type AssignmentRule = {
   id: string
   priority: number

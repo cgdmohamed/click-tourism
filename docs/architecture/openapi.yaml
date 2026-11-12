@@ -4571,6 +4571,36 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Validation' }
   /leads/{id}:
+    get:
+      tags: [CRM]
+      summary: Lead detail with activity timeline (requires leads.view)
+      description: >-
+        Returns the lead, its current owner, owner changes derived from the
+        audit trail (manual assignment, reassignment, escalation), and its
+        activities newest-first. `per_page` applies to activities only.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: Lead detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LeadDetail' }
+                  meta:
+                    type: object
+                    properties:
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+                      total: { type: integer }
+                      per_page: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Lead not found }
     patch:
       tags: [CRM]
       summary: Update a lead (requires leads.update)
@@ -6683,6 +6713,45 @@ components:
         escalated_at: { type: string, format: date-time, nullable: true }
         converted_customer_id: { type: string, nullable: true }
         converted_booking_id: { type: string, nullable: true }
+    LeadDetail:
+      allOf:
+        - $ref: '#/components/schemas/Lead'
+        - type: object
+          properties:
+            owner:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, description: User public id }
+                name: { type: string }
+            owner_history:
+              type: array
+              items: { $ref: '#/components/schemas/LeadOwnerChange' }
+            activities:
+              type: array
+              items: { $ref: '#/components/schemas/LeadActivity' }
+    LeadOwnerChange:
+      type: object
+      properties:
+        action: { type: string, enum: [assigned, reassigned, escalated] }
+        from: { $ref: '#/components/schemas/LeadOwner' }
+        to: { $ref: '#/components/schemas/LeadOwner' }
+        attempt: { type: integer, nullable: true }
+        at: { type: string, format: date-time }
+    LeadOwner:
+      type: object
+      nullable: true
+      properties:
+        id: { type: string, description: User public id }
+        name: { type: string }
+    LeadActivity:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string, description: 'created, note, stage_changed, assigned, reassigned, escalated, converted' }
+        body: { type: string, nullable: true }
+        actor: { $ref: '#/components/schemas/LeadOwner' }
+        created_at: { type: string, format: date-time }
     AssignmentRuleInput:
       type: object
       required: [strategy]
