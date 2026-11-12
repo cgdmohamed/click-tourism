@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
-import { api, errorMessage } from '../lib/api'
+import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { exponent, formatDate, formatDateTime, formatMoney, toMinor } from '../lib/format'
 import { statusLabel } from '../lib/labels'
 import type { Booking, BookingItem } from '../lib/types'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
+import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import {
   Badge,
   Button,
@@ -62,8 +63,10 @@ function parseFee(value: string, currency: string): number | null {
 export default function BookingDetails({ bookingId, onClose }: { bookingId: string | null; onClose: () => void }) {
   const { locale } = useI18n()
   const { can, user } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [dialog, setDialog] = useState<Dialog>('none')
+  const [collecting, setCollecting] = useState(false)
   const [error, setError] = useState('')
   const [reason, setReason] = useState('')
   const [fee, setFee] = useState('')
@@ -81,6 +84,34 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
     },
   })
   const booking = query.data
+  const invoicesQuery = useQuery({
+    queryKey: ['booking-invoices', bookingId],
+    enabled: Boolean(bookingId) && can('invoices.view'),
+    queryFn: async () => {
+      const { data } = await api.get<{ data: Array<{
+        id: string; number: string; currency: string; status: string; outstanding_minor: number
+      }> }>('/invoices', { params: { booking_id: bookingId, per_page: 50 } })
+      return data.data
+    },
+  })
+  const linkedInvoices = invoicesQuery.data ?? []
+  const activeInvoice = linkedInvoices.find((item) => item.status !== 'voided')
+  const receivableInvoice = linkedInvoices.find((item) => item.status === 'issued' && item.outstanding_minor > 0)
+  const generateInvoice = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ data: { id: string } }>(`/bookings/${bookingId}/invoice`, {}, {
+        headers: { 'Idempotency-Key': idempotencyKey() },
+      })
+      return data.data.id
+    },
+    onSuccess: async (invoiceId) => {
+      await queryClient.invalidateQueries({ queryKey: ['booking-invoices', bookingId] })
+      close()
+      navigate(`/invoices/${invoiceId}`)
+    },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['bookings'] })
@@ -177,6 +208,8 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
 
   return (
     <>
+      <InvoiceCollectionModal invoice={collecting && receivableInvoice ? receivableInvoice : null}
+        onClose={() => setCollecting(false)} onCollected={() => void invoicesQuery.refetch()} />
       <Modal
         open={Boolean(bookingId) && dialog === 'none'}
         title={booking ? `${ar ? 'الحجز' : 'Booking'} ${booking.number}` : ar ? 'تفاصيل الحجز' : 'Booking details'}
@@ -244,6 +277,27 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
               <Info label={ar ? 'ملاحظات' : 'Notes'} wide>
                 {booking.notes || '—'}
               </Info>
+              <div className="sm:col-span-3 flex flex-wrap items-center gap-2 rounded-12 border border-border-subtle p-3">
+                {!activeInvoice && can('invoices.create') ? (
+                  <Button disabled={generateInvoice.isPending || invoicesQuery.isLoading}
+                    onClick={() => generateInvoice.mutate()}>
+                    {generateInvoice.isPending ? (ar ? 'جارِ إنشاء الفاتورة…' : 'Creating invoice…') : (ar ? 'إنشاء فاتورة من هذا الحجز' : 'Invoice this booking')}
+                  </Button>
+                ) : null}
+                {activeInvoice ? (
+                  <Link to={`/invoices/${activeInvoice.id}`} onClick={close} className="text-small font-semibold text-brand-1-accent underline">
+                    {ar ? `فتح الفاتورة ${activeInvoice.number}` : `Open invoice ${activeInvoice.number}`}
+                  </Link>
+                ) : null}
+                {receivableInvoice && can('payments.create') ? (
+                  <Button onClick={() => setCollecting(true)}>{ar ? 'تحصيل الفاتورة' : 'Collect invoice'}</Button>
+                ) : null}
+                {!activeInvoice ? (
+                  <span className="text-small text-text-subtle">
+                    {ar ? 'الفاتورة تُنشأ من نفس بنود الحجز، وتخضع للاعتماد قبل الإصدار.' : 'Invoice lines come from the booking and require approval before issue.'}
+                  </span>
+                ) : null}
+              </div>
               <Info label={ar ? 'المدفوعات / الفواتير المرتبطة' : 'Linked payments / invoices'}>
                 <span className="tabular">{booking.payments_count ?? 0} / {booking.invoices_count ?? 0}</span>
                 {can('invoices.view') ? (
