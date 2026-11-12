@@ -157,7 +157,7 @@ class InvoiceTest extends TestCase
         $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])->assertStatus(422);
         $this->postJson("/api/v1/bookings/{$booking->public_id}/cancel", [
             'reason' => 'Customer request',
-        ])->assertStatus(403);
+        ])->assertStatus(422);
         $this->assertSame('confirmed', $booking->fresh()->status);
     }
 
