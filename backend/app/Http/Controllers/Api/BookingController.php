@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Parties\Models\Customer;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
@@ -80,6 +81,13 @@ class BookingController extends ApiController
         $booking = $bookings->create($data, $this->actorId());
 
         return $this->created($booking->toApiArray(true));
+    }
+
+    public function invoice(Booking $booking, InvoiceService $invoices): JsonResponse
+    {
+        $this->authorizeBranchId($booking->branch_id);
+
+        return $this->created($invoices->createFromBooking($booking, $this->actorId())->toApiArray(true));
     }
 
     public function update(Request $request, Booking $booking, BookingService $bookings): JsonResponse
