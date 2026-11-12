@@ -17,6 +17,7 @@ tags:
   - name: IAM
   - name: Platform
   - name: Accounting
+  - name: Commissions
   - name: Schedules
   - name: Fixed Assets
   - name: Treasury
@@ -521,6 +522,276 @@ paths:
               required: [reason]
               properties:
                 reason: { type: string, minLength: 3, maxLength: 255 }
+      responses:
+        '200': { description: Reversed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules:
+    get:
+      tags: [Commissions]
+      summary: List commission rule versions
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, pending_approval, approved, rejected, retired] } }
+        - { name: beneficiary_type, in: query, schema: { type: string, enum: [employee, agent, branch] } }
+        - { name: code, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Rules }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Commissions]
+      summary: Create a draft commission rule (version 1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommissionRuleInput' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}:
+    get:
+      tags: [Commissions]
+      summary: Get a commission rule version
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Rule }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Commissions]
+      summary: Edit a draft or rejected rule version (approved versions are immutable)
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommissionRuleInput' }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [Commissions]
+      summary: Delete a draft rule version
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/new-version:
+    post:
+      tags: [Commissions]
+      summary: Start the next version of a rule as a draft
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Draft version }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/submit:
+    post:
+      tags: [Commissions]
+      summary: Submit a draft rule for approval
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Submitted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/approve:
+    post:
+      tags: [Commissions]
+      summary: 'Approve a submitted rule (the previous version ends the day before this one starts)'
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/reject:
+    post:
+      tags: [Commissions]
+      summary: Reject a submitted rule
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Rejected }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commission-rules/{commissionRule}/retire:
+    post:
+      tags: [Commissions]
+      summary: Disable an approved rule (existing accruals are untouched)
+      parameters:
+        - { name: commissionRule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Retired }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions:
+    get:
+      tags: [Commissions]
+      summary: List commission accruals of the current branch
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [accrued, approved, posted, paid, rejected, reversed, cancelled] } }
+        - { name: beneficiary_type, in: query, schema: { type: string, enum: [employee, agent, branch] } }
+        - { name: booking_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Commissions }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /commissions/beneficiaries:
+    get:
+      tags: [Commissions]
+      summary: Beneficiaries with commission activity and their payable totals
+      parameters:
+        - { name: beneficiary_type, in: query, schema: { type: string, enum: [employee, agent, branch] } }
+      responses:
+        '200': { description: One row per beneficiary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /commissions/statement:
+    get:
+      tags: [Commissions]
+      summary: Commission statement of one beneficiary (accruals, payouts, reversals)
+      parameters:
+        - { name: beneficiary_type, in: query, required: true, schema: { type: string, enum: [employee, agent, branch] } }
+        - { name: beneficiary_id, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Statement }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Beneficiary not found }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}:
+    get:
+      tags: [Commissions]
+      summary: Get a commission with its payments
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Commission }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /commissions/{commission}/override:
+    post:
+      tags: [Commissions]
+      summary: 'Propose a different amount (takes effect once someone else approves)'
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [amount_minor, reason], properties: { amount_minor: { type: integer, minimum: 0 }, reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Overridden }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/approve:
+    post:
+      tags: [Commissions]
+      summary: 'Approve an accrued commission (posts it when commission_auto_post is on and the accounting policy is approved)'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Approved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/reject:
+    post:
+      tags: [Commissions]
+      summary: Reject an accrued commission
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
+      responses:
+        '200': { description: Rejected }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/post:
+    post:
+      tags: [Commissions]
+      summary: 'Post an approved commission through the ledger (Dr commission expense, Cr beneficiary payable; idempotent)'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Posted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/pay:
+    post:
+      tags: [Commissions]
+      summary: 'Pay (part of) a posted commission (Dr payable, Cr cash or bank; idempotent)'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [cash_account_id], properties: { cash_account_id: { type: string }, amount_minor: { type: integer, minimum: 1 }, paid_on: { type: string, format: date }, reference: { type: string, maxLength: 255 } } }
+      responses:
+        '201': { description: Payment }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /commissions/{commission}/reverse:
+    post:
+      tags: [Commissions]
+      summary: 'Reverse a commission (cancels an unposted accrual, reverses a posted one in the ledger)'
+      parameters:
+        - { name: commission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, maxLength: 255 } } }
       responses:
         '200': { description: Reversed }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -4360,6 +4631,24 @@ components:
         payee_name: { type: string }
         cash_account_id: { type: string }
         submit: { type: boolean, default: false }
+    CommissionRuleInput:
+      type: object
+      description: Rates are basis points (10000 = 100%); fixed amounts are base-currency minor units. code is required on create only.
+      required: [name_ar, name_en, beneficiary_type, basis, effective_from]
+      properties:
+        code: { type: string, maxLength: 40, description: Identifies the rule across versions; create only }
+        name_ar: { type: string }
+        name_en: { type: string }
+        beneficiary_type: { type: string, enum: [employee, agent, branch] }
+        beneficiary_id: { type: string, nullable: true, description: 'Employee, agent (supplier) or branch public id. Null = booking owner (employee) or booking branch (branch); required for agents.' }
+        basis: { type: string, enum: [percent_revenue, percent_margin, fixed] }
+        rate_bp: { type: integer, minimum: 1, maximum: 10000, nullable: true }
+        fixed_minor: { type: integer, minimum: 1, nullable: true }
+        branch_id: { type: string, nullable: true, description: Only bookings of this branch }
+        service_type: { type: string, nullable: true, enum: [flight, hotel, transport, visa, program, other] }
+        allow_cross_branch: { type: boolean, default: false, description: Pay a beneficiary attached to another branch }
+        effective_from: { type: string, format: date }
+        effective_to: { type: string, format: date, nullable: true }
     ExpenseCategory:
       type: object
       properties:

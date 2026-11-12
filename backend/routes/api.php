@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CashAccountController;
+use App\Http\Controllers\Api\CommissionController;
+use App\Http\Controllers\Api\CommissionRuleController;
 use App\Http\Controllers\Api\CostCenterController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CustomerController;
@@ -102,6 +104,28 @@ Route::prefix('v1')->group(function () {
         Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approve'])->middleware(['permission:expenses.approve', 'idempotent']);
         Route::post('expenses/{expense}/reject', [ExpenseController::class, 'reject'])->middleware('permission:expenses.approve');
         Route::post('expenses/{expense}/reverse', [ExpenseController::class, 'reverse'])->middleware('permission:expenses.approve');
+
+        Route::get('commission-rules', [CommissionRuleController::class, 'index'])->middleware('permission:commissions.view');
+        Route::post('commission-rules', [CommissionRuleController::class, 'store'])->middleware('permission:commission_rules.manage');
+        Route::get('commission-rules/{commissionRule}', [CommissionRuleController::class, 'show'])->middleware('permission:commissions.view');
+        Route::patch('commission-rules/{commissionRule}', [CommissionRuleController::class, 'update'])->middleware('permission:commission_rules.manage');
+        Route::delete('commission-rules/{commissionRule}', [CommissionRuleController::class, 'destroy'])->middleware('permission:commission_rules.manage');
+        Route::post('commission-rules/{commissionRule}/new-version', [CommissionRuleController::class, 'newVersion'])->middleware('permission:commission_rules.manage');
+        Route::post('commission-rules/{commissionRule}/submit', [CommissionRuleController::class, 'submit'])->middleware('permission:commission_rules.manage');
+        Route::post('commission-rules/{commissionRule}/approve', [CommissionRuleController::class, 'approve'])->middleware('permission:commission_rules.approve');
+        Route::post('commission-rules/{commissionRule}/reject', [CommissionRuleController::class, 'reject'])->middleware('permission:commission_rules.approve');
+        Route::post('commission-rules/{commissionRule}/retire', [CommissionRuleController::class, 'retire'])->middleware('permission:commission_rules.manage');
+
+        Route::get('commissions', [CommissionController::class, 'index'])->middleware('permission:commissions.view');
+        Route::get('commissions/beneficiaries', [CommissionController::class, 'beneficiaries'])->middleware('permission:commissions.view');
+        Route::get('commissions/statement', [CommissionController::class, 'statement'])->middleware('permission:commissions.view');
+        Route::get('commissions/{commission}', [CommissionController::class, 'show'])->middleware('permission:commissions.view');
+        Route::post('commissions/{commission}/override', [CommissionController::class, 'override'])->middleware('permission:commissions.override');
+        Route::post('commissions/{commission}/approve', [CommissionController::class, 'approve'])->middleware(['permission:commissions.approve', 'idempotent']);
+        Route::post('commissions/{commission}/reject', [CommissionController::class, 'reject'])->middleware('permission:commissions.approve');
+        Route::post('commissions/{commission}/post', [CommissionController::class, 'post'])->middleware(['permission:commissions.post', 'idempotent']);
+        Route::post('commissions/{commission}/pay', [CommissionController::class, 'pay'])->middleware(['permission:commissions.pay', 'idempotent']);
+        Route::post('commissions/{commission}/reverse', [CommissionController::class, 'reverse'])->middleware('permission:commissions.reverse');
 
         Route::get('transfers', [TransferController::class, 'index'])->middleware('permission:transfers.view');
         Route::post('transfers', [TransferController::class, 'store'])->middleware(['permission:transfers.create', 'idempotent']);

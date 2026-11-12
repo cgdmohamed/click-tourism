@@ -21,11 +21,11 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 | Role | Permissions | Intent |
 |---|---|---|
-| `admin` | 86 (all) | Full installation control, including user/role management and `branches.view_all`. |
-| `finance_manager` | 72 | Accountant scope plus posting own drafts, approval rights, and read-only visibility of the user/role directory (`users.view`, `roles.view`). |
-| `senior_accountant` | 71 | Accountant scope plus posting/deleting own or branch journal drafts (maker-checker override, audited). |
-| `accountant` | 69 | Full accounting operations: CoA, periods, journals, parties, payments, reports — without user management or draft posting. |
-| `supervisor` | 29 | Sales scope plus staff visibility, exports, and the user directory (`users.view`). |
+| `admin` | 94 (all) | Full installation control, including user/role management and `branches.view_all`. |
+| `finance_manager` | 80 | Accountant scope plus posting own drafts, approval rights, and read-only visibility of the user/role directory (`users.view`, `roles.view`). |
+| `senior_accountant` | 79 | Accountant scope plus posting/deleting own or branch journal drafts (maker-checker override, audited). |
+| `accountant` | 77 | Full accounting operations: CoA, periods, journals, parties, payments, reports — without user management or draft posting. |
+| `supervisor` | 30 | Sales scope plus staff visibility, exports, and the user directory (`users.view`). |
 | `sales` | 26 | Customer-facing pipeline: parties, bookings, receipts, leads — no accounting setup. |
 | `reservations` | 21 | Bookings and parties without accounting power; leads without conversion or rule management. |
 | `cashier` | 12 | Collections, refunds, and transfers at the counter. |
@@ -35,7 +35,7 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 ## 3. Matrix
 
-`✓` = granted. Derived mechanically from the seeder constants (86 permissions × 9 roles).
+`✓` = granted. Derived mechanically from the seeder constants (94 permissions × 9 roles).
 
 ### Branches & settings
 
@@ -228,6 +228,21 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 | `assets.view` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | ✓ |
 | `assets.manage` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
 | `assets.approve` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+
+### Commissions
+
+Rules are effective-dated and versioned; an approved version is immutable. Maker-checker (`commissions.segregation`, default on) separates rule authors/overriders from approvers. Posting also requires `accounts.post` and the approved accounting policy; `commission_auto_post` (default off) is an accounting-policy switch that needs `accounting.approve_policy` to change.
+
+| Permission | admin | finance_manager | senior_accountant | accountant | supervisor | sales | reservations | cashier | viewer |
+|---|---|---|---|---|---|---|---|---|---|
+| `commissions.view` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
+| `commission_rules.manage` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+| `commission_rules.approve` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+| `commissions.override` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+| `commissions.approve` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+| `commissions.post` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+| `commissions.pay` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
+| `commissions.reverse` | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — |
 
 ### Users & roles (this work order)
 
