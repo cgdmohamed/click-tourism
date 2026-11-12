@@ -353,6 +353,16 @@ class InvoiceService
             // a second AR/revenue journal entry.
             $existingBookingRevenue = null;
             if ($invoice->booking_id !== null && $invoice->type === Invoice::TYPE_CUSTOMER_INVOICE) {
+                // Serializes issuance against booking state changes and other invoices.
+                $booking = Booking::query()->lockForUpdate()->findOrFail($invoice->booking_id);
+                if (in_array($booking->status, ['cancelled', 'no_show'], true)
+                    || $booking->customer_id !== $invoice->party_id
+                    || $booking->branch_id !== $invoice->branch_id
+                    || $booking->currency_code !== $invoice->currency_code
+                    || (int) $booking->total_sell_minor !== (int) $invoice->total_minor
+                    || (int) $booking->tax_minor !== (int) $invoice->tax_minor) {
+                    throw new DomainException('An invoice linked to a booking must match its customer, currency, complete total and tax before issue.');
+                }
                 $existingBookingRevenue = JournalEntry::query()
                     ->where('source_type', 'booking')
                     ->where('source_id', $invoice->booking_id)
@@ -371,16 +381,6 @@ class InvoiceService
                     ->where('id', '!=', $invoice->id)->exists();
                 if ($otherIssued) {
                     throw new DomainException('A customer invoice for this booking has already been issued.');
-                }
-                if ($existingBookingRevenue) {
-                    $booking = Booking::query()->lockForUpdate()->findOrFail($invoice->booking_id);
-                    if ($booking->customer_id !== $invoice->party_id
-                        || $booking->branch_id !== $invoice->branch_id
-                        || $booking->currency_code !== $invoice->currency_code
-                        || (int) $booking->total_sell_minor !== (int) $invoice->total_minor
-                        || (int) $booking->tax_minor !== (int) $invoice->tax_minor) {
-                        throw new DomainException('This booking was already posted. Invoice customer, currency, total and tax must match the booking exactly.');
-                    }
                 }
             }
 
