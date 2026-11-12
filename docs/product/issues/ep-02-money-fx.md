@@ -13,6 +13,7 @@
 **Test cases:** 0.1+0.2, half-up boundaries, negative amounts, multi-line residual, DB round-trip precision.
 **Owned files:** `backend/app/Modules/Money`, shared casts, tests; architecture ADR for money.
 **Reviewer:** Architect + accountant (rounding).
+**Status:** done — `MoneyTest`, `BaseCurrencyRoundingFiscalStartTest`, ADR-0003.
 
 ---
 
@@ -27,3 +28,4 @@
 **Test cases:** missing rate, zero/negative rate, historical rate selection, snapshot immutability, cross-currency validation.
 **Owned files:** `backend/app/Modules/Money/Currency`, migrations, tests.
 **Reviewer:** Architect + accountant (DEC-007).
+**Status:** done — `/currencies`, `/fx-rates`, `FxServiceTest`, `FxRevaluationTest`.

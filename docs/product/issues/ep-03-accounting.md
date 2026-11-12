@@ -15,6 +15,7 @@
 **Test cases:** deep nesting, cycle prevention, delete/deactivate with postings, branch-independent account behavior.
 **Owned files:** `backend/app/Modules/Accounting/Accounts`, migrations, tests.
 **Reviewer:** Architect + accountant.
+**Status:** done — `/accounts` with import/export; `AccountClassificationTest`, `AccountImportTest`.
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** period boundaries, overlapping years, year-end generation, locked-period override authorization.
 **Owned files:** `backend/app/Modules/Accounting/Periods`, migrations, tests.
 **Reviewer:** Architect + accountant (DEC-012).
+**Status:** done — `/fiscal-periods` with checklist and status; `FiscalYearSequenceTest`.
 
 ---
 
@@ -43,6 +45,7 @@
 **Test cases:** unbalanced txn currency, unbalanced base currency, non-postable account, closed period, currency-restricted account, duplicate submit.
 **Owned files:** `backend/app/Modules/Accounting/Journal`, migrations, tests.
 **Reviewer:** Architect + accountant.
+**Status:** done — `/journal-entries`; `JournalEntryApiTest`.
 
 ---
 
@@ -57,6 +60,7 @@
 **Test cases:** rollback on line failure, concurrent post of same source event, reversal twice, reverse reversal, cross-currency settlement, closed-period reversal.
 **Owned files:** `backend/app/Modules/Accounting/Posting`, contracts, tests.
 **Reviewer:** Architect + accountant.
+**Status:** done — `PostingServiceTest`, reversals via `/journal-entries/{id}/reverse`, source tracing in the general ledger.
 
 ---
 
@@ -71,6 +75,7 @@
 **Test cases:** unbalanced batch, duplicate batch, foreign currency, AR/AP detail mismatch, correction flow authorization.
 **Owned files:** `backend/app/Modules/Accounting/OpeningBalances`, tests.
 **Reviewer:** Accountant.
+**Status:** done — `/opening-balances` batches with post/reverse; `OpeningBalanceTest`.
 
 ---
 
@@ -85,6 +90,7 @@
 **Test cases:** transfer rollback, cross-currency gain/loss, closed period, insufficient-balance policy, duplicate transfer idempotency.
 **Owned files:** `backend/app/Modules/Accounting/CashBank`, tests.
 **Reviewer:** Accountant.
+**Status:** done — `/cash-accounts`, `/transfers`, bank reconciliation; `TreasuryTest`, `BankReconciliationTest`.
 
 ---
 
@@ -99,6 +105,7 @@
 **Test cases:** approval segregation, tax-inclusive expense, foreign currency, duplicate submit, closed period.
 **Owned files:** `backend/app/Modules/Accounting/Expenses`, tests.
 **Reviewer:** Accountant + architect.
+**Status:** done — `/expenses` with approval flow; `ExpenseTest`.
 
 ---
 
@@ -113,6 +120,7 @@
 **Test cases:** partial allocation, over-allocation blocked, credit notes, multi-currency aging, branch filtering.
 **Owned files:** `backend/app/Modules/Accounting/Subledger`, tests.
 **Reviewer:** Accountant.
+**Status:** done — Subledger, allocations and `/reports/aging`; `DashboardAndAgingTest`, `PartyLedgerSubaccountTest`.
 
 ---
 
@@ -127,3 +135,4 @@
 **Test cases:** close with drafts, close with unreconciled subledger, reopen permission, reversal after reopen, year-end retained earnings.
 **Owned files:** `backend/app/Modules/Accounting/Closing`, tests.
 **Reviewer:** Chief accountant + architect.
+**Status:** done — `/fiscal-years/{id}/close` and `reopen`; `FiscalCloseTest`.

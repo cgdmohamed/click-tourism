@@ -15,6 +15,7 @@
 **Test cases:** invalid signature, duplicate event, malformed payload, unknown form mapping, Arabic field values, provider retry.
 **Owned files:** `backend/app/Modules/Integrations/Meta`, tests; fixtures for payloads.
 **Reviewer:** Architect + security.
+**Status:** done — `/webhooks/meta`; `MetaLeadAdsTest`, `WebhookTest`.
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** duplicate inbound, unknown number, media messages (store metadata), send failure/retry, template rejection, Arabic text.
 **Owned files:** `backend/app/Modules/Integrations/WhatsApp`, tests.
 **Reviewer:** Architect.
+**Status:** partial — `/webhooks/whatsapp`, messages, consents; `WhatsAppIntegrationTest` runs on fixtures; live acceptance needs customer Meta/WhatsApp credentials.
 
 ---
 
@@ -43,3 +45,4 @@
 **Test cases:** save/redact credentials, failed connection test, replay success/failure, disabled integration response, log retention.
 **Owned files:** `backend/app/Modules/Integrations/Settings`, `WebhookEvents`, tests.
 **Reviewer:** Security + architect.
+**Status:** partial — `/integrations/status` and `/integrations/settings` exist (`IntegrationSettingsApiTest`); `WebhookEvent` model exists but no event-log viewing route was found (UNVERIFIED).

@@ -15,6 +15,7 @@
 **Test cases:** missing required fields, invalid dates (end < start), zero pax, item without supplier where required, branch isolation, currency snapshot.
 **Owned files:** `backend/app/Modules/Bookings/Bookings`, migrations, tests.
 **Reviewer:** Product + architect.
+**Status:** partial — `/bookings` CRUD with items (`BookingApiTest`); item attachments not implemented (TE-008).
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** every allowed/forbidden transition, edit after confirmation, cancel from each state, policy snapshot immutability, duplicate confirmation.
 **Owned files:** `backend/app/Modules/Bookings/Lifecycle`, tests.
 **Reviewer:** Product + accountant.
+**Status:** done — `/bookings/{id}/transition` and `/cancel`; `BookingServiceTest`.
 
 ---
 
@@ -43,6 +45,7 @@
 **Test cases:** discount over limit, tax-inclusive/exclusive, multi-currency cost, negative margin, rounding residual.
 **Owned files:** `backend/app/Modules/Bookings/Pricing`, tests.
 **Reviewer:** Accountant.
+**Status:** done — Margin approval routes and booking margins; `BookingServiceTest`, `CostDoubleRecognitionTest`.
 
 ---
 
@@ -57,3 +60,4 @@
 **Test cases:** missing logo, long descriptions, multi-page, RTL/English, cancelled booking watermark.
 **Owned files:** `backend/app/Modules/Bookings/Documents`, templates, tests.
 **Reviewer:** Product + frontend.
+**Status:** partial — Invoice PDF exists (`/invoices/{id}/pdf`, `InvoiceDocumentTest`); no booking confirmation/voucher document endpoint found (UNVERIFIED).

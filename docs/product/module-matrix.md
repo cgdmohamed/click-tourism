@@ -1,6 +1,6 @@
 # Module Matrix — Tourism ERP
 
-Status: Draft. Companion to `PRD.md`. No code is implied by this document.
+Status: Implementation-aware design reference (updated 2026-11-12). Companion to `PRD.md`. It describes intended module boundaries; for what is actually shipped, missing, or blocked, `gap-register.md` is authoritative and supersedes any conflicting statement here (for example, Core attachments are listed below but not implemented: GAP-CORE-03).
 
 Legend — Phase: **0** foundation, **1** core, **2** accounting, **3** parties/bookings/payments, **4** tax/commissions/reports, **5** CRM/integrations, **6** UI/QA/release.
 Criticality: **P0** launch blocker, **P1** launch required, **P2** should, **P3** later.
