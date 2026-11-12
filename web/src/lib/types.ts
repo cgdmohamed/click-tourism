@@ -361,6 +361,47 @@ export type DashboardSummary = {
   as_of: string
 }
 
+export type PipelineReport = {
+  from: string
+  to: string
+  branch_id: string | null
+  totals: {
+    captured: number
+    open: number
+    won: number
+    lost: number
+    converted: number
+    unassigned: number
+    conversion_rate: number
+  }
+  by_stage: Array<{
+    stage: string
+    name_ar: string
+    name_en: string
+    is_won: boolean
+    is_lost: boolean
+    count: number
+    share: number
+  }>
+  by_source: Array<{
+    source: string | null
+    name_ar: string
+    name_en: string
+    count: number
+    won: number
+    conversion_rate: number
+  }>
+  by_owner: Array<{
+    owner: string | null
+    name: string | null
+    count: number
+    open: number
+    won: number
+    lost: number
+    conversion_rate: number
+  }>
+}
+
 export type Paginated<T> = {
   data: T[]
   meta: { current_page: number; last_page: number; total: number; per_page: number }
