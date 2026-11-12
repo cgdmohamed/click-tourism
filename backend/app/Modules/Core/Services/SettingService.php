@@ -89,6 +89,10 @@ class SettingService
             'refund_segregation' => 'false',
             'commission_trigger' => 'fully_collected',
             'commission_auto_post' => 'false',
+            // Commission expense (DEC-003: expense + payable). The payable is the
+            // beneficiary's party subaccount under the payables control account
+            // (ADR-0015). Existing installs create 6700 with accounting:ensure-accounts.
+            'commission_expense_account_code' => '6700',
             // PENDING ACCOUNTANT APPROVAL (DEC-008): revaluation posting is
             // disabled until accounts, eligibility and reversal policy sign-off.
             'fx_revaluation_enabled' => 'false',
@@ -126,6 +130,11 @@ class SettingService
             // invoice cannot approve it, matching the expense and voucher
             // rules. Odoo/Zoho approvals are per document type; this
             // installation keeps the control on by default.
+            'segregation' => 'true',
+        ],
+        'commissions' => [
+            // The person who created or submitted a rule, or overrode a
+            // commission amount, cannot approve it (maker-checker, as for expenses).
             'segregation' => 'true',
         ],
         'employees' => [
@@ -210,6 +219,8 @@ class SettingService
             'supplier_payment_prefix' => 'PV',
             'transfer_prefix' => 'TR',
             'expense_prefix' => 'EX',
+            'commission_prefix' => 'CM',
+            'commission_payment_prefix' => 'CP',
             'customer_invoice_prefix' => 'INV',
             'supplier_invoice_prefix' => 'BIL',
             'credit_note_prefix' => 'CN',
@@ -240,6 +251,7 @@ class SettingService
             'supplier_advance_account_code' => 'asset',
             'revenue_account_code' => 'revenue',
             'cost_account_code' => 'expense',
+            'commission_expense_account_code' => 'expense',
             'tax_payable_account_code' => 'liability',
             'output_tax_account_code' => 'liability',
             'input_tax_account_code' => 'asset',
@@ -270,7 +282,7 @@ class SettingService
     ];
 
     /** Accounting-policy switches that need the accounting.approve_policy permission. */
-    public const POLICY_KEYS = ['accounting_policy_approved', 'auto_post_bookings'];
+    public const POLICY_KEYS = ['accounting_policy_approved', 'auto_post_bookings', 'commission_auto_post'];
 
     /**
      * Returns an error message when $value is not a valid account for the
