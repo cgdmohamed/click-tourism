@@ -25,6 +25,7 @@ import Leads from './pages/Leads'
 import AssignmentRules from './pages/AssignmentRules'
 import Settings from './pages/Settings'
 import Users from './pages/Users'
+import AuditLog from './pages/AuditLog'
 import Roles from './pages/Roles'
 import Profile from './pages/Profile'
 import Treasury from './pages/Treasury'
@@ -95,6 +96,7 @@ export default function App() {
                   <Route path="settings" element={<Settings />} />
                   <Route path="users" element={<Users />} />
                   <Route path="roles" element={<Roles />} />
+        <Route path="audit-events" element={<AuditLog />} />
                   <Route path="profile" element={<Profile />} />
                 </Route>
               </Routes>

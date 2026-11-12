@@ -724,3 +724,50 @@ export type ImportJob = {
   finished_at: string | null
   created_at: string
 }
+
+export type AuditActor = {
+  id: string
+  name: string
+  email: string
+}
+
+export type AuditBranch = {
+  id: string
+  name: string
+  name_ar: string
+  name_en: string
+}
+
+export type AuditEvent = {
+  id: string
+  action: string
+  actor: AuditActor | null
+  entity_type: string | null
+  entity_id: number | null
+  branch: AuditBranch | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  ip: string | null
+  request_id: string | null
+  created_at: string | null
+}
+
+export type AuditEventList = {
+  data: AuditEvent[]
+  meta: {
+    current_page: number
+    last_page: number
+    total: number
+    per_page: number
+  }
+}
+
+export type AuditFilters = {
+  actor: string
+  action: string
+  entity_type: string
+  entity_id: string
+  branch: string
+  from: string
+  to: string
+}

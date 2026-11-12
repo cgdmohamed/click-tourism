@@ -25,12 +25,12 @@ Severity is about product risk, not effort.
 | Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 1 (GAP-RPT-03 adjacent, export parity) | none |
 | Reports | Core ledger + statements + aging/statements + CSV/XLSX/PDF done | 6 | close RPT-01..05, then browser E2E |
 | CRM | Lead capture, rules, conversion, WhatsApp consent done | 6 | wire reassignment (P0), then pipeline/activities |
-| Core / auth | Users, roles, branches, settings, audit events, health, install | 4 | notifications, audit browsing, attachments decision |
+| Core / auth | Users, roles, branches, settings, audit events, health, install | 3 | notifications, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
 | QA / release | 876 backend tests, 88 unit tests, 8 CI jobs | 4 | coverage gate, a11y, performance seed |
 | Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
 
-Counts include only tracked gaps below (36 total, 3 at P0).
+Counts include only tracked gaps below (35 total, 3 at P0).
 
 ## 3. Reports module
 
@@ -65,7 +65,7 @@ Implemented today: Sanctum auth with rate limiting, role/permission matrix incl.
 | ID | Sev | Gap | Evidence | Done when | Blocked by |
 |---|---|---|---|---|---|
 | GAP-CORE-01 | P1 | No in-app notifications anywhere, despite being a planned collaboration primitive. | No `notifications` migration/table, model, route, or UI. | Notification model, per-user list with read/unread, emitted by CRM reassignment and approval flows, tested. | none |
-| GAP-CORE-02 | P1 | Audit trail is write-only for operators: no API or screen to browse audit events (only the fixed-asset trail). | `Modules/Core/Models/AuditEvent.php` exists; only `fixed-assets/{asset}/audit-trail` is exposed. | `GET /audit-events` with actor/entity/date/branch filters, `audit.view` permission, export, and tests. | new permission + OpenAPI entry |
+| ~~GAP-CORE-02~~ | **P1 — closed** | Audit trail was write-only for operators: no API or screen to browse audit events (only the fixed-asset trail). Now `GET /audit-events` lists events newest-first with actor/action/entity/date/branch filters, `GET /audit-events/export` emits a filtered CSV capped at 50,000 rows and records an `audit.exported` event, and the `/audit-events` screen shows the trail with before/after snapshots. | `backend/app/Http/Controllers/Api/AuditEventController.php`; `backend/database/migrations/2026_11_23_000300_add_branch_to_audit_events.php`; `backend/app/Modules/Core/Models/AuditEvent.php`; `web/src/pages/AuditLog.tsx`; `backend/tests/Feature/AuditEventTest.php`. | Closed by tests covering `audit.view`/`audit.export`, actor/action/entity/date filters, branch scoping, pagination, CSV export, date validation, and branch inference. | none |
 | GAP-CORE-03 | P2 | Attachments are claimed by the module matrix but do not exist. | `docs/product/module-matrix.md` lists attachments under Core; no attachment table, route, or module. | Either implement document attachments (storage, virus/type limits, permission, audit) or remove the claim from the matrix. | decision to implement or de-scope |
 | GAP-CORE-04 | P3 | Users/roles/branches are editable, but there is no self-service session/token management screen. | No `/profile` sessions section; only `sanctum:prune-expired`. | Signed-in user can list and revoke their own devices. | none |
 
@@ -120,7 +120,7 @@ Order follows the module completion sequence; each step is one branch → one PR
 
 1. `agent/reports-close-gaps` — GAP-RPT-01, 03, 04; E2E for a report export (GAP-QA-01).
 2. `agent/crm-close-gaps` — GAP-CRM-01 (P0 scheduler) then 02, 03, 04, 05.
-3. `agent/core-notifications-audit` — GAP-CORE-01, 02; then GAP-CORE-03 decision.
+3. `agent/core-notifications-audit` — GAP-CORE-02 closed by `agent/core-audit-browser`; GAP-CORE-01 notifications and GAP-CORE-03 decision next.
 4. `agent/qa-harness` — GAP-QA-02, 03, 04, 05; remaining per-module E2E.
 5. `agent/docs-truth-pass` — GAP-DOC-01..05.
 6. Release rehearsal — re-run the PostgreSQL, compose, backup/restore, and N-1 upgrade jobs already in CI.
