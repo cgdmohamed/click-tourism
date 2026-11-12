@@ -289,6 +289,9 @@ class BookingService
         return DB::transaction(function () use ($booking, $toStatus, $reason, $actorId, $overrideReason, $canOverrideCreditLimit) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $from = $booking->status;
+            if ($toStatus === 'cancelled') {
+                $this->assertNoIssuedCustomerInvoice($booking);
+            }
 
             $allowed = self::allowedTransitionsFor($from);
             if (! in_array($toStatus, $allowed, true)) {
@@ -428,6 +431,15 @@ class BookingService
         });
     }
 
+    private function assertNoIssuedCustomerInvoice(Booking $booking): void
+    {
+        if (Invoice::query()->where('booking_id', $booking->id)
+            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+            ->where('status', Invoice::STATUS_ISSUED)->exists()) {
+            throw new DomainException('This booking has an issued invoice. Reconcile the invoice before cancelling the booking.');
+        }
+    }
+
     public function cancel(Booking $booking, ?string $reason, int $cancellationFeeMinor = 0, ?int $actorId = null): Booking
     {
         return DB::transaction(function () use ($booking, $reason, $cancellationFeeMinor, $actorId) {
@@ -437,6 +449,7 @@ class BookingService
                 throw new DomainException('This booking can no longer be cancelled.');
             }
 
+            $this->assertNoIssuedCustomerInvoice($booking);
             $from = $booking->status;
             $booking->update([
                 'status' => 'cancelled',
