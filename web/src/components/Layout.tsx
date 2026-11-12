@@ -74,6 +74,7 @@ export function Layout() {
         { to: '/tour-packages', label: locale === 'ar' ? 'البرامج والرحلات' : 'Tours & Packages', icon: 'plane', permission: 'bookings.view' },
         { to: '/bookings', label: t('bookings'), icon: 'plane' },
         { to: '/leads', label: t('crm'), icon: 'target' },
+        { to: '/lead-settings', label: locale === 'ar' ? 'مصادر ومراحل العملاء' : 'Lead sources & stages', icon: 'listChecks', permission: 'leads.manage_rules' },
         { to: '/assignment-rules', label: t('assignmentRules'), icon: 'target', permission: 'leads.manage_rules' },
       ],
     },

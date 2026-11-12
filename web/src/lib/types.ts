@@ -263,6 +263,22 @@ export type Lead = {
   last_activity_at?: string | null
 }
 
+export type LeadSourceConfig = {
+  code: string
+  name_ar: string
+  name_en: string
+  is_active: boolean
+}
+
+export type LeadStageConfig = {
+  code: string
+  name_ar: string
+  name_en: string
+  sort_order: number
+  is_won: boolean
+  is_lost: boolean
+}
+
 export type AssignmentRule = {
   id: string
   priority: number

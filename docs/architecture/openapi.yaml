@@ -2120,6 +2120,168 @@ paths:
         '200': { description: Converted }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /lead-sources:
+    get:
+      tags: [CRM]
+      summary: List configurable lead sources (requires leads.view)
+      description: Ordered by code. Inactive sources are omitted unless `include_inactive` is true.
+      parameters:
+        - { name: include_inactive, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeadSource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [CRM]
+      summary: Create a lead source (requires leads.manage_rules)
+      description: The code is lower-cased, must match `alpha_dash`, and is immutable afterwards.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeadSourceInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LeadSource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /lead-sources/{code}:
+    patch:
+      tags: [CRM]
+      summary: Rename or (de)activate a lead source (requires leads.manage_rules)
+      description: The `code` in the path identifies the record; any `code` in the body is ignored.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeadSourceInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LeadSource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [CRM]
+      summary: Delete an unused lead source (requires leads.manage_rules)
+      description: >-
+        Refused with 422 when the source is the fallback `other` source or is
+        referenced by a lead or an assignment rule; deactivate it instead.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'Deleted: `{ data: { code, deleted: true } }`' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /lead-stages:
+    get:
+      tags: [CRM]
+      summary: List pipeline stages in order (requires leads.view)
+      responses:
+        '200':
+          description: Stages ordered by `sort_order` then code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeadStage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [CRM]
+      summary: Create a pipeline stage (requires leads.manage_rules)
+      description: The code is lower-cased, must match `alpha_dash`, and is immutable afterwards.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeadStageInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LeadStage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /lead-stages/{code}:
+    patch:
+      tags: [CRM]
+      summary: Rename, reorder, or change the won/lost flag of a stage (requires leads.manage_rules)
+      description: >-
+        The `code` in the path identifies the record; any `code` in the body is
+        ignored. A stage cannot be both won and lost. Moving a lead into a won
+        or lost stage updates the lead status to `won` / `lost`.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeadStageInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LeadStage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+    delete:
+      tags: [CRM]
+      summary: Delete an unused stage (requires leads.manage_rules)
+      description: >-
+        Refused with 422 for the fallback `new` stage or when leads still use
+        the stage; move those leads first.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'Deleted: `{ data: { code, deleted: true } }`' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
+
   /webhooks/meta:
     get:
       tags: [Webhooks]
@@ -4665,6 +4827,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Record not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
   schemas:
     Error:
       type: object
@@ -6252,6 +6419,44 @@ components:
         notes: { type: string, maxLength: 2000, nullable: true }
         note: { type: string, maxLength: 2000, nullable: true, description: Recorded as a lead activity }
         service_category: { type: string, maxLength: 40, nullable: true }
+    LeadSource:
+      type: object
+      properties:
+        code: { type: string, description: 'Stable, immutable key (lower-case, alpha_dash)' }
+        name_ar: { type: string }
+        name_en: { type: string }
+        is_active: { type: boolean }
+    LeadSourceInput:
+      type: object
+      required: [name_ar, name_en]
+      description: On create, `code` is also required and immutable afterwards.
+      properties:
+        code: { type: string, maxLength: 40, pattern: '^[a-z0-9_-]+$' }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        is_active: { type: boolean, default: true }
+    LeadStage:
+      type: object
+      properties:
+        code: { type: string, description: 'Stable, immutable key (lower-case, alpha_dash)' }
+        name_ar: { type: string }
+        name_en: { type: string }
+        sort_order: { type: integer, minimum: 0 }
+        is_won: { type: boolean }
+        is_lost: { type: boolean }
+    LeadStageInput:
+      type: object
+      required: [name_ar, name_en]
+      description: >-
+        On create, `code` is also required and immutable afterwards. `is_won`
+        and `is_lost` are mutually exclusive.
+      properties:
+        code: { type: string, maxLength: 40, pattern: '^[a-z0-9_-]+$' }
+        name_ar: { type: string, maxLength: 255 }
+        name_en: { type: string, maxLength: 255 }
+        sort_order: { type: integer, minimum: 0, default: 0 }
+        is_won: { type: boolean, default: false }
+        is_lost: { type: boolean, default: false }
     Lead:
       type: object
       properties:
@@ -6279,7 +6484,7 @@ components:
       properties:
         priority: { type: integer, minimum: 0, default: 0 }
         branch_id: { type: string, nullable: true, description: Null makes the rule global }
-        source_id: { type: string, nullable: true }
+        source_id: { type: string, nullable: true, description: 'Lead source code (e.g. whatsapp), not the internal id' }
         service_category: { type: string, maxLength: 40, nullable: true }
         strategy: { type: string, enum: [least_loaded, round_robin, manual] }
         target_user_id: { type: string, nullable: true }
@@ -6290,7 +6495,7 @@ components:
       description: All fields optional; `branch_id` cannot be changed
       properties:
         priority: { type: integer, minimum: 0 }
-        source_id: { type: string, nullable: true }
+        source_id: { type: string, nullable: true, description: 'Lead source code (e.g. whatsapp), not the internal id' }
         service_category: { type: string, maxLength: 40, nullable: true }
         strategy: { type: string, enum: [least_loaded, round_robin, manual] }
         target_user_id: { type: string, nullable: true }
@@ -6302,7 +6507,7 @@ components:
         id: { type: string }
         priority: { type: integer }
         branch_id: { type: string, nullable: true }
-        source_id: { type: string, nullable: true }
+        source_id: { type: string, nullable: true, description: 'Lead source code (e.g. whatsapp), not the internal id' }
         service_category: { type: string, nullable: true }
         strategy: { type: string, enum: [least_loaded, round_robin, manual] }
         target_user_id: { type: [string, integer, 'null'] }
