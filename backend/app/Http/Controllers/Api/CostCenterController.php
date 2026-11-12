@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Accounting\Models\CostCenter;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Accounting\Services\CostCenterService;
+use App\Modules\Reports\Services\ReportCsv;
+use App\Modules\Reports\Services\ReportExporter;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 
 class CostCenterController extends ApiController
@@ -117,5 +120,45 @@ class CostCenterController extends ApiController
         ]);
 
         return $this->ok($service->unallocated($data['from'], $data['to'], $branch));
+    }
+
+    public function exportProfitAndLoss(Request $request, CostCenterService $service, ReportCsv $csv, ReportExporter $exporter): Response
+    {
+        $options = $exporter->options($request);
+        $data = $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date'],
+        ]);
+
+        // The cost-center report carries no currency of its own; amounts are
+        // analytical portions of base-currency journal lines.
+        $currency = $this->settings()->baseCurrency();
+        $report = $service->profitAndLoss($data['from'], $data['to'], $this->branch());
+
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'cost-center-pl', $data,
+            $csv->costCenterProfitAndLossRows($report, $currency),
+            "cost-center-pl_{$data['from']}_{$data['to']}",
+            'Cost Center Profit and Loss / أرباح وخسائر مراكز التكلفة',
+            ['period' => "{$data['from']} - {$data['to']}", 'currency' => $currency],
+        );
+    }
+
+    public function exportUnallocated(Request $request, CostCenterService $service, ReportCsv $csv, ReportExporter $exporter): Response
+    {
+        $options = $exporter->options($request);
+        $data = $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date'],
+        ]);
+
+        $currency = $this->settings()->baseCurrency();
+        $report = $service->unallocated($data['from'], $data['to'], $this->branch());
+
+        return $exporter->respond($options, $this->branch(), $this->actorId(), 'cost-center-unallocated', $data,
+            $csv->costCenterUnallocatedRows($report, $currency),
+            "cost-center-unallocated_{$data['from']}_{$data['to']}",
+            'Cost Center Unallocated Lines / بنود بدون مركز تكلفة',
+            ['period' => "{$data['from']} - {$data['to']}", 'currency' => $currency],
+        );
     }
 }

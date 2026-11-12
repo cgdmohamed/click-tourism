@@ -166,7 +166,9 @@ Route::prefix('v1')->group(function () {
         Route::post('journal-lines/{line}/cost-allocations', [CostCenterController::class, 'allocate'])->middleware('permission:cost_centers.manage');
 
         Route::get('reports/cost-center-pl', [CostCenterController::class, 'profitAndLoss'])->middleware('permission:cost_centers.view');
+        Route::get('reports/cost-center-pl/export', [CostCenterController::class, 'exportProfitAndLoss'])->middleware(['permission:cost_centers.view', 'permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/cost-center-unallocated', [CostCenterController::class, 'unallocated'])->middleware('permission:cost_centers.view');
+        Route::get('reports/cost-center-unallocated/export', [CostCenterController::class, 'exportUnallocated'])->middleware(['permission:cost_centers.view', 'permission:reports.export', 'throttle:report-exports']);
 
         Route::get('fiscal-periods', [FiscalPeriodController::class, 'index'])->middleware('permission:periods.view');
         Route::get('fiscal-periods/{period}/checklist', [FiscalPeriodController::class, 'checklist'])->middleware('permission:periods.view');
