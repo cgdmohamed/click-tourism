@@ -348,25 +348,39 @@ class InvoiceService
                 throw new DomainException("Invoice {$invoice->number} has already been issued.");
             }
 
-            // Prevent double revenue recognition: if a linked booking already
-            // recognized revenue (booking-sourced entry), do not post revenue
-            // again through this invoice. The invoice should only record the
-            // balance-sheet movement (AR/AP), not the P&L impact.
-            // A supplier invoice never recognizes revenue, so this guard only
-            // applies to customer-side documents.
-            if ($invoice->booking_id !== null && $invoice->type !== Invoice::TYPE_SUPPLIER_INVOICE) {
-                $bookingRevenue = JournalEntry::query()
+            // The booking may already have posted its AR, revenue and tax.
+            // An invoice documents that SAME receivable; it must never post
+            // a second AR/revenue journal entry.
+            $existingBookingRevenue = null;
+            if ($invoice->booking_id !== null && $invoice->type === Invoice::TYPE_CUSTOMER_INVOICE) {
+                $existingBookingRevenue = JournalEntry::query()
                     ->where('source_type', 'booking')
                     ->where('source_id', $invoice->booking_id)
                     ->where('event', 'revenue')
-                    ->where('reversal_of_id', null)
-                    ->exists();
-
-                if ($bookingRevenue) {
-                    throw new DomainException(
-                        "Revenue was already recognized for booking {$invoice->booking_id}. "
-                        .'Issue the invoice without revenue posting or reverse the booking revenue first.'
-                    );
+                    ->where('status', 'posted')
+                    ->whereNull('reversal_of_id')
+                    ->whereNotExists(function ($query) {
+                        $query->select('id')->from('journal_entries as reversals')
+                            ->whereColumn('reversals.reversal_of_id', 'journal_entries.id');
+                    })
+                    ->first();
+                $otherIssued = Invoice::query()
+                    ->where('booking_id', $invoice->booking_id)
+                    ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+                    ->where('status', Invoice::STATUS_ISSUED)
+                    ->where('id', '!=', $invoice->id)->exists();
+                if ($otherIssued) {
+                    throw new DomainException('A customer invoice for this booking has already been issued.');
+                }
+                if ($existingBookingRevenue) {
+                    $booking = Booking::query()->lockForUpdate()->findOrFail($invoice->booking_id);
+                    if ($booking->customer_id !== $invoice->party_id
+                        || $booking->branch_id !== $invoice->branch_id
+                        || $booking->currency_code !== $invoice->currency_code
+                        || (int) $booking->total_sell_minor !== (int) $invoice->total_minor
+                        || (int) $booking->tax_minor !== (int) $invoice->tax_minor) {
+                        throw new DomainException('This booking was already posted. Invoice customer, currency, total and tax must match the booking exactly.');
+                    }
                 }
             }
 
@@ -387,7 +401,7 @@ class InvoiceService
 
             // Customer credit limit (accounting.credit_limit_policy); credit notes only reduce exposure.
             $warnings = [];
-            if ($invoice->type === Invoice::TYPE_CUSTOMER_INVOICE && $invoice->party_type === 'customer') {
+            if (! $existingBookingRevenue && $invoice->type === Invoice::TYPE_CUSTOMER_INVOICE && $invoice->party_type === 'customer') {
                 $customer = Customer::query()->find($invoice->party_id);
                 if ($customer) {
                     $warnings = $this->creditLimits->enforce(
@@ -403,23 +417,29 @@ class InvoiceService
                 }
             }
 
-            $partyAccount = $this->partySubaccount($invoice);
-            $lines = $this->postingLines($invoice, $partyAccount);
+            if ($existingBookingRevenue) {
+                // No new financial transaction: the booking's posted entry is
+                // the ledger source of truth for this one full-value invoice.
+                $entry = $existingBookingRevenue;
+            } else {
+                $partyAccount = $this->partySubaccount($invoice);
+                $lines = $this->postingLines($invoice, $partyAccount);
 
-            $entry = $this->posting->post(PostingRequest::make(
-                entryDate: $invoice->issue_date,
-                branch: $invoice->branch,
-                currency: $invoice->currency_code,
-                lines: $lines,
-                memo: $this->invoiceMemo($invoice),
-                sourceType: 'invoice',
-                sourceId: $invoice->id,
-                event: 'issued',
-                fxRate: (string) $invoice->fx_rate,
-                fxRateDate: $invoice->issue_date,
-                fxRateSource: $invoice->fx_rate_source,
-                actorId: $actorId,
-            ));
+                $entry = $this->posting->post(PostingRequest::make(
+                    entryDate: $invoice->issue_date,
+                    branch: $invoice->branch,
+                    currency: $invoice->currency_code,
+                    lines: $lines,
+                    memo: $this->invoiceMemo($invoice),
+                    sourceType: 'invoice',
+                    sourceId: $invoice->id,
+                    event: 'issued',
+                    fxRate: (string) $invoice->fx_rate,
+                    fxRateDate: $invoice->issue_date,
+                    fxRateSource: $invoice->fx_rate_source,
+                    actorId: $actorId,
+                ));
+            }
 
             $invoice->update([
                 'status' => 'issued',
@@ -441,6 +461,7 @@ class InvoiceService
             $this->audit->log('invoice.issued', $invoice, ['status' => 'approved'], [
                 'status' => 'issued',
                 'journal' => $entry->number,
+                'reused_booking_entry' => $existingBookingRevenue !== null,
             ], $actorId);
 
             return $invoice->refresh()->load('lines.account', 'journalEntry')->withWarnings($warnings);
