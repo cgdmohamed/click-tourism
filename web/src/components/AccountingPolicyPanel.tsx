@@ -215,6 +215,7 @@ export default function AccountingPolicyPanel() {
                       value={current}
                       options={optionsFor(mapping.type)}
                       placeholder={L('ابحث عن حساب', 'Search accounts')}
+                      ariaLabel={L(mapping.ar, mapping.en)}
                       disabled={!canEdit || !can('accounts.view') || savingKey === id}
                       onChange={(code) => {
                         if (code && code !== current) void saveMapping(mapping, code)
