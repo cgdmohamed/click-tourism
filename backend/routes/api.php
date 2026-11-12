@@ -260,6 +260,7 @@ Route::prefix('v1')->group(function () {
         Route::get('bookings', [BookingController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('bookings', [BookingController::class, 'store'])->middleware('permission:bookings.create');
         Route::get('bookings/{booking}', [BookingController::class, 'show'])->middleware('permission:bookings.view');
+        Route::post('bookings/{booking}/invoice', [BookingController::class, 'invoice'])->middleware(['permission:invoices.create', 'idempotent']);
         Route::patch('bookings/{booking}', [BookingController::class, 'update'])->middleware('permission:bookings.update');
         Route::post('bookings/{booking}/transition', [BookingController::class, 'transition'])->middleware('permission:bookings.transition');
         Route::post('bookings/{booking}/cancel', [BookingController::class, 'cancel'])->middleware('permission:bookings.cancel');
