@@ -169,6 +169,8 @@ export function SearchableSelect({
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef(onSearch)
 
   useEffect(() => {
@@ -193,108 +195,146 @@ export function SearchableSelect({
     return clearLabel ? [{ value: '', label: clearLabel }, ...filtered] : filtered
   }, [options, query, clearLabel])
 
+  const close = (restoreFocus = false) => {
+    setOpen(false)
+    setQuery('')
+    if (restoreFocus) triggerRef.current?.focus()
+  }
+
+  // Close on any press outside, including touch.
   useEffect(() => {
     if (!open) return
-    const onPointerDown = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false)
-        setQuery('')
-      }
+    const onPointerDown = (event: Event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) close()
     }
     document.addEventListener('mousedown', onPointerDown)
-    return () => document.removeEventListener('mousedown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+    }
   }, [open])
 
-  const openList = () => {
+  // The search box takes focus when the list opens.
+  useEffect(() => {
+    if (open) searchInputRef.current?.focus()
+  }, [open])
+
+  const toggle = () => {
     if (disabled) return
+    if (open) {
+      close()
+      return
+    }
     setQuery('')
-    setActiveIndex(options.findIndex((option) => option.value === value))
+    setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value) + (clearLabel ? 1 : 0)))
     setOpen(true)
   }
 
   const select = (option: SelectOption) => {
     onChange(option.value)
-    setOpen(false)
-    setQuery('')
+    close(true)
   }
 
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+  const onTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (!open) toggle()
+    }
+  }
+
+  const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      if (!open) {
-        openList()
-        return
-      }
       setActiveIndex((current) => Math.min(current + 1, rows.length - 1))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
       setActiveIndex((current) => Math.max(current - 1, 0))
     } else if (event.key === 'Enter') {
-      if (open && rows[activeIndex]) {
-        event.preventDefault()
-        select(rows[activeIndex])
-      }
+      event.preventDefault()
+      if (rows[activeIndex]) select(rows[activeIndex])
     } else if (event.key === 'Escape') {
-      setOpen(false)
-      setQuery('')
+      event.preventDefault()
+      event.stopPropagation()
+      close(true)
     } else if (event.key === 'Tab') {
-      setOpen(false)
+      close()
     }
   }
 
   return (
-    <div ref={containerRef} className={cx('relative', className)}>
-      <input
+    <div
+      ref={containerRef}
+      className={cx('relative', className)}
+      onBlur={(event) => {
+        // Focus left the whole control (keyboard navigation away): close.
+        if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) close()
+      }}
+    >
+      <button
+        ref={triggerRef}
         id={id}
-        className={cx(controlBase, 'h-9 pe-8')}
-        value={open ? query : (selected?.label ?? '')}
-        placeholder={placeholder}
-        disabled={disabled}
+        type="button"
         role="combobox"
+        aria-haspopup="listbox"
         aria-expanded={open}
-        aria-autocomplete="list"
-        autoComplete="off"
-        onFocus={openList}
-        onChange={(event) => {
-          setQuery(event.target.value)
-          setActiveIndex(0)
-          if (!open) setOpen(true)
-        }}
-        onKeyDown={onKeyDown}
-      />
-      <Icon
-        name="chevronDown"
-        className="pointer-events-none absolute end-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle"
-      />
+        disabled={disabled}
+        className={cx(controlBase, 'flex h-9 items-center justify-between gap-2 pe-2 text-start')}
+        onClick={toggle}
+        onKeyDown={onTriggerKeyDown}
+      >
+        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-placeholder')}>
+          {selected?.label ?? placeholder ?? ''}
+        </span>
+        <Icon name="chevronDown" className={cx('h-4 w-4 shrink-0 text-text-subtle transition', open && 'rotate-180')} />
+      </button>
       {open ? (
+        // preventDefault on click: this panel sits inside a <label> (Field), and a click on its
+        // padding would otherwise be forwarded to the trigger and re-open the list.
         <div
-          className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-12 border border-border-default bg-surface-default p-1 shadow-3"
-          role="listbox"
+          className="absolute z-50 mt-1 w-full rounded-12 border border-border-default bg-surface-default shadow-3"
+          onClick={(event) => event.preventDefault()}
         >
-          {rows.length === 0 ? (
-            <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
-          ) : (
-            rows.map((option, index) => (
-              <button
-                key={`${option.value}-${index}`}
-                type="button"
-                role="option"
-                aria-selected={option.value === value}
-                className={cx(
-                  'text-medium flex w-full items-center justify-between gap-2 rounded-8 px-3 py-2 text-start transition',
-                  option.value === value ? 'bg-surface-selected text-text-default' : 'text-text-default',
-                  index === activeIndex ? 'bg-surface-hovered' : null,
-                )}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => select(option)}
-              >
-                <span className="truncate">{option.label}</span>
-                {option.hint ? <span className="text-small truncate text-text-subtle">{option.hint}</span> : null}
-              </button>
-            ))
-          )}
-          {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
+          <div className="border-b border-border-subtle p-2">
+            <input
+              ref={searchInputRef}
+              className={cx(controlBase, 'h-8')}
+              value={query}
+              placeholder={t('search')}
+              autoComplete="off"
+              aria-label={t('search')}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setActiveIndex(0)
+              }}
+              onKeyDown={onSearchKeyDown}
+            />
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1" role="listbox">
+            {rows.length === 0 ? (
+              <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
+            ) : (
+              rows.map((option, index) => (
+                <button
+                  key={`${option.value}-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === value}
+                  className={cx(
+                    'text-medium flex w-full items-center justify-between gap-2 rounded-8 px-3 py-2 text-start transition',
+                    option.value === value ? 'bg-surface-selected text-text-default' : 'text-text-default',
+                    index === activeIndex ? 'bg-surface-hovered' : null,
+                  )}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => select(option)}
+                >
+                  <span className="truncate">{option.label}</span>
+                  {option.hint ? <span className="text-small truncate text-text-subtle">{option.hint}</span> : null}
+                </button>
+              ))
+            )}
+            {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
+          </div>
         </div>
       ) : null}
     </div>
