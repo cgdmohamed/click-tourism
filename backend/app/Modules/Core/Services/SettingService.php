@@ -182,6 +182,10 @@ class SettingService
         ],
         'crm' => [
             'reassign_after_hours' => '24',
+            // A new capture matching an existing lead by normalized phone/email
+            // inside this many days is flagged and linked instead of silently
+            // duplicated. 0 disables duplicate detection (GAP-CRM-04).
+            'duplicate_window_days' => '30',
             'assignment_strategy' => 'least_loaded',
             'business_timezone' => 'Africa/Cairo',
             'business_days' => '1,2,3,4,5',

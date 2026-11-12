@@ -32,6 +32,8 @@ class Lead extends Model
         'escalated_at',
         'converted_customer_id',
         'converted_booking_id',
+        'duplicate_of_lead_id',
+        'duplicate_reason',
     ];
 
     protected function casts(): array
@@ -91,6 +93,11 @@ class Lead extends Model
             'escalated_at' => $this->escalated_at?->toIso8601String(),
             'converted_customer_id' => $this->convertedCustomer?->public_id,
             'converted_booking_id' => $this->convertedBooking?->public_id,
+            'duplicate_of' => $this->duplicateOf ? [
+                'id' => $this->duplicateOf->public_id,
+                'name' => $this->duplicateOf->name,
+            ] : null,
+            'duplicate_reason' => $this->duplicate_reason,
         ];
     }
 
@@ -102,5 +109,11 @@ class Lead extends Model
     public function convertedBooking()
     {
         return $this->belongsTo(Booking::class, 'converted_booking_id');
+    }
+
+    /** The earlier lead this capture may duplicate (GAP-CRM-04). */
+    public function duplicateOf()
+    {
+        return $this->belongsTo(self::class, 'duplicate_of_lead_id');
     }
 }
