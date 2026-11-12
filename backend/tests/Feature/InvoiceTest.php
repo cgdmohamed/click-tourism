@@ -154,7 +154,7 @@ class InvoiceTest extends TestCase
         $this->assertSame($entry->id, $issued->journal_entry_id);
         $this->assertSame($priorCount, JournalEntry::query()->count());
         $this->assertSame(60000, $this->balance('1100'));
-        $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])->assertStatus(403);
+        $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])->assertStatus(422);
         $this->postJson("/api/v1/bookings/{$booking->public_id}/cancel", [
             'reason' => 'Customer request',
         ])->assertStatus(403);
