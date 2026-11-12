@@ -21,6 +21,10 @@ class SettingService
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',
             'company_name_en' => 'Tourism ERP',
+            // Letterhead logo for PDF reports: a PNG/JPEG path relative to storage/app, or a data URI. Empty = no logo.
+            'company_logo' => '',
+            // Print "Prepared by / Approved by / Date" lines at the end of PDF reports.
+            'report_signoff' => 'true',
             'base_currency' => 'EGP',
             'locale' => 'ar',
             'timezone' => 'Africa/Cairo',

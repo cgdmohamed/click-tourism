@@ -40,3 +40,28 @@ amount columns carry the report totals. `Abnormal` was introduced after the
 first release; consumers that index columns by position should switch to
 reading the header row.
 
+## Addendum 2026-11-12 — export reliability hardening
+
+- Reports build typed rows once (`ReportCsv::*Rows`); CSV, XLSX and PDF render the same rows.
+  Money is carried as exact decimal strings from integer minor units and written as numeric XLSX
+  cells with a number format for the currency exponent (values above 15 significant digits stay
+  text). Dates are real date cells. Text is always an explicit string cell; text beginning with
+  `=`, `+`, `-`, `@`, tab, CR or LF is prefixed with an apostrophe in every format.
+- PDF: Dompdf with the DejaVu Sans font shipped by the `dompdf/dompdf` dependency (no remote
+  fetch, `isRemoteEnabled` off, only `data:` URIs allowed). Arabic is shaped to Presentation
+  Forms-B and reordered visually by `ArabicText` (Dompdf has no shaping/bidi); paragraph direction
+  follows the first strong letter of each cell. Letterhead (logo, company names, branch, period,
+  currency, timestamp in the installation time zone), repeated column header, and "page n / N" appear
+  on every page. The sign-off line is controlled by `general.report_signoff` (default on). The
+  logo comes from `general.company_logo` (PNG/JPEG path under `storage/app` or `data:` URI; other
+  values are ignored). PDF output is capped at 5,000 rows (422); use CSV or XLSX beyond that.
+  Limitation: Persian/Urdu-only letters are not shaped.
+- Throttle: named limiter `report-exports`, 20 per minute per user, PDF additionally 6 per minute.
+  The previous unnamed `throttle:20,1` shared its counter with other `throttle:N,1` routes.
+- Format and language are validated before the report runs and before the audit event, which now
+  records report, format, language, branch, row count and filters (no party names or amounts).
+- Fixed-asset reports gained exports (`/reports/fixed-assets/{report}/export`), requiring both
+  `assets.view` and `reports.export`.
+- Not changed: statutory tax-invoice templates remain `PENDING_ACCOUNTANT_APPROVAL`; no queued or
+  streamed export exists, so the synchronous 50,000-row cap stands. Bank reconciliation has no
+  export yet.

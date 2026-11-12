@@ -246,6 +246,9 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/fixed-assets/movements', [FixedAssetReportController::class, 'movements'])->middleware('permission:assets.view');
         Route::get('reports/fixed-assets/reconciliation', [FixedAssetReportController::class, 'reconciliation'])->middleware('permission:assets.view');
         Route::get('reports/fixed-assets/schedule', [FixedAssetReportController::class, 'schedule'])->middleware('permission:assets.view');
+        Route::get('reports/fixed-assets/{report}/export', [FixedAssetReportController::class, 'export'])
+            ->whereIn('report', ['roll-forward', 'carrying-values', 'movements', 'reconciliation', 'schedule'])
+            ->middleware(['permission:assets.view', 'permission:reports.export', 'throttle:report-exports']);
 
         Route::get('accounts', [AccountController::class, 'index'])->middleware('permission:accounts.view');
         Route::post('accounts', [AccountController::class, 'store'])->middleware('permission:accounts.create');
@@ -321,19 +324,19 @@ Route::prefix('v1')->group(function () {
         Route::post('invoices/{invoice}/credit-note', [InvoiceController::class, 'creditNote'])->middleware(['permission:invoices.approve', 'idempotent']);
 
         Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])->middleware('permission:reports.view');
-        Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/general-ledger', [ReportController::class, 'generalLedger'])->middleware('permission:reports.view');
-        Route::get('reports/general-ledger/export', [ReportController::class, 'exportGeneralLedger'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/general-ledger/export', [ReportController::class, 'exportGeneralLedger'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/income-statement', [ReportController::class, 'incomeStatement'])->middleware('permission:reports.view');
-        Route::get('reports/income-statement/export', [ReportController::class, 'exportIncomeStatement'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/income-statement/export', [ReportController::class, 'exportIncomeStatement'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/balance-sheet', [ReportController::class, 'balanceSheet'])->middleware('permission:reports.view');
-        Route::get('reports/balance-sheet/export', [ReportController::class, 'exportBalanceSheet'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/balance-sheet/export', [ReportController::class, 'exportBalanceSheet'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/aging', [ReportController::class, 'aging'])->middleware('permission:reports.view');
-        Route::get('reports/aging/export', [ReportController::class, 'exportAging'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/aging/export', [ReportController::class, 'exportAging'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/aging-reconciliation', [ReportController::class, 'agingReconciliation'])->middleware('permission:reports.view');
-        Route::get('reports/aging-reconciliation/export', [ReportController::class, 'exportAgingReconciliation'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/aging-reconciliation/export', [ReportController::class, 'exportAgingReconciliation'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/party-statement', [ReportController::class, 'partyStatement'])->middleware('permission:reports.view');
-        Route::get('reports/party-statement/export', [ReportController::class, 'exportPartyStatement'])->middleware(['permission:reports.export', 'throttle:20,1']);
+        Route::get('reports/party-statement/export', [ReportController::class, 'exportPartyStatement'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('dashboard/summary', [ReportController::class, 'dashboard'])->middleware('permission:reports.view');
 
         Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1');

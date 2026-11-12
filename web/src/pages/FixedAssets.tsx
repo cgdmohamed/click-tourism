@@ -367,6 +367,32 @@ export default function FixedAssets() {
     },
   })
 
+  const [exportingFormat, setExportingFormat] = useState<'csv' | 'xlsx' | 'pdf' | null>(null)
+  const [exportError, setExportError] = useState('')
+
+  const downloadReconciliation = async (format: 'csv' | 'xlsx' | 'pdf') => {
+    setExportingFormat(format)
+    setExportError('')
+    try {
+      const response = await api.get<Blob>('/reports/fixed-assets/reconciliation/export', {
+        params: { as_of: asOf || undefined, global: globalScope ? 1 : undefined, format, language: locale },
+        responseType: 'blob',
+      })
+      const disposition = String(response.headers['content-disposition'] ?? '')
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `fixed-assets-reconciliation.${format}`
+      const href = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = href
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(href)
+    } catch {
+      setExportError(L('تعذّر التصدير', 'Export failed'))
+    } finally {
+      setExportingFormat(null)
+    }
+  }
+
   const detail = (assetsQuery.data ?? []).find((asset) => asset.id === detailId) ?? null
   const auditAsset = (assetsQuery.data ?? []).find((asset) => asset.id === auditId) ?? null
 
@@ -969,9 +995,23 @@ export default function FixedAssets() {
                 <Button variant="secondary" onClick={() => void reconQuery.refetch()}>
                   {L('تحديث', 'Refresh')}
                 </Button>
+                {can('reports.export')
+                  ? (['csv', 'xlsx', 'pdf'] as const).map((format) => (
+                      <Button
+                        key={format}
+                        variant="secondary"
+                        icon="download"
+                        disabled={exportingFormat !== null}
+                        onClick={() => void downloadReconciliation(format)}
+                      >
+                        {format.toUpperCase()}
+                      </Button>
+                    ))
+                  : null}
               </div>
             }
           />
+          {exportError ? <p className="px-5 py-2 text-small text-danger-text">{exportError}</p> : null}
           {reconQuery.isLoading ? (
             <Loading />
           ) : reconQuery.isError ? (
