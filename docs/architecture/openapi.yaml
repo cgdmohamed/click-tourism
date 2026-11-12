@@ -1604,30 +1604,155 @@ paths:
     get:
       tags: [Webhooks]
       security: []
-      summary: Meta webhook verification challenge
+      summary: Meta webhook verification challenge (404 while the integration is disabled)
+      description: >
+        Optional integration, disabled by default (integrations.meta_leads_enabled).
+        Verification handshake parameters (hub.mode, hub.verify_token, hub.challenge)
+        are UNVERIFIED against current Meta docs. The verify token comes from env only.
       responses:
         '200': { description: Challenge echoed }
+        '403': { description: Verification token mismatch }
+        '404': { description: Integration disabled }
+        '503': { description: Verify token not configured }
     post:
       tags: [Webhooks]
       security: []
-      summary: Meta Lead Ads event (signature verified, deduplicated)
+      summary: Meta Lead Ads leadgen event (HMAC signature verified, deduplicated per leadgen id)
+      description: >
+        Requires header X-Hub-Signature-256 = sha256=HMAC-SHA256(raw body, app secret).
+        Each leadgen id is stored once, fetched through the Graph API adapter by a queued
+        job (retry with backoff) and turned into a CRM lead with source "facebook"
+        (deduplicated by external id and phone/email). Replays return status "duplicate".
       responses:
-        '200': { description: Accepted or duplicate }
+        '200': { description: 'Accepted or duplicate; body {data:{status: received|duplicate}}' }
+        '400': { description: Invalid JSON payload }
         '403': { description: Invalid signature }
+        '404': { description: Integration disabled }
+        '503': { description: App secret not configured }
   /webhooks/whatsapp:
     get:
       tags: [Webhooks]
       security: []
-      summary: WhatsApp webhook verification challenge
+      summary: WhatsApp webhook verification challenge (404 while the integration is disabled)
       responses:
         '200': { description: Challenge echoed }
+        '403': { description: Verification token mismatch }
+        '404': { description: Integration disabled }
+        '503': { description: Verify token not configured }
     post:
       tags: [Webhooks]
       security: []
-      summary: WhatsApp inbound message (signature verified, deduplicated)
+      summary: WhatsApp inbound messages and delivery statuses (signature verified, deduplicated)
+      description: >
+        Inbound messages are logged and linked to a lead/customer by phone (unknown
+        senders become a "whatsapp" lead); statuses update outbound messages
+        (sent, delivered, read, failed) and never move backwards. This is a message log,
+        not a chat inbox. Stored webhook payloads are redacted.
       responses:
-        '200': { description: Accepted or duplicate }
+        '200': { description: 'Accepted or duplicate; body {data:{status: received|duplicate}}' }
+        '400': { description: Invalid JSON payload }
         '403': { description: Invalid signature }
+        '404': { description: Integration disabled }
+        '503': { description: App secret not configured }
+
+  /integrations/status:
+    get:
+      tags: [Integrations]
+      summary: Integration settings, webhook URLs and verification status (settings.view)
+      description: >
+        Secrets are never returned; env-provided secrets are reported only as
+        configured booleans (app_secret, verify_token, access_token).
+      responses:
+        '200': { description: Meta and WhatsApp status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /integrations/settings:
+    put:
+      tags: [Integrations]
+      summary: Update non-secret integration settings (settings.update, audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                meta_leads_enabled: { type: boolean }
+                meta_page_id: { type: string, nullable: true }
+                meta_default_branch_id: { type: string, nullable: true }
+                meta_form_branch_map: { type: string, nullable: true, description: 'JSON object {form_id: branch_public_id}' }
+                meta_graph_version: { type: string, nullable: true, example: v21.0 }
+                whatsapp_enabled: { type: boolean }
+                whatsapp_outbound_enabled: { type: boolean }
+                whatsapp_phone_number_id: { type: string, nullable: true }
+                whatsapp_business_account_id: { type: string, nullable: true }
+                whatsapp_graph_version: { type: string, nullable: true }
+                whatsapp_stop_keywords: { type: string, nullable: true }
+      responses:
+        '200': { description: Updated status }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /integrations/whatsapp/messages:
+    get:
+      tags: [Integrations]
+      summary: WhatsApp message log (leads.view; branch scoped)
+      parameters:
+        - { name: lead_id, in: query, schema: { type: string } }
+        - { name: customer_id, in: query, schema: { type: string } }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        '200': { description: Messages }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Integrations]
+      summary: Queue an outbound WhatsApp text or template message (leads.update)
+      description: >
+        Staff-triggered only (no auto-messaging). Refused with 422 and a code of
+        integration_disabled, invalid_phone, consent_missing, consent_withdrawn or
+        outside_service_window (free text outside the 24h window needs a template).
+        Send an Idempotency-Key header to make retries safe. Returns 202 with the
+        queued message; delivery is asynchronous with retry/backoff.
+      parameters:
+        - { name: Idempotency-Key, in: header, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                lead_id: { type: string }
+                customer_id: { type: string }
+                type: { type: string, enum: [text, template] }
+                body: { type: string }
+                template_name: { type: string }
+                language: { type: string, example: en_US }
+                components: { type: array, items: { type: object } }
+      responses:
+        '202': { description: Message queued }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Refused or validation error (see code) }
+  /integrations/whatsapp/consents:
+    post:
+      tags: [Integrations]
+      summary: Record a WhatsApp opt-in or opt-out for a lead or customer (leads.update, audited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, source]
+              properties:
+                lead_id: { type: string }
+                customer_id: { type: string }
+                status: { type: string, enum: [opt_in, opt_out] }
+                source: { type: string, enum: [lead_form, in_person, phone_call, written, website, manual] }
+                note: { type: string }
+      responses:
+        '201': { description: Recorded }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /employees:
     get:
