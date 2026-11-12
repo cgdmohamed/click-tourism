@@ -62,6 +62,62 @@ class InvoiceService
     /**
      * @param  array<string, mixed>  $data
      */
+    /**
+     * Create exactly one draft sales invoice from a booking snapshot.
+     * No journal is posted here; existing booking revenue is reused only on
+     * issuance, after explicit approval and a full monetary match.
+     */
+    public function createFromBooking(Booking $booking, ?int $actorId): Invoice
+    {
+        return DB::transaction(function () use ($booking, $actorId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            if (in_array($booking->status, ['cancelled', 'no_show'], true)) {
+                throw new DomainException('Cancelled bookings cannot be invoiced.');
+            }
+            if (Invoice::query()->where('booking_id', $booking->id)
+                ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_VOIDED)->exists()) {
+                throw new DomainException('This booking already has a customer invoice. Open the existing invoice.');
+            }
+
+            $booking->load('items', 'customer', 'branch');
+            if ($booking->items->isEmpty() || (int) $booking->total_sell_minor <= 0) {
+                throw new DomainException('A booking needs billable services before invoicing.');
+            }
+            $revenue = $this->posting->account((string) $this->settings->get('accounting', 'revenue_account_code', '4100'));
+            $lines = $booking->items->map(function ($item) use ($revenue) {
+                $net = (int) $item->total_sell_minor - (int) $item->tax_minor;
+                $quantity = (int) $item->quantity;
+                if ($net <= 0 || $quantity <= 0) {
+                    throw new DomainException('A booking contains a service with no positive invoice value.');
+                }
+
+                return [
+                    'account_id' => $revenue->public_id,
+                    'description' => $item->description,
+                    'quantity' => $quantity,
+                    // Inclusive tax or rounding can make the net non-divisible.
+                    // Preserve the exact booked net without inventing unit prices.
+                    'unit_price_minor' => $net % $quantity === 0 ? intdiv($net, $quantity) : null,
+                    'credit_minor' => $net,
+                    'tax_minor' => (int) $item->tax_minor,
+                ];
+            })->all();
+
+            return $this->create([
+                'type' => Invoice::TYPE_CUSTOMER_INVOICE,
+                'party_type' => 'customer',
+                'party_id' => $booking->customer->public_id,
+                'booking_id' => $booking->public_id,
+                'issue_date' => now()->toDateString(),
+                'currency' => $booking->currency_code,
+                'fx_rate' => (string) $booking->fx_rate,
+                'memo' => 'Booking '.$booking->number,
+                'lines' => $lines,
+            ], $booking->branch, $actorId);
+        });
+    }
+
     public function create(array $data, Branch $branch, ?int $actorId): Invoice
     {
         return DB::transaction(function () use ($data, $branch, $actorId) {
