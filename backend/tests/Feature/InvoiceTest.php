@@ -118,6 +118,8 @@ class InvoiceTest extends TestCase
 
     public function test_booking_invoice_reuses_existing_posted_revenue_and_blocks_duplicate_and_cancellation(): void
     {
+        Permission::query()->firstOrCreate(['name' => 'bookings.cancel', 'guard_name' => 'web']);
+        $this->user->givePermissionTo('bookings.cancel');
         app(SettingService::class)->set('accounting', 'auto_post_bookings', 'true');
         app(SettingService::class)->set('accounting', 'booking_posting_trigger', 'confirm');
         app(SettingService::class)->set('invoices', 'segregation', 'false');
@@ -152,10 +154,10 @@ class InvoiceTest extends TestCase
         $this->assertSame($entry->id, $issued->journal_entry_id);
         $this->assertSame($priorCount, JournalEntry::query()->count());
         $this->assertSame(60000, $this->balance('1100'));
-        $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])->assertStatus(422);
+        $this->postJson("/api/v1/bookings/{$booking->public_id}/invoice", [])->assertStatus(403);
         $this->postJson("/api/v1/bookings/{$booking->public_id}/cancel", [
             'reason' => 'Customer request',
-        ])->assertStatus(422);
+        ])->assertStatus(403);
         $this->assertSame('confirmed', $booking->fresh()->status);
     }
 
