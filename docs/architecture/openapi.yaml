@@ -2108,6 +2108,11 @@ paths:
     post:
       tags: [CRM]
       summary: Create a lead
+      description: >-
+        A capture matching an existing lead in the same branch by normalized
+        phone/email inside `crm.duplicate_window_days` is still created, but it
+        carries `duplicate_of` and `duplicate_reason` so the match is visible and
+        linked rather than silently duplicated. Set the window to 0 to disable.
       responses:
         '201': { description: Created }
   /leads/{id}/convert:
@@ -6273,6 +6278,17 @@ components:
         escalated_at: { type: string, format: date-time, nullable: true }
         converted_customer_id: { type: string, nullable: true }
         converted_booking_id: { type: string, nullable: true }
+        duplicate_of:
+          type: object
+          nullable: true
+          description: Earlier lead this capture may duplicate (same branch, inside the configured window)
+          properties:
+            id: { type: string }
+            name: { type: string }
+        duplicate_reason:
+          type: string
+          nullable: true
+          description: 'What matched: phone, email, or "phone,email"'
     AssignmentRuleInput:
       type: object
       required: [strategy]

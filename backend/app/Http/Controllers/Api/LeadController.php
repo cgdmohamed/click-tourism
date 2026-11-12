@@ -14,7 +14,7 @@ class LeadController extends ApiController
         $branch = $this->branch();
 
         $leads = Lead::query()
-            ->with(['source', 'stage', 'owner'])
+            ->with(['source', 'stage', 'owner', 'duplicateOf'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('stage'), fn ($query, $stage) => $query->whereHas('stage', fn ($query) => $query->where('code', $stage)))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
@@ -80,7 +80,7 @@ class LeadController extends ApiController
         $customer = $leads->convert($lead, $this->actorId());
 
         return $this->ok([
-            'lead' => $lead->refresh()->load('source', 'stage')->toApiArray(),
+            'lead' => $lead->refresh()->load('source', 'stage', 'duplicateOf')->toApiArray(),
             'customer' => $customer->toApiArray(),
         ]);
     }

@@ -261,6 +261,8 @@ export type Lead = {
   status: string
   created_at: string
   last_activity_at?: string | null
+  duplicate_of?: { id: string; name: string } | null
+  duplicate_reason?: string | null
 }
 
 export type AssignmentRule = {

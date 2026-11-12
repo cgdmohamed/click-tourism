@@ -23,6 +23,7 @@ export default function Leads() {
   const [stageFilter, setStageFilter] = useState('')
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const [duplicateNotice, setDuplicateNotice] = useState<Lead | null>(null)
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'whatsapp', notes: '' })
 
   useEffect(() => {
@@ -48,9 +49,10 @@ export default function Leads() {
       const { data } = await api.post<{ data: Lead }>('/leads', { ...form, branch_id: activeBranch.id })
       return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (lead) => {
       setOpen(false)
       setError('')
+      setDuplicateNotice(lead.duplicate_of ? lead : null)
       setForm({ name: '', phone: '', email: '', source: 'whatsapp', notes: '' })
       await queryClient.invalidateQueries({ queryKey: ['leads'] })
     },
@@ -108,6 +110,19 @@ export default function Leads() {
         </div>
       ) : null}
 
+      {duplicateNotice?.duplicate_of ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-16 border border-warning-border bg-warning-background px-4 py-3 text-medium text-warning-text">
+          <span>
+            {locale === 'ar'
+              ? `تم تسجيل العميل المحتمل لكنه مطابق لـ «${duplicateNotice.duplicate_of.name}» (${duplicateNotice.duplicate_reason}). تم ربطه كتكرار محتمل.`
+              : `Lead captured but it matches “${duplicateNotice.duplicate_of.name}” (${duplicateNotice.duplicate_reason}). It was linked as a possible duplicate.`}
+          </span>
+          <Button variant="ghost" onClick={() => setDuplicateNotice(null)}>
+            {t('cancel')}
+          </Button>
+        </div>
+      ) : null}
+
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Input
@@ -155,7 +170,16 @@ export default function Leads() {
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id}>
-                  <Td className="font-medium">{lead.name}</Td>
+                  <Td className="font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      {lead.name}
+                      {lead.duplicate_of ? (
+                        <Badge tone="warning">
+                          {locale === 'ar' ? 'تكرار محتمل' : 'Possible duplicate'}
+                        </Badge>
+                      ) : null}
+                    </span>
+                  </Td>
                   <Td dir="ltr">{lead.phone ?? '—'}</Td>
                   <Td>{lead.source}</Td>
                   <Td>{stageLabel(lead.stage)}</Td>
