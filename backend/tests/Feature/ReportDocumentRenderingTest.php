@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Reports\Services\ReportCsv;
 use App\Modules\Reports\Services\ReportDocument;
-use App\Modules\Reports\Support\ArabicText;
+use App\Support\ArabicText;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use OpenSpout\Common\Entity\Cell\DateTimeCell;
 use OpenSpout\Common\Entity\Cell\NumericCell;

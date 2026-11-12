@@ -3,6 +3,7 @@
 namespace App\Modules\Invoices\Models;
 
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
@@ -111,6 +112,11 @@ class Invoice extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
     }
 
     public function journalEntry(): BelongsTo

@@ -65,3 +65,27 @@ reading the header row.
 - Not changed: statutory tax-invoice templates remain `PENDING_ACCOUNTANT_APPROVAL`; no queued or
   streamed export exists, so the synchronous 50,000-row cap stands. Bank reconciliation has no
   export yet.
+
+## Addendum 2026-11-12 ? invoice and credit-note documents
+
+- `GET /api/v1/invoices/{invoice}/pdf` renders the stored invoice, supplier bill or credit note as
+  an A4 portrait PDF. It requires `invoices.view`, is branch-scoped, and is throttled by the
+  `report-exports` limiter. `language=ar|en|bilingual` defaults to `documents.default_language`.
+- Content: company letterhead (`general.company_name_ar`, `general.company_name_en`,
+  `general.company_logo`), branch, document type and number, status, issue/due dates, currency,
+  FX rate with rate date when the invoice is in a foreign currency, booking reference, the
+  invoice it credits, bill-to/supplier block, line items (description, quantity, unit price, tax,
+  amount), subtotal/tax/total/paid/amount due (or credited/applied/remaining credit for a credit
+  note), memo, and sign-off lines. Page numbers are drawn after layout.
+- Draft, submitted, approved and voided documents carry an explicit status band (draft and void
+  also state that the document must not be paid). Issued documents carry no band. This is not a
+  statutory tax-invoice template; DEC-028 remains open and the document is generic per install.
+- Rendering is read-only: no journal is posted, revalued or mutated. Audit event `invoice.exported`
+  records type, number, language and branch only.
+- The letterhead logo loader is shared with report PDFs (`App\Support\LogoDataUri`): PNG/JPEG only,
+  no remote fetch, no path outside `storage/app`, 1 MiB cap. Arabic shaping is shared through
+  `App\Support\ArabicText`. Limitation: Persian/Urdu-only letters are not shaped.
+- The invoice profile downloads this endpoint (`?language=<current UI locale>`) instead of calling
+  `window.print()`. Blob downloads share `web/src/lib/download.ts` with report exports.
+  `web/e2e/invoice-pdf.spec.ts` covers the browser flow: sign in, open an invoice, download, and
+  assert the PDF signature and server-suggested filename.

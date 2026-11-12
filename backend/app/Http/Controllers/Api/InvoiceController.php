@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Core\Services\AuditService;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Services\InvoiceDocument;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 
 class InvoiceController extends ApiController
@@ -64,6 +67,43 @@ class InvoiceController extends ApiController
         $this->authorizeBranchId($invoice->branch_id);
 
         return $this->ok($invoice->load('lines.account', 'party', 'journalEntry', 'creditNoteOf', 'creditNotes')->toApiArray(true));
+    }
+
+    /**
+     * Server-rendered PDF of one invoice or credit note (ADR-0014).
+     *
+     * The document is generated from stored data only. It never posts,
+     * revalues or mutates the invoice or its journal; the PDF is a rendering
+     * of the immutable issue-time snapshot already in the database.
+     */
+    public function pdf(Request $request, Invoice $invoice, InvoiceDocument $documents, AuditService $audit): Response
+    {
+        $this->authorizeBranchId($invoice->branch_id);
+
+        $data = $request->validate([
+            'language' => ['nullable', Rule::in(['ar', 'en', 'bilingual'])],
+        ]);
+        $language = $data['language']
+            ?? (string) $this->settings()->get('documents', 'default_language', 'bilingual');
+
+        $pdf = $documents->pdf($invoice, $language);
+
+        // Provenance only: no party names, amounts or line content.
+        $audit->log('invoice.exported', $invoice, null, [
+            'type' => $invoice->type,
+            'number' => $invoice->number,
+            'language' => $language,
+            'branch' => $invoice->branch?->public_id,
+        ], $this->actorId());
+
+        $filename = preg_replace('/[^A-Za-z0-9._-]/', '_', 'invoice-'.$invoice->number).'.pdf';
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control' => 'no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function store(Request $request, InvoiceService $invoices): JsonResponse

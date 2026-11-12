@@ -189,11 +189,22 @@ Frontend checks:
 cd web
 npm run build      # tsc -b && vite build
 npm run lint
+npm test           # Vitest unit tests
+npm run test:e2e   # Playwright browser tests
 ```
+
+`npm run test:e2e` starts the Laravel API and Vite itself. Set `E2E_BASE_URL`
+(for example `http://127.0.0.1:5173`) to reuse servers that are already
+running, and `E2E_ADMIN_PASSWORD` when the seeded admin password is not
+`password`. The spec logs in, opens an invoice and asserts a real server
+rendered PDF download; it creates a draft invoice through the API when the
+target install has none, so it needs a migrated installation with an explicit
+`DEMO_PASSWORD` (the same requirement as `php artisan migrate --seed`).
 
 Continuous integration is defined in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml): PHP 8.2 runs the test
-suite and `composer audit`, Node 22 runs lint and the production build.
+suite and `composer audit`, Node 22 runs lint, unit tests and the production
+build, and a seeded SQLite job runs the Playwright browser tests.
 
 ## Pending accountant approval (blocking go-live)
 
