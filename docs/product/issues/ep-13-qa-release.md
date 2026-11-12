@@ -13,6 +13,7 @@
 **Test cases:** full matrix referenced in `acceptance-criteria.md`; failure injection for postings/jobs/webhooks.
 **Owned files:** `backend/tests`, `web/tests`, `.github/workflows`, `tests/performance`.
 **Reviewer:** QA lead + architect.
+**Status:** partial — Backend and unit suites exist; one Playwright spec, no a11y gate, no coverage threshold, no performance seed (GAP-QA-01..04).
 
 ---
 
@@ -27,3 +28,4 @@
 **Test cases:** fresh install, upgrade from previous version, failed migration rollback, backup restore, timezone/DST, Arabic PDF after restore.
 **Owned files:** `docker/`, `deploy/`, `docs/ops/`, `scripts/backup`, release notes.
 **Reviewer:** Architect + human release approver (**no deployment without human approval**).
+**Status:** partial — `scripts/release/rehearse-*.sh` (backup/restore with optional GPG, upgrade) and CI jobs exist; encrypted backups are conditional on gpg and the clean-install checklist is UNVERIFIED.

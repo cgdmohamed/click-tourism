@@ -13,7 +13,7 @@
 **Test cases:** opening balances, multi-currency, closed periods, branch scope, empty period, large dataset pagination.
 **Owned files:** `backend/app/Modules/Reporting/Ledger`, tests.
 **Reviewer:** Accountant.
-**Status:** Implemented, pending accountant review. `GET /reports/general-ledger` (account/period/branch, opening/running/closing, pagination, descendant accounts, currency and customer/supplier filters), trial balance per currency, CSV export (`reports.export`, audited) and drill-down to the journal entry (which shows its source type) are done with tests and are in `openapi.yaml` (additive; architect to confirm). Known limits: booking-cost postings carry no supplier party (DEC-002), so the supplier filter only matches settlement postings; drill-down opens the journal entry rather than the originating document page. Prompt 28 extended the trial balance with per-account opening/period movement/closing balances and reconciling totals, `max_level` COA roll-up without double counting, cost-center allocated-portion view, `adjustments=include|exclude|only` scope, and general-ledger source document (`source_type`, `source_reference`, `source_public_id`) plus customer/supplier/employee party names. Verified by `FinancialReportsReconciliationTest` (12 tests) and the full backend suite.
+**Status:** done — Implemented, pending accountant review. `GET /reports/general-ledger` (account/period/branch, opening/running/closing, pagination, descendant accounts, currency and customer/supplier filters), trial balance per currency, CSV export (`reports.export`, audited) and drill-down to the journal entry (which shows its source type) are done with tests and are in `openapi.yaml` (additive; route-to-spec parity is enforced by `OpenApiCoverageTest`; the unverifiable "architect to confirm" note was removed). Known limits: booking-cost postings carry no supplier party (DEC-002), so the supplier filter only matches settlement postings; drill-down opens the journal entry rather than the originating document page. Prompt 28 extended the trial balance with per-account opening/period movement/closing balances and reconciling totals, `max_level` COA roll-up without double counting, cost-center allocated-portion view, `adjustments=include|exclude|only` scope, and general-ledger source document (`source_type`, `source_reference`, `source_public_id`) plus customer/supplier/employee party names. Verified by `FinancialReportsReconciliationTest` (12 tests) and the full backend suite.
 
 ---
 
@@ -28,7 +28,7 @@
 **Test cases:** mid-year close, comparatives, branch-only statements, FX balances, mapping gaps.
 **Owned files:** `backend/app/Modules/Reporting/Statements`, tests.
 **Reviewer:** Accountant.
-**Status:** Implemented, pending accountant review. Income statement accepts `compare_from`/`compare_to` and returns `comparison` + `variance`; balance sheet accepts `compare_as_of`, returns `comparison`, `variance` and an explicit `balanced` check. Statutory classifications/groupings remain provisional until the accountant approves the mapping policy. Verified by `FinancialReportsReconciliationTest`.
+**Status:** done — Implemented, pending accountant review. Income statement accepts `compare_from`/`compare_to` and returns `comparison` + `variance`; balance sheet accepts `compare_as_of`, returns `comparison`, `variance` and an explicit `balanced` check. Statutory classifications/groupings remain provisional until the accountant approves the mapping policy. Verified by `FinancialReportsReconciliationTest`.
 
 ---
 
@@ -43,7 +43,7 @@
 **Test cases:** bucket boundaries, partially allocated documents, multi-currency, branch scope, zero-balance parties.
 **Owned files:** `backend/app/Modules/Reporting/Operations`, tests.
 **Reviewer:** Accountant.
-**Status:** Operational aging remains at `/reports/aging`. Prompt 28 added `/reports/aging-reconciliation` (ledger control-family vs open invoices and unapplied advances, explicit difference codes and per-party breakdown) and `/reports/party-statement` for customer/supplier/employee statements with opening/movements/closing, subaccount split and operational reconciliation. Differences are surfaced, never written off. Verified by `FinancialReportsReconciliationTest`.
+**Status:** partial — Operational aging remains at `/reports/aging`. Prompt 28 added `/reports/aging-reconciliation` (ledger control-family vs open invoices and unapplied advances, explicit difference codes and per-party breakdown) and `/reports/party-statement` for customer/supplier/employee statements with opening/movements/closing, subaccount split and operational reconciliation. Differences are surfaced, never written off. Verified by `FinancialReportsReconciliationTest`.
 
 ---
 
@@ -58,7 +58,7 @@
 **Test cases:** Arabic PDF rendering, large export, permission/branch leakage, partial failure, filename/encoding.
 **Owned files:** `backend/app/Modules/Reporting/Export`, templates, tests.
 **Reviewer:** Frontend + accountant.
-**Status:** CSV export (UTF-8 BOM, formula neutralisation, audit, branch scope, 50,000-row cap) is implemented for the existing and new reports, and the UI provides filters, pagination and print-ready RTL/AR layouts. Native PDF/XLSX generation is **not implemented**: no library dependency is approved and DEC-040 records the provisional browser print-to-PDF + CSV policy. Do not mark PDF/Excel complete until DEC-040 is decided and an approved package is added.
+**Status:** done — CSV, XLSX and PDF are implemented for reports (`ReportExporter`, `ReportDocument`) and invoices (`InvoiceDocument`); DEC-040 resolved by ADR-0014; statutory templates pending approval.
 
 ---
 
@@ -73,3 +73,4 @@
 **Test cases:** cancelled bookings, refunds, multi-currency, branch/user filters, period boundaries, reconciliation to ledger.
 **Owned files:** `backend/app/Modules/Reporting/Management`, tests.
 **Reviewer:** Accountant + product.
+**Status:** not started — No `/reports/profitability`, `/sales`, `/commissions` or `/tax` routes (GAP-RPT-01).

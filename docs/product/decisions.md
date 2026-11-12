@@ -185,7 +185,7 @@ Status: APPROVED_BY_PRODUCT_OWNER.
 - Apply the same authorization rules to exports and report APIs.
 - Stream or queue large exports when necessary.
 
-Status: APPROVED_BY_PRODUCT_OWNER; statutory layouts require accountant approval.
+Status: APPROVED_BY_PRODUCT_OWNER; **resolved by ADR-0014** (`../architecture/ADRs/0014-report-document-exports.md`); statutory layouts require accountant approval.
 
 ## Phase 3 — Decision Governance
 

@@ -28,7 +28,7 @@ Severity is about product risk, not effort.
 | Core / auth | Users, roles, branches, settings, audit events, health, install | 3 | notifications, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
 | QA / release | 876 backend tests, 88 unit tests, 8 CI jobs | 4 | coverage gate, a11y, performance seed |
-| Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
+| Documentation | ADRs, OpenAPI, indexes and per-issue statuses current | 0 | none (DOC-01..05 closed) |
 
 Counts include only tracked gaps below (35 total, 3 at P0).
 
@@ -87,11 +87,11 @@ These are not code defects, but they make the repository lie about its own state
 
 | ID | Sev | Gap | Evidence | Done when |
 |---|---|---|---|---|
-| GAP-DOC-01 | P1 | `docs/product/README.md` still says "No application code has been written" and lists the design system as missing. | `docs/product/README.md:3,18-26`. | Index reflects shipped modules and links this register. |
-| GAP-DOC-02 | P1 | EP-08 TE-039 says native PDF/XLSX are "not implemented"; both now exist for reports and invoices. | `issues/ep-08-reporting.md:61` vs `ReportDocument::pdf/xlsx` and `InvoiceDocument`. | Status line updated; DEC-040 marked resolved by ADR-0014. |
-| GAP-DOC-03 | P1 | 11 of 13 epic issue files carry no status, so nobody can tell done from planned. | Only `ep-01`, `ep-08`, `ep-12` contain `Status:` lines. | Every `TE-###` has an explicit status: done / partial / not started / blocked. |
-| GAP-DOC-04 | P2 | `module-matrix.md` and `traceability-matrix.md` are still "Draft — no code implied". | Both headers. | Promoted to implementation-aware docs or superseded by this register. |
-| GAP-DOC-05 | P2 | TE-036 records an "additive, architect to confirm" OpenAPI note with no follow-up. | `issues/ep-08-reporting.md:16`. | Architect sign-off recorded in the ADR or the note removed. |
+| ~~GAP-DOC-01~~ | **P1 — closed** | `docs/product/README.md` still says "No application code has been written" and lists the design system as missing. | `docs/product/README.md:3,18-26`. | Index reflects shipped modules and links this register. |
+| ~~GAP-DOC-02~~ | **P1 — closed** | EP-08 TE-039 says native PDF/XLSX are "not implemented"; both now exist for reports and invoices. | `issues/ep-08-reporting.md:61` vs `ReportDocument::pdf/xlsx` and `InvoiceDocument`. | Status line updated; DEC-040 marked resolved by ADR-0014. |
+| ~~GAP-DOC-03~~ | **P1 — closed** | 11 of 13 epic issue files carry no status, so nobody can tell done from planned. | Only `ep-01`, `ep-08`, `ep-12` contain `Status:` lines. | Every `TE-###` has an explicit status: done / partial / not started / blocked. |
+| ~~GAP-DOC-04~~ | **P2 — closed** | `module-matrix.md` and `traceability-matrix.md` are still "Draft — no code implied". | Both headers. | Promoted to implementation-aware docs or superseded by this register. |
+| ~~GAP-DOC-05~~ | **P2 — closed** | TE-036 records an "additive, architect to confirm" OpenAPI note with no follow-up. | `issues/ep-08-reporting.md:16`. | Architect sign-off recorded in the ADR or the note removed. |
 
 ## 8. Blocked by accountant / architect decisions
 

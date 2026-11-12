@@ -13,6 +13,7 @@
 **Test cases:** missing columns, Arabic headers, BOM, Excel dates, mixed currency, duplicate policy (skip/update/error), interrupted job resume, permission/branch enforcement.
 **Owned files:** `backend/app/Modules/DataTransfer/Import`, tests, fixtures.
 **Reviewer:** Architect.
+**Status:** done — `/imports` with templates, confirm and error report; `ImportFrameworkTest`, `ImportSanitizerTest`.
 
 ---
 
@@ -27,3 +28,4 @@
 **Test cases:** large export, expired download, branch leakage, concurrent exports, Unicode/Excel compatibility.
 **Owned files:** `backend/app/Modules/DataTransfer/Export`, tests.
 **Reviewer:** Architect.
+**Status:** partial — Synchronous CSV/XLSX/PDF exports with audit exist; no `/exports` job resource, progress or retention (GAP-RPT-02).

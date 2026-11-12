@@ -6,6 +6,7 @@ use App\Modules\Accounting\Models\FiscalPeriod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -31,7 +32,7 @@ class DocumentNumberAuditTest extends TestCase
     private function journalEntry(string $number, int $sequence): void
     {
         DB::table('journal_entries')->insert([
-            'public_id' => '01TESTJOURNALENTRY'.str_pad((string) $sequence, 10, '0', STR_PAD_LEFT),
+            'public_id' => (string) Str::ulid(),
             'number' => $number,
             'entry_date' => '2026-01-15',
             'branch_id' => $this->branch->id,

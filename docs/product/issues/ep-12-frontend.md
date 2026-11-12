@@ -1,6 +1,6 @@
 # EP-12 — Frontend Shell and Module Screens
 
-**Status: BLOCKED** until the user supplies the design system and step `02-design-system-audit` is complete. Do not build screens against an invented UI kit.
+**Status:** the earlier BLOCKED note is obsolete: the design system is in the repository (`docs/design/DESIGN.md`) and screens are built on it. Per-issue status is on each TE below.
 
 ---
 
@@ -15,6 +15,7 @@
 **Test cases:** locale switch persists, RTL mirroring, route guard by permission, 360/768/1280 layouts, keyboard nav.
 **Owned files:** `web/src/shell`, `web/src/i18n`, `web/src/routes`, tests.
 **Reviewer:** Frontend lead.
+**Status:** done — App shell, i18n, RTL, global search (`SearchTest`).
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** list/filter/pagination, create/edit validation, permission-denied, RTL, responsive, E2E happy paths.
 **Owned files:** `web/src/features/{platform,parties,accounting}`.
 **Reviewer:** Frontend lead + product.
+**Status:** done — Pages for users, roles, settings, audit, FX, accounts, journal, periods, opening balances, treasury, expenses, customers, suppliers.
 
 ---
 
@@ -43,6 +45,7 @@
 **Test cases:** booking lifecycle UI guards, payment allocation UI, report filter parity, CRM drag/drop stage with keyboard alternative, RTL/responsive.
 **Owned files:** `web/src/features/{bookings,payments,tax,commissions,reports,crm,integrations,data}`.
 **Reviewer:** Frontend lead + product.
+**Status:** partial — Bookings, payments, commissions, reports, tax and leads pages exist; no lead detail/pipeline or webhook-log screens (GAP-CRM-03, 05).
 
 ---
 
@@ -57,3 +60,4 @@
 **Test cases:** Arabic shaping, long tables, multi-page totals, logo missing, grayscale print.
 **Owned files:** `web/src/print`, `resources/views/pdf`.
 **Reviewer:** Frontend lead + accountant.
+**Status:** done — Invoice PDF and report PDF/print layouts, AR/EN (`InvoiceDocumentTest`, `ReportDocumentRenderingTest`).
