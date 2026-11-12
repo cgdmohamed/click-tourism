@@ -15,6 +15,7 @@
 **Test cases:** inclusive vs exclusive, zero/exempt, effective-date selection, rate edit after document, rounding, summary reconciliation.
 **Owned files:** `backend/app/Modules/Tax`, migrations, tests.
 **Reviewer:** Accountant.
+**Status:** partial — `/tax-profiles` (read) and `TaxSettingTest`; tax summary report missing (GAP-RPT-01).
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** overlapping rules, rule change after booking, cancelled booking, negative margin, multi-agent booking, trigger variants.
 **Owned files:** `backend/app/Modules/Commissions`, migrations, tests.
 **Reviewer:** Accountant + product.
+**Status:** done — `/commission-rules` with versioning and approval; `/commissions`; `CommissionTest`.
 
 ---
 
@@ -43,3 +45,4 @@
 **Test cases:** segregation of duties, partial payout, cross-currency payout, payout retry, cancelled accrual excluded.
 **Owned files:** `backend/app/Modules/Commissions/Payouts`, tests.
 **Reviewer:** Accountant.
+**Status:** partial — Approve/pay/reverse and `/commissions/statement` exist; management commission report by booking/customer/agent/branch missing (GAP-RPT-01).

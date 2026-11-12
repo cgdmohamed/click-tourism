@@ -715,13 +715,13 @@ class ReportService
         return $line;
     }
 
-    private function costAccountCode(): string
+    public function costAccountCode(): string
     {
         return (string) $this->settings->get('accounting', 'cost_account_code', '5100');
     }
 
     /** @return array<int, true> ids of the cost account and its descendants */
-    private function costOfServicesAccountIds(): array
+    public function costOfServicesAccountIds(): array
     {
         $account = Account::query()->where('code', $this->costAccountCode())->first();
 

@@ -23,25 +23,25 @@ Severity is about product risk, not effort.
 | Module | State | Open gaps | Next action |
 |---|---|---|---|
 | Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 1 (GAP-RPT-03 adjacent, export parity) | none |
-| Reports | Core ledger + statements + aging/statements + CSV/XLSX/PDF done | 6 | close RPT-01..05, then browser E2E |
+| Reports | Core ledger + statements + aging/statements + management pack + CSV/XLSX/PDF done | 4 | close RPT-02, RPT-03, RPT-05, then browser E2E |
 | CRM | Lead capture, rules, conversion, WhatsApp consent done | 6 | wire reassignment (P0), then pipeline/activities |
 | Core / auth | Users, roles, branches, settings, audit events, health, install | 3 | notifications, attachments decision |
 | Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
 | QA / release | 886 backend tests, 93 unit tests, 9 CI jobs, E2E + axe a11y gate | 4 | backend coverage gate, close→report E2E, performance seed |
-| Documentation | ADRs, OpenAPI, audits current | 5 | refresh stale indexes/status |
+| Documentation | ADRs, OpenAPI, indexes and per-issue statuses current | 0 | none (DOC-01..05 closed) |
 
 Counts include only tracked gaps below (35 total, 3 at P0).
 
 ## 3. Reports module
 
-Implemented today: trial balance, general ledger, income statement, balance sheet, aging, aging reconciliation, party statement, dashboard summary, cost-center P&L and unallocated view. Exports are server-rendered CSV, XLSX, and PDF (`ReportExporter`, `ReportDocument`), audited as `report.exported`, branch-scoped, throttled, with a 50,000-row synchronous cap and a 5,000-row PDF cap.
+Implemented today: trial balance, general ledger, income statement, balance sheet, aging, aging reconciliation, party statement, dashboard summary, cost-center P&L and unallocated view, and the management pack (profitability, sales, commissions, tax). Exports are server-rendered CSV, XLSX, and PDF (`ReportExporter`, `ReportDocument`), audited as `report.exported`, branch-scoped, throttled, with a 50,000-row synchronous cap and a 5,000-row PDF cap.
 
 | ID | Sev | Gap | Evidence | Done when | Blocked by |
 |---|---|---|---|---|---|
-| GAP-RPT-01 | P1 | Management report pack from EP-08 TE-040 is missing: profitability, sales by user/branch, commission, and tax summary reports. | `backend/routes/api.php:340-354` exposes only ledger/statement/aging reports; no `/reports/profitability`, `/reports/sales`, `/reports/commissions`, `/reports/tax`. | Each report exists in API + OpenAPI + report catalog + UI tab, reconciles to the ledger in a test, and exports in all three formats. | DEC-004/DEC-028 for tax presentation |
+| ~~GAP-RPT-01~~ | **P1 — closed** | Management report pack from EP-08 TE-040 was missing. Now `GET /reports/profitability` (by booking and service type: revenue, direct cost, margin), `/reports/sales` (revenue by branch and booking owner), `/reports/commissions` (ledger commission expense, pending accruals and payouts per beneficiary) and `/reports/tax` (output vs input tax by tax profile) exist, derived from posted base-currency journal lines and branch scoped. Each exports CSV/XLSX/PDF at `/export` (`reports.export`, audited as `report.exported`, `report-exports` throttle) and has a tab in `Reports.tsx`. Service-type split allocates each booking's ledger revenue/cost over its items; ledger lines with no booking stay visible as "not linked". | `backend/app/Http/Controllers/Api/ManagementReportController.php`; `backend/app/Modules/Reports/Services/ManagementReportService.php`; `ManagementReportRows.php`; `web/src/pages/ManagementReports.tsx`; `docs/architecture/openapi.yaml`; `backend/tests/Feature/ManagementReportsTest.php`. | Closed by tests reconciling profitability/sales to the income statement and trial balance, commissions to account 6700, tax to accounts 2200/1160, plus branch isolation, permissions, and all three export formats with audit. Tax presentation by profile still awaits accountant sign-off (DEC-004/DEC-028). | none |
 | GAP-RPT-02 | P2 | Large exports are synchronous only; there is no `/exports` job resource, progress, or resumable download. | `ReportController::EXPORT_MAX_ROWS = 50000`; no queue job or `/exports` route. AC-RPT-007 is unmet. | Exports above a configured threshold queue, expose status, and produce the file only on success. | architect approval (new contract) |
 | GAP-RPT-03 | P2 | Cost-center reports cannot be exported at all. | No export route for `reports/cost-center-pl` / `cost-center-unallocated`; `web/src/pages/Reports.tsx:404` excludes `isCostCenterReport` from `canExport`. | Both cost-center reports export CSV/XLSX/PDF with filter parity and audit. | none |
-| GAP-RPT-04 | P2 | GL drill-down opens the journal entry, not the source document page. | Documented limit in `issues/ep-08-reporting.md` TE-036; UI opens `/journal` entry modal. | Clicking a report row lands on the invoice/payment/expense record that produced it. | none |
+| ~~GAP-RPT-04~~ | **P2 — closed** | GL drill-down opened the journal entry, not the source document page. Now general-ledger and party-statement rows in Reports show a source-document link (`web/src/lib/sourceLinks.ts`): invoices and bookings open the record itself, payments/refunds open the payments list filtered by number, other types open their module list; the journal entry modal stays available. Management report booking rows open the booking. | `web/src/lib/sourceLinks.ts`; `web/src/components/profile.tsx` (`SourceDocument`); `web/src/pages/Reports.tsx`; `web/src/lib/sourceLinks.test.ts`. | Closed by unit tests of the link mapping. Expense, document, and supplier-payment sources still land on the module list (no per-record page exists yet). | none |
 | GAP-RPT-05 | P2 | GL supplier filter silently misses booking-cost postings because those postings carry no supplier party. | TE-036 known limit; postings from `Bookings` do not set a supplier party (DEC-002). | Supplier filter returns all supplier-attributable cost rows, or the UI explains the exclusion. | DEC-002 |
 | GAP-RPT-06 | P3 | No scheduled delivery of reports (explicitly out of scope for TE-039, listed so it is not mistaken for a defect). | TE-039 "Scope out: Scheduled email delivery". | Keep out of scope until a decision adds it. | product decision |
 
@@ -87,11 +87,11 @@ These are not code defects, but they make the repository lie about its own state
 
 | ID | Sev | Gap | Evidence | Done when |
 |---|---|---|---|---|
-| GAP-DOC-01 | P1 | `docs/product/README.md` still says "No application code has been written" and lists the design system as missing. | `docs/product/README.md:3,18-26`. | Index reflects shipped modules and links this register. |
-| GAP-DOC-02 | P1 | EP-08 TE-039 says native PDF/XLSX are "not implemented"; both now exist for reports and invoices. | `issues/ep-08-reporting.md:61` vs `ReportDocument::pdf/xlsx` and `InvoiceDocument`. | Status line updated; DEC-040 marked resolved by ADR-0014. |
-| GAP-DOC-03 | P1 | 11 of 13 epic issue files carry no status, so nobody can tell done from planned. | Only `ep-01`, `ep-08`, `ep-12` contain `Status:` lines. | Every `TE-###` has an explicit status: done / partial / not started / blocked. |
-| GAP-DOC-04 | P2 | `module-matrix.md` and `traceability-matrix.md` are still "Draft — no code implied". | Both headers. | Promoted to implementation-aware docs or superseded by this register. |
-| GAP-DOC-05 | P2 | TE-036 records an "additive, architect to confirm" OpenAPI note with no follow-up. | `issues/ep-08-reporting.md:16`. | Architect sign-off recorded in the ADR or the note removed. |
+| ~~GAP-DOC-01~~ | **P1 — closed** | `docs/product/README.md` still says "No application code has been written" and lists the design system as missing. | `docs/product/README.md:3,18-26`. | Index reflects shipped modules and links this register. |
+| ~~GAP-DOC-02~~ | **P1 — closed** | EP-08 TE-039 says native PDF/XLSX are "not implemented"; both now exist for reports and invoices. | `issues/ep-08-reporting.md:61` vs `ReportDocument::pdf/xlsx` and `InvoiceDocument`. | Status line updated; DEC-040 marked resolved by ADR-0014. |
+| ~~GAP-DOC-03~~ | **P1 — closed** | 11 of 13 epic issue files carry no status, so nobody can tell done from planned. | Only `ep-01`, `ep-08`, `ep-12` contain `Status:` lines. | Every `TE-###` has an explicit status: done / partial / not started / blocked. |
+| ~~GAP-DOC-04~~ | **P2 — closed** | `module-matrix.md` and `traceability-matrix.md` are still "Draft — no code implied". | Both headers. | Promoted to implementation-aware docs or superseded by this register. |
+| ~~GAP-DOC-05~~ | **P2 — closed** | TE-036 records an "additive, architect to confirm" OpenAPI note with no follow-up. | `issues/ep-08-reporting.md:16`. | Architect sign-off recorded in the ADR or the note removed. |
 
 ## 8. Blocked by accountant / architect decisions
 

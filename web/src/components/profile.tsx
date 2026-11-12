@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { PartyStatement, StatementLine } from '../lib/types'
 import { formatDate } from '../lib/format'
 import { statementSourceLabel } from '../lib/labels'
+import { sourceDocumentLink } from '../lib/sourceLinks'
 import { useI18n } from '../i18n'
 import { useAuth } from '../auth/AuthProvider'
 import { Link } from 'react-router-dom'
@@ -351,48 +352,11 @@ function BalanceSide({ amountMinor, currency }: { amountMinor: number; currency:
   )
 }
 
-type StatementSource = { href: string; permission?: string }
-
-/**
- * Where a posted journal line came from. Invoice profiles exist, so those link
- * straight to the document. Searchable booking/payment lists are pre-filtered;
- * other source types link to their owning module's record list.
- */
-function statementSource(line: StatementLine): StatementSource | null {
-  const reference = line.source_reference ?? ''
-  const publicId = line.source_public_id ?? ''
-  const search = reference ? `?search=${encodeURIComponent(reference)}` : ''
-
-  switch (line.source_type) {
-    case 'invoice':
-      return publicId ? { href: `/invoices/${publicId}`, permission: 'invoices.view' } : null
-    case 'booking':
-      return { href: `/bookings${search}` }
-    case 'payment':
-    case 'refund':
-      return { href: `/payments${search}` }
-    case 'supplier_payment':
-      return { href: '/supplier-settlements' }
-    case 'expense':
-      return { href: '/expenses', permission: 'expenses.view' }
-    case 'accounting_document':
-      return { href: '/documents', permission: 'documents.view' }
-    case 'accounting_schedule':
-      return { href: '/schedules', permission: 'schedules.view' }
-    case 'fixed_asset':
-    case 'fixed_asset_depreciation_run':
-      return { href: '/fixed-assets', permission: 'assets.view' }
-    case 'transfer':
-      return { href: '/treasury', permission: 'accounts.view' }
-    default:
-      return null
-  }
-}
-
-function SourceDocument({ line }: { line: StatementLine }) {
+/** Source document of a posted line: links to its page when one exists (GAP-RPT-04). */
+export function SourceDocument({ line }: { line: StatementLine }) {
   const { t, locale } = useI18n()
   const { can } = useAuth()
-  const source = statementSource(line)
+  const source = sourceDocumentLink(line)
   const allowed = !source?.permission || can(source.permission)
 
   if (!line.source_type && !line.source_reference) {

@@ -11,6 +11,10 @@ import { useBaseCurrency } from '../lib/useSetting'
 import type { Account, JournalEntry } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, Money, PageHeader, Pagination, SearchableSelect, Select, Spinner, Table, Td, Th, cx } from '../components/ui'
 import { Icon } from '../components/icons'
+import { SourceDocument } from '../components/profile'
+import ManagementReportView from './ManagementReports'
+import { isManagementReport } from '../lib/managementReports'
+import type { ManagementReportKey } from '../lib/managementReports'
 import type { IconName } from '../components/icons'
 
 type CurrencyRow = { code: string; is_active: boolean }
@@ -27,6 +31,7 @@ type ReportKey =
   | 'party-statement'
   | 'cost-center-pl'
   | 'cost-center-unallocated'
+  | ManagementReportKey
 
 type SourceReference = {
   source_type: string | null
@@ -298,7 +303,7 @@ export default function Reports() {
     if (report === 'balance-sheet') {
       return { as_of: to, ...(compare ? { compare_as_of: compareAsOf } : {}) }
     }
-    if (report === 'cost-center-pl' || report === 'cost-center-unallocated') {
+    if (report === 'cost-center-pl' || report === 'cost-center-unallocated' || isManagementReport(report)) {
       return { from, to }
     }
     if (report === 'party-statement') {
@@ -436,6 +441,10 @@ export default function Reports() {
     { key: 'aging', ar: 'أعمار الديون', en: 'Aging', icon: 'clock' },
     { key: 'aging-reconciliation', ar: 'مطابقة الأعمار', en: 'Aging reconciliation', icon: 'listChecks' },
     { key: 'party-statement', ar: 'كشف حساب طرف', en: 'Party statement', icon: 'users' },
+    { key: 'profitability', ar: 'الربحية', en: 'Profitability', icon: 'trendUp' },
+    { key: 'sales', ar: 'المبيعات', en: 'Sales', icon: 'chart' },
+    { key: 'commissions', ar: 'العمولات', en: 'Commissions', icon: 'coins' },
+    { key: 'tax', ar: 'الضرائب', en: 'Tax', icon: 'receipt' },
     ...(can('cost_centers.view') ? [
       { key: 'cost-center-pl' as const, ar: 'أرباح مراكز التكلفة', en: 'Cost center P&L', icon: 'trendUp' as const },
       { key: 'cost-center-unallocated' as const, ar: 'قيود غير موزعة', en: 'Unallocated entries', icon: 'listChecks' as const },
@@ -602,7 +611,7 @@ export default function Reports() {
               />
             </Field>
           ) : null}
-          <Field label={report === 'trial-balance' || report === 'income-statement' || isLedger || isStatement ? t('to') : t('asOf')}>
+          <Field label={report === 'trial-balance' || report === 'income-statement' || isManagementReport(report) || isLedger || isStatement ? t('to') : t('asOf')}>
             <Input
               type="date"
               value={to}
@@ -801,6 +810,7 @@ export default function Reports() {
                         <Th>{t('date')}</Th>
                         <Th>{t('entryNumber')}</Th>
                         <Th>{t('description')}</Th>
+                        <Th>{t('sourceDocument')}</Th>
                         <Th className="text-end">{t('debit')}</Th>
                         <Th className="text-end">{t('credit')}</Th>
                         <Th className="text-end">{t('balance')}</Th>
@@ -812,6 +822,7 @@ export default function Reports() {
                           <Td />
                           <Td />
                           <Td>{t('openingBalance')}</Td>
+                          <Td />
                           <Td />
                           <Td />
                           <Td className="text-end">
@@ -836,6 +847,9 @@ export default function Reports() {
                             )}
                           </Td>
                           <Td>{line.description || line.memo || '—'}</Td>
+                          <Td>
+                            <SourceDocument line={line} />
+                          </Td>
                           <Td className="text-end">
                             <Money
                               amountMinor={data.basis === 'original' ? line.debit_minor : line.base_debit_minor}
@@ -858,6 +872,7 @@ export default function Reports() {
                           <Td />
                           <Td />
                           <Td>{t('closingBalance')}</Td>
+                          <Td />
                           <Td className="text-end">
                             <Money amountMinor={data.total_debit_minor} currency={data.currency} />
                           </Td>
@@ -877,6 +892,7 @@ export default function Reports() {
             })()
           : null}
 
+        {query.data && isManagementReport(report) ? <ManagementReportView report={report} data={query.data} /> : null}
         {query.data && report === 'cost-center-pl' ? (() => {
           const result = query.data as {
             centers: Array<{ center: { id: string; code: string; name_ar: string; name_en: string };
@@ -1433,8 +1449,7 @@ export default function Reports() {
                             </Td>
                             <Td>{line.description || line.memo || '—'}</Td>
                             <Td>
-                              <span>{sourceLabel(line.source_type)}</span>
-                              {line.source_reference ? <span className="ms-2 tabular text-text-subtle">{line.source_reference}</span> : null}
+                              <SourceDocument line={line} />
                             </Td>
                             <Td className="text-end">
                               <Money amountMinor={lineDebit(line)} currency={data.currency} />

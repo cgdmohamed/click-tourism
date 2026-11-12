@@ -15,6 +15,7 @@
 **Test cases:** required fields, stage config changes, duplicate phone/email, consent enforcement, branch scope, Arabic content.
 **Owned files:** `backend/app/Modules/CRM/Leads`, migrations, tests.
 **Reviewer:** Product.
+**Status:** partial — Lead create/update/list with sources/stages as seed data; no sources/stages API, lead detail or activity timeline (GAP-CRM-02, 03).
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** rule precedence, no eligible owner, deactivated owner, activity resets clock, timezone/DST boundary, repeated reassignment cap, idempotent job run.
 **Owned files:** `backend/app/Modules/CRM/Assignment`, jobs, tests.
 **Reviewer:** Product + architect.
+**Status:** partial — Assignment rules API/UI; `LeadService::reassignStale()` has no scheduler or command (GAP-CRM-01, P0).
 
 ---
 
@@ -43,3 +45,4 @@
 **Test cases:** convert twice blocked, convert without customer data, branch mismatch, metrics after stage change, cancelled conversion rollback.
 **Owned files:** `backend/app/Modules/CRM/Conversion`, tests.
 **Reviewer:** Product.
+**Status:** partial — `/leads/{id}/convert` works once; no pipeline metrics or duplicate detection (GAP-CRM-04, 05).

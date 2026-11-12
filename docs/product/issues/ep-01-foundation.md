@@ -19,6 +19,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test commands:** `docker compose config`, backend `php artisan test`, frontend `npm run typecheck && npm run build`.
 **Owned files:** root config, `docker/`, `.github/`, `backend/` bootstrap, `web/` bootstrap.
 **Reviewer / sign-off:** Architect.
+**Status:** done — Compose and CI (backend, frontend, e2e, postgres-integration) in `.github/workflows/ci.yml`.
 
 ---
 
@@ -33,6 +34,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** valid/invalid login, lockout, deactivated user, password reset expiry, authorization of user admin.
 **Owned files:** `backend/app/Modules/Core/Auth`, `Users`, migrations, tests; `web` auth screens later.
 **Reviewer:** Architect + security check.
+**Status:** partial — Sanctum login/logout/me, rate limiting and user lifecycle exist (`UserManagementTest`); no self-service password-reset token route in `routes/api.php`.
 
 ---
 
@@ -47,6 +49,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** each role matrix row, missing permission, super-admin bypass, route enumeration test.
 **Owned files:** `backend/app/Modules/Core/Access`, policies, tests.
 **Reviewer:** Architect.
+**Status:** done — Roles/permissions API and policy tests (`RoleManagementTest`, `ApiAccessTest`).
 
 ---
 
@@ -61,6 +64,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** branch A user vs branch B data for read/list/update/export; multi-branch user; deactivated branch.
 **Owned files:** `backend/app/Modules/Core/Branches`, shared scope trait, tests.
 **Reviewer:** Architect.
+**Status:** done — `/branches`, `BranchIsolationTest`.
 
 ---
 
@@ -75,6 +79,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** setting validation, toggle on/off, secret redaction, audit of changes.
 **Owned files:** `backend/app/Modules/Core/Settings`, migrations, tests.
 **Reviewer:** Architect.
+**Status:** done — `/settings`, `/feature-flags`, `FeatureFlagsTest`.
 
 ---
 
@@ -89,6 +94,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** redaction of secrets/PII, immutability, filters, retention job.
 **Owned files:** `backend/app/Modules/Core/Audit`, migrations, tests.
 **Reviewer:** Architect + security.
+**Status:** done — Audit events with redaction; `GET /audit-events` and CSV export (GAP-CORE-02 closed); `AuditEventTest`.
 
 ---
 
@@ -103,6 +109,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** parallel creation, year rollover, gap policy, disabled sequence.
 **Owned files:** `backend/app/Modules/Core/Sequences`, migrations, tests.
 **Reviewer:** Architect.
+**Status:** done — ADR-0013; `DocumentNumberingTest`, `DocumentNumberAuditTest`, `FiscalYearSequenceTest`.
 
 ---
 
@@ -117,6 +124,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** upload limits, unauthorized download, orphan cleanup, malware-extension rejection.
 **Owned files:** `backend/app/Modules/Core/Attachments`, tests.
 **Reviewer:** Architect + security.
+**Status:** not started — No attachment table, route or module (GAP-CORE-03, pending decision to implement or de-scope).
 
 ---
 
@@ -131,6 +139,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Test cases:** simulated DB/Redis failure, failed job appears, log redaction.
 **Owned files:** `backend/config`, `backend/app/Modules/Core/Health`, tests.
 **Reviewer:** Architect.
+**Status:** partial — `/health`, `/ready`, scheduler heartbeat and `HealthTest` exist; a failed-job view is UNVERIFIED (not found in routes).
 
 ---
 
@@ -140,7 +149,7 @@ Prerequisite for every other epic. Follow `templates/TASK_TEMPLATE.md` per issue
 **Scope in:** Tokens/theme import, component adapters, RTL setup, Storybook/preview (if part of DS), usage rules.
 **Scope out:** Inventing components or screens; product screens (EP-12).
 **Dependencies:** TE-001 + **design system assets supplied**.
-**Status:** **BLOCKED** — design system is missing from the repository. Do not start.
+**Status:** done — Design tokens from `docs/design/DESIGN.md` in `web/src/index.css`, light/dark and AR/EN; the earlier BLOCKED note is obsolete.
 **API contract changes:** None.
 **Acceptance criteria:** A sample screen renders using only DS components/tokens; RTL verified; no parallel UI kit.
 **Test cases:** visual smoke, RTL snapshot, token usage lint.

@@ -234,7 +234,7 @@ jobs:
         run: sh docker/test-demo-restore.sh
       - name: Run financial integration tests on PostgreSQL
         run: |
-          php artisan test --filter="(PostingServiceTest|PaymentServiceTest|InvoiceTest|FinancialReportsReconciliationTest|SupplierSettlementTest|BookingServiceTest|InstallCommandTest|VerifyLedgerCommandTest|VerifyCredentialsCommandTest|UserSeederSafetyTest)"
+          php artisan test --filter="(PostingServiceTest|PaymentServiceTest|InvoiceTest|FinancialReportsReconciliationTest|SupplierSettlementTest|BookingServiceTest|InstallCommandTest|VerifyLedgerCommandTest|VerifyCredentialsCommandTest|UserSeederSafetyTest|DocumentNumberAuditTest)"
       # Release gate (docs/deployment/release-checklist.md): each rehearsal creates and
       # drops its own erp_rehearsal_* databases, so it cannot disturb tourism_test.
       - name: Release rehearsals (fresh install, backup/restore, N-1 upgrade, rollback)

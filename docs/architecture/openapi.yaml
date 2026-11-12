@@ -2155,6 +2155,106 @@ paths:
         '200': { description: UTF-8 CSV with BOM }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
+  /reports/profitability:
+    get:
+      tags: [Reports]
+      summary: Profitability by booking and service type (revenue, direct cost, margin) from posted ledger lines; reconciles to the income statement
+      description: Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Report rows, totals and a reconciliation block where applicable' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/profitability/export:
+    get:
+      tags: [Reports]
+      summary: Profitability report export (requires reports.export; audited as report.exported; throttled by report-exports)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200': { description: 'UTF-8 CSV with BOM, XLSX or PDF' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/sales:
+    get:
+      tags: [Reports]
+      summary: Sales (revenue) by branch and by booking owner from posted ledger lines; reconciles to the income statement revenue
+      description: Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Report rows, totals and a reconciliation block where applicable' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/sales/export:
+    get:
+      tags: [Reports]
+      summary: Sales report export (requires reports.export; audited as report.exported; throttled by report-exports)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200': { description: 'UTF-8 CSV with BOM, XLSX or PDF' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/commissions:
+    get:
+      tags: [Reports]
+      summary: Commissions summary by beneficiary (ledger commission expense, pending accruals and payouts), reconciled to the commission expense account
+      description: Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Report rows, totals and a reconciliation block where applicable' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/commissions/export:
+    get:
+      tags: [Reports]
+      summary: Commissions report export (requires reports.export; audited as report.exported; throttled by report-exports)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200': { description: 'UTF-8 CSV with BOM, XLSX or PDF' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/tax:
+    get:
+      tags: [Reports]
+      summary: Output vs input tax by tax profile from posted lines on the tax accounts (base currency)
+      description: Base currency, branch scoped (X-Branch-Id), posted entries only. Requires reports.view.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 'Report rows, totals and a reconciliation block where applicable' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /reports/tax/export:
+    get:
+      tags: [Reports]
+      summary: Tax report export (requires reports.export; audited as report.exported; throttled by report-exports)
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, schema: { type: string, enum: [csv, xlsx, pdf], default: csv } }
+        - { name: language, in: query, schema: { type: string, enum: [ar, en, bilingual], default: bilingual } }
+      responses:
+        '200': { description: 'UTF-8 CSV with BOM, XLSX or PDF' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /leads:
     get:

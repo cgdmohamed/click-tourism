@@ -13,6 +13,7 @@
 **Test cases:** required fields, duplicate phone normalization, delete with postings blocked, branch isolation, merge audit.
 **Owned files:** `backend/app/Modules/Parties/Customers`, tests.
 **Reviewer:** Architect.
+**Status:** done — `/customers`; `PartyProfileTest`.
 
 ---
 
@@ -27,6 +28,7 @@
 **Test cases:** category validation, duplicate detection, deactivation with obligations, payee deactivation with open accruals.
 **Owned files:** `backend/app/Modules/Parties/Suppliers`, tests.
 **Reviewer:** Architect.
+**Status:** done — `/suppliers`, `/employees`; `PartyProfileTest`, `EmployeeFinanceTest`.
 
 ---
 
@@ -41,3 +43,4 @@
 **Test cases:** opening balance, partial allocation, refund, multi-currency, branch filter, empty statement.
 **Owned files:** `backend/app/Modules/Parties/Statements`, tests.
 **Reviewer:** Accountant.
+**Status:** done — `/reports/party-statement`, `/employees/{id}/statement`; `FinancialReportsReconciliationTest`.

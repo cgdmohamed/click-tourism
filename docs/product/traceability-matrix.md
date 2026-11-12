@@ -1,6 +1,6 @@
 # Traceability Matrix — Tourism ERP
 
-Status: Draft. Links the supplied source scope to product requirements, modules, delivery issues, and observable acceptance criteria.
+Status: Implementation-aware (updated 2026-11-12). Per-issue delivery status is on each `TE-###` in `issues/`; remaining gaps are in `gap-register.md`, which supersedes this matrix where they differ. Links the supplied source scope to product requirements, modules, delivery issues, and observable acceptance criteria.
 
 ## 1. Source scope → requirements
 

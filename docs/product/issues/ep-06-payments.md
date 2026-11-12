@@ -15,6 +15,7 @@
 **Test cases:** partial payments, overpayment → advance, cross-currency, allocation over balance blocked, concurrent allocation, closed period, branch isolation.
 **Owned files:** `backend/app/Modules/Payments/Receipts`, migrations, tests.
 **Reviewer:** Accountant.
+**Status:** done — `/payments`, allocate/unallocate; `PaymentServiceTest`.
 
 ---
 
@@ -29,6 +30,7 @@
 **Test cases:** refund > collected blocked, partial refund, refund after period close, approver = creator when segregation on, cross-currency refund, duplicate request.
 **Owned files:** `backend/app/Modules/Payments/Refunds`, tests.
 **Reviewer:** Accountant + security.
+**Status:** done — `/refunds` with approval; covered by `PaymentServiceTest`.
 
 ---
 
@@ -43,6 +45,7 @@
 **Test cases:** overpayment → advance, partial invoice, duplicate invoice reference, disputed amount, FX difference, closed period.
 **Owned files:** `backend/app/Modules/Payments/Suppliers`, tests.
 **Reviewer:** Accountant.
+**Status:** done — `/supplier-obligations`, `/supplier-payments`; `SupplierSettlementTest`.
 
 ---
 
@@ -57,3 +60,4 @@
 **Test cases:** same key/same payload, same key/different payload, expired key, parallel requests, crash between post and response.
 **Owned files:** `backend/app/Modules/Core/Idempotency`, payment tests.
 **Reviewer:** Architect + security.
+**Status:** done — `Idempotent` middleware and `Integrations\IdempotencyService`; `PaymentServiceTest`, `InvoiceTest`.
