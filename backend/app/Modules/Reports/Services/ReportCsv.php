@@ -399,6 +399,72 @@ class ReportCsv
         return $rows;
     }
 
+    /**
+     * @param  array<string, mixed>  $report  Result of CostCenterService::profitAndLoss()
+     * @param  string  $currency  Base currency code (the report has no currency of its own)
+     */
+    public function costCenterProfitAndLossRows(array $report, string $currency): array
+    {
+        $exp = $this->exponent($currency);
+        $rows = [
+            ['Cost center profit and loss', $report['from'], $report['to']],
+            $this->header(['Code', 'Name (EN)', 'Name (AR)', 'Allocated revenue', 'Allocated expense', 'Allocated net', 'Currency']),
+        ];
+
+        foreach ($report['centers'] as $line) {
+            $center = $line['center'];
+            $rows[] = [
+                $center['code'],
+                $center['name_en'],
+                $center['name_ar'],
+                $this->money($line['allocated_revenue_minor'], $exp),
+                $this->money($line['allocated_expense_minor'], $exp),
+                $this->money($line['allocated_net_minor'], $exp),
+                $currency,
+            ];
+        }
+
+        $rows[] = $this->total([
+            'Total', '', '',
+            $this->money($report['grand_allocated_revenue_minor'], $exp),
+            $this->money($report['grand_allocated_expense_minor'], $exp),
+            $this->money($report['grand_allocated_net_minor'], $exp),
+            $currency,
+        ]);
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $report  Result of CostCenterService::unallocated()
+     * @param  string  $currency  Base currency code (the report has no currency of its own)
+     */
+    public function costCenterUnallocatedRows(array $report, string $currency): array
+    {
+        $exp = $this->exponent($currency);
+        $rows = [
+            ['Cost center unallocated lines', $report['from'], $report['to']],
+            $this->header(['Entry no.', 'Date', 'Account', 'Amount', 'Allocation', 'Currency']),
+        ];
+
+        foreach ($report['lines'] as $line) {
+            $rows[] = [
+                $line['journal_entry'],
+                $this->date($line['entry_date']),
+                $line['account'],
+                $this->money($line['amount_minor'], $exp),
+                $line['allocation_type'],
+                $currency,
+            ];
+        }
+
+        $rows[] = $this->total([
+            'Total', '', '', $this->money($report['unallocated_total_minor'], $exp), '', $currency,
+        ]);
+
+        return $rows;
+    }
+
     /** @param array<string, mixed> $report Result of FixedAssetReportService::carryingValues() */
     public function fixedAssetCarryingValuesRows(array $report): array
     {

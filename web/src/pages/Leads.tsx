@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
-import type { Lead, Paginated } from '../lib/types'
+import type { Lead, LeadSourceConfig, LeadStageConfig, Paginated } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { statusLabel } from '../lib/labels'
-
-const stages = ['new', 'contacted', 'qualified', 'proposal', 'won', 'lost']
-const sources = ['whatsapp', 'facebook', 'instagram', 'website', 'referral', 'walk_in', 'other']
 
 export default function Leads() {
   const { t, locale } = useI18n()
@@ -23,12 +20,39 @@ export default function Leads() {
   const [stageFilter, setStageFilter] = useState('')
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const [duplicateNotice, setDuplicateNotice] = useState<Lead | null>(null)
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'whatsapp', notes: '' })
 
   useEffect(() => {
     setSearch(urlSearch)
     setPage(1)
   }, [urlSearch])
+
+  const stagesQuery = useQuery({
+    queryKey: ['lead-stages'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: LeadStageConfig[] }>('/lead-stages')
+      return data.data
+    },
+  })
+
+  const sourcesQuery = useQuery({
+    queryKey: ['lead-sources'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: LeadSourceConfig[] }>('/lead-sources')
+      return data.data
+    },
+  })
+
+  const stages = useMemo(() => stagesQuery.data ?? [], [stagesQuery.data])
+  const sources = useMemo(() => sourcesQuery.data ?? [], [sourcesQuery.data])
+
+  // Keep the new-lead source valid when an installation renamed its channels.
+  useEffect(() => {
+    if (sources.length > 0 && !sources.some((source) => source.code === form.source)) {
+      setForm((current) => ({ ...current, source: sources[0].code }))
+    }
+  }, [sources, form.source])
 
   const query = useQuery({
     queryKey: ['leads', stageFilter, search, page, activeBranch?.id],
@@ -48,9 +72,10 @@ export default function Leads() {
       const { data } = await api.post<{ data: Lead }>('/leads', { ...form, branch_id: activeBranch.id })
       return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (lead) => {
       setOpen(false)
       setError('')
+      setDuplicateNotice(lead.duplicate_of ? lead : null)
       setForm({ name: '', phone: '', email: '', source: 'whatsapp', notes: '' })
       await queryClient.invalidateQueries({ queryKey: ['leads'] })
     },
@@ -79,16 +104,13 @@ export default function Leads() {
   }, [leads])
 
   const stageLabel = (value: string) => {
-    const labels: Record<string, [string, string]> = {
-      new: ['جديد', 'New'],
-      contacted: ['تم التواصل', 'Contacted'],
-      qualified: ['مؤهل', 'Qualified'],
-      proposal: ['عرض سعر', 'Proposal'],
-      won: ['تم البيع', 'Won'],
-      lost: ['خسارة', 'Lost'],
-    }
-    const found = labels[value]
-    return found ? found[locale === 'ar' ? 0 : 1] : value
+    const found = stages.find((stage) => stage.code === value)
+    return found ? (locale === 'ar' ? found.name_ar : found.name_en) : value
+  }
+
+  const sourceLabel = (value: string) => {
+    const found = sources.find((source) => source.code === value)
+    return found ? (locale === 'ar' ? found.name_ar : found.name_en) : value
   }
 
   return (
@@ -105,6 +127,19 @@ export default function Leads() {
           {locale === 'ar'
             ? `${staleCount} عميل محتمل بدون نشاط خلال 24 ساعة — سيُعاد توزيعه تلقائيًا.`
             : `${staleCount} lead(s) without activity for 24h — automatic reassignment will apply.`}
+        </div>
+      ) : null}
+
+      {duplicateNotice?.duplicate_of ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-16 border border-warning-border bg-warning-background px-4 py-3 text-medium text-warning-text">
+          <span>
+            {locale === 'ar'
+              ? `تم تسجيل العميل المحتمل لكنه مطابق لـ «${duplicateNotice.duplicate_of.name}» (${duplicateNotice.duplicate_reason}). تم ربطه كتكرار محتمل.`
+              : `Lead captured but it matches “${duplicateNotice.duplicate_of.name}” (${duplicateNotice.duplicate_reason}). It was linked as a possible duplicate.`}
+          </span>
+          <Button variant="ghost" onClick={() => setDuplicateNotice(null)}>
+            {t('cancel')}
+          </Button>
         </div>
       ) : null}
 
@@ -130,8 +165,8 @@ export default function Leads() {
           >
             <option value="">{locale === 'ar' ? 'كل المراحل' : 'All stages'}</option>
             {stages.map((stage) => (
-              <option key={stage} value={stage}>
-                {stageLabel(stage)}
+              <option key={stage.code} value={stage.code}>
+                {stageLabel(stage.code)}
               </option>
             ))}
           </Select>
@@ -156,9 +191,20 @@ export default function Leads() {
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead.id}>
-                  <Td className="font-medium">{lead.name}</Td>
+                  <Td className="font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      <Link to={`/leads/${lead.id}`} className="text-brand-1-accent hover:underline">
+                        {lead.name}
+                      </Link>
+                      {lead.duplicate_of ? (
+                        <Badge tone="warning">
+                          {locale === 'ar' ? 'تكرار محتمل' : 'Possible duplicate'}
+                        </Badge>
+                      ) : null}
+                    </span>
+                  </Td>
                   <Td dir="ltr">{lead.phone ?? '—'}</Td>
-                  <Td>{lead.source}</Td>
+                  <Td>{sourceLabel(lead.source)}</Td>
                   <Td>{stageLabel(lead.stage)}</Td>
                   <Td>{formatDateTime(lead.last_activity_at ?? lead.created_at, locale)}</Td>
                   <Td>
@@ -208,8 +254,8 @@ export default function Leads() {
           <Field label={t('source')}>
             <Select value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>
               {sources.map((source) => (
-                <option key={source} value={source}>
-                  {source}
+                <option key={source.code} value={source.code}>
+                  {sourceLabel(source.code)}
                 </option>
               ))}
             </Select>

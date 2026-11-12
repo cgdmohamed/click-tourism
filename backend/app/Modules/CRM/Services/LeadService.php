@@ -6,6 +6,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Models\AssignmentRule;
 use App\Modules\CRM\Models\Lead;
@@ -13,7 +14,9 @@ use App\Modules\CRM\Models\LeadActivity;
 use App\Modules\CRM\Models\LeadSource;
 use App\Modules\CRM\Models\LeadStage;
 use App\Modules\Parties\Models\Customer;
+use App\Support\PhoneNumber;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -27,6 +30,7 @@ class LeadService
         private readonly SettingService $settings,
         private readonly BranchScope $branchScope,
         private readonly AuditService $audit,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function create(array $data, ?int $actorId = null): Lead
@@ -57,6 +61,8 @@ class LeadService
                 ? User::query()->where('public_id', $data['owner_user_id'])->first()
                 : $this->pickOwner($branch, $source?->id, $data['service_category'] ?? null);
 
+            $duplicate = $this->findDuplicate($branch, $data);
+
             $lead = Lead::query()->create([
                 'source_id' => $source?->id,
                 'stage_id' => $stage->id,
@@ -71,12 +77,27 @@ class LeadService
                 'consent' => (bool) ($data['consent'] ?? false),
                 'notes' => $data['notes'] ?? null,
                 'last_activity_at' => now(),
+                'duplicate_of_lead_id' => $duplicate['lead']->id ?? null,
+                'duplicate_reason' => $duplicate['reason'] ?? null,
             ]);
 
             $this->activity($lead, 'created', 'Lead captured', $actorId);
             $this->audit->log('lead.created', $lead, null, $lead->toApiArray(), $actorId);
 
-            return $lead->load('source', 'stage', 'owner');
+            if ($duplicate) {
+                $this->activity(
+                    $lead,
+                    'duplicate_flagged',
+                    'Possible duplicate of '.$duplicate['lead']->name.' matched on '.$duplicate['reason'],
+                    $actorId,
+                );
+                $this->audit->log('lead.duplicate_flagged', $lead, null, [
+                    'duplicate_of' => $duplicate['lead']->public_id,
+                    'matched_on' => $duplicate['reason'],
+                ], $actorId);
+            }
+
+            return $lead->load('source', 'stage', 'owner', 'duplicateOf');
         });
     }
 
@@ -143,8 +164,61 @@ class LeadService
 
             $this->audit->log('lead.updated', $lead, null, $attributes, $actorId);
 
-            return $lead->refresh()->load('source', 'stage', 'owner');
+            return $lead->refresh()->load('source', 'stage', 'owner', 'duplicateOf');
         });
+    }
+
+    /**
+     * GAP-CRM-04: an existing lead in the same branch that was active inside
+     * the configured window and shares the normalized phone or email.
+     *
+     * @return array{lead: Lead, reason: string}|null
+     */
+    private function findDuplicate(Branch $branch, array $data): ?array
+    {
+        $windowDays = $this->settings->int('crm', 'duplicate_window_days', 30);
+        if ($windowDays <= 0) {
+            return null;
+        }
+
+        $phoneKey = PhoneNumber::matchKey($data['phone'] ?? null);
+        $email = mb_strtolower(trim((string) ($data['email'] ?? '')));
+        if ($phoneKey === '' && $email === '') {
+            return null;
+        }
+
+        $cutoff = now()->subDays($windowDays);
+
+        $candidates = Lead::query()
+            ->where('branch_id', $branch->id)
+            ->whereRaw('COALESCE(last_activity_at, created_at) >= ?', [$cutoff])
+            ->where(function (Builder $query) use ($phoneKey, $email) {
+                if ($phoneKey !== '') {
+                    $query->whereRaw(PhoneNumber::sqlDigits('phone').' LIKE ?', ['%'.$phoneKey]);
+                }
+                if ($email !== '') {
+                    $query->orWhereRaw('LOWER(email) = ?', [$email]);
+                }
+            })
+            ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        foreach ($candidates as $candidate) {
+            $matchedOn = [];
+            if ($phoneKey !== '' && PhoneNumber::matchKey($candidate->phone) === $phoneKey) {
+                $matchedOn[] = 'phone';
+            }
+            if ($email !== '' && mb_strtolower(trim((string) $candidate->email)) === $email) {
+                $matchedOn[] = 'email';
+            }
+            if ($matchedOn !== []) {
+                return ['lead' => $candidate, 'reason' => implode(',', $matchedOn)];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -194,6 +268,18 @@ class LeadService
                         'owner_user_id' => $newOwner->id,
                         'attempt' => $attempts,
                     ]);
+                    $this->notifications->send(
+                        $newOwner->id,
+                        'lead.reassigned',
+                        'Lead reassigned to you',
+                        $locked->name.' was reassigned to you after '.$hours.' business hours of inactivity.',
+                        [
+                            'lead_id' => $locked->public_id,
+                            'lead_name' => $locked->name,
+                            'attempt' => $attempts,
+                        ],
+                        $branch->id,
+                    );
                     $count++;
 
                     return;
@@ -208,6 +294,18 @@ class LeadService
                     ]);
                     $this->activity($locked, 'escalated', 'Escalated to unassigned queue after '.$attempts.' attempts', null);
                     $this->audit->log('lead.escalated', $locked, ['owner_user_id' => $previous], ['attempts' => $attempts]);
+                    $this->notifications->notifyBranchPermission(
+                        $branch,
+                        'leads.manage_rules',
+                        'lead.escalated',
+                        'Lead escalated to the unassigned queue',
+                        $locked->name.' was escalated after '.$attempts.' reassignment attempts and needs attention.',
+                        [
+                            'lead_id' => $locked->public_id,
+                            'lead_name' => $locked->name,
+                            'attempts' => $attempts,
+                        ],
+                    );
                     $count++;
                 } else {
                     $locked->update(['reassignment_attempts' => $attempts, 'last_activity_at' => now()]);

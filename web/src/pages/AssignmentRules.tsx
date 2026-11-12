@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
-import type { AssignmentRule } from '../lib/types'
+import type { AssignmentRule, LeadSourceConfig } from '../lib/types'
 import {
   Badge,
   Button,
@@ -58,6 +58,28 @@ export default function AssignmentRules() {
   })
 
   const rules = rulesQuery.data ?? []
+
+  const sourcesQuery = useQuery({
+    queryKey: ['lead-sources'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: LeadSourceConfig[] }>('/lead-sources')
+      return data.data
+    },
+  })
+
+  const sourceOptions = useMemo(
+    () => (sourcesQuery.data ?? []).map((source) => ({
+      value: source.code,
+      label: locale === 'ar' ? source.name_ar : source.name_en,
+    })),
+    [sourcesQuery.data, locale],
+  )
+
+  const sourceLabel = (code: string | null) => {
+    if (!code) return locale === 'ar' ? 'أي مصدر' : 'Any Source'
+    const found = (sourcesQuery.data ?? []).find((source) => source.code === code)
+    return found ? (locale === 'ar' ? found.name_ar : found.name_en) : code
+  }
 
   // The saved target of the rule being edited stays labelled even if the search no longer lists it.
   const knownTargets = useMemo(
@@ -177,7 +199,7 @@ export default function AssignmentRules() {
                 <tr key={rule.id}>
                   <Td className="tabular font-medium">{rule.priority ?? 0}</Td>
                   <Td>{rule.branch_id ? 'Branch' : locale === 'ar' ? 'جميع الفروع' : 'All Branches'}</Td>
-                  <Td>{rule.source_id ?? locale === 'ar' ? 'أي مصدر' : 'Any Source'}</Td>
+                  <Td>{sourceLabel(rule.source_id)}</Td>
                   <Td>{rule.service_category ?? locale === 'ar' ? 'أي فئة' : 'Any Category'}</Td>
                   <Td>{strategyLabel(rule.strategy)}</Td>
                   <Td>{rule.target_user_id ? rule.target_user?.name ?? rule.target_user_id : locale === 'ar' ? 'أي موظف متاح' : 'Any Available'}</Td>
@@ -238,16 +260,7 @@ export default function AssignmentRules() {
               onChange={(source_id) => setForm({ ...form, source_id })}
               placeholder={locale === 'ar' ? 'أي مصدر' : 'Any Source'}
               clearLabel={locale === 'ar' ? 'أي مصدر' : 'Any Source'}
-              options={[
-                { value: 'whatsapp', label: locale === 'ar' ? 'واتساب' : 'WhatsApp' },
-                { value: 'facebook', label: locale === 'ar' ? 'فيسبوك' : 'Facebook' },
-                { value: 'instagram', label: locale === 'ar' ? 'إنستغرام' : 'Instagram' },
-                { value: 'website', label: locale === 'ar' ? 'الموقع الإلكتروني' : 'Website' },
-                { value: 'phone', label: locale === 'ar' ? 'هاتف' : 'Phone' },
-                { value: 'walk_in', label: locale === 'ar' ? 'زيارة للفرع' : 'Walk-in' },
-                { value: 'referral', label: locale === 'ar' ? 'توصية عميل' : 'Referral' },
-                { value: 'other', label: locale === 'ar' ? 'أخرى' : 'Other' },
-              ]}
+              options={sourceOptions}
             />
           </Field>
           <Field label={locale === 'ar' ? 'فئة الخدمة' : 'Service Category'}>

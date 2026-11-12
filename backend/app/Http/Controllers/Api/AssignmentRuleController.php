@@ -6,9 +6,11 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\CRM\Models\AssignmentRule;
+use App\Modules\CRM\Models\LeadSource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AssignmentRuleController extends ApiController
 {
@@ -16,7 +18,7 @@ class AssignmentRuleController extends ApiController
     {
         $branch = $this->branch();
 
-        $rules = AssignmentRule::query()->with('targetUser')
+        $rules = AssignmentRule::query()->with(['targetUser', 'source'])
             ->when($branch, fn ($query) => $query->where(function ($query) use ($branch) {
                 $query->whereNull('branch_id')->orWhere('branch_id', $branch->id);
             }))
@@ -53,10 +55,12 @@ class AssignmentRuleController extends ApiController
             $targetUser = User::query()->where('public_id', $data['target_user_id'])->firstOrFail();
         }
 
+        $source = $this->source($data['source_id'] ?? null);
+
         $rule = AssignmentRule::query()->create([
             'priority' => $data['priority'] ?? 0,
             'branch_id' => $branch?->id,
-            'source_id' => $data['source_id'] ?? null,
+            'source_id' => $source?->id,
             'service_category' => $data['service_category'] ?? null,
             'strategy' => $data['strategy'],
             'target_user_id' => $targetUser?->id,
@@ -92,6 +96,10 @@ class AssignmentRuleController extends ApiController
             $data['target_user_id'] = null;
         }
 
+        if (array_key_exists('source_id', $data)) {
+            $data['source_id'] = $this->source($data['source_id'])?->id;
+        }
+
         $rule->update($data);
         $audit->log('assignment_rule.updated', $rule, $before, $rule->toApiArray(), $this->actorId());
 
@@ -106,5 +114,22 @@ class AssignmentRuleController extends ApiController
         $rule->delete();
 
         return $this->ok(['message' => 'Assignment rule deleted.']);
+    }
+
+    /**
+     * Rules reference sources by their stable code; the table stores the id.
+     */
+    private function source(?string $code): ?LeadSource
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+
+        $source = LeadSource::query()->where('code', $code)->first();
+        if (! $source) {
+            throw ValidationException::withMessages(['source_id' => ['Unknown lead source.']]);
+        }
+
+        return $source;
     }
 }

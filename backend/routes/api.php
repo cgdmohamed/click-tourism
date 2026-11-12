@@ -32,11 +32,14 @@ use App\Http\Controllers\Api\InvoiceApplicationController;
 use App\Http\Controllers\Api\InvoiceCollectionController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntryController;
+use App\Http\Controllers\Api\LeadConfigController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\ManagementReportController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
+use App\Http\Controllers\Api\PipelineReportController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
@@ -166,7 +169,9 @@ Route::prefix('v1')->group(function () {
         Route::post('journal-lines/{line}/cost-allocations', [CostCenterController::class, 'allocate'])->middleware('permission:cost_centers.manage');
 
         Route::get('reports/cost-center-pl', [CostCenterController::class, 'profitAndLoss'])->middleware('permission:cost_centers.view');
+        Route::get('reports/cost-center-pl/export', [CostCenterController::class, 'exportProfitAndLoss'])->middleware(['permission:cost_centers.view', 'permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/cost-center-unallocated', [CostCenterController::class, 'unallocated'])->middleware('permission:cost_centers.view');
+        Route::get('reports/cost-center-unallocated/export', [CostCenterController::class, 'exportUnallocated'])->middleware(['permission:cost_centers.view', 'permission:reports.export', 'throttle:report-exports']);
 
         Route::get('fiscal-periods', [FiscalPeriodController::class, 'index'])->middleware('permission:periods.view');
         Route::get('fiscal-periods/{period}/checklist', [FiscalPeriodController::class, 'checklist'])->middleware('permission:periods.view');
@@ -368,9 +373,27 @@ Route::prefix('v1')->group(function () {
         Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1');
 
         Route::get('leads', [LeadController::class, 'index'])->middleware('permission:leads.view');
+        Route::get('leads/{lead}', [LeadController::class, 'show'])->middleware('permission:leads.view');
         Route::post('leads', [LeadController::class, 'store'])->middleware('permission:leads.create');
         Route::patch('leads/{lead}', [LeadController::class, 'update'])->middleware('permission:leads.update');
         Route::post('leads/{lead}/convert', [LeadController::class, 'convert'])->middleware('permission:leads.convert');
+        Route::get('reports/pipeline', PipelineReportController::class)->middleware('permission:leads.view');
+
+        // Configurable lead sources and pipeline stages. Codes are the stable
+        // key, so updates and deletes address the record by code.
+        Route::get('lead-sources', [LeadConfigController::class, 'sources'])->middleware('permission:leads.view');
+        Route::post('lead-sources', [LeadConfigController::class, 'storeSource'])->middleware('permission:leads.manage_rules');
+        Route::patch('lead-sources/{source:code}', [LeadConfigController::class, 'updateSource'])->middleware('permission:leads.manage_rules');
+        Route::delete('lead-sources/{source:code}', [LeadConfigController::class, 'destroySource'])->middleware('permission:leads.manage_rules');
+        Route::get('lead-stages', [LeadConfigController::class, 'stages'])->middleware('permission:leads.view');
+        Route::post('lead-stages', [LeadConfigController::class, 'storeStage'])->middleware('permission:leads.manage_rules');
+        Route::patch('lead-stages/{stage:code}', [LeadConfigController::class, 'updateStage'])->middleware('permission:leads.manage_rules');
+        Route::delete('lead-stages/{stage:code}', [LeadConfigController::class, 'destroyStage'])->middleware('permission:leads.manage_rules');
+
+        // In-app notifications for the signed-in user (GAP-CORE-01).
+        Route::get('notifications', [NotificationController::class, 'index']);
+        Route::post('notifications/read-all', [NotificationController::class, 'readAll']);
+        Route::post('notifications/{notification}/read', [NotificationController::class, 'read']);
 
         // Optional Meta / WhatsApp integrations (disabled by default; secrets are env-only).
         Route::get('integrations/status', [IntegrationController::class, 'status'])->middleware('permission:settings.view');

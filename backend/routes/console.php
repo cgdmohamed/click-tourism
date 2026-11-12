@@ -27,6 +27,13 @@ Schedule::command('sanctum:prune-expired --hours=168')
     ->dailyAt('02:45')
     ->withoutOverlapping();
 
+// 24-hour lead inactivity reassignment (GAP-CRM-01). The service measures
+// inactivity in configured business hours and is safe to rerun.
+Schedule::command('crm:reassign-stale-leads')
+    ->name('crm-reassign-stale-leads')
+    ->hourlyAt(5)
+    ->withoutOverlapping();
+
 // Posts due accrual/prepayment/deferred-revenue events. Reruns are safe and
 // closed periods go to the exception queue instead of being bypassed.
 Schedule::command('schedules:post-due')
