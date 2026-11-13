@@ -37,6 +37,7 @@ class FeatureFlagsTest extends TestCase
                 'assistant_enabled' => false,
                 'assistant_provider' => null,
                 'assistant_key_configured' => false,
+                'assistant_key_source' => 'none',
                 'assistant_accepted' => false,
                 'assistant_model' => 'gpt-4o-mini',
                 'assistant_redact_pii' => true,

@@ -3,6 +3,7 @@
 namespace App\Modules\Assistant\Providers;
 
 use App\Modules\Assistant\Contracts\AssistantProvider;
+use App\Modules\Assistant\Support\ProviderCredentials;
 use App\Modules\Assistant\Support\ProviderException;
 use App\Modules\Assistant\Support\ProviderReply;
 use Illuminate\Http\Client\ConnectionException;
@@ -12,12 +13,17 @@ use Illuminate\Support\Facades\Http;
  * OpenAI Chat Completions with function calling (ADR-0017).
  *
  * UNVERIFIED against the live API: written from the documented request/response shapes without
- * internet access. The credential comes from services.openai.key (env OPENAI_API_KEY) only; the
+ * internet access. The credential comes from the key saved in Settings (encrypted) or, as a fallback, services.openai.key (env OPENAI_API_KEY); the
  * base URL (env OPENAI_BASE_URL) exists for proxies and tests. Failures raise ProviderException
  * with a generic message: the response body is never copied into messages or logs.
  */
 final class OpenAiProvider implements AssistantProvider
 {
+    private function key(): string
+    {
+        return app(ProviderCredentials::class)->openAiKey();
+    }
+
     public function name(): string
     {
         return 'openai';
@@ -25,7 +31,7 @@ final class OpenAiProvider implements AssistantProvider
 
     public function isConfigured(): bool
     {
-        return trim((string) config('services.openai.key')) !== '';
+        return $this->key() !== '';
     }
 
     public function chat(array $messages, array $tools, array $options): ProviderReply
@@ -47,7 +53,7 @@ final class OpenAiProvider implements AssistantProvider
         }
 
         try {
-            $response = Http::withToken((string) config('services.openai.key'))
+            $response = Http::withToken($this->key())
                 ->baseUrl(rtrim((string) config('services.openai.base_url'), '/'))
                 ->acceptJson()
                 ->asJson()
@@ -102,7 +108,7 @@ final class OpenAiProvider implements AssistantProvider
         }
 
         try {
-            $response = Http::withToken((string) config('services.openai.key'))
+            $response = Http::withToken($this->key())
                 ->baseUrl(rtrim((string) config('services.openai.base_url'), '/'))
                 ->acceptJson()
                 ->timeout((int) config('assistant.provider_timeout', 60))

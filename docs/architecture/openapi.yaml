@@ -311,12 +311,61 @@ paths:
         '502': { description: The provider failed (`assistant_provider_error`) }
         '503': { description: No provider key configured (`assistant_not_configured`) }
 
+  /assistant/key:
+    put:
+      tags: [Auth]
+      summary: Save the assistant provider key (permission `settings.update`)
+      description: |
+        Stores the provider API key encrypted and flagged secret; it is write-only and never returned by any endpoint (`GET /settings` shows no value, `GET /feature-flags` shows only `assistant_key_source`: `settings`, `env` or `none`). A saved key wins over the `OPENAI_API_KEY` environment value. The audit trail records the change without the key. Throttled to 10 requests a minute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, minLength: 20, maxLength: 300, description: 'No whitespace' }
+      responses:
+        '200':
+          description: Key saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      key_source: { type: string, enum: [settings, env, none] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 'Key missing, too short or containing whitespace' }
+    delete:
+      tags: [Auth]
+      summary: Remove the saved assistant provider key (permission `settings.update`)
+      description: Deletes the saved key; an environment key, if any, then applies.
+      responses:
+        '200':
+          description: Key removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      key_source: { type: string, enum: [settings, env, none] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /assistant/models:
     get:
       tags: [Auth]
       summary: Models the configured assistant provider offers (permission `settings.view`)
       description: |
-        Read-only model discovery for the Settings, Assistant model picker (ADR-0018); saving a chosen model still needs `settings.update`. Only chat-capable ids are returned: embeddings, audio/transcribe/TTS/realtime, image, moderation, search, codex and legacy completion models are filtered out. `recommended` follows a fixed preference list (`gpt-4.1-mini`, `gpt-4o-mini`, `gpt-4.1`, `gpt-4o`, `o4-mini`, `o3-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`), then the newest id containing `mini`, then the newest remaining id; it is null when the filtered list is empty. The list is fetched on every call (nothing is cached) and the provider key is never exposed. Discovery needs only the key: while `assistant.provider` is still the default `none`, the first provider whose key exists in the environment is used, so no setting has to be saved first. Errors: 503 `assistant_not_configured` when no provider key is present in the server environment, 502 `assistant_provider_error` when the provider fails (its response body is never copied into the answer).
+        Read-only model discovery for the Settings, Assistant model picker (ADR-0018); saving a chosen model still needs `settings.update`. Only chat-capable ids are returned: embeddings, audio/transcribe/TTS/realtime, image, moderation, search, codex and legacy completion models are filtered out. `recommended` follows a fixed preference list (`gpt-4.1-mini`, `gpt-4o-mini`, `gpt-4.1`, `gpt-4o`, `o4-mini`, `o3-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`), then the newest id containing `mini`, then the newest remaining id; it is null when the filtered list is empty. The list is fetched on every call (nothing is cached) and the provider key is never exposed. Discovery needs only the key: while `assistant.provider` is still the default `none`, the first provider whose key exists in the environment is used, so no setting has to be saved first. Errors: 503 `assistant_not_configured` when no provider key is saved in Settings or present in the server environment, 502 `assistant_provider_error` when the provider fails (its response body is never copied into the answer).
       responses:
         '200':
           description: Available chat models and the recommended one

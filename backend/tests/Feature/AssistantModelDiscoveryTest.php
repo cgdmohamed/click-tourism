@@ -81,7 +81,7 @@ class AssistantModelDiscoveryTest extends TestCase
         $missing = $this->getJson('/api/v1/assistant/models')
             ->assertStatus(503)
             ->assertJsonPath('code', 'assistant_not_configured');
-        $this->assertStringContainsString('OPENAI_API_KEY', $missing->json('message'));
+        $this->assertStringContainsString('Settings', $missing->json('message'));
 
         app(SettingService::class)->set('assistant', 'provider', 'none');
         $this->getJson('/api/v1/assistant/models')

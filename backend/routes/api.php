@@ -92,6 +92,8 @@ Route::prefix('v1')->group(function () {
         // In-product read-only assistant (ADR-0017). Stateless; permission first, then the per-user limiter.
         Route::post('assistant/chat', [AssistantController::class, 'chat'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
         // Model discovery for the Settings model picker (ADR-0018). Read-only: saving needs settings.update.
+        Route::put('assistant/key', [AssistantController::class, 'storeKey'])->middleware(['permission:settings.update', 'throttle:10,1']);
+        Route::delete('assistant/key', [AssistantController::class, 'destroyKey'])->middleware('permission:settings.update');
         Route::get('assistant/models', [AssistantController::class, 'models'])->middleware('permission:settings.view');
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');

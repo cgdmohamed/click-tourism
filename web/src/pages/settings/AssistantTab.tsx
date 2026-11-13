@@ -22,7 +22,7 @@ import { Badge, Button, Card, CardHeader, ErrorState, Field, InlineNotice, Input
 
 /**
  * Settings > Assistant (ADR-0017). Saves itself instead of joining the page-level draft:
- * the provider key is read from the server environment only, and the data-processing notice
+ * the provider key is saved here (encrypted, write-only), and the data-processing notice
  * must be accepted before the assistant can be switched on.
  */
 export function AssistantTab() {
@@ -39,6 +39,8 @@ export function AssistantTab() {
   const [acceptedAt, setAcceptedAt] = useState('')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [keyDraft, setKeyDraft] = useState('')
+  const [keyNotice, setKeyNotice] = useState('')
 
   const settingsQuery = useQuery({
     queryKey: ['settings'],
@@ -68,6 +70,23 @@ export function AssistantTab() {
     },
     retry: false,
   })
+
+  const keyMutation = useMutation({
+    mutationFn: async (apiKey: string | null) => {
+      if (apiKey === null) await api.delete('/assistant/key')
+      else await api.put('/assistant/key', { api_key: apiKey })
+    },
+    onSuccess: async (_data, apiKey) => {
+      setKeyDraft('')
+      setError('')
+      setKeyNotice(apiKey === null ? '' : t('assistantKeySaved'))
+      await queryClient.invalidateQueries({ queryKey: ['feature-flags'] })
+      await queryClient.invalidateQueries({ queryKey: ['assistant-models'] })
+    },
+    onError: (e) => setError(errorMessage(e)),
+  })
+  const keySource = flags?.assistant_key_source ?? 'none'
+  const keyValid = keyDraft.trim().length >= 20 && !/\s/.test(keyDraft.trim())
 
   const listing = modelsQuery.data
   const models = listing?.models ?? []
@@ -160,6 +179,46 @@ export function AssistantTab() {
               <Badge tone="brand">{providerName}</Badge>
             </div>
             <p className="text-small text-text-subtle">{t('assistantKeyEnvNote')}</p>
+
+            {!readOnly ? (
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (keyValid) keyMutation.mutate(keyDraft.trim())
+                }}
+              >
+                <Field label={t('assistantKeyInput')}>
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    dir="ltr"
+                    value={keyDraft}
+                    placeholder={keySource === 'settings' ? '••••••••••••••••' : 'sk-…'}
+                    onChange={(e) => {
+                      setKeyDraft(e.target.value)
+                      setKeyNotice('')
+                    }}
+                  />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="submit" disabled={!keyValid || keyMutation.isPending}>
+                    {keySource === 'settings' ? t('assistantKeyReplace') : t('assistantKeySave')}
+                  </Button>
+                  {keySource === 'settings' ? (
+                    <Button variant="secondary" disabled={keyMutation.isPending} onClick={() => keyMutation.mutate(null)}>
+                      {t('assistantKeyRemove')}
+                    </Button>
+                  ) : null}
+                  {keySource !== 'none' ? (
+                    <span className="text-small text-text-subtle">
+                      {keySource === 'settings' ? t('assistantKeySourceSettings') : t('assistantKeySourceEnv')}
+                    </span>
+                  ) : null}
+                  {keyNotice ? <span className="text-small text-status-positive-text">{keyNotice}</span> : null}
+                </div>
+              </form>
+            ) : null}
 
             {keyConfigured === false ? (
               <InlineNotice tone="warning">
