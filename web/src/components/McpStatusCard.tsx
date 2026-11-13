@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { useAuth } from '../auth/AuthProvider'
@@ -8,7 +8,7 @@ import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
 import { connectionState, mcpStatusError, recentOrEmpty, tokenSummary } from '../lib/mcpStatus'
 import type { McpStatus } from '../lib/mcpStatus'
-import { Badge, Card, CardHeader, EmptyState, ErrorState, InlineNotice, Loading, Table, Td, Th } from './ui'
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, InlineNotice, Loading, Table, Td, Th } from './ui'
 
 /**
  * Read-only MCP status (ADR-0016/0017): integration switch, token totals, last connection
@@ -19,6 +19,19 @@ export default function McpStatusCard() {
   const { t, locale } = useI18n()
   const { can } = useAuth()
   const allowed = can('settings.view')
+  const queryClient = useQueryClient()
+  const canSwitch = can('settings.update')
+
+  // ADR-0016: the installation switch. Off by default; turning it on lets people create read-only tokens.
+  const toggle = useMutation({
+    mutationFn: async (enable: boolean) => {
+      await api.put('/settings', { settings: [{ group: 'mcp', key: 'enabled', value: enable ? 'true' : 'false' }] })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['mcp-status'] })
+      await queryClient.invalidateQueries({ queryKey: ['feature-flags'] })
+    },
+  })
 
   const statusQuery = useQuery({
     queryKey: ['mcp-status'],
@@ -72,10 +85,21 @@ export default function McpStatusCard() {
         )
       ) : null}
 
+      {toggle.isError ? (
+        <div className="px-5 pt-5">
+          <InlineNotice tone="negative">{errorMessage(toggle.error)}</InlineNotice>
+        </div>
+      ) : null}
+
       {status ? (
         <div className="flex flex-col gap-5 px-5 py-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={stateTone}>{stateLabel}</Badge>
+            {canSwitch ? (
+              <Button variant="secondary" disabled={toggle.isPending} onClick={() => toggle.mutate(!status.enabled)}>
+                {status.enabled ? (locale === 'ar' ? 'إيقاف MCP' : 'Turn MCP off') : locale === 'ar' ? 'تفعيل MCP' : 'Turn MCP on'}
+              </Button>
+            ) : null}
             <Badge tone="neutral">
               {fill('mcpStatusTokens', {
                 active: String(totals.active),

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Bookings\Services\BookingCostSummary;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
@@ -40,7 +41,7 @@ class BookingController extends ApiController
         return $this->paginated($bookings);
     }
 
-    public function show(Booking $booking): JsonResponse
+    public function show(Booking $booking, BookingCostSummary $costSummary): JsonResponse
     {
         $this->authorizeBranchId($booking->branch_id);
         $booking->load('customer', 'items.supplier', 'items.taxProfile', 'statusHistory');
@@ -48,6 +49,8 @@ class BookingController extends ApiController
         $payload = $booking->toApiArray(true);
         $payload['payments_count'] = (int) $booking->allocations()->distinct()->count('payment_id');
         $payload['invoices_count'] = Invoice::query()->where('booking_id', $booking->id)->count();
+        // DEC-002: estimated vs recognized cost and profit, read from the same posted lines the reports use.
+        $payload['cost_summary'] = $costSummary->for($booking);
 
         return $this->ok($payload);
     }

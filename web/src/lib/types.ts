@@ -160,6 +160,19 @@ export type BookingStatusHistoryRow = {
   at: string | null
 }
 
+export type BookingCostSummary = {
+  currency: string
+  estimated_cost_minor: number
+  recognized_cost_minor: number
+  accrued_cost_minor: number
+  expected_remaining_minor: number
+  estimated_revenue_minor: number
+  recognized_revenue_minor: number
+  projected_profit_minor: number
+  recognized_profit_minor: number
+  items: { id: string; invoiced_cost_minor: number }[]
+}
+
 export type Booking = {
   id: string
   number: string
@@ -179,6 +192,7 @@ export type Booking = {
   total_sell_minor: number
   total_cost_minor: number
   margin_minor: number
+  cost_summary?: BookingCostSummary
   tax_minor?: number
   paid_minor?: number
   balance_minor?: number

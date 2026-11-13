@@ -52,6 +52,12 @@ Schedule::command('accounting:revalue --apply --reversals-only')
     ->dailyAt('00:30')
     ->withoutOverlapping();
 
+// Supplier-cost accruals (DEC-002): reverse the previous period's accruals once the new period is open.
+Schedule::command('accounting:reverse-cost-accruals')
+    ->name('cost-accrual-reversals')
+    ->dailyAt('00:45')
+    ->withoutOverlapping();
+
 // Optional Meta / WhatsApp integrations: publish queued outbox rows and re-queue
 // lost jobs. No-op while the integrations are disabled or idle.
 Schedule::command('integrations:dispatch-outbox')

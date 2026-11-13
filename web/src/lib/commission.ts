@@ -71,6 +71,8 @@ export type CommissionStatement = {
     payable_minor: number
     paid_minor: number
     reversed_minor: number
+    expected_minor: number
+    adjusted_minor: number
   }
   lines: CommissionStatementLine[]
 }
@@ -82,6 +84,8 @@ export type BeneficiaryRow = {
   approved_unposted_minor: number
   payable_minor: number
   paid_minor: number
+  expected_minor: number
+  adjusted_minor: number
 }
 
 /**

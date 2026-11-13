@@ -649,6 +649,8 @@ export default function Commissions() {
                     <Th className="text-end">{L('معتمد غير مرحّل', 'Approved, unposted')}</Th>
                     <Th className="text-end">{L('مستحق الدفع', 'Payable')}</Th>
                     <Th className="text-end">{L('المدفوع', 'Paid')}</Th>
+                    <Th className="text-end">{L('متوقعة (غير مستحقة)', 'Expected (not payable)')}</Th>
+                    <Th className="text-end">{L('معدّلة', 'Adjusted')}</Th>
                     <Th />
                   </tr>
                 </thead>
@@ -662,7 +664,9 @@ export default function Commissions() {
                       <Td className="text-end"><Money amountMinor={row.pending_approval_minor} currency={base} /></Td>
                       <Td className="text-end"><Money amountMinor={row.approved_unposted_minor} currency={base} /></Td>
                       <Td className="text-end"><Money amountMinor={row.payable_minor} currency={base} /></Td>
-                      <Td className="text-end"><Money amountMinor={row.paid_minor} currency={base} /></Td>
+ <Td className="text-end"><Money amountMinor={row.paid_minor} currency={base} /></Td>
+                      <Td className="text-end"><Money amountMinor={row.expected_minor} currency={base} /></Td>
+                      <Td className="text-end"><Money amountMinor={row.adjusted_minor} currency={base} /></Td>
                       <Td className="text-end"><Button variant="ghost" icon="eye" onClick={() => setSelected(row)}>{L('كشف الحساب', 'Statement')}</Button></Td>
                     </tr>
                   ))}
@@ -685,6 +689,8 @@ export default function Commissions() {
                     <StatCard label={L('معتمد غير مرحّل', 'Approved, unposted')} value={<Money amountMinor={statement.summary.approved_unposted_minor} currency={statement.currency} />} icon="checkCircle" />
                     <StatCard label={L('مستحق الدفع', 'Payable')} value={<Money amountMinor={statement.summary.payable_minor} currency={statement.currency} />} icon="coins" tone={statement.summary.payable_minor > 0 ? 'negative' : undefined} />
                     <StatCard label={L('المدفوع', 'Paid')} value={<Money amountMinor={statement.summary.paid_minor} currency={statement.currency} />} icon="banknote" tone="positive" />
+                    <StatCard label={L('متوقعة (لا تُدفع قبل التحصيل الكامل)', 'Expected (not payable until fully collected)')} value={<Money amountMinor={statement.summary.expected_minor} currency={statement.currency} />} icon="clock" />
+                    <StatCard label={L('معدّلة (استردادات وإلغاءات)', 'Adjusted (refunds and cancellations)')} value={<Money amountMinor={statement.summary.adjusted_minor} currency={statement.currency} />} icon="refresh" />
                   </div>
                   <Card>
                     {statement.lines.length === 0 ? <EmptyState /> : (

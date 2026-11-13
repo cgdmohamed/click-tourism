@@ -23,6 +23,7 @@ use App\Modules\Parties\Services\PartyLedgerService;
 use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Payments\Models\SupplierPaymentApplication;
+use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -179,6 +180,7 @@ class SupplierSettlementService
 
             $supplier = $this->supplier($data['supplier_id'] ?? null);
             $cashAccount = $this->cashAccount($data['cash_account_id'] ?? null);
+            $this->assertOwnFunds($cashAccount, $branch);
 
             $amount = (int) ($data['amount_minor'] ?? 0);
             if ($amount <= 0) {
@@ -566,6 +568,21 @@ class SupplierSettlementService
         }
 
         return $account;
+    }
+
+    /**
+     * DEC-014: a branch pays only from its own cash or bank accounts. Funds held by another
+     * branch must first be moved with a transfer; a direct payment on its behalf is refused.
+     */
+    private function assertOwnFunds(Account $account, Branch $branch): void
+    {
+        $registered = CashAccount::query()->where('account_id', $account->id)->first();
+
+        if ($registered !== null && $registered->branch_id !== null && $registered->branch_id !== $branch->id) {
+            throw new DomainException(
+                'This cash or bank account belongs to another branch. A branch pays its suppliers only from its own accounts; move the funds with a transfer between branches first. / هذا الحساب النقدي أو البنكي يخص فرعاً آخر. يدفع كل فرع لمورديه من حساباته فقط، حوّل الأموال بين الفروع أولاً.',
+            );
+        }
     }
 
     private function bookingItem(?string $id, Branch $branch, Supplier $supplier): ?BookingItem

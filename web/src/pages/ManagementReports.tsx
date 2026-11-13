@@ -46,7 +46,11 @@ type Commissions = {
     pending_minor: number
     expense_minor: number
     paid_minor: number
+    expected_minor: number
+    adjusted_minor: number
   }>
+  total_expected_minor: number
+  total_adjusted_minor: number
   total_pending_minor: number
   total_expense_minor: number
   total_paid_minor: number
@@ -230,6 +234,8 @@ export default function ManagementReportView({ report, data }: { report: Managem
                 <Th className="text-end">{text('Pending', 'قيد الاعتماد')}</Th>
                 <Th className="text-end">{text('Expense (ledger)', 'المصروف (الأستاذ)')}</Th>
                 <Th className="text-end">{text('Paid', 'المدفوع')}</Th>
+                <Th className="text-end">{text('Expected (not payable)', 'متوقعة (غير مستحقة)')}</Th>
+                <Th className="text-end">{text('Adjusted', 'معدّلة')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -250,6 +256,8 @@ export default function ManagementReportView({ report, data }: { report: Managem
                   <Td className="text-end">{money(row.pending_minor, d.currency)}</Td>
                   <Td className="text-end">{money(row.expense_minor, d.currency)}</Td>
                   <Td className="text-end">{money(row.paid_minor, d.currency)}</Td>
+                  <Td className="text-end">{money(row.expected_minor, d.currency)}</Td>
+                  <Td className="text-end">{money(row.adjusted_minor, d.currency)}</Td>
                 </tr>
               ))}
               <tr className="font-semibold">
@@ -257,6 +265,8 @@ export default function ManagementReportView({ report, data }: { report: Managem
                 <Td className="text-end">{money(d.total_pending_minor, d.currency)}</Td>
                 <Td className="text-end">{money(d.total_expense_minor, d.currency)}</Td>
                 <Td className="text-end">{money(d.total_paid_minor, d.currency)}</Td>
+                <Td className="text-end">{money(d.total_expected_minor, d.currency)}</Td>
+                <Td className="text-end">{money(d.total_adjusted_minor, d.currency)}</Td>
               </tr>
             </tbody>
           </Table>

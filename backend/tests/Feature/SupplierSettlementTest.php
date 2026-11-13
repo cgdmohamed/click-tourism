@@ -12,6 +12,7 @@ use App\Modules\Payments\Models\SupplierObligation;
 use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Payments\Models\SupplierPaymentApplication;
 use App\Modules\Payments\Services\SupplierSettlementService;
+use App\Modules\Treasury\Models\CashAccount;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -113,6 +114,35 @@ class SupplierSettlementTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('operational only');
         $this->pay(['supplier_obligation_id' => $obligation->public_id]);
+    }
+
+    public function test_a_branch_cannot_pay_a_supplier_from_another_branchs_cash_account(): void
+    {
+        $other = Branch::query()->create([
+            'code' => 'ALX2',
+            'name_ar' => 'الإسكندرية',
+            'name_en' => 'Alexandria',
+            'accounting_mode' => 'dimension',
+            'is_active' => true,
+        ]);
+        $account = $this->account('1110');
+        CashAccount::query()->create([
+            'account_id' => $account->id,
+            'branch_id' => $other->id,
+            'kind' => 'cash',
+            'name_ar' => 'خزينة',
+            'name_en' => 'Cash',
+            'currency_code' => 'EGP',
+            'is_active' => true,
+        ]);
+
+        try {
+            $this->pay();
+            $this->fail('A payment from another branch\'s account must be refused.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('transfer', $e->getMessage());
+        }
+        $this->assertSame(0, SupplierPayment::query()->count());
     }
 
     public function test_a_supplier_payment_settles_an_obligation_and_posts_to_ap(): void

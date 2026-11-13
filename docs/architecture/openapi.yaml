@@ -3869,6 +3869,108 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Not found }
 
+  /fiscal-periods/{period}/revaluation:
+    get:
+      tags: [Accounting]
+      summary: Review the estimated unrealized FX gain or loss of a period for the active branch (permission `periods.view`)
+      description: Read-only (DEC-008). The rows are exactly what the confirmation would post, valued at the closing rates in the exchange-rate table; `totals` separates unrealized gain and loss. Nothing is posted.
+      parameters:
+        - { name: period, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Estimate, switches (`enabled`, `policy_approved`, `auto_reverse`), the existing run status and the reversal date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      period: { type: object }
+                      enabled: { type: boolean }
+                      policy_approved: { type: boolean }
+                      auto_reverse: { type: boolean }
+                      reversal_date: { type: string, format: date }
+                      run_status: { type: string, nullable: true }
+                      rows: { type: array, items: { type: object } }
+                      totals:
+                        type: object
+                        properties:
+                          gain_minor: { type: integer }
+                          loss_minor: { type: integer }
+                          net_minor: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Accounting]
+      summary: Confirm and post the revaluation of a period for the active branch (permission `periods.close`)
+      description: Idempotent. A period already revalued answers `already_posted` and posts nothing. 422 when revaluation is disabled or the accounting policy is not approved.
+      parameters:
+        - { name: period, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Outcome `posted`, `already_posted` or `nothing_to_revalue`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string }
+                      entry_number: { type: string, nullable: true }
+                      reversal_number: { type: string, nullable: true }
+                      rows: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Revaluation disabled or policy not approved }
+
+  /fiscal-periods/{period}/cost-accrual:
+    get:
+      tags: [Accounting]
+      summary: Supplier costs incurred but not yet invoiced that the period would accrue (permission `periods.view`)
+      description: Read-only (DEC-002). One row per booking of the active branch whose service has started by the period end and whose estimated cost exceeds the cost the ledger already carries; `already_accrued` rows are not posted again. Amounts are base-currency minor units.
+      parameters:
+        - { name: period, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Accrual rows, the date the accrual reverses and the total still to post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      period: { type: object }
+                      reversal_date: { type: string, format: date }
+                      rows: { type: array, items: { type: object } }
+                      total_minor: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Accounting]
+      summary: Post the period-end cost accruals for the active branch (permission `periods.close`)
+      description: Dr cost of services / Cr accrued supplier costs (setting `accounting.accrued_costs_account_code`, default 2170) per booking, dated the last day of the period and reversed automatically on the first day of the next open period (`accounting:reverse-cost-accruals`, daily). Idempotent per booking and period; the supplier invoice posts normally when it arrives, so the cost is never counted twice. 422 when the period is closed or the account is missing.
+      parameters:
+        - { name: period, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: '`posted` or `nothing_to_accrue` with the number of entries and the total'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string }
+                      entries: { type: integer }
+                      total_minor: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Period closed or account missing }
+
   /fixed-asset-categories:
     get:
       tags: [Fixed Assets]

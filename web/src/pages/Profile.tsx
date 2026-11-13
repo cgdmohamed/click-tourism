@@ -208,6 +208,13 @@ export default function Profile() {
         </div>
 
         {showMcpSection(can('mcp.use'), flags?.mcp_enabled) ? <McpTokensCard /> : null}
+        {can('mcp.use') && flags?.mcp_enabled === false ? (
+          <p className="mt-4 text-small text-text-subtle">
+            {locale === 'ar'
+              ? 'ربط MCP غير مفعّل في هذا النظام. اطلب من المدير تفعيله من الإعدادات ← المساعد.'
+              : 'MCP access is not enabled on this installation. Ask an administrator to turn it on in Settings, Assistant.'}
+          </p>
+        ) : null}
       </div>
     </div>
   )

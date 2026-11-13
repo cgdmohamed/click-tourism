@@ -6,6 +6,9 @@ import { api, errorMessage } from '../lib/api'
 import { formatDate, formatMoney } from '../lib/format'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { Icon } from '../components/icons'
+import { CostAccrualDialog } from '../components/CostAccrualDialog'
+import { RevaluationDialog } from '../components/RevaluationDialog'
+import { useFeatureFlags } from '../lib/useSetting'
 import { statusLabel } from '../lib/labels'
 
 type Period = { id: string; name: string; starts_on: string; ends_on: string; status: 'open' | 'soft_closed' | 'closed' }
@@ -31,6 +34,9 @@ export default function Periods() {
   const { t, locale } = useI18n()
   const { can } = useAuth()
   const queryClient = useQueryClient()
+  const { flags } = useFeatureFlags()
+  const [revalPeriod, setRevalPeriod] = useState<Period | null>(null)
+  const [accrualPeriod, setAccrualPeriod] = useState<Period | null>(null)
   const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
 
   const [error, setError] = useState('')
@@ -206,6 +212,12 @@ export default function Periods() {
                       <Badge tone={period.status === 'open' ? 'positive' : period.status === 'soft_closed' ? 'warning' : 'neutral'}>{statusLabel(period.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end">
+                      {can('periods.view') ? (
+                        <>
+                          <Button variant="secondary" onClick={() => setAccrualPeriod(period)}>{L('استحقاق التكاليف', 'Cost accrual')}</Button>
+                          <Button variant="secondary" onClick={() => setRevalPeriod(period)}>{L('إعادة تقييم العملات', 'Revalue currencies')}</Button>
+                        </>
+                      ) : null}
                       {year.status === 'open' && can('periods.manage') ? (
                         <Select
                           value={period.status}
@@ -225,6 +237,9 @@ export default function Periods() {
           </Card>
         ))}
       </div>
+
+      <CostAccrualDialog period={accrualPeriod} baseCurrency={flags?.base_currency ?? 'EGP'} onClose={() => setAccrualPeriod(null)} />
+      <RevaluationDialog period={revalPeriod} baseCurrency={flags?.base_currency ?? 'EGP'} onClose={() => setRevalPeriod(null)} />
 
       <Modal
         open={checkYear !== null}

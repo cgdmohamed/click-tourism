@@ -26,6 +26,7 @@ class EnsureAccounts extends Command
         'interbranch_receivable_account_code' => '1180',
         'interbranch_payable_account_code' => '2160',
         'commission_expense_account_code' => '6700',
+        'accrued_costs_account_code' => '2170',
     ];
 
     public const FX_ONLY = ['fx_unrealized_gain_account_code', 'fx_unrealized_loss_account_code'];
@@ -34,7 +35,7 @@ class EnsureAccounts extends Command
         {--dry-run : Show which accounts would be created (default)}
         {--apply : Create the missing accounts}';
 
-    protected $description = 'Create accounts newer code relies on (7901, 6901, 7920, 6700, 1180, 2160) if absent';
+    protected $description = 'Create accounts newer code relies on (7901, 6901, 7920, 6700, 1180, 2160, 2170) if absent';
 
     /** @var list<string> */
     protected array $settingKeys = [];

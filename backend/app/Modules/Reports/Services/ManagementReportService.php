@@ -3,6 +3,7 @@
 namespace App\Modules\Reports\Services;
 
 use App\Modules\Commissions\Models\CommissionRule;
+use App\Modules\Commissions\Services\CommissionService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\SettingService;
 use Illuminate\Support\Facades\DB;
@@ -201,14 +202,33 @@ class ManagementReportService
             ->selectRaw('c.beneficiary_type, c.beneficiary_id, SUM(p.amount_minor) as amount')
             ->get();
 
+        // DEC-004: adjusted = commissions a refund, cancellation or correction took back (history kept).
+        $adjusted = DB::table('commissions')
+            ->whereIn('status', ['reversed', 'cancelled'])
+            ->whereDate('accrued_on', '>=', $from)->whereDate('accrued_on', '<=', $to)
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
+            ->groupBy('beneficiary_type', 'beneficiary_id')
+            ->selectRaw('beneficiary_type, beneficiary_id, SUM(amount_minor) as amount')
+            ->get();
+
+        // Expected: forward-looking, from bookings not fully collected yet; never payable.
+        $branchIds = $branch ? [$branch->id] : DB::table('branches')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $expected = collect(app(CommissionService::class)->expected($branchIds))
+            ->groupBy(fn (array $r) => $r['beneficiary_type'].':'.$r['beneficiary_id'])
+            ->map(fn ($items, $key) => (object) [
+                'beneficiary_type' => explode(':', $key)[0],
+                'beneficiary_id' => (int) explode(':', $key)[1],
+                'amount' => (int) $items->sum('amount_minor'),
+            ])->values();
+
         $rows = [];
-        foreach (['expense_minor' => $expense, 'pending_minor' => $pending, 'paid_minor' => $paid] as $column => $set) {
+        foreach (['expense_minor' => $expense, 'pending_minor' => $pending, 'paid_minor' => $paid, 'adjusted_minor' => $adjusted, 'expected_minor' => $expected] as $column => $set) {
             foreach ($set as $item) {
                 $key = $item->beneficiary_type.':'.$item->beneficiary_id;
                 $rows[$key] ??= [
                     'beneficiary_type' => $item->beneficiary_type,
                     'beneficiary_id' => (int) $item->beneficiary_id,
-                    'expense_minor' => 0, 'pending_minor' => 0, 'paid_minor' => 0,
+                    'expense_minor' => 0, 'pending_minor' => 0, 'paid_minor' => 0, 'adjusted_minor' => 0, 'expected_minor' => 0,
                 ];
                 $rows[$key][$column] = (int) $item->amount;
             }
@@ -223,6 +243,8 @@ class ManagementReportService
                 'pending_minor' => $row['pending_minor'],
                 'expense_minor' => $row['expense_minor'],
                 'paid_minor' => $row['paid_minor'],
+                'adjusted_minor' => $row['adjusted_minor'],
+                'expected_minor' => $row['expected_minor'],
             ];
         }
         usort($out, fn ($a, $b) => $b['expense_minor'] <=> $a['expense_minor']);
@@ -245,6 +267,8 @@ class ManagementReportService
             'total_pending_minor' => array_sum(array_column($out, 'pending_minor')),
             'total_expense_minor' => $totalExpense,
             'total_paid_minor' => array_sum(array_column($out, 'paid_minor')),
+            'total_adjusted_minor' => array_sum(array_column($out, 'adjusted_minor')),
+            'total_expected_minor' => array_sum(array_column($out, 'expected_minor')),
             'reconciliation' => [
                 'commission_account_code' => $account?->code,
                 'ledger_expense_minor' => $glExpense,

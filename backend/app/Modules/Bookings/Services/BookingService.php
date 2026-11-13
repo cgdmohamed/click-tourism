@@ -582,7 +582,20 @@ class BookingService
             $key = $item->supplier_id ?? 0;
             $bySupplier[$key] = ($bySupplier[$key] ?? 0) + (int) $item->total_cost_minor;
         }
-        $lines = [PostingLine::debit($cost, $booking->total_cost_minor, null, null, 'Booking cost '.$booking->number)];
+        $lines = [];
+        $costed = 0;
+        foreach ($bySupplier as $supplierId => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+            // GAP-RPT-05: each supplier's share of the cost carries that supplier, so the ledger
+            // filtered by supplier finds the cost as well as the payable.
+            $lines[] = PostingLine::debit($cost, $amount, $supplierId === 0 ? null : 'supplier', $supplierId === 0 ? null : $supplierId, 'Booking cost '.$booking->number);
+            $costed += $amount;
+        }
+        if ($costed < (int) $booking->total_cost_minor) {
+            $lines[] = PostingLine::debit($cost, (int) $booking->total_cost_minor - $costed, null, null, 'Booking cost '.$booking->number);
+        }
         foreach ($bySupplier as $supplierId => $amount) {
             if ($amount <= 0) {
                 continue;

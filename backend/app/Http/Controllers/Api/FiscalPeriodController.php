@@ -8,7 +8,11 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\FiscalCloseService;
 use App\Modules\Accounting\Services\FiscalYearSuggestionService;
 use App\Modules\Accounting\Services\PeriodEndChecklistService;
+use App\Modules\Accounting\Services\RevaluationService;
+use App\Modules\Bookings\Services\CostAccrualService;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Models\Supplier;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -61,6 +65,93 @@ class FiscalPeriodController extends ApiController
     public function checklist(FiscalPeriod $period, PeriodEndChecklistService $checklist): JsonResponse
     {
         return $this->ok($checklist->forPeriod($period, $this->branch()));
+    }
+
+    /**
+     * DEC-008: the estimated unrealized gain or loss for the active branch, shown before anything
+     * is posted. Read-only; the rows are exactly what POST would book.
+     */
+    public function revaluationPreview(FiscalPeriod $period, RevaluationService $revaluation): JsonResponse
+    {
+        $branch = $this->branch();
+        $rows = $revaluation->preview($period->ends_on->toDateString(), $branch);
+        $run = $revaluation->runFor($period, $branch);
+        $run = $run ? $revaluation->syncRun($run) : null;
+
+        $names = [];
+        foreach (['customer' => Customer::class, 'supplier' => Supplier::class] as $type => $model) {
+            $ids = collect($rows)->where('party_type', $type)->pluck('party_id')->filter()->unique()->all();
+            $names[$type] = $ids === [] ? [] : $model::query()->whereIn('id', $ids)->pluck('name_ar', 'id')->all();
+        }
+
+        $gain = 0;
+        $loss = 0;
+        $out = [];
+        foreach ($rows as $row) {
+            $row['difference_minor'] > 0 ? $gain += $row['difference_minor'] : $loss += -$row['difference_minor'];
+            $out[] = [
+                'account_code' => $row['account_code'],
+                'account_name' => $row['account_name'],
+                'currency' => $row['currency'],
+                'party_type' => $row['party_type'],
+                'party_name' => $row['party_type'] !== null ? ($names[$row['party_type']][$row['party_id']] ?? null) : null,
+                'rate' => $row['rate'],
+                'native_minor' => $row['native_minor'],
+                'carrying_base_minor' => $row['carrying_base_minor'],
+                'revalued_base_minor' => $row['revalued_base_minor'],
+                'difference_minor' => $row['difference_minor'],
+            ];
+        }
+
+        return $this->ok([
+            'period' => ['id' => $period->id, 'name' => $period->name, 'ends_on' => $period->ends_on->toDateString()],
+            'enabled' => $revaluation->enabled(),
+            'policy_approved' => $revaluation->policyApproved(),
+            'auto_reverse' => $revaluation->autoReverse(),
+            'reversal_date' => $revaluation->reversalDate($period),
+            'run_status' => $run?->status,
+            'rows' => $out,
+            'totals' => ['gain_minor' => $gain, 'loss_minor' => $loss, 'net_minor' => $gain - $loss],
+        ]);
+    }
+
+    /** DEC-008: confirm and post the revaluation. Repeating it never posts a second entry. */
+    public function revaluationConfirm(FiscalPeriod $period, RevaluationService $revaluation): JsonResponse
+    {
+        $result = $revaluation->revalue($period, $this->branch(), $this->actorId());
+
+        return $this->ok([
+            'status' => $result['status'],
+            'entry_number' => $result['entry']?->number,
+            'reversal_number' => $result['reversal']?->number,
+            'rows' => $result['rows'],
+        ]);
+    }
+
+    /** DEC-002: supplier costs incurred but not yet invoiced that the period would accrue (read-only). */
+    public function accrualPreview(FiscalPeriod $period, CostAccrualService $accruals): JsonResponse
+    {
+        $rows = $accruals->preview($period->ends_on->toDateString(), $this->branch(), $period);
+
+        return $this->ok([
+            'period' => ['id' => $period->id, 'name' => $period->name, 'ends_on' => $period->ends_on->toDateString()],
+            'reversal_date' => $period->ends_on->copy()->addDay()->toDateString(),
+            'rows' => array_map(static fn (array $row): array => [
+                'booking_id' => $row['booking']->public_id,
+                'booking_number' => $row['booking']->number,
+                'estimated_minor' => $row['estimated_minor'],
+                'recognized_minor' => $row['recognized_minor'],
+                'accrual_minor' => $row['accrual_minor'],
+                'already_accrued' => $row['already_accrued'],
+            ], $rows),
+            'total_minor' => array_sum(array_map(static fn (array $row): int => $row['already_accrued'] ? 0 : $row['accrual_minor'], $rows)),
+        ]);
+    }
+
+    /** DEC-002: post the accruals; repeating posts only what is missing. */
+    public function accrualConfirm(FiscalPeriod $period, CostAccrualService $accruals): JsonResponse
+    {
+        return $this->ok($accruals->accrue($period, $this->branch(), $this->actorId()));
     }
 
     public function close(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse
