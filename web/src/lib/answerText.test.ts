@@ -41,4 +41,14 @@ describe('answerText', () => {
     const runs = linkRecords(parseInline('see a (b) c'), [cite({ labels: ['a (b)'] })], 'en')
     expect(runs.some((run) => run.kind === 'link')).toBe(true)
   })
+
+  it('leaves a label as text when two different records share it', () => {
+    const customer = cite({ entity: 'customer', id: 'customer1234', labels: ['Blue Sky Travel'] })
+    const supplier = cite({ entity: 'supplier', id: 'supplier1234', labels: ['Blue Sky Travel', 'Nile Cargo'] })
+    const runs = linkRecords(parseInline('Customer: Blue Sky Travel. Supplier: Blue Sky Travel. Carrier: Nile Cargo.'), [customer, supplier], 'en')
+    expect(runs.filter((run) => run.kind === 'link').map((run) => run.text)).toEqual(['Nile Cargo'])
+    // The same record cited twice is not ambiguous.
+    const twice = linkRecords(parseInline('Blue Sky Travel'), [customer, { ...customer, tool: 'erp_search' }], 'en')
+    expect(twice.some((run) => run.kind === 'link' && run.href === '/customers/customer1234')).toBe(true)
+  })
 })

@@ -83,16 +83,23 @@ function escapeRegExp(value: string): string {
  * the model) into a link to that record's page. Citations without a page are left as text.
  */
 export function linkRecords(inline: Inline[], citations: Citation[], locale: 'ar' | 'en'): Inline[] {
-  const targets = new Map<string, string>()
+  // A label is linked only when every citation that carries it points to the same page: two records
+  // sharing a name (a customer and a supplier) would otherwise both link to whichever came first.
+  const found = new Map<string, string | null>()
   for (const citation of citations) {
     if (citation.id === null) continue
     const href = citationLink(citation, locale).href
     if (!href) continue
     for (const raw of citation.labels ?? []) {
       const label = raw.trim()
-      if (label.length >= 4 && !targets.has(label)) targets.set(label, href)
+      if (label.length < 4) continue
+      found.set(label, found.has(label) && found.get(label) !== href ? null : href)
     }
   }
+  const targets = new Map<string, string>()
+  found.forEach((href, label) => {
+    if (href !== null) targets.set(label, href)
+  })
   if (targets.size === 0) return inline
 
   const pattern = new RegExp(`(${[...targets.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|')})`, 'g')

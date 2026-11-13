@@ -182,8 +182,15 @@ class ToolExecutor
             if (is_string($id) && preg_match('/^[A-Za-z0-9_-]{8,64}$/', $id) === 1 && count($found) < 100) {
                 // The document number or name the answer prints: the screen links it to the record.
                 $labels = [];
-                foreach (['number', 'name', 'name_ar', 'name_en'] as $field) {
-                    $value = is_string($row[$field] ?? null) ? trim($row[$field]) : '';
+                // List rows carry number/name fields; search hits carry title_ar/title_en, and for bookings
+                // and payments the title is "NUMBER · customer", so only the number names that record.
+                $candidates = [$row['number'] ?? null, $row['name'] ?? null, $row['name_ar'] ?? null, $row['name_en'] ?? null];
+                foreach (['title_ar', 'title_en'] as $field) {
+                    $title = is_string($row[$field] ?? null) ? $row[$field] : null;
+                    $candidates[] = $title !== null && in_array($rowEntity, ['booking', 'payment'], true) ? explode(' · ', $title)[0] : $title;
+                }
+                foreach ($candidates as $candidate) {
+                    $value = is_string($candidate) ? trim($candidate) : '';
                     if (mb_strlen($value) >= 4 && mb_strlen($value) <= 80) {
                         $labels[] = $value;
                     }

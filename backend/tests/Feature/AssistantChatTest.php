@@ -271,6 +271,24 @@ class AssistantChatTest extends TestCase
             ->assertForbidden()->assertJsonPath('code', 'assistant_disabled');
     }
 
+    public function test_a_record_found_by_search_is_cited_with_its_title_labels(): void
+    {
+        $customer = $this->customer();
+        $customer->update(['name_en' => 'Blue Sky Travel', 'name_ar' => 'بلو سكاي للسفر']);
+        $this->script([
+            $this->toolCallReply([['erp_search', ['q' => 'Blue Sky']]]),
+            $this->finalReply('Found the customer Blue Sky Travel.'),
+        ]);
+
+        $citations = $this->chat('Find Blue Sky')->assertOk()->json('data.citations');
+
+        $hit = collect($citations)->firstWhere('id', $customer->public_id);
+        $this->assertNotNull($hit, 'the search hit named in the answer must be cited');
+        $this->assertSame('customer', $hit['entity']);
+        $this->assertContains('Blue Sky Travel', $hit['labels']);
+        $this->assertContains('بلو سكاي للسفر', $hit['labels']);
+    }
+
     public function test_the_model_cannot_invent_citations_or_tools(): void
     {
         $this->script([
