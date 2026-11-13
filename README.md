@@ -156,6 +156,9 @@ Behaviour worth knowing:
   `php artisan migrate --force`, links storage and caches config/routes
   (`APP_OPTIMIZE=true`). Set `RUN_MIGRATIONS=false` for a container that must
   not migrate (for example a read-only replica or an existing database).
+  With `RUN_MIGRATIONS=true` it also runs the idempotent upgrade tasks `roles:sync`
+  and `accounting:ensure-accounts --apply` after migrating (switch them off with
+  `RUN_UPGRADE_TASKS=false`).
 - Demo data is **not** seeded in production, and `db:seed` refuses to run there.
   Create the company profile and the first administrator once with
   `php artisan erp:install` (see `docs/deployment/clean-install-acceptance.md`).

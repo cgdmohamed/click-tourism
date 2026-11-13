@@ -64,6 +64,16 @@ class EnsureAccountsCommandTest extends TestCase
         $this->assertFalse(Account::query()->where('code', '7920')->exists());
     }
 
+    public function test_it_does_nothing_on_an_installation_without_a_chart_of_accounts(): void
+    {
+        Account::query()->delete();
+
+        $this->artisan('accounting:ensure-accounts', ['--apply' => true])
+            ->expectsOutputToContain('No chart of accounts yet')
+            ->assertExitCode(0);
+        $this->assertSame(0, Account::query()->count());
+    }
+
     public function test_dry_run_and_apply_together_fail(): void
     {
         $this->artisan('accounting:ensure-accounts', ['--apply' => true, '--dry-run' => true])->assertFailed();

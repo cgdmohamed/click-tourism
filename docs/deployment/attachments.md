@@ -4,8 +4,8 @@
 Customers, suppliers, bookings, invoices, payments and expenses carry documents (PDF, JPEG, PNG, WebP up to 10 MB). Users with `attachments.upload` upload several files at once, classify them (passport, visa, booking confirmation, supplier invoice, payment receipt, bank-transfer confirmation, travel document, contract, other) and add notes; anyone allowed to see the record can preview and download them. Passports, visas and travel documents need `attachments.sensitive`.
 
 ## After upgrading
-1. `php artisan migrate`, then `php artisan roles:sync` so roles receive the new `attachments.*` permissions.
-2. Files live in `storage/app/private/attachments` (disk `ATTACHMENTS_DISK`, default `local`). **Include this directory in backups** together with the database; a restored database without it shows documents that cannot be opened.
+1. Nothing to run by hand on Docker or Coolify: the backend container's entrypoint runs `php artisan migrate --force`, `php artisan roles:sync` (gives the built-in roles the new `attachments.*` permissions) and `php artisan accounting:ensure-accounts --apply` (creates missing chart accounts) at every start. Set `RUN_UPGRADE_TASKS=false` to skip the last two. Without Docker, run the three commands after each upgrade.
+2. Files live in `storage/app/attachments` (disk `ATTACHMENTS_DISK`, default `local`, root `storage/app`). In `docker-compose.coolify.yml` that path is the `production_uploads` volume shared by the backend, worker and API containers. **Back this volume up together with the database**; a restored database without it shows documents that cannot be opened.
 3. Optional: `ATTACHMENTS_MAX_KB` (default 10240), `ATTACHMENTS_MAX_FILES` (10), `ATTACHMENTS_EXTRACTION_MAX_KB` (8192).
 4. PHP and nginx must allow the upload size: `upload_max_filesize` and `post_max_size` of at least 12M, and `client_max_body_size` of at least 12m.
 

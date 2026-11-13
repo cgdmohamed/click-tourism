@@ -74,6 +74,16 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     else
         echo "Running production migrations..."
         php artisan migrate --force
+        # Idempotent upgrade tasks (docs/deployment/release-checklist.md): give the built-in roles the
+        # permissions introduced by this release and create any chart accounts newer code relies on.
+        # Neither touches users, existing accounts or postings. A failure is reported loudly but does
+        # not stop the application from starting; run the command by hand and read its output.
+        if [ "${RUN_UPGRADE_TASKS:-true}" = "true" ]; then
+            echo "Synchronising roles and permissions..."
+            php artisan roles:sync || echo "WARNING: roles:sync failed; new permissions may be missing. Run 'php artisan roles:sync' by hand." >&2
+            echo "Ensuring required chart accounts exist..."
+            php artisan accounting:ensure-accounts --apply || echo "WARNING: accounting:ensure-accounts failed; run 'php artisan accounting:ensure-accounts --apply' by hand." >&2
+        fi
         if [ "${SEED_DEMO:-false}" = "true" ]; then
             echo "FATAL: SEED_DEMO is not permitted in production." >&2
             exit 1
