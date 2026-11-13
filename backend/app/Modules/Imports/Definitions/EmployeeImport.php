@@ -11,11 +11,16 @@ use Illuminate\Support\Facades\DB;
 /**
  * Employees are keyed by their globally unique internal code, so a code that
  * exists in another branch is reported as an error instead of being touched.
+ * Rows without a code fall back to matching by English name within the importing
+ * branch only.
  */
 class EmployeeImport extends AbstractRowDefinition
 {
     /** @var array<string, array{id: int, branch_id: ?int}> */
     private array $index = [];
+
+    /** Branch the running import belongs to (name matching never looks outside it). */
+    private ?int $branchId = null;
 
     public function __construct(private readonly EmployeeFinanceService $employees) {}
 
@@ -59,12 +64,19 @@ class EmployeeImport extends AbstractRowDefinition
     protected function prepare(ImportContext $ctx): void
     {
         $this->index = [];
+        $this->branchId = $ctx->branch?->id;
         DB::table('employees')->orderBy('id')->select(['id', 'branch_id', 'internal_code', 'name_en'])
             ->chunkById(1000, function ($rows) {
                 foreach ($rows as $row) {
                     $entry = ['id' => (int) $row->id, 'branch_id' => (int) $row->branch_id];
+                    // Codes are globally unique, so code matching stays global (a code that belongs to
+                    // another branch is still reported as other_branch).
                     $this->index[$this->normalise((string) $row->internal_code)] = $entry;
-                    $this->index['name:'.mb_strtolower(trim((string) $row->name_en))] ??= $entry;
+                    // The name fallback is scoped to the importing branch: same-named employees in
+                    // other branches must neither be matched nor block creating a new one.
+                    if ($this->branchId === null || $entry['branch_id'] === $this->branchId) {
+                        $this->index['name:'.mb_strtolower(trim((string) $row->name_en))] ??= $entry;
+                    }
                 }
             });
     }
