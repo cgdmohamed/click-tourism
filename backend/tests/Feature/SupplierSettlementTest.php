@@ -118,7 +118,13 @@ class SupplierSettlementTest extends TestCase
 
     public function test_a_branch_cannot_pay_a_supplier_from_another_branchs_cash_account(): void
     {
-        $other = Branch::factory()->create();
+        $other = Branch::query()->create([
+            'code' => 'ALX2',
+            'name_ar' => 'الإسكندرية',
+            'name_en' => 'Alexandria',
+            'accounting_mode' => 'dimension',
+            'is_active' => true,
+        ]);
         $account = $this->account('1110');
         CashAccount::query()->create([
             'account_id' => $account->id,
