@@ -74,11 +74,13 @@ const emptyLine = {
   credit: '',
   tax_applied: false,
   tax_account_id: '',
+  booking_item_id: '',
 }
 const emptyForm = {
   type: 'customer_invoice' as 'customer_invoice' | 'supplier_invoice',
   party_type: 'customer' as 'customer' | 'supplier',
   party_id: '',
+  booking_id: '',
   issue_date: todayISO(),
   due_date: '',
   currency: 'EGP',
@@ -110,6 +112,18 @@ export default function Invoices() {
   const [creditReason, setCreditReason] = useState('')
   const [creditWarnings, setCreditWarnings] = useState<CreditWarning[]>([])
   const [overrideReason, setOverrideReason] = useState('')
+
+  // DEC-002: a supplier invoice may name the booking (and the booking service per line) it pays for.
+  const linkableBookings = useQuery({
+    queryKey: ['bookings-linkable', activeBranch?.id],
+    queryFn: async () => (await api.get<Paginated<Booking>>('/bookings', { params: { per_page: 100 } })).data.data,
+    enabled: open && form.type === 'supplier_invoice',
+  })
+  const linkedBooking = useQuery({
+    queryKey: ['booking', form.booking_id],
+    queryFn: async () => (await api.get<{ data: Booking }>(`/bookings/${form.booking_id}`)).data.data,
+    enabled: open && form.type === 'supplier_invoice' && form.booking_id !== '',
+  })
 
   const invoicesQuery = useQuery({
     queryKey: ['invoices', page, typeFilter, statusFilter, bookingFilter, activeBranch?.id],
@@ -238,6 +252,7 @@ export default function Invoices() {
             credit_minor: form.type === 'customer_invoice' ? amount : 0,
             tax_minor: lineTax(line),
             tax_applied: taxEnabled && line.tax_applied,
+            booking_item_id: line.booking_item_id || undefined,
           }
         }
         if (!line.account_id) throw new Error(L('اختر حساب كل بند', 'Select an account for every line'))
@@ -249,6 +264,7 @@ export default function Invoices() {
           tax_minor: lineTax(line),
           tax_applied: taxEnabled && line.tax_applied,
           tax_account_id: line.tax_account_id || undefined,
+          booking_item_id: line.booking_item_id || undefined,
         }
       })
       const { data } = await api.post<{ data: { id: string } }>(
@@ -257,6 +273,7 @@ export default function Invoices() {
           type: form.type,
           party_type: form.party_type,
           party_id: form.party_id,
+          booking_id: form.type === 'supplier_invoice' && form.booking_id ? form.booking_id : undefined,
           issue_date: form.issue_date,
           due_date: form.due_date || undefined,
           currency: form.currency,
@@ -443,6 +460,8 @@ export default function Invoices() {
                   type: event.target.value as 'customer_invoice' | 'supplier_invoice',
                   party_type: event.target.value === 'customer_invoice' ? 'customer' : 'supplier',
                   party_id: '',
+                  booking_id: '',
+                  lines: form.lines.map((line) => ({ ...line, booking_item_id: '' })),
                 })
               }
             >
@@ -460,6 +479,17 @@ export default function Invoices() {
               hasMore={partyPicker.hasMore}
             />
           </Field>
+          {form.type === 'supplier_invoice' ? (
+            <Field label={L('الحجز المرتبط (اختياري)', 'Linked booking (optional)')}>
+              <SearchableSelect
+                value={form.booking_id}
+                onChange={(value) => setForm({ ...form, booking_id: value, lines: form.lines.map((line) => ({ ...line, booking_item_id: '' })) })}
+                placeholder={L('بدون حجز', 'No booking')}
+                clearLabel={L('بدون حجز', 'No booking')}
+                options={(linkableBookings.data ?? []).map((booking) => ({ value: booking.id, label: booking.number }))}
+              />
+            </Field>
+          ) : null}
           <Field label={t('date')} required>
             <Input
               type="date"
@@ -616,6 +646,18 @@ export default function Invoices() {
                 <div className="flex items-end justify-end sm:col-span-1">
                   <IconButton icon="x" label={t('removeLine')} onClick={() => removeLine(index)} />
                 </div>
+                {form.type === 'supplier_invoice' && form.booking_id ? (
+                  <div className="sm:col-span-12">
+                    <Field label={L('الخدمة في الحجز (اختياري)', 'Booking service (optional)')}>
+                      <Select value={line.booking_item_id} onChange={(event) => updateLine(index, { booking_item_id: event.target.value })}>
+                        <option value="">{L('بدون ربط بخدمة', 'Not linked to a service')}</option>
+                        {(linkedBooking.data?.items ?? []).map((item) => (
+                          <option key={item.id} value={item.id}>{item.description}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

@@ -192,6 +192,7 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
   })
 
   const money = (amount: number | undefined) => formatMoney(amount ?? 0, booking?.currency ?? 'EGP', locale)
+  const moneyBase = (amount: number) => formatMoney(amount, booking?.cost_summary?.currency ?? 'EGP', locale)
   const busy = transition.isPending || approveMargin.isPending
 
   const negative = booking ? booking.margin_minor < 0 : false
@@ -386,6 +387,27 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
               <Row label={ar ? 'المدفوع' : 'Paid'} value={money(booking.paid_minor)} />
               <Row label={ar ? 'المتبقي' : 'Balance'} value={money(booking.balance_minor)} strong />
             </dl>
+
+            {booking.cost_summary ? (
+              <section className="rounded-lg border border-border-subtle p-4" aria-label={ar ? 'التكلفة والربحية' : 'Cost and profitability'}>
+                <h3 className="mb-1 text-sm font-semibold">{ar ? 'التكلفة والربحية' : 'Cost and profitability'}</h3>
+                <p className="mb-3 text-small text-text-subtle">
+                  {ar
+                    ? `بالعملة الأساسية (${booking.cost_summary.currency}). التقدير من خدمات الحجز ولا يُرحَّل؛ المعترف به يظهر عند إصدار فاتورة المورد.`
+                    : `In the base currency (${booking.cost_summary.currency}). The estimate comes from the booking services and is never posted; recognized cost appears when the supplier invoice is issued.`}
+                </p>
+                <dl className="grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-1 text-medium">
+                  <Row label={ar ? 'التكلفة المقدّرة' : 'Estimated cost'} value={moneyBase(booking.cost_summary.estimated_cost_minor)} />
+                  <Row label={ar ? 'التكلفة المعترف بها' : 'Recognized cost'} value={moneyBase(booking.cost_summary.recognized_cost_minor)} />
+                  {booking.cost_summary.accrued_cost_minor !== 0 ? (
+                    <Row label={ar ? 'منها مستحقة غير مفوترة' : 'Of which accrued, not invoiced'} value={moneyBase(booking.cost_summary.accrued_cost_minor)} />
+                  ) : null}
+                  <Row label={ar ? 'المتوقع بعد' : 'Still expected'} value={moneyBase(booking.cost_summary.expected_remaining_minor)} />
+                  <Row label={ar ? 'الربح المتوقع' : 'Projected profit'} value={moneyBase(booking.cost_summary.projected_profit_minor)} strong negative={booking.cost_summary.projected_profit_minor < 0} />
+                  <Row label={ar ? 'الربح المعترف به' : 'Recognized profit'} value={moneyBase(booking.cost_summary.recognized_profit_minor)} strong negative={booking.cost_summary.recognized_profit_minor < 0} />
+                </dl>
+              </section>
+            ) : null}
 
             <div>
               <h3 className="mb-2 text-sm font-semibold">{ar ? 'سجل الحالات' : 'Status history'}</h3>
