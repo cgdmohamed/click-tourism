@@ -3951,7 +3951,7 @@ paths:
     post:
       tags: [Accounting]
       summary: Post the period-end cost accruals for the active branch (permission `periods.close`)
-      description: Dr cost of services / Cr accrued supplier costs (setting `accounting.accrued_costs_account_code`, default 2150) per booking, dated the last day of the period and reversed automatically on the first day of the next open period (`accounting:reverse-cost-accruals`, daily). Idempotent per booking and period; the supplier invoice posts normally when it arrives, so the cost is never counted twice. 422 when the period is closed or the account is missing.
+      description: Dr cost of services / Cr accrued supplier costs (setting `accounting.accrued_costs_account_code`, default 2170) per booking, dated the last day of the period and reversed automatically on the first day of the next open period (`accounting:reverse-cost-accruals`, daily). Idempotent per booking and period; the supplier invoice posts normally when it arrives, so the cost is never counted twice. 422 when the period is closed or the account is missing.
       parameters:
         - { name: period, in: path, required: true, schema: { type: integer } }
       responses:

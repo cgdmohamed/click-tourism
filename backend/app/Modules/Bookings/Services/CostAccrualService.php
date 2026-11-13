@@ -94,7 +94,7 @@ class CostAccrualService
         }
 
         $cost = $this->account('cost_account_code', '5100');
-        $accrued = $this->account('accrued_costs_account_code', '2150');
+        $accrued = $this->account('accrued_costs_account_code', '2170');
         $end = $period->ends_on->toDateString();
         $entries = 0;
         $total = 0;
@@ -111,10 +111,7 @@ class CostAccrualService
                 entryDate: $end,
                 branch: $branch,
                 currency: $this->settings->baseCurrency(),
-                lines: [
-                    PostingLine::debit($cost, $amount, null, null, 'Cost accrual '.$booking->number),
-                    PostingLine::credit($accrued, $amount, null, null, 'Cost accrual '.$booking->number),
-                ],
+                lines: $this->lines($booking, $amount, $cost, $accrued),
                 memo: "Cost accrual {$booking->number} {$period->name}",
                 sourceType: 'booking',
                 sourceId: $booking->id,
@@ -173,6 +170,44 @@ class CostAccrualService
         }
 
         return $count;
+    }
+
+    /**
+     * The accrual split across the booking's suppliers by their estimated cost, so the ledger
+     * filtered by supplier finds it (GAP-RPT-05). The last share takes the rounding residue.
+     *
+     * @return list<PostingLine>
+     */
+    private function lines(Booking $booking, int $amount, Account $cost, Account $accrued): array
+    {
+        $weights = [];
+        foreach ($booking->items as $item) {
+            $key = $item->supplier_id ?? 0;
+            $weights[$key] = ($weights[$key] ?? 0) + max(0, (int) $item->total_cost_minor);
+        }
+        $weights = array_filter($weights);
+        $totalWeight = array_sum($weights);
+        if ($totalWeight <= 0) {
+            $weights = [0 => 1];
+            $totalWeight = 1;
+        }
+
+        $lines = [];
+        $left = $amount;
+        $last = array_key_last($weights);
+        foreach ($weights as $supplierId => $weight) {
+            $share = $supplierId === $last ? $left : intdiv($amount * $weight, $totalWeight);
+            $left -= $share;
+            if ($share <= 0) {
+                continue;
+            }
+            $type = $supplierId === 0 ? null : 'supplier';
+            $id = $supplierId === 0 ? null : $supplierId;
+            $lines[] = PostingLine::debit($cost, $share, $type, $id, 'Cost accrual '.$booking->number);
+            $lines[] = PostingLine::credit($accrued, $share, $type, $id, 'Cost accrual '.$booking->number);
+        }
+
+        return $lines;
     }
 
     /** Cost the ledger carries for this booking up to a date (base minor, nets any open accrual). */

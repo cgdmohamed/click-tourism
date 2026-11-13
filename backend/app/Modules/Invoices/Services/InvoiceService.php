@@ -783,10 +783,14 @@ class InvoiceService
             $amount = $isCreditNote
                 ? ($lineDebit ? $line->credit_minor : $line->debit_minor)
                 : ($lineDebit ? $line->debit_minor : $line->credit_minor);
+            // GAP-RPT-05: the cost line of a supplier invoice belongs to that supplier, so filtering the
+            // ledger by supplier finds it. An explicit line party still wins.
+            $linePartyType = $line->party_type ?? ($invoice->party_type === 'supplier' ? 'supplier' : null);
+            $linePartyId = $line->party_type !== null ? $line->party_id : ($invoice->party_type === 'supplier' ? $invoice->party_id : null);
             if ($lineDebit) {
-                $lines[] = PostingLine::debit($line->account, $amount, $line->party_type, $line->party_id, $lineDescription);
+                $lines[] = PostingLine::debit($line->account, $amount, $linePartyType, $linePartyId, $lineDescription);
             } else {
-                $lines[] = PostingLine::credit($line->account, $amount, $line->party_type, $line->party_id, $lineDescription);
+                $lines[] = PostingLine::credit($line->account, $amount, $linePartyType, $linePartyId, $lineDescription);
             }
 
             if ($line->tax_minor > 0) {

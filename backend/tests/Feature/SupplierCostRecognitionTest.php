@@ -37,7 +37,7 @@ class SupplierCostRecognitionTest extends TestCase
         $this->buildAccounting();
         $this->period = FiscalPeriod::query()->firstOrFail();
         $this->theSupplier = $this->supplier();
-        Account::query()->firstOrCreate(['code' => '2150'], [
+        Account::query()->firstOrCreate(['code' => '2170'], [
             'name_ar' => 'تكاليف موردين مستحقة', 'name_en' => 'Accrued supplier costs', 'type' => 'liability',
             'is_postable' => true, 'is_active' => true,
         ]);
@@ -217,6 +217,26 @@ class SupplierCostRecognitionTest extends TestCase
         $this->assertSame(100000, $this->costTotal());
         $this->assertSame(0, $this->summary($booking)['accrued_cost_minor']);
         $this->assertSame(1, JournalEntry::query()->where('event', 'like', 'cost_accrual:%')->count());
+    }
+
+    private function supplierCostLines(string $from = '2026-01-01', string $to = '2026-12-31'): int
+    {
+        $ledger = app(\App\Modules\Reports\Services\ReportService::class)->generalLedger(
+            $this->account('5100'), $from, $to, $this->branch, 1, 100, null,
+            ['type' => 'supplier', 'id' => $this->theSupplier->id],
+        );
+
+        return (int) $ledger['summary']['total_debit_minor'];
+    }
+
+    public function test_the_ledger_filtered_by_supplier_finds_invoice_accrual_and_booking_cost(): void
+    {
+        $booking = $this->booking();
+        app(CostAccrualService::class)->accrue($this->period, $this->branch, $this->user->id);
+        $this->assertSame(100000, $this->supplierCostLines());
+
+        app(InvoiceService::class)->issue($this->supplierInvoice($booking, 40000), $this->user->id);
+        $this->assertSame(140000, $this->supplierCostLines());
     }
 
     public function test_a_booking_whose_cost_is_already_invoiced_is_not_accrued(): void
