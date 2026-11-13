@@ -180,6 +180,7 @@ const RULES: Rule[] = [
   { pattern: /^Posted journal entries cannot be deleted; create a reversal instead\.$/, ar: 'القيود المرحّلة لا يمكن حذفها؛ أنشئ قيداً عكسياً بدلاً من ذلك.' },
   { pattern: /^Only draft journal entries can be posted\.$/, ar: 'يمكن ترحيل قيود اليومية المسودة فقط.' },
   { pattern: /^Only posted entries can be reversed\.$/, ar: 'يمكن عكس القيود المرحّلة فقط.' },
+  { pattern: /^The internal code has already been taken\.$/, ar: 'الكود الداخلي مستخدم من قبل.' },
   { pattern: /^This entry has already been reversed\.$/, ar: 'تم عكس هذا القيد مسبقاً.' },
   { pattern: /^This batch has already been posted or reversed and cannot be posted again\.$/, ar: 'تم ترحيل هذه الدفعة أو عكسها مسبقاً ولا يمكن ترحيلها مرة أخرى.' },
   { pattern: /^This event has already been posted\. Use a reversal to correct it\.$/, ar: 'تم ترحيل هذا الحدث مسبقاً. استخدم قيداً عكسياً للتصحيح.' },
