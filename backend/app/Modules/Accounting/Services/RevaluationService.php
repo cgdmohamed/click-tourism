@@ -321,7 +321,7 @@ class RevaluationService
     }
 
     /** Pick up a reversal posted manually so the run reflects the ledger. */
-    private function syncRun(FxRevaluationRun $run): FxRevaluationRun
+    public function syncRun(FxRevaluationRun $run): FxRevaluationRun
     {
         if ($run->status === FxRevaluationRun::STATUS_REVERSED) {
             return $run;

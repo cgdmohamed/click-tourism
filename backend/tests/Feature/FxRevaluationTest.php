@@ -21,6 +21,9 @@ use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\Sanctum;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -126,6 +129,55 @@ class FxRevaluationTest extends TestCase
     private function service(): RevaluationService
     {
         return app(RevaluationService::class);
+    }
+
+    private function asAccountant(): array
+    {
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'true');
+        Permission::query()->firstOrCreate(['name' => 'periods.view', 'guard_name' => 'web']);
+        Permission::query()->firstOrCreate(['name' => 'periods.close', 'guard_name' => 'web']);
+        $this->user->givePermissionTo(['periods.view', 'periods.close']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        Sanctum::actingAs($this->user, ['*']);
+
+        return ['X-Branch-Id' => $this->branch->public_id];
+    }
+
+    public function test_the_estimate_is_reviewed_before_confirmation_and_confirming_twice_posts_once(): void
+    {
+        $this->usdReceivable();
+        $this->rate('52', '2026-03-31');
+        $headers = $this->asAccountant();
+        $url = '/api/v1/fiscal-periods/'.$this->period->id.'/revaluation';
+
+        $this->withHeaders($headers)->getJson($url)->assertOk()
+            ->assertJsonPath('data.rows.0.currency', 'USD')
+            ->assertJsonPath('data.rows.0.difference_minor', 200000)
+            ->assertJsonPath('data.totals.gain_minor', 200000)
+            ->assertJsonPath('data.totals.loss_minor', 0)
+            ->assertJsonPath('data.run_status', null);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'fx_revaluation')->count());
+
+        $this->withHeaders($headers + ['Idempotency-Key' => 'reval-1'])->postJson($url)->assertOk()
+            ->assertJsonPath('data.status', 'posted');
+        $this->withHeaders($headers + ['Idempotency-Key' => 'reval-2'])->postJson($url)->assertOk()
+            ->assertJsonPath('data.status', 'already_posted');
+
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'fx_revaluation')->whereNull('reversal_of_id')->count());
+    }
+
+    public function test_confirming_requires_the_close_permission_and_an_enabled_approved_policy(): void
+    {
+        $headers = $this->asAccountant();
+        $url = '/api/v1/fiscal-periods/'.$this->period->id.'/revaluation';
+
+        app(SettingService::class)->set('accounting', 'accounting_policy_approved', 'false');
+        $this->withHeaders($headers + ['Idempotency-Key' => 'k1'])->postJson($url)->assertStatus(422);
+
+        $this->user->revokePermissionTo('periods.close');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->withHeaders($headers + ['Idempotency-Key' => 'k2'])->postJson($url)->assertForbidden();
+        $this->withHeaders($headers)->getJson($url)->assertOk();
     }
 
     public function test_receivable_gain_is_posted_base_only_to_the_unrealized_gain_account(): void
