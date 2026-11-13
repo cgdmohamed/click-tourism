@@ -24,8 +24,9 @@ class SettingService
             'enabled' => 'false',
             // Contact details (phone, e-mail, tax id) are masked in MCP token responses.
             'mask_contacts' => 'true',
-            // Rows one MCP token may read per day (blueprint section 8).
-            'daily_row_budget' => '5000',
+            // 'daily_row_budget' (rows one MCP token may read per day, blueprint section 8) has NO built-in
+            // setting default on purpose: its default is config('mcp.daily_row_budget') (env MCP_DAILY_ROW_BUDGET),
+            // and a stored setting overrides it.
         ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',

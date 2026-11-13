@@ -6,6 +6,7 @@ use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\Setting;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Services\LeadService;
@@ -14,6 +15,7 @@ use Database\Seeders\CrmSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\Support\BuildsAccounting;
@@ -59,6 +61,18 @@ class McpTokenTest extends TestCase
     }
 
     /** @return array{0: string, 1: int} plaintext token and id */
+    /** GET carrying a JSON body (headers passed explicitly: call() does not use withHeaders()). */
+    private function getWithJsonBody(string $token, string $uri, array $body): TestResponse
+    {
+        $this->app['auth']->forgetGuards();
+
+        return $this->call('GET', $uri, [], [], [], [
+            'HTTP_ACCEPT' => 'application/json',
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ], json_encode($body));
+    }
+
     private function mcpToken(?User $user = null, array $body = []): array
     {
         $response = $this->as($this->spaToken($user))
@@ -419,7 +433,8 @@ class McpTokenTest extends TestCase
     public function test_the_mcp_feature_flag_is_off_by_default(): void
     {
         $this->assertSame('false', SettingService::DEFAULTS['mcp']['enabled']);
-        $this->assertSame('5000', SettingService::DEFAULTS['mcp']['daily_row_budget']);
+        // No built-in setting default for the budget: config('mcp.daily_row_budget') (env) is the default.
+        $this->assertArrayNotHasKey('daily_row_budget', SettingService::DEFAULTS['mcp']);
     }
 
     public function test_mcp_settings_can_be_changed_through_the_settings_api_with_validation(): void
@@ -547,6 +562,59 @@ class McpTokenTest extends TestCase
 
         $this->as($token)->getJson('/api/v1/bookings')->assertOk();
         $this->as($token)->getJson('/api/v1/bookings')->assertStatus(429)->assertJsonPath('code', 'mcp_budget_exceeded');
+    }
+
+    public function test_the_env_budget_applies_when_no_setting_has_been_stored(): void
+    {
+        // Operator lowered the extraction limit through env/config only (nothing persisted in settings).
+        $this->assertNull(Setting::query()->where('group', 'mcp')->where('key', 'daily_row_budget')->first());
+        config(['mcp.daily_row_budget' => 3]);
+        $this->booking($this->branch);
+        $this->booking($this->branch);
+        [$token] = $this->mcpToken();
+
+        $this->as($token)->getJson('/api/v1/bookings')->assertOk(); // 2 rows read
+        $this->as($token)->getJson('/api/v1/bookings')->assertOk(); // 2 < 3: the budget is checked before the call (4 read now)
+        $this->as($token)->getJson('/api/v1/bookings')->assertStatus(429)->assertJsonPath('code', 'mcp_budget_exceeded');
+
+        // A persisted setting still overrides the env value.
+        app(SettingService::class)->set('mcp', 'daily_row_budget', '5000');
+        [$second] = $this->mcpToken();
+        $this->as($second)->getJson('/api/v1/bookings')->assertOk();
+        $this->as($second)->getJson('/api/v1/bookings')->assertOk();
+        $this->as($second)->getJson('/api/v1/bookings')->assertOk();
+    }
+
+    public function test_a_json_body_cannot_smuggle_an_employee_statement_past_the_party_type_check(): void
+    {
+        $this->user->givePermissionTo(Permission::query()->firstOrCreate(['name' => 'reports.view', 'guard_name' => 'web']));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        [$token] = $this->mcpToken();
+        $range = ['from' => '2026-01-01', 'to' => '2026-01-31'];
+
+        // The controller validates the combined input (query + JSON body); the token check must look at the same input.
+        $this->getWithJsonBody($token, '/api/v1/reports/party-statement', ['party_type' => 'employee', 'party_id' => 'abc'] + $range)
+            ->assertStatus(403)->assertJsonPath('code', 'mcp_scope_denied');
+
+        // Same with the valid-looking query plus a JSON body that overrides the party type.
+        $this->getWithJsonBody($token, '/api/v1/reports/party-statement?party_type=customer&party_id=abc&from=2026-01-01&to=2026-01-31', ['party_type' => 'employee'])
+            ->assertStatus(403)->assertJsonPath('code', 'mcp_scope_denied');
+
+        // Anything but customer/supplier is refused, whatever the spelling; the two allowed values reach the controller.
+        foreach (['Employee', 'EMPLOYEE', '', 'other'] as $type) {
+            $this->as($token)->getJson('/api/v1/reports/party-statement?'.http_build_query(['party_type' => $type, 'party_id' => 'abc'] + $range))
+                ->assertStatus(403)->assertJsonPath('code', 'mcp_scope_denied');
+        }
+        $this->as($token)->getJson('/api/v1/reports/party-statement?'.http_build_query(['party_type' => 'customer', 'party_id' => 'abc'] + $range))
+            ->assertStatus(422); // allowed by the token, rejected by the controller for the unknown party id
+    }
+
+    public function test_read_only_tools_never_accept_a_request_body(): void
+    {
+        [$token] = $this->mcpToken();
+
+        $this->getWithJsonBody($token, '/api/v1/bookings', ['per_page' => 500])->assertStatus(403)->assertJsonPath('code', 'mcp_scope_denied');
+        $this->as($token)->getJson('/api/v1/bookings')->assertOk();
     }
 
     public function test_at7_a_paged_bulk_read_is_flagged_once_in_the_audit_log(): void

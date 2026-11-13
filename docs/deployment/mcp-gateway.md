@@ -19,7 +19,7 @@ curl -s -X PUT "$ERP/api/v1/settings" -H "Authorization: Bearer $SPA" -H 'Conten
 |---|---|---|
 | `enabled` | `false` | master switch (`true` / `false`) |
 | `mask_contacts` | `true` | mask phone, e-mail and tax id in every MCP response (`true` / `false`) |
-| `daily_row_budget` | `5000` | rows one token may read per day; whole number 100 to 9999999 |
+| `daily_row_budget` | not stored by default | rows one token may read per day; whole number 100 to 9999999. When no value is stored the env value `MCP_DAILY_ROW_BUDGET` (default 5000) applies; a stored value overrides it |
 
 ## 2. Who may use it
 
@@ -57,7 +57,7 @@ Tokens expire without refresh; create a new one when it expires. A deactivated u
 | `MCP_MAX_TOKENS_PER_USER` | 10 | active MCP tokens per user |
 | `MCP_RATE_LIMIT_PER_MINUTE` | 60 | requests per minute per token |
 | `MCP_REPORT_RATE_LIMIT_PER_MINUTE` | 6 | the four report tools, per token |
-| `MCP_DAILY_ROW_BUDGET` | 5000 | fallback for the setting `mcp.daily_row_budget` (the setting wins when set) |
+| `MCP_DAILY_ROW_BUDGET` | 5000 | daily row budget per token while the setting `mcp.daily_row_budget` has no stored value (a stored setting wins) |
 | `MCP_BULK_PAGES` / `MCP_BULK_PAGE_MIN_ROWS` / `MCP_BULK_WINDOW_SECONDS` | 10 / 20 / 300 | bulk-read flag: this many pages of at least that many rows inside the window |
 
 ### Limits and what a client sees

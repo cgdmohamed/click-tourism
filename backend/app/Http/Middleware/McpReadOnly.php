@@ -84,7 +84,15 @@ class McpReadOnly
         }
 
         // Employee statements stay out of MCP (blueprint section 4): enforced here, not only in the gateway.
-        if ($tool === null || ($tool === 'erp_party_statement' && $request->query('party_type') === 'employee')) {
+        // The controller validates Laravel's COMBINED input (query + JSON body), so this check reads the same
+        // source, allow-lists the party type instead of excluding one value, and read-only tools take no
+        // request body at all (a GET with a JSON body is how a query-only check could be bypassed).
+        $partyType = $request->input('party_type');
+        if (
+            $tool === null
+            || $this->hasRequestBody($request)
+            || ($tool === 'erp_party_statement' && ! (is_string($partyType) && in_array($partyType, ['customer', 'supplier'], true)))
+        ) {
             return $deny('scope', 'This token may only use the read-only MCP tools.', 'mcp_scope_denied', 403);
         }
 
@@ -150,10 +158,19 @@ class McpReadOnly
         return ApiResponse::error($message, $code, $status)->withHeaders($headers);
     }
 
+    /** True when a GET carries body parameters (JSON or form data): MCP tools are parameterised by the query string only. */
+    private function hasRequestBody(Request $request): bool
+    {
+        // An empty body ('' or '[]', what test clients send) carries no parameters and is harmless.
+        return $request->request->count() > 0 || $request->json()->count() > 0;
+    }
+
     /** Setting mcp.daily_row_budget, falling back to config when blank or invalid. */
     private function dailyBudget(): int
     {
-        $value = $this->settings->int('mcp', 'daily_row_budget', 0);
+        // Only a persisted override counts; without one the operator's env/config value applies.
+        $stored = $this->settings->get('mcp', 'daily_row_budget');
+        $value = $stored !== null && ctype_digit($stored) ? (int) $stored : 0;
 
         return $value > 0 ? $value : max(1, (int) config('mcp.daily_row_budget', 5000));
     }
