@@ -40,6 +40,9 @@ class SettingService
             'redact_pii' => 'true',
             // Optional https link shown next to the data-processing notice in the panel.
             'privacy_url' => '',
+            // ISO-8601 timestamp of the administrator's explicit acceptance of the data-processing
+            // notice (ADR-0018); empty means not accepted, and the assistant cannot be enabled then.
+            'data_processing_accepted_at' => '',
         ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',

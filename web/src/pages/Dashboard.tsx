@@ -6,6 +6,7 @@ import { Doughnut, Line } from 'react-chartjs-2'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Input, Loading, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { AssistantToggleCard } from '../components/AssistantToggleCard'
 import { Icon, type IconName } from '../components/icons'
 import { api, errorMessage } from '../lib/api'
 import { exponent, formatDate, formatMoney } from '../lib/format'
@@ -157,6 +158,8 @@ export default function Dashboard() {
           </button>
         }
       />
+
+      <AssistantToggleCard />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-16 border border-border-subtle bg-surface-default px-4 py-3 shadow-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">

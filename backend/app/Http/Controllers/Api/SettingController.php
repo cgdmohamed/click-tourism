@@ -8,9 +8,11 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Money\Models\Currency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Throwable;
 
 class SettingController extends ApiController
 {
@@ -65,6 +67,7 @@ class SettingController extends ApiController
 
         $this->validateAccountingPolicyValues($data['settings']);
         $this->validateGeneralValues($data['settings']);
+        $this->validateAssistantEnablement($data['settings'], $settings);
 
         $user = $request->user();
         $errors = [];
@@ -109,6 +112,8 @@ class SettingController extends ApiController
         $before = $settings->all();
 
         DB::transaction(function () use ($data, $settings, $audit, $policyChanges, $user) {
+            $assistantEnabled = $settings->bool('assistant', 'enabled', false);
+
             foreach ($data['settings'] as $setting) {
                 $settings->set(
                     $setting['group'],
@@ -116,6 +121,16 @@ class SettingController extends ApiController
                     $setting['value'] ?? null,
                     (bool) ($setting['is_secret'] ?? false),
                 );
+
+                if ($setting['group'] === 'assistant' && $setting['key'] === 'enabled') {
+                    $enabled = ($setting['value'] ?? null) === 'true';
+                    if ($enabled !== $assistantEnabled) {
+                        // Turning the assistant on/off changes whether data may leave the server.
+                        // No PII, no provider details: only the new state.
+                        $audit->log('assistant.enabled_changed', null, null, ['enabled' => $enabled], $user?->id);
+                        $assistantEnabled = $enabled;
+                    }
+                }
             }
 
             foreach ($policyChanges as $key => $change) {
@@ -244,6 +259,45 @@ class SettingController extends ApiController
     }
 
     /**
+     * Enabling the assistant sends ERP data to a third-party provider, so it needs the
+     * data-processing acceptance first (ADR-0018): stored already, or in the same payload.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function validateAssistantEnablement(array $items, SettingService $settings): void
+    {
+        $enablingIndex = null;
+        $acceptedInPayload = false;
+
+        foreach ($items as $index => $item) {
+            if (($item['group'] ?? null) !== 'assistant') {
+                continue;
+            }
+            $key = (string) ($item['key'] ?? '');
+            $value = trim((string) ($item['value'] ?? ''));
+            if ($key === 'data_processing_accepted_at' && $value !== '') {
+                $acceptedInPayload = true;
+            }
+            if ($key === 'enabled' && $value === 'true') {
+                $enablingIndex = $index;
+            }
+        }
+
+        if ($enablingIndex === null) {
+            return;
+        }
+
+        $stored = trim((string) $settings->get('assistant', 'data_processing_accepted_at', ''));
+        if ($stored !== '' || $acceptedInPayload) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            "settings.{$enablingIndex}.value" => 'Accept the data-processing notice before enabling the assistant.',
+        ]);
+    }
+
+    /**
      * Exact values only (the stored string is read back as is). Unknown keys are refused so nobody
      * can park a provider key or other secret in the assistant group: the key is env-only.
      */
@@ -257,11 +311,14 @@ class SettingController extends ApiController
             'rate_limit_per_minute' => [1, 600],
         ];
 
-        if (! in_array($key, ['enabled', 'provider', 'redact_pii', 'privacy_url', 'model', ...array_keys($ranges)], true)) {
+        if (! in_array($key, ['enabled', 'provider', 'redact_pii', 'privacy_url', 'model', 'data_processing_accepted_at', ...array_keys($ranges)], true)) {
             $fail("assistant.{$key} is not a known setting. The provider API key is never a setting: set OPENAI_API_KEY in the environment.");
         }
         if (in_array($key, ['enabled', 'redact_pii'], true) && ! in_array($value, ['true', 'false'], true)) {
             $fail("assistant.{$key} must be 'true' or 'false'.");
+        }
+        if ($key === 'data_processing_accepted_at' && ! self::isAcceptedTimestamp($value)) {
+            $fail('The data-processing acceptance must be empty or an ISO-8601 date-time of at most 40 characters.');
         }
         if ($key === 'provider' && ! in_array($value, ['none', 'openai'], true)) {
             $fail('The assistant provider must be none or openai.');
@@ -282,5 +339,30 @@ class SettingController extends ApiController
     {
         return preg_match('/^(\d{2})-(\d{2})$/', $value, $m) === 1
             && checkdate((int) $m[1], (int) $m[2], 2001);
+    }
+
+    /**
+     * '' (not accepted) or an ISO-8601 date-time: at most 40 characters, matching the date-time
+     * shape and parseable by Carbon. Never a free-text note.
+     */
+    public static function isAcceptedTimestamp(string $value): bool
+    {
+        if ($value === '') {
+            return true;
+        }
+        if (mb_strlen($value) > 40) {
+            return false;
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d{1,9})?(Z|[+-]\d{2}:?\d{2})?$/', $value) !== 1) {
+            return false;
+        }
+
+        try {
+            Carbon::parse($value);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return true;
     }
 }

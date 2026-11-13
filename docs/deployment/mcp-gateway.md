@@ -48,6 +48,41 @@ curl -s -X DELETE "$ERP/api/v1/mcp/tokens/<id>" -H "Authorization: Bearer $SPA" 
 
 Tokens expire without refresh; create a new one when it expires. A deactivated user's tokens stop working immediately.
 
+### Connection status (Settings screen)
+
+`GET /api/v1/mcp/status` (permission `settings.view`) is the read-only summary the Settings, MCP screen shows. It counts every user's MCP tokens, so it is not a per-user view; it never returns a token value, its hash or its abilities.
+
+```bash
+curl -s "$ERP/api/v1/mcp/status" -H "Authorization: Bearer $SPA"
+```
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "tokens": { "active": 3, "expired": 1, "total": 4 },
+    "last_connection_at": "2026-11-13T09:12:44+00:00",
+    "recent": [
+      {
+        "id": 12,
+        "name": "Claude Desktop",
+        "state": "active",
+        "created_at": "2026-11-12T08:00:00+00:00",
+        "last_used_at": "2026-11-13T09:12:44+00:00",
+        "expires_at": "2026-11-13T18:00:00+00:00",
+        "user": { "id": "usr_...", "name": "Sara Ahmed", "email": "sara@example.com" }
+      }
+    ]
+  }
+}
+```
+
+- `enabled` is the setting `mcp.enabled` (same value as the feature flag `mcp_enabled`).
+- `tokens.active` counts tokens that are not expired; `expired` is `total - active`. A token is expired when `expires_at` is in the past (a token with no expiry never expires); revoked tokens are deleted and not counted.
+- **"Recent connections" means token use, not a session:** `last_used_at` is updated by the ERP whenever a request arrives with that token. `last_connection_at` is the newest such timestamp across all MCP tokens, or `null` if no token has ever been used. A gateway that is running but idle does not appear.
+- `recent` holds at most 10 tokens, never-used ones last, then newest `last_used_at` first (ties broken by newest token). It carries the owner (`id` is the public user id, plus name and e-mail), `state` (`active` / `expired`) and the timestamps — no secret material.
+- This is a read-only endpoint. To cut access off, revoke the token (section 3) or switch `mcp.enabled` off (section 1); the next status call reports the new counts.
+
 ## 4. Installation knobs (`backend/.env`)
 
 | Variable | Default | Meaning |

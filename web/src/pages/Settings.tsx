@@ -9,7 +9,9 @@ import { resolveTab } from '../lib/tabs'
 import { DecisionsPanel } from '../components/DecisionsPanel'
 import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import IntegrationsPanel from '../components/IntegrationsPanel'
+import McpStatusCard from '../components/McpStatusCard'
 import { Button, Card, CardHeader, ErrorState, Loading, PageHeader, TabPanel, Tabs, type TabItem } from '../components/ui'
+import { AssistantTab } from './settings/AssistantTab'
 import { BranchesTab } from './settings/BranchesTab'
 import { CurrenciesTab } from './settings/CurrenciesTab'
 import { FieldsGrid } from './settings/FieldsGrid'
@@ -36,7 +38,12 @@ export default function Settings() {
     { id: 'tax', label: L('الضريبة', 'Tax') },
     { id: 'crm', label: L('العملاء المحتملون', 'CRM') },
     { id: 'branches', label: t('branches') },
-    ...(can('settings.view') ? [{ id: 'integrations' as const, label: L('التكاملات', 'Integrations') }] : []),
+    ...(can('settings.view')
+      ? [
+          { id: 'integrations' as const, label: L('التكاملات', 'Integrations') },
+          { id: 'assistant' as const, label: t('assistant') },
+        ]
+      : []),
     { id: 'decisions', label: L('القرارات', 'Decisions') },
   ]
   const active = resolveTab(searchParams.get('tab'), tabs.map((tab) => tab.id), 'general') as SettingsTab
@@ -205,7 +212,14 @@ export default function Settings() {
 
         {active === 'branches' ? <BranchesTab /> : null}
 
-        {active === 'integrations' && can('settings.view') ? <IntegrationsPanel /> : null}
+        {active === 'integrations' && can('settings.view') ? (
+          <>
+            <IntegrationsPanel />
+            <McpStatusCard />
+          </>
+        ) : null}
+
+        {active === 'assistant' && can('settings.view') ? <AssistantTab /> : null}
 
         {active === 'decisions' ? <DecisionsPanel /> : null}
       </TabPanel>

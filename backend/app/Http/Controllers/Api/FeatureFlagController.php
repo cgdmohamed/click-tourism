@@ -25,9 +25,13 @@ class FeatureFlagController extends ApiController
             'base_currency' => $settings->baseCurrency(),
             'refund_segregation' => $settings->bool('accounting', 'refund_segregation', false),
             'mcp_enabled' => $settings->bool('mcp', 'enabled', false),
-            // The assistant panel is offered only when it can answer (switched on, a provider chosen, its key set).
+            // The assistant panel is offered only when it can answer (switched on, the data-processing
+            // notice accepted, a provider chosen and its key set). ADR-0018.
             'assistant_enabled' => $assistant->usable(),
             'assistant_provider' => $assistant->usable() ? $assistant->providerName() : null,
+            'assistant_key_configured' => $assistant->keyConfigured(),
+            'assistant_accepted' => $assistant->accepted(),
+            'assistant_model' => $assistant->model(),
             'assistant_redact_pii' => $settings->bool('assistant', 'redact_pii', true),
             'assistant_privacy_url' => (string) $settings->get('assistant', 'privacy_url', ''),
         ]);

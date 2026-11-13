@@ -19,6 +19,17 @@ interface AssistantProvider
     public function isConfigured(): bool;
 
     /**
+     * Models the account behind this provider can use, for the Settings model picker (ADR-0018).
+     * Each row carries at least `id` and, where the provider reports it, `created` (Unix seconds).
+     * Returns an empty list when the provider offers no catalogue (for example 'none').
+     *
+     * @return list<array{id: string, created?: int}>
+     *
+     * @throws ProviderException on any failure; the message is generic and safe to log
+     */
+    public function models(): array;
+
+    /**
      * One model call.
      *
      * @param  list<array<string, mixed>>  $messages  OpenAI-style messages (system, user, assistant, tool)

@@ -49,6 +49,7 @@ class AssistantChatTest extends TestCase
         config()->set('services.openai.base_url', 'https://api.openai.test/v1');
         $this->settings->set('assistant', 'enabled', 'true');
         $this->settings->set('assistant', 'provider', 'openai');
+        $this->settings->set('assistant', 'data_processing_accepted_at', '2026-11-13T09:00:00+00:00');
 
         $this->customer()->update(['name_en' => 'Nile Travel Customer', 'email' => 'nile@example.com']);
         $this->user->givePermissionTo(['assistant.use', 'customers.view', 'leads.view', 'reports.view']);
@@ -392,6 +393,22 @@ class AssistantChatTest extends TestCase
         $this->chat()->assertStatus(503)->assertJsonPath('code', 'assistant_not_configured');
 
         Http::assertNothingSent();
+    }
+
+    public function test_an_enabled_installation_without_the_data_processing_acceptance_answers_403(): void
+    {
+        // A legacy installation (enabled before ADR-0018) never accepted the notice.
+        $this->settings->set('assistant', 'data_processing_accepted_at', '');
+        Http::fake();
+
+        $this->chat()->assertStatus(403)->assertJsonPath('code', 'assistant_not_accepted');
+
+        // The acceptance check runs before the key/provider check: no 503 here.
+        config()->set('services.openai.key', '');
+        $this->chat()->assertStatus(403)->assertJsonPath('code', 'assistant_not_accepted');
+
+        Http::assertNothingSent();
+        $this->assertSame('not_accepted', $this->auditRows('assistant.denied')[0]->after['reason']);
     }
 
     public function test_the_permission_is_required(): void

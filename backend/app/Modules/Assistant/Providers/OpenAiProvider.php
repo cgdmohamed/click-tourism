@@ -90,4 +90,48 @@ final class OpenAiProvider implements AssistantProvider
             is_string($choice['finish_reason'] ?? null) ? $choice['finish_reason'] : null,
         );
     }
+
+    /**
+     * GET /models (ADR-0018): ids the key's account can use, with the provider's creation time.
+     * The same timeout and bearer credential as chat apply; the response body never leaves here.
+     */
+    public function models(): array
+    {
+        if (! $this->isConfigured()) {
+            throw new ProviderException('The OpenAI key is not configured.');
+        }
+
+        try {
+            $response = Http::withToken((string) config('services.openai.key'))
+                ->baseUrl(rtrim((string) config('services.openai.base_url'), '/'))
+                ->acceptJson()
+                ->timeout((int) config('assistant.provider_timeout', 60))
+                ->get('/models');
+        } catch (ConnectionException) {
+            throw new ProviderException('The provider could not be reached.');
+        }
+
+        if ($response->failed()) {
+            throw new ProviderException('The provider answered with HTTP '.$response->status().'.');
+        }
+
+        $body = $response->json();
+        $rows = is_array($body) ? ($body['data'] ?? null) : null;
+        if (! is_array($rows)) {
+            throw new ProviderException('The provider answer has an unexpected shape.');
+        }
+
+        $models = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! is_string($row['id'] ?? null) || $row['id'] === '') {
+                continue;
+            }
+            $models[] = [
+                'id' => $row['id'],
+                'created' => is_numeric($row['created'] ?? null) ? (int) $row['created'] : 0,
+            ];
+        }
+
+        return $models;
+    }
 }
