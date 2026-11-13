@@ -471,6 +471,18 @@ class AssistantChatTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_a_turn_that_has_no_time_left_stops_with_504_before_calling_the_provider(): void
+    {
+        Http::fake();
+        // Less than the 3 seconds a provider call needs: the turn deadline is checked before every call.
+        config(['assistant.turn_timeout' => 2]);
+
+        $this->chat('hello')->assertStatus(504)->assertJsonPath('code', 'assistant_timeout');
+
+        Http::assertNothingSent();
+        $this->assertSame('timeout', $this->auditRows('assistant.chat')[0]->after['status']);
+    }
+
     // ---- secrets and audit --------------------------------------------------------------------
 
     public function test_the_key_never_appears_in_responses_settings_flags_errors_or_audit(): void

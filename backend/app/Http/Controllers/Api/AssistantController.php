@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Assistant\Services\ChatService;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Assistant\Support\ProviderException;
+use App\Modules\Assistant\Support\TurnTimeoutException;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
 use App\Support\ApiResponse;
@@ -51,8 +52,18 @@ class AssistantController extends ApiController
         // An X-Branch-Id the user does not hold is a 403 here (BranchScope), before any provider call.
         $branch = $scope->resolve($user);
 
+        // A turn may legitimately take longer than PHP's max_execution_time under FPM (default 30 s). Only raise a
+        // limit that exists and is too short: 0 means unlimited (CLI, tests, workers) and must stay that way.
+        $needed = max(1, (int) config('assistant.turn_timeout', 100)) + 20;
+        $limit = (int) ini_get('max_execution_time');
+        if ($limit > 0 && $limit < $needed) {
+            @set_time_limit($needed);
+        }
+
         try {
             $result = $chat->run($user, $messages, $locale, $branch);
+        } catch (TurnTimeoutException) {
+            return ApiResponse::error('The assistant took too long to answer. Ask a narrower question.', 'assistant_timeout', 504);
         } catch (ProviderException) {
             return ApiResponse::error('The assistant provider is unavailable. Try again later.', 'assistant_provider_error', 502);
         }

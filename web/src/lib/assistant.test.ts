@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ASSISTANT_REQUEST_TIMEOUT_MS,
   MAX_MESSAGES,
   addAssistantError,
   addAssistantReply,
@@ -152,5 +153,17 @@ describe('misc', () => {
     expect(assistantErrorKey(502, 'assistant_provider_error')).toBe('assistantErrProvider')
     expect(assistantErrorKey(403, 'forbidden')).toBe('assistantErrForbidden')
     expect(assistantErrorKey(500, undefined)).toBeNull()
+  })
+})
+
+describe('assistant request timeout', () => {
+  it('outlasts the shared 30 s Axios timeout but stays under the proxy read timeout (120 s)', () => {
+    expect(ASSISTANT_REQUEST_TIMEOUT_MS).toBeGreaterThan(30_000)
+    expect(ASSISTANT_REQUEST_TIMEOUT_MS).toBeLessThan(120_000)
+  })
+
+  it('maps a server-side turn timeout (code or bare 504) to the timeout message', () => {
+    expect(assistantErrorKey(504, 'assistant_timeout')).toBe('assistantErrTimeout')
+    expect(assistantErrorKey(504, undefined)).toBe('assistantErrTimeout')
   })
 })

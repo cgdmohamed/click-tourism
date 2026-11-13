@@ -203,7 +203,7 @@ paths:
       tags: [Auth]
       summary: One turn of the read-only in-product assistant (permission `assistant.use`)
       description: |
-        Stateless (ADR-0017): the client sends the whole conversation, nothing is stored server-side. The model may call only the 15 read tools of the MCP catalogue; each call runs as the signed-in user through the normal GET route, so permissions, branch scope (`X-Branch-Id`), contact masking and the row budget apply as for MCP. Tool results are wrapped as untrusted data. When `assistant.redact_pii` is true, phone numbers, e-mail addresses and tax ids are replaced before anything is sent to the provider. The answer is plain text; `citations` are built by the server from the tool calls made in this turn. Errors: 403 `assistant_disabled` (setting `assistant.enabled` off), 503 `assistant_not_configured` (provider `none` or no key in the environment), 429 `assistant_budget_exceeded` (daily token budget per user), 429 `assistant_rate_limited` (limiter `assistant-chat`), 502 `assistant_provider_error`. Audited as `assistant.chat` (no content) and `assistant.denied`.
+        Stateless (ADR-0017): the client sends the whole conversation, nothing is stored server-side. The model may call only the 15 read tools of the MCP catalogue; each call runs as the signed-in user through the normal GET route, so permissions, branch scope (`X-Branch-Id`), contact masking and the row budget apply as for MCP. Tool results are wrapped as untrusted data. When `assistant.redact_pii` is true, phone numbers, e-mail addresses and tax ids are replaced before anything is sent to the provider. The answer is plain text; `citations` are built by the server from the tool calls made in this turn. Errors: 403 `assistant_disabled` (setting `assistant.enabled` off), 503 `assistant_not_configured` (provider `none` or no key in the environment), 429 `assistant_budget_exceeded` (daily token budget per user), 429 `assistant_rate_limited` (limiter `assistant-chat`), 502 `assistant_provider_error`, 504 `assistant_timeout` (the whole turn exceeded `ASSISTANT_TURN_TIMEOUT`, default 100 s; each provider call is also capped by what is left of it). Audited as `assistant.chat` (no content) and `assistant.denied`.
       requestBody:
         required: true
         content:
@@ -260,6 +260,7 @@ paths:
         '422': { $ref: '#/components/responses/Validation' }
         '429': { description: Rate limit or daily token budget used up }
         '502': { description: The provider failed (`assistant_provider_error`) }
+        '504': { description: The turn used up its time budget (`assistant_timeout`) }
         '503': { description: No provider key configured (`assistant_not_configured`) }
 
   /branches:

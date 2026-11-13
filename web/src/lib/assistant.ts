@@ -166,8 +166,17 @@ export type AssistantErrorKey =
   | 'assistantErrBudget'
   | 'assistantErrRate'
   | 'assistantErrProvider'
+  | 'assistantErrTimeout'
   | 'assistantErrForbidden'
   | null
+
+/**
+ * Browser-side deadline for POST /assistant/chat. The shared Axios client times out at 30 s, but a turn can
+ * legitimately run several sequential provider calls; the server bounds the whole turn (config
+ * assistant.turn_timeout, default 100 s, 504 assistant_timeout) so this is that bound plus a margin, and stays
+ * below the proxy's 120 s read timeout.
+ */
+export const ASSISTANT_REQUEST_TIMEOUT_MS = 110_000
 
 /** Maps an API error (status + code) to a translated message key; null falls back to the generic text. */
 export function assistantErrorKey(status: number | undefined, code: string | undefined): AssistantErrorKey {
@@ -182,7 +191,10 @@ export function assistantErrorKey(status: number | undefined, code: string | und
       return 'assistantErrRate'
     case 'assistant_provider_error':
       return 'assistantErrProvider'
+    case 'assistant_timeout':
+      return 'assistantErrTimeout'
     default:
+      if (status === 504) return 'assistantErrTimeout'
       return status === 403 ? 'assistantErrForbidden' : null
   }
 }

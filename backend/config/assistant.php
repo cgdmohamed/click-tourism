@@ -29,8 +29,14 @@ return [
     'max_messages' => 40,
     'max_message_chars' => 4000,
 
-    // Seconds to wait for the provider before the turn fails with assistant_provider_error.
+    // Seconds to wait for ONE provider call before it fails with assistant_provider_error.
     'provider_timeout' => (int) env('ASSISTANT_PROVIDER_TIMEOUT', 60),
+
+    // Seconds the WHOLE turn (several provider calls plus the tool calls between them) may take; past it the
+    // turn stops with 504 assistant_timeout. Keep it below the web server's read timeout (deploy/nginx/backend.conf
+    // has fastcgi_read_timeout 120s) and below the browser's request timeout (turn_timeout + 10 s, see
+    // web/src/lib/assistant.ts); raise those together if you raise this.
+    'turn_timeout' => (int) env('ASSISTANT_TURN_TIMEOUT', 100),
 
     // A tool result sent to the model is capped at this many bytes (largest list halved until it fits).
     'max_tool_result_bytes' => (int) env('ASSISTANT_MAX_TOOL_RESULT_BYTES', 32 * 1024),

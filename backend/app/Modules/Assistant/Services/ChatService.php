@@ -6,6 +6,7 @@ use App\Modules\Assistant\Support\ChatResult;
 use App\Modules\Assistant\Support\OutputSanitizer;
 use App\Modules\Assistant\Support\ProviderException;
 use App\Modules\Assistant\Support\Redactor;
+use App\Modules\Assistant\Support\TurnTimeoutException;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -69,6 +70,7 @@ class ChatService
         $status = 'ok';
         $answer = null;
         $capReached = false;
+        $deadline = microtime(true) + max(1, (int) config('assistant.turn_timeout', 100));
 
         try {
             // At most max calls + 1 tool rounds, then one forced text round.
@@ -79,8 +81,18 @@ class ChatService
                     break;
                 }
 
+                // The whole turn is bounded: each provider call gets the time that is left (at most the per-call limit).
+                $remaining = (int) floor($deadline - microtime(true));
+                if ($remaining < 3) {
+                    $this->log($user, $branch, $locale, 'timeout', $options['model'], $prompt, $completion, $executed, $toolErrors, $rejected, $rounds, $calls);
+                    throw new TurnTimeoutException('The assistant turn ran out of time.');
+                }
+
                 $rounds++;
-                $reply = $provider->chat($conversation, $tools, $options + ['allow_tools' => ! $capReached]);
+                $reply = $provider->chat($conversation, $tools, $options + [
+                    'allow_tools' => ! $capReached,
+                    'timeout' => min((int) config('assistant.provider_timeout', 60), $remaining),
+                ]);
                 $prompt += $reply->promptTokens;
                 $completion += $reply->completionTokens;
                 $this->addTokens($user, $reply->promptTokens + $reply->completionTokens);

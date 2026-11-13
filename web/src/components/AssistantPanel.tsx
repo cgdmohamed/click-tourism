@@ -7,6 +7,7 @@ import { useI18n } from '../i18n'
 import type { MessageKey } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import {
+  ASSISTANT_REQUEST_TIMEOUT_MS,
   MAX_MESSAGE_CHARS,
   STARTERS,
   addAssistantError,
@@ -77,14 +78,16 @@ export function AssistantPanel({ open, onClose }: { open: boolean; onClose: () =
         const { data } = await api.post<{ data: ChatReply }>(
           '/assistant/chat',
           { messages: toApiMessages(history), locale },
-          { signal: controller.signal },
+          { signal: controller.signal, timeout: ASSISTANT_REQUEST_TIMEOUT_MS },
         )
         setMessages(addAssistantReply(history, data.data))
       } catch (cause) {
         if (axios.isCancel(cause) || controller.signal.aborted) return
         const status = axios.isAxiosError(cause) ? cause.response?.status : undefined
         const code = axios.isAxiosError<{ code?: string }>(cause) ? cause.response?.data?.code : undefined
-        const key = assistantErrorKey(status, code)
+        // The browser gave up (no response within the turn deadline): same message as a server-side timeout.
+        const clientTimeout = axios.isAxiosError(cause) && cause.code === 'ECONNABORTED'
+        const key = clientTimeout ? 'assistantErrTimeout' : assistantErrorKey(status, code)
         setMessages(addAssistantError(history, key ? t(key) : status && status < 500 ? errorMessage(cause) : t('assistantErrGeneric')))
       } finally {
         if (abortRef.current === controller) {

@@ -23,7 +23,7 @@ interface AssistantProvider
      *
      * @param  list<array<string, mixed>>  $messages  OpenAI-style messages (system, user, assistant, tool)
      * @param  list<array<string, mixed>>  $tools  OpenAI-style function tool definitions
-     * @param  array{model: string, max_output_tokens: int, allow_tools: bool}  $options
+     * @param  array{model: string, max_output_tokens: int, allow_tools: bool, timeout?: int}  $options  timeout = seconds this call may take (the turn deadline caps it)
      *
      * @throws ProviderException on any failure; the message is generic and safe to log
      */

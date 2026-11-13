@@ -80,6 +80,7 @@ Nothing is stored server-side: the browser keeps the conversation in memory only
 |---|---|
 | Button missing | no `assistant.use`, setting off, provider `none`, or no key (check `GET /feature-flags`) |
 | `503 assistant_not_configured` | `OPENAI_API_KEY` empty in the PHP environment (restart workers / clear config cache) |
+| `504 assistant_timeout` | the whole turn (several provider calls plus the tool calls between them) exceeded `ASSISTANT_TURN_TIMEOUT` (default 100 s). Each provider call is capped by `ASSISTANT_PROVIDER_TIMEOUT` (60 s) and by what is left of the turn. Keep the turn timeout below the web server's read timeout (`fastcgi_read_timeout 120s` in `deploy/nginx/backend.conf`) and below the browser request timeout (turn timeout + 10 s); raise them together if you raise it |
 | `502 assistant_provider_error` | OpenAI unreachable, key rejected, model name unknown or provider error; the response body is deliberately not copied anywhere; check the network and the key from the server |
 | `429 assistant_rate_limited` / `assistant_budget_exceeded` | limits above |
 

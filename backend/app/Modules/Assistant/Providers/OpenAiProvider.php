@@ -51,7 +51,7 @@ final class OpenAiProvider implements AssistantProvider
                 ->baseUrl(rtrim((string) config('services.openai.base_url'), '/'))
                 ->acceptJson()
                 ->asJson()
-                ->timeout((int) config('assistant.provider_timeout', 60))
+                ->timeout(max(1, (int) ($options['timeout'] ?? config('assistant.provider_timeout', 60))))
                 ->post('/chat/completions', $payload);
         } catch (ConnectionException) {
             throw new ProviderException('The provider could not be reached.');
