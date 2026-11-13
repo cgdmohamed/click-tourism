@@ -78,11 +78,13 @@ Route::prefix('v1')->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('feature-flags', [FeatureFlagController::class, 'show']);
 
-        // MCP gateway tokens (ADR-0016). Listing/revoking are own-token only and
-        // need no permission so a user who lost `mcp.use` can still revoke.
+        // MCP gateway tokens (ADR-0016). Listing/revoking need no `mcp.use` so a user who lost it
+        // can still revoke; `?all=1` and revoking another user's token need `mcp.admin`.
         Route::post('mcp/tokens', [McpTokenController::class, 'store'])->middleware('permission:mcp.use');
         Route::get('mcp/tokens', [McpTokenController::class, 'index']);
         Route::delete('mcp/tokens/{id}', [McpTokenController::class, 'destroy'])->whereNumber('id');
+        // Gateway helper (MCP tokens allowed): the branches the token's user may use.
+        Route::get('mcp/context', [McpTokenController::class, 'context']);
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');
         Route::post('branches', [BranchController::class, 'store'])->middleware('permission:branches.create');

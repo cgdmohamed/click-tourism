@@ -109,8 +109,10 @@ paths:
   /mcp/tokens:
     get:
       tags: [Auth]
-      summary: List the caller's own MCP tokens (no secrets)
-      description: Read-only MCP tokens (ability `mcp:read`, ADR-0016). Callable only with a normal login token; MCP tokens themselves get 403 `mcp_scope_denied`.
+      summary: List the caller's own MCP tokens (no secrets); all users' tokens with `?all=1` and `mcp.admin`
+      description: Read-only MCP tokens (ability `mcp:read`, ADR-0016). Callable only with a normal login token; MCP tokens themselves get 403 `mcp_scope_denied`. `all=1` needs the permission `mcp.admin` (otherwise 403 `forbidden`) and adds a `user` object (id, name, email) to each row.
+      parameters:
+        - { name: all, in: query, required: false, schema: { type: boolean }, description: List every user's MCP tokens (permission `mcp.admin`) }
       responses:
         '200':
           description: Own MCP tokens, newest first
@@ -122,11 +124,19 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/McpToken' }
+                  meta:
+                    type: object
+                    description: Installation limits, so a client can offer only valid expiry choices
+                    properties:
+                      default_minutes: { type: integer, example: 480 }
+                      max_minutes: { type: integer, example: 1440 }
+                      max_active_per_user: { type: integer, example: 10 }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Auth]
-      summary: Create a read-only MCP token (permission `mcp.use`)
-      description: Returns the plaintext token exactly once. The token carries only the `mcp:read` ability and may call only `GET /search`, `GET /bookings` and `GET /invoices` (everything else is 403 `mcp_scope_denied`). Default lifetime 8h (`MCP_TOKEN_DEFAULT_MINUTES`), maximum 24h (`MCP_TOKEN_MAX_MINUTES`). At most 10 active MCP tokens per user. Audited as `mcp.token_created`.
+      summary: Create a read-only MCP token (permission `mcp.use`, setting `mcp.enabled`)
+      description: Returns the plaintext token exactly once. The token carries only the `mcp:read` ability and may call only the allowlisted read-only GET routes of the MCP tools (search, customers, suppliers, bookings, invoices, payments, expenses, leads, party-statement, aging, trial-balance, income-statement and `GET /mcp/context`); everything else is 403 `mcp_scope_denied`. Refused with 403 `mcp_disabled` while the setting `mcp.enabled` is false (the default). Default lifetime 8h (`MCP_TOKEN_DEFAULT_MINUTES`), maximum 24h (`MCP_TOKEN_MAX_MINUTES`). At most 10 active MCP tokens per user. Audited as `mcp.token_created`.
       requestBody:
         required: true
         content:
@@ -157,14 +167,36 @@ paths:
   /mcp/tokens/{id}:
     delete:
       tags: [Auth]
-      summary: Revoke one of the caller's own MCP tokens
-      description: Audited as `mcp.token_revoked`. Another user's token, or an unknown id, returns 404.
+      summary: Revoke one of the caller's own MCP tokens (any user's with `mcp.admin`)
+      description: Audited as `mcp.token_revoked`; an administrator revocation of another user's token also records `owner_id` and `revoked_by_admin`. Without `mcp.admin`, another user's token or an unknown id returns 404.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         '200': { description: Revoked }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { description: Token not found }
+
+  /mcp/context:
+    get:
+      tags: [Auth]
+      summary: Branches the token's user may use (MCP gateway helper)
+      description: Allowed for MCP tokens (it is not an MCP tool) and for login tokens. The gateway uses it to check that a pinned `MCP_BRANCH_ID` belongs to the token's user and fails closed otherwise. Same rule as `BranchScope`. No profile data, no permissions. Refused with 403 `mcp_disabled` for an MCP token while `mcp.enabled` is false. Rate limited by `mcp-read`; not counted in the row budget.
+      responses:
+        '200':
+          description: Branch public ids
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [user_id, branches]
+                    properties:
+                      user_id: { type: string }
+                      branches: { type: array, items: { type: string } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /branches:
     get:
@@ -222,12 +254,13 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [tax_enabled, credit_limit_policy, base_currency, refund_segregation]
+                    required: [tax_enabled, credit_limit_policy, base_currency, refund_segregation, mcp_enabled]
                     properties:
                       tax_enabled: { type: boolean }
                       credit_limit_policy: { type: string, enum: [off, warn, block] }
                       base_currency: { type: string, example: EGP }
                       refund_segregation: { type: boolean }
+                      mcp_enabled: { type: boolean, description: Setting `mcp.enabled` (default false); MCP tokens work only while true }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /decisions:
@@ -5543,6 +5576,13 @@ components:
         created_at: { type: string, format: date-time }
         last_used_at: { type: [string, 'null'], format: date-time }
         expires_at: { type: [string, 'null'], format: date-time }
+        user:
+          type: [object, 'null']
+          description: Token owner, only in the `?all=1` listing
+          properties:
+            id: { type: string }
+            name: { type: string }
+            email: { type: string }
     Branch:
       type: object
       properties:

@@ -21,7 +21,7 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 | Role | Permissions | Intent |
 |---|---|---|
-| `admin` | 95 (all) | Full installation control, including user/role management and `branches.view_all`. |
+| `admin` | 96 (all) | Full installation control, including user/role management and `branches.view_all`. |
 | `finance_manager` | 81 | Accountant scope plus posting own drafts, approval rights, and read-only visibility of the user/role directory (`users.view`, `roles.view`). |
 | `senior_accountant` | 79 | Accountant scope plus posting/deleting own or branch journal drafts (maker-checker override, audited). |
 | `accountant` | 77 | Full accounting operations: CoA, periods, journals, parties, payments, reports — without user management or draft posting. |
@@ -35,7 +35,7 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 ## 3. Matrix
 
-`✓` = granted. Derived mechanically from the seeder constants (95 permissions × 9 roles).
+`✓` = granted. Derived mechanically from the seeder constants (96 permissions × 9 roles).
 
 ### Branches & settings
 
@@ -258,8 +258,13 @@ Rules are effective-dated and versioned; an approved version is immutable. Maker
 | Permission | admin | finance_manager | senior_accountant | accountant | supervisor | sales | reservations | cashier | viewer |
 |---|---|---|---|---|---|---|---|---|---|
 | `mcp.use` | ✓ | ✓ | — | — | — | — | — | — | — |
+| `mcp.admin` | ✓ | — | — | — | — | — | — | — | — |
 
-`mcp.use` only allows creating read-only MCP tokens (`POST /mcp/tokens`). Calls made with such a token still need the normal view permission (`bookings.view`, `invoices.view`, ...) and branch assignment.
+`mcp.use` only allows creating read-only MCP tokens (`POST /mcp/tokens`). Calls made with such a token still need the normal view permission and branch assignment: the MCP tools map one-to-one to existing GET routes, so the permission needed for each tool is the route's own (`customers.view` for `erp_customers_list` and `erp_customer_get`, `suppliers.view`, `bookings.view`, `invoices.view`, `payments.view`, `expenses.view`, `leads.view`, and `reports.view` for the four report tools; `erp_search` filters its groups by the matching view permissions). This table row set is enforced by `McpToolMatrixTest`, which drives the 403/200 check of every tool, the route permissions and the rows of this document from one table.
+
+`mcp.admin` lists every user's MCP tokens (`GET /mcp/tokens?all=1`) and revokes any of them (`DELETE /mcp/tokens/{id}`, audited with the owner and `revoked_by_admin`). It grants no data access: an administrator's own MCP token is limited by the administrator's own permissions like any other.
+
+Installation switch: setting `mcp.enabled` (default `false`, exposed as `mcp_enabled` in `GET /feature-flags`). While it is off, no token can be created and every request made with an MCP token is refused with `403 mcp_disabled`.
 
 ## 4. Known follow-ups
 

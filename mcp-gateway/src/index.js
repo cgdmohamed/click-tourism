@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Click Tourism ERP - read-only MCP gateway, stage 1 (ADR-0016), stdio transport.
+// Click Tourism ERP - read-only MCP gateway, stages 1-2 (ADR-0016), stdio transport.
 // No database, no filesystem access, no write tools. Calls /api/v1 with the user's own mcp:read token.
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -18,7 +18,7 @@ try {
 }
 
 const server = new Server(
-  { name: 'click-tourism-erp', version: '0.1.0' },
+  { name: 'click-tourism-erp', version: '0.2.0' },
   {
     capabilities: { tools: {} },
     instructions:

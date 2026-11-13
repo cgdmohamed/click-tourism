@@ -1,8 +1,8 @@
 {
   "name": "click-tourism-mcp-gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Read-only MCP gateway (stage 1) for the Click Tourism ERP. Calls /api/v1 with the user's own mcp:read token; no database access.",
+  "description": "Read-only MCP gateway (stages 1-2) for the Click Tourism ERP. Calls /api/v1 with the user's own mcp:read token; no database access.",
   "type": "module",
   "license": "UNLICENSED",
   "engines": { "node": ">=20" },

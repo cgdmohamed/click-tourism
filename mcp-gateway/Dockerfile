@@ -1,4 +1,4 @@
-# Read-only MCP gateway (stage 1). Not part of any production compose file:
+# Read-only MCP gateway (stages 1-2). Not part of any production compose file:
 # run it next to the MCP client, never with database credentials.
 FROM node:22-alpine
 WORKDIR /app

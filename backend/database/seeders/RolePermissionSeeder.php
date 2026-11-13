@@ -166,8 +166,8 @@ class RolePermissionSeeder extends Seeder
         'assets.view', 'assets.manage', 'assets.approve',
         'users.view', 'users.manage',
         'roles.view', 'roles.manage',
-        // MCP gateway stage 1 (ADR-0016): may create own read-only MCP tokens.
-        'mcp.use',
+        // MCP gateway (ADR-0016): may create own read-only MCP tokens; mcp.admin lists and revokes any user's.
+        'mcp.use', 'mcp.admin',
     ];
 
     /**
