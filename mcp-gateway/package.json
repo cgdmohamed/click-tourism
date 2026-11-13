@@ -9,7 +9,8 @@
   "bin": { "click-tourism-mcp": "src/index.js" },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "export:catalogue": "node scripts/export-catalogue.js > ../backend/resources/assistant/tools.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

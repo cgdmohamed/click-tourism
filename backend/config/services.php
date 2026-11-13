@@ -42,6 +42,16 @@ return [
     |
     */
 
+    /*
+    | In-product assistant provider (ADR-0017). The key is a secret: environment only, never stored
+    | in settings, returned by the API or logged. base_url exists for proxies and for tests; it is
+    | deliberately not a database setting so an administrator cannot redirect the key elsewhere.
+    */
+    'openai' => [
+        'key' => env('OPENAI_API_KEY'),
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+    ],
+
     'meta' => [
         'app_id' => env('META_APP_ID'),
         'app_secret' => env('META_APP_SECRET'),

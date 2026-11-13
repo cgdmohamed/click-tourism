@@ -34,6 +34,10 @@ class FeatureFlagsTest extends TestCase
                 'base_currency' => 'EGP',
                 'refund_segregation' => false,
                 'mcp_enabled' => false,
+                'assistant_enabled' => false,
+                'assistant_provider' => null,
+                'assistant_redact_pii' => true,
+                'assistant_privacy_url' => '',
             ]]);
 
         $settings = app(SettingService::class);

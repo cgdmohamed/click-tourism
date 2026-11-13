@@ -208,6 +208,11 @@ class SettingController extends ApiController
 
                 continue;
             }
+            if (($item['group'] ?? null) === 'assistant') {
+                $this->validateAssistantValue($index, (string) $item['key'], (string) ($item['value'] ?? ''));
+
+                continue;
+            }
             if (($item['group'] ?? null) === 'treasury') {
                 $value = trim((string) ($item['value'] ?? ''));
                 if (in_array($item['key'], ['reconciliation_lookahead_days', 'reconciliation_date_window_days'], true)
@@ -235,6 +240,40 @@ class SettingController extends ApiController
                     "settings.{$index}.value" => 'The fiscal year start must be a real MM-DD date (02-29 is not allowed).',
                 ]);
             }
+        }
+    }
+
+    /**
+     * Exact values only (the stored string is read back as is). Unknown keys are refused so nobody
+     * can park a provider key or other secret in the assistant group: the key is env-only.
+     */
+    private function validateAssistantValue(int $index, string $key, string $value): void
+    {
+        $fail = fn (string $message) => throw ValidationException::withMessages(["settings.{$index}.value" => $message]);
+        $ranges = [
+            'max_tool_calls_per_turn' => [1, 10],
+            'max_output_tokens' => [64, 8192],
+            'daily_token_budget' => [1000, 100000000],
+            'rate_limit_per_minute' => [1, 600],
+        ];
+
+        if (! in_array($key, ['enabled', 'provider', 'redact_pii', 'privacy_url', 'model', ...array_keys($ranges)], true)) {
+            $fail("assistant.{$key} is not a known setting. The provider API key is never a setting: set OPENAI_API_KEY in the environment.");
+        }
+        if (in_array($key, ['enabled', 'redact_pii'], true) && ! in_array($value, ['true', 'false'], true)) {
+            $fail("assistant.{$key} must be 'true' or 'false'.");
+        }
+        if ($key === 'provider' && ! in_array($value, ['none', 'openai'], true)) {
+            $fail('The assistant provider must be none or openai.');
+        }
+        if ($key === 'model' && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/', $value) !== 1) {
+            $fail('The assistant model must be a model name of up to 80 letters, digits, dots, colons, underscores or hyphens.');
+        }
+        if (isset($ranges[$key]) && (preg_match('/^\d{1,9}$/', $value) !== 1 || (int) $value < $ranges[$key][0] || (int) $value > $ranges[$key][1])) {
+            $fail("assistant.{$key} must be a whole number from {$ranges[$key][0]} to {$ranges[$key][1]}.");
+        }
+        if ($key === 'privacy_url' && $value !== '' && (mb_strlen($value) > 300 || preg_match('#^https://[^\s<>"\']+$#i', $value) !== 1)) {
+            $fail('The privacy link must be empty or an https address of up to 300 characters.');
         }
     }
 

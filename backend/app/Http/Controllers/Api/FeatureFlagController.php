@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Tax\Services\TaxPolicy;
 use Illuminate\Http\JsonResponse;
@@ -12,7 +13,7 @@ use Illuminate\Http\JsonResponse;
  */
 class FeatureFlagController extends ApiController
 {
-    public function show(SettingService $settings, TaxPolicy $tax): JsonResponse
+    public function show(SettingService $settings, TaxPolicy $tax, ProviderManager $assistant): JsonResponse
     {
         $policy = strtolower((string) $settings->get('accounting', 'credit_limit_policy', 'warn'));
 
@@ -24,6 +25,11 @@ class FeatureFlagController extends ApiController
             'base_currency' => $settings->baseCurrency(),
             'refund_segregation' => $settings->bool('accounting', 'refund_segregation', false),
             'mcp_enabled' => $settings->bool('mcp', 'enabled', false),
+            // The assistant panel is offered only when it can answer (switched on, a provider chosen, its key set).
+            'assistant_enabled' => $assistant->usable(),
+            'assistant_provider' => $assistant->usable() ? $assistant->providerName() : null,
+            'assistant_redact_pii' => $settings->bool('assistant', 'redact_pii', true),
+            'assistant_privacy_url' => (string) $settings->get('assistant', 'privacy_url', ''),
         ]);
     }
 }

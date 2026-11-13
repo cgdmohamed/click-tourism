@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AccountingScheduleController;
 use App\Http\Controllers\Api\AssignmentRuleController;
+use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AuditEventController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
@@ -85,6 +86,9 @@ Route::prefix('v1')->group(function () {
         Route::delete('mcp/tokens/{id}', [McpTokenController::class, 'destroy'])->whereNumber('id');
         // Gateway helper (MCP tokens allowed): the branches the token's user may use.
         Route::get('mcp/context', [McpTokenController::class, 'context']);
+
+        // In-product read-only assistant (ADR-0017). Stateless; permission first, then the per-user limiter.
+        Route::post('assistant/chat', [AssistantController::class, 'chat'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');
         Route::post('branches', [BranchController::class, 'store'])->middleware('permission:branches.create');

@@ -93,6 +93,7 @@ const shapes = {
   shield: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z'],
   mail: ['M2 5h20v14H2V5Z', 'm2 6 10 7 10-7'],
   tag: ['M3 3h8l10 10-8 8L3 11V3Z', 'M7 7h.01'],
+  sparkles: ['M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z', 'M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z'],
   percent: ['M19 5 5 19', 'M6.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M17.5 20a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z'],
 } as const satisfies Record<string, readonly string[]>
 

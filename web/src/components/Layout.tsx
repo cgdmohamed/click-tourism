@@ -1,16 +1,19 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { useTheme } from '../theme'
 import { BrandMark, useBrandName } from './Brand'
 import { useSyncCurrencyExponents } from '../lib/useCurrencies'
+import { AssistantPanel } from './AssistantPanel'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationBell } from './NotificationBell'
 import { Icon } from './icons'
 import type { IconName } from './icons'
 import { cx, IconButton, Spinner } from './ui'
 import { localizedName } from '../lib/names'
+import { showAssistant } from '../lib/assistant'
+import { useFeatureFlags } from '../lib/useSetting'
 
 type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[] }
 
@@ -25,6 +28,10 @@ export function Layout() {
   const brand = useBrandName()
   useSyncCurrencyExponents(Boolean(user))
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const { flags } = useFeatureFlags()
+  const assistantVisible = showAssistant(can('assistant.use'), flags)
+  const closeAssistant = useCallback(() => setAssistantOpen(false), [])
   const location = useLocation()
 
   if (loading) {
@@ -209,11 +216,25 @@ export function Layout() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <GlobalSearch />
             <NotificationBell />
+            {assistantVisible ? (
+              <button
+                type="button"
+                className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered hover:text-text-default"
+                onClick={() => setAssistantOpen((open) => !open)}
+                aria-expanded={assistantOpen}
+                aria-label={t('assistantOpen')}
+                title={t('assistantOpen')}
+              >
+                <Icon name="sparkles" className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('assistant')}</span>
+              </button>
+            ) : null}
             {branches.length > 1 ? (
               <label className="text-small flex items-center gap-2 text-text-subtle">
                 <Icon name="building" className="h-4 w-4" />
                 <span className="hidden sm:inline">{t('branch')}</span>
                 <select
+                  aria-label={t('branch')}
                   className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
                   value={activeBranch?.id ?? ''}
                   onChange={(event) => setActiveBranch(event.target.value)}
@@ -248,6 +269,7 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      {assistantVisible ? <AssistantPanel open={assistantOpen} onClose={closeAssistant} /> : null}
     </div>
   )
 }
