@@ -87,7 +87,7 @@ Assistant-specific rows (ADR-0017):
 | Privilege escalation through the model | A user without `invoices.view` asks for invoices | Tool runs as the same user through the route middleware: `forbidden` tool result, no data |
 | Rendered exfiltration | Answer contains an image, link or HTML that carries data | Output reduced to plain text; links come only from server-built citations; web renders text, internal `Link`s only |
 | Denial of wallet | Loop of questions or long tool chains | Per-user rate limit, daily token budget, tool-call cap per turn, max output tokens, report limiter, row budget |
-| Key exposure | Key stored, logged or echoed | Env only; Settings API refuses unknown `assistant.*` keys; provider errors never copy bodies; test asserts the key is absent from responses, flags, settings and audit |
+| Key exposure | Key stored, logged or echoed | Env only (ADR-0017); ADR-0019 proposes an encrypted, write-only, audited store in Settings, pending approval; Settings API refuses unknown `assistant.*` keys; provider errors never copy bodies; test asserts the key is absent from responses, flags, settings and audit |
 | Transcript retention | Conversations kept server-side | None stored; audit rows hold counts and tool names only |
 
 Additional abuse cases to test (blueprint AT-1..AT-14):
