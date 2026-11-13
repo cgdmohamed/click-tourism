@@ -7,6 +7,7 @@ import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
 import { useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import { taxMinor } from '../lib/tax'
+import type { Booking, Paginated } from '../lib/types'
 import {
   Badge,
   Button,
