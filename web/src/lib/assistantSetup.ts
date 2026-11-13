@@ -70,6 +70,23 @@ export function initialModel(stored: string | null | undefined, models: readonly
   return recommendedModel(models) ?? models[0]?.id ?? ''
 }
 
+/**
+ * The model the screen shows and saves: the administrator's unsaved pick when there is one
+ * (including an explicitly cleared field), otherwise the stored/recommended default.
+ *
+ * Settings and the model list load independently, so the draft is derived instead of copied
+ * into state: an effect that wrote the stored model could not see a later model list and would
+ * leave the picker showing a model the state does not hold.
+ */
+export function resolveModel(draft: string | null, stored: string | null | undefined, models: readonly AssistantModel[]): string {
+  if (draft !== null) return draft
+  const trimmed = (stored ?? '').trim()
+  // No list to compare against (still loading, discovery failed, or the account offers nothing):
+  // keep the saved model visible instead of blanking it.
+  if (trimmed !== '' && models.length === 0) return trimmed
+  return initialModel(stored, models)
+}
+
 /** Turning the assistant on needs a model, the accepted notice and the provider key. */
 export function canEnableAssistant(state: { model: string; accepted: boolean; keyConfigured: boolean }): boolean {
   return state.keyConfigured && state.accepted && state.model.trim() !== ''

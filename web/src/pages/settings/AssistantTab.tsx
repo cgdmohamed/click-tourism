@@ -9,11 +9,11 @@ import {
   acceptancePatch,
   assistantChanges,
   canEnableAssistant,
-  initialModel,
   isAccepted,
   modelsErrorState,
   readAssistantSettings,
   recommendedModel,
+  resolveModel,
 } from '../../lib/assistantSetup'
 import type { AssistantModels, SettingRow } from '../../lib/assistantSetup'
 import { formatDateTime } from '../../lib/format'
@@ -33,7 +33,9 @@ export function AssistantTab() {
   const readOnly = !can('settings.update')
 
   const [enabled, setEnabled] = useState(false)
-  const [model, setModel] = useState('')
+  // null means "nothing picked yet": the model then follows the stored value or the recommendation,
+  // so settings and the model list can finish loading in any order without overwriting each other.
+  const [modelDraft, setModelDraft] = useState<string | null>(null)
   const [acceptedAt, setAcceptedAt] = useState('')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
@@ -54,7 +56,7 @@ export function AssistantTab() {
     if (!settingsQuery.isSuccess) return
     setEnabled(current.enabled === 'true')
     setAcceptedAt(current.acceptedAt)
-    setModel(current.model)
+    setModelDraft(null)
   }, [settingsQuery.isSuccess, current])
 
   // Called automatically on mount: reports whether the provider key exists and which models it offers.
@@ -81,11 +83,10 @@ export function AssistantTab() {
       ? false
       : flags?.assistant_key_configured
 
-  // Preselect the stored model while the provider still offers it, else the recommended one.
-  useEffect(() => {
-    if (!listing) return
-    setModel(initialModel(current.model, listing.models))
-  }, [listing, current.model])
+  // Never copied into state: the stored model, the recommendation and the user's pick resolve here,
+  // whichever of /settings and /assistant/models arrives first.
+  const model = resolveModel(modelDraft, current.model, models)
+  const listed = models.some((entry) => entry.id === model)
 
   const provider = listing?.provider || flags?.assistant_provider || 'none'
   const providerName = provider === 'openai' || provider === 'none' ? 'OpenAI' : provider
@@ -194,9 +195,11 @@ export function AssistantTab() {
                     value={model}
                     dir="ltr"
                     disabled={readOnly || models.length === 0}
-                    onChange={(event) => setModel(event.target.value)}
+                    onChange={(event) => setModelDraft(event.target.value)}
                   >
                     {models.length === 0 ? <option value="">{t('assistantNoModels')}</option> : null}
+                    {/* A stored or typed model the account does not list stays selectable (never silently dropped). */}
+                    {model !== '' && !listed ? <option value={model}>{model}</option> : null}
                     {models.map((entry) => (
                       <option key={entry.id} value={entry.id}>
                         {entry.id}
@@ -211,7 +214,7 @@ export function AssistantTab() {
                     autoComplete="off"
                     placeholder="gpt-4.1-mini"
                     disabled={readOnly}
-                    onChange={(event) => setModel(event.target.value)}
+                    onChange={(event) => setModelDraft(event.target.value)}
                   />
                 )}
               </Field>

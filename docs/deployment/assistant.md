@@ -1,6 +1,6 @@
 # In-product assistant - enabling it, settings, permissions and cost control
 
-Stage 3 of `docs/architecture/mcp-ai-assistant-blueprint.md`, decided in ADR-0017; the model picker endpoint and the data-processing acceptance gate are ADR-0018 (Proposed). Optional, **off by default**, strictly read-only. The model provider is **OpenAI** (cloud); other providers can be added behind the `AssistantProvider` interface. Write or draft tools do not exist (stage 4 stays BLOCKED). Nothing is stored about conversations.
+Stage 3 of `docs/architecture/mcp-ai-assistant-blueprint.md`, decided in ADR-0017; the model picker endpoint and the data-processing acceptance gate are ADR-0018 (Accepted for those rows, 2026-11-13). Optional, **off by default**, strictly read-only. The model provider is **OpenAI** (cloud); other providers can be added behind the `AssistantProvider` interface. Write or draft tools do not exist (stage 4 stays BLOCKED). Nothing is stored about conversations.
 
 > **Data-processing notice (owner decision required).** Turning the assistant on sends the user's questions and the ERP data needed to answer them (after masking, see section 5) to OpenAI, a third-party cloud provider, from your server. OpenAI's own retention and abuse-monitoring rules apply to that data; check them against your customer contracts and local law before enabling. Real calls to OpenAI have **not** been verified by the team that built this (no internet or key was available): run the acceptance checks in section 8 once with your own key.
 

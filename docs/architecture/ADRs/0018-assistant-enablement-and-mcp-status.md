@@ -1,6 +1,6 @@
 # ADR-0018 - Assistant enablement (model discovery and data-processing acceptance) and MCP status
 
-- **Status:** **Proposed (requires architect approval).** Implemented in the working tree, not merged: the two new endpoints are API-contract additions, so they need architect and project-owner sign-off before release (the same rule that applied to ADR-0016/0017).
+- **Status:** Accepted for the rows in the **Approval record** below (project owner decisions 2026-11-13, granting the architect approval `AGENTS.md` and `docs/architecture/README.md` require for shared-contract changes). Signed for these rows only. Stage 4 (write/draft tools) stays blocked and is not affected.
 - **Date:** 2026-11-13
 - **Related:** ADR-0016 (MCP gateway), ADR-0017 (assistant provider abstraction and OpenAI), ADR-0006 (auth), ADR-0008 (API conventions), ADR-0010 (configuration and feature toggles), `docs/deployment/assistant.md`, `docs/deployment/mcp-gateway.md`, `docs/architecture/openapi.yaml`.
 
@@ -50,10 +50,31 @@ Additive only. No migration, no schema change, no new permission, no change to a
 
 - The administrator can now see which models the account offers, get a deterministic starting point and understand why the assistant is unusable, without reading server logs.
 - Consent is explicit, stored once and enforced both at the switch and at every chat call; the audit row makes the on/off transition traceable.
-- Both endpoints are **additive contract changes**: two new `GET` routes, three new feature-flag fields and one new chat error code (`assistant_not_accepted`). Existing clients are unaffected, but `openapi.yaml` must be published with them — hence this ADR is Proposed until the architect and owner approve.
+- Both endpoints are **additive contract changes**: two new `GET` routes, three new feature-flag fields, one new chat error code (`assistant_not_accepted`) and one new settings key. They are approved row by row in the Approval record below; existing clients are unaffected by the additions, and `openapi.yaml` ships with them as approved.
 - No secrets are exposed: the model endpoint answers "configured or not", never the key or provider bodies; the status endpoint never returns token material or abilities.
 - The filter and recommendation are heuristics over model ids. A future provider with different naming needs its own mapping; unknown ids are simply not offered (they can still be set by hand, because the settings validation remains the authority on what may be stored).
 - Copying this file must not become a second source of truth for the contract: `docs/architecture/openapi.yaml` is.
+
+## Approval record
+
+`AGENTS.md` ("Avoid changing shared schemas/contracts without architect approval") and `docs/architecture/README.md` ("Approval required") make the rows below a precondition of merge, not of implementation. They are recorded the way ADR-0016/0017 recorded theirs: who granted it, in what role, on what date, and the work order that granted it.
+
+| # | Contract change | Approver (name) | Role | Date | Where the approval was given |
+|---|---|---|---|---|---|
+| 1 | `GET /api/v1/assistant/models` (new route, response shape, `502`/`503` codes) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "I approve all 6 rows - record it" (branch `agent/assistant-onboarding-and-mcp-status`) |
+| 2 | `GET /api/v1/mcp/status` (new route, response shape) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "I approve all 6 rows - record it" (branch `agent/assistant-onboarding-and-mcp-status`) |
+| 3 | `GET /api/v1/feature-flags`: added `assistant_key_configured`, `assistant_accepted`, `assistant_model`; `assistant_enabled` narrowed to enabled ∧ accepted ∧ key | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "I approve all 6 rows - record it" (branch `agent/assistant-onboarding-and-mcp-status`) |
+| 4 | `POST /api/v1/assistant/chat`: new `403 assistant_not_accepted`, ordered before the `503` | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "I approve all 6 rows - record it" (branch `agent/assistant-onboarding-and-mcp-status`) |
+| 5 | Setting `assistant.data_processing_accepted_at` plus the `422` enable guard | Project owner | project owner (data may leave the server) | 2026-11-13 | Owner decision in the implementation session: "I approve all 6 rows - record it" (branch `agent/assistant-onboarding-and-mcp-status`) |
+| 6 | Publishing the matching `docs/architecture/openapi.yaml` additions | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "I approve all 6 rows - record it" (branch `agent/assistant-onboarding-and-mcp-status`) |
+
+How a future approval is recorded (the same form ADR-0016/0017 used):
+
+1. Replace the cells with the approver's name, the role, the date and the place (a PR comment link, an issue, or a dated owner decision document). Every cell must be filled; a partial row is refused.
+2. Change the status line to `Accepted for ... (project owner decisions, <date>)`, quoting what was granted and for which rows — exactly as ADR-0016 does for its contract additions.
+3. `backend/tests/Feature/ContractApprovalTest.php` enforces this: it fails while a contract-changing ADR is unapproved, and it also fails if the status line says Accepted while any row is still a placeholder or missing a date. Fixing it requires the recorded approval, not a status edit.
+
+Scope of this grant: the six additions listed above and nothing else. Any later change to these routes, shapes or codes — a new field, a changed status code, another flag — needs its own row and its own sign-off. The grant does not extend to stage 4 (write/draft tools), which remains blocked.
 
 ## Alternatives considered
 

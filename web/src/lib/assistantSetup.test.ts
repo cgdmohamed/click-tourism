@@ -9,6 +9,7 @@ import {
   modelsErrorState,
   readAssistantSettings,
   recommendedModel,
+  resolveModel,
 } from './assistantSetup'
 import type { AssistantModel, AssistantSettings, SettingRow } from './assistantSetup'
 
@@ -58,6 +59,38 @@ describe('assistant setup helpers', () => {
     expect(initialModel('gpt-3.5-turbo', models)).toBe('gpt-4.1-mini')
     expect(initialModel('', [{ id: 'a', recommended: false }])).toBe('a')
     expect(initialModel('', [])).toBe('')
+  })
+
+  it('derives the model from the draft, the stored value and the list together', () => {
+    // No pick yet: the recommended model appears as soon as the list loads, even when the
+    // stored model is blank and the settings request answered first (or last).
+    expect(resolveModel(null, '', models)).toBe('gpt-4.1-mini')
+    expect(resolveModel(null, '', [])).toBe('')
+    // A stored model still offered wins over the recommendation, whichever request settled first.
+    expect(resolveModel(null, 'gpt-4o-mini', models)).toBe('gpt-4o-mini')
+    // Without a list (still loading, discovery failed) the saved model stays visible.
+    expect(resolveModel(null, 'gpt-4o-mini', [])).toBe('gpt-4o-mini')
+    expect(resolveModel(null, 'gpt-3.5-turbo', [])).toBe('gpt-3.5-turbo')
+    // A stored model the account no longer lists gives way to the recommendation once the list is known.
+    expect(resolveModel(null, 'gpt-3.5-turbo', models)).toBe('gpt-4.1-mini')
+    // The administrator's unsaved pick always wins, including an explicitly cleared field.
+    expect(resolveModel('gpt-4o-mini', '', models)).toBe('gpt-4o-mini')
+    expect(resolveModel('', 'gpt-4o-mini', models)).toBe('')
+  })
+
+  it('keeps an unpicked model consistent when the list arrives after settings', () => {
+    // Regression: the stored model used to be written into state, so a list that settled first was
+    // overwritten with '' and the picker showed an option the state did not hold. Deriving the value
+    // means the same inputs give the same answer in either order.
+    const afterSettings = resolveModel(null, '', [])
+    expect(canEnableAssistant({ model: afterSettings, accepted: true, keyConfigured: true })).toBe(false)
+    const afterList = resolveModel(null, '', models)
+    expect(canEnableAssistant({ model: afterList, accepted: true, keyConfigured: true })).toBe(true)
+    expect(assistantChanges(stored, { enabled: true, model: afterList, acceptedAt: '' })).toEqual([
+      { group: 'assistant', key: 'model', value: 'gpt-4.1-mini' },
+      { group: 'assistant', key: 'provider', value: 'openai' },
+      { group: 'assistant', key: 'enabled', value: 'true' },
+    ])
   })
 
   it('enables only with a model, acceptance and the provider key', () => {
