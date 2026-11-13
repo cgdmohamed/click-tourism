@@ -210,6 +210,8 @@ class ReportDocument
             $metaLines[] = $this->text($labels['currency'].': '.$meta['currency'], $rtl);
         }
         $metaLines[] = $this->text($labels['generated'].': '.$generated, $rtl);
+        // DEC-025: internal management reporting, never presented as externally certified.
+        $metaLines[] = $this->text($labels['internal'], $rtl);
 
         $logoCell = $logo !== null ? '<td class="logo"><img src="'.$logo.'" alt=""></td>' : '';
         $nameCell = '<td class="company">'.implode('<br>', array_map(fn (string $l): string => $this->escape($this->text($l, $rtl)), $companyLines)).'</td>';
@@ -458,12 +460,12 @@ class ReportDocument
         $en = [
             'branch' => 'Branch', 'period' => 'Period', 'currency' => 'Currency', 'generated' => 'Generated',
             'page' => 'Page', 'all_branches' => 'All branches', 'prepared' => 'Prepared by',
-            'approved' => 'Approved by', 'date' => 'Date',
+            'approved' => 'Approved by', 'date' => 'Date', 'internal' => 'Internal management report',
         ];
         $ar = [
             'branch' => 'الفرع', 'period' => 'الفترة', 'currency' => 'العملة', 'generated' => 'تاريخ الإصدار',
             'page' => 'صفحة', 'all_branches' => 'كل الفروع', 'prepared' => 'أعده',
-            'approved' => 'اعتمده', 'date' => 'التاريخ',
+            'approved' => 'اعتمده', 'date' => 'التاريخ', 'internal' => 'تقرير إداري للاستخدام الداخلي',
         ];
 
         if ($language === 'en') {

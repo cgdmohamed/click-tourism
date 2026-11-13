@@ -118,7 +118,9 @@ class InvoiceDocumentTest extends TestCase
         $html = app(InvoiceDocument::class)->html($invoice, 'bilingual');
 
         $this->assertStringContainsString($invoice->number, $html);
-        $this->assertStringContainsString('Sales invoice', $html);
+        $this->assertStringContainsString('Invoice', $html);
+        $this->assertStringNotContainsStringIgnoringCase('tax invoice', $html);
+        $this->assertStringNotContainsString('فاتورة ضريبية', $html);
         $this->assertStringContainsString('Test Customer', $html);
         $this->assertStringContainsString('Head Office', $html);
         $this->assertStringContainsString('Tour package sale', $html);
@@ -234,7 +236,7 @@ class InvoiceDocumentTest extends TestCase
         $html = app(InvoiceDocument::class)->html($invoice, 'ar');
 
         $this->assertStringContainsString('dir="rtl"', $html);
-        $this->assertStringNotContainsString('Sales invoice', $html);
+        $this->assertStringNotContainsString('>Invoice<', $html);
         $this->assertStringNotContainsString('Amount due', $html);
     }
 
