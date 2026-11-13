@@ -20,6 +20,7 @@ class RolePermissionSeeder extends Seeder
         'admin' => ['*'],
         'accountant' => [
             'branches.view',
+            'attachments.view', 'attachments.upload', 'attachments.extract',
             'settings.view', 'settings.update', 'accounting.approve_policy',
             'accounts.view', 'accounts.create', 'accounts.update', 'accounts.post',
             'periods.view', 'periods.manage', 'periods.post_soft_closed',
@@ -60,6 +61,7 @@ class RolePermissionSeeder extends Seeder
         ],
         'sales' => [
             'expenses.view', 'expenses.create',
+            'attachments.view', 'attachments.upload', 'attachments.extract', 'attachments.sensitive',
             'branches.view',
             'accounts.view',
             'customers.view', 'customers.create', 'customers.update',
@@ -103,6 +105,7 @@ class RolePermissionSeeder extends Seeder
         ],
         // Reservations desk: bookings and parties without accounting power.
         'reservations' => [
+            'attachments.view', 'attachments.upload', 'attachments.extract', 'attachments.sensitive',
             'bookings.view', 'bookings.create', 'bookings.update', 'bookings.transition', 'bookings.cancel',
             'customers.view', 'customers.create', 'customers.update',
             'suppliers.view', 'supplier_obligations.view',
@@ -123,6 +126,7 @@ class RolePermissionSeeder extends Seeder
         ],
         // Cashier: collections and refunds at the counter.
         'cashier' => [
+            'attachments.view', 'attachments.upload',
             'payments.view', 'payments.create', 'payments.manage', 'payments.reverse',
             'refunds.create',
             'transfers.view', 'transfers.create',
@@ -170,6 +174,8 @@ class RolePermissionSeeder extends Seeder
         'mcp.use', 'mcp.admin',
         // In-product assistant (ADR-0017): may chat with the read-only assistant. Data access stays the user's own.
         'assistant.use',
+        // Document attachments (ADR-0021). attachments.sensitive opens passports, visas and travel documents.
+        'attachments.view', 'attachments.upload', 'attachments.delete', 'attachments.extract', 'attachments.sensitive',
     ];
 
     /**

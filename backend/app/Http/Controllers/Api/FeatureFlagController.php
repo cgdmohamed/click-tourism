@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Assistant\Services\ProviderManager;
+use App\Modules\Attachments\Services\ExtractionService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Tax\Services\TaxPolicy;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class FeatureFlagController extends ApiController
             'assistant_enabled' => $assistant->usable(),
             'assistant_provider' => $assistant->usable() ? $assistant->providerName() : null,
             'assistant_key_configured' => $assistant->keyConfigured(),
+            'attachments_extraction_enabled' => app(ExtractionService::class)->available(),
             'assistant_key_source' => $assistant->keySource(),
             'assistant_accepted' => $assistant->accepted(),
             'assistant_model' => $assistant->model(),
