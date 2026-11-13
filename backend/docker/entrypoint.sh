@@ -21,6 +21,12 @@ if [ -z "${APP_KEY:-}" ]; then
     exit 1
 fi
 
+# An APP_KEY that cannot encrypt breaks every encrypted feature (a provider key saved from Settings,
+# extracted document values) with a 500. Existing installations keep starting; the warning is loud.
+if ! php -r '$k = (string) getenv("APP_KEY"); if (strncmp($k, "base64:", 7) === 0) { $k = base64_decode(substr($k, 7), true); } exit(is_string($k) && in_array(strlen($k), [16, 32], true) ? 0 : 1);'; then
+    echo "WARNING: APP_KEY is not a valid encryption key (expected 32 random bytes, e.g. from 'php artisan key:generate --show'). Encrypted features will fail until it is fixed." >&2
+fi
+
 # Refuse well-known database passwords on a real (non-demo) installation.
 if [ "${DEMO_MODE:-false}" != "true" ] && [ "${APP_ENV:-production}" = "production" ]; then
     case "$(printf '%s' "${DB_PASSWORD:-}" | tr 'A-Z' 'a-z')" in
@@ -74,6 +80,16 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     else
         echo "Running production migrations..."
         php artisan migrate --force
+        # Idempotent upgrade tasks (docs/deployment/release-checklist.md): give the built-in roles the
+        # permissions introduced by this release and create any chart accounts newer code relies on.
+        # Neither touches users, existing accounts or postings. A failure is reported loudly but does
+        # not stop the application from starting; run the command by hand and read its output.
+        if [ "${RUN_UPGRADE_TASKS:-true}" = "true" ]; then
+            echo "Synchronising roles and permissions..."
+            php artisan roles:sync || echo "WARNING: roles:sync failed; new permissions may be missing. Run 'php artisan roles:sync' by hand." >&2
+            echo "Ensuring required chart accounts exist..."
+            php artisan accounting:ensure-accounts --apply || echo "WARNING: accounting:ensure-accounts failed; run 'php artisan accounting:ensure-accounts --apply' by hand." >&2
+        fi
         if [ "${SEED_DEMO:-false}" = "true" ]; then
             echo "FATAL: SEED_DEMO is not permitted in production." >&2
             exit 1

@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\AccountingDocumentController;
 use App\Http\Controllers\Api\AccountingScheduleController;
 use App\Http\Controllers\Api\AssignmentRuleController;
 use App\Http\Controllers\Api\AssistantController;
+use App\Http\Controllers\Api\AttachmentController;
+use App\Http\Controllers\Api\AttachmentExtractionController;
 use App\Http\Controllers\Api\AuditEventController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
@@ -94,6 +96,18 @@ Route::prefix('v1')->group(function () {
         // Model discovery for the Settings model picker (ADR-0018). Read-only: saving needs settings.update.
         Route::put('assistant/key', [AssistantController::class, 'storeKey'])->middleware(['permission:settings.update', 'throttle:10,1']);
         Route::delete('assistant/key', [AssistantController::class, 'destroyKey'])->middleware('permission:settings.update');
+        // Private document attachments (ADR-0021). Each route re-checks the record the document belongs to.
+        Route::get('attachments', [AttachmentController::class, 'index'])->middleware('permission:attachments.view');
+        Route::post('attachments', [AttachmentController::class, 'store'])->middleware(['permission:attachments.upload', 'throttle:30,1']);
+        Route::get('attachments/{attachment}', [AttachmentController::class, 'show'])->middleware('permission:attachments.view');
+        Route::patch('attachments/{attachment}', [AttachmentController::class, 'update'])->middleware('permission:attachments.upload');
+        Route::delete('attachments/{attachment}', [AttachmentController::class, 'destroy'])->middleware('permission:attachments.delete');
+        Route::get('attachments/{attachment}/download', [AttachmentController::class, 'download'])->middleware(['permission:attachments.view', 'throttle:60,1']);
+        Route::get('attachments/{attachment}/preview', [AttachmentController::class, 'preview'])->middleware(['permission:attachments.view', 'throttle:120,1']);
+        Route::get('attachments/{attachment}/extraction', [AttachmentExtractionController::class, 'show'])->middleware('permission:attachments.view');
+        Route::post('attachments/{attachment}/extraction', [AttachmentExtractionController::class, 'store'])->middleware(['permission:attachments.extract', 'throttle:10,1']);
+        Route::post('attachment-extractions/{extraction}/confirm', [AttachmentExtractionController::class, 'confirm'])->middleware('permission:attachments.extract');
+        Route::post('attachment-extractions/{extraction}/reject', [AttachmentExtractionController::class, 'reject'])->middleware('permission:attachments.extract');
         Route::get('assistant/models', [AssistantController::class, 'models'])->middleware('permission:settings.view');
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('permission:branches.view');

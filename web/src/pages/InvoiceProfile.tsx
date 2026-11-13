@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
+import AttachmentsCard from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { downloadResponse } from '../lib/download'
@@ -313,6 +314,7 @@ export default function InvoiceProfile() {
             </Table>
           </Card>
         ) : null}
+        <AttachmentsCard type="invoice" recordId={id} />
       </div>
     </div>
   )

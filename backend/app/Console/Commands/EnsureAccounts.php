@@ -55,6 +55,14 @@ class EnsureAccounts extends Command
             return self::FAILURE;
         }
 
+        // A fresh installation has no chart yet: erp:install seeds the whole chart, so creating a few
+        // accounts first would only leave it half built.
+        if (! Account::query()->exists()) {
+            $this->line('No chart of accounts yet; nothing to ensure.');
+
+            return self::SUCCESS;
+        }
+
         $catalog = collect(ChartOfAccountsSeeder::accounts())->keyBy('code');
         $missing = 0;
         $created = [];

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Assistant\Support\ProviderCredentials;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\DecisionRegistry;
 use App\Modules\Core\Services\SettingService;
@@ -68,6 +69,7 @@ class SettingController extends ApiController
         $this->validateAccountingPolicyValues($data['settings']);
         $this->validateGeneralValues($data['settings']);
         $this->validateAssistantEnablement($data['settings'], $settings);
+        $this->validateAttachmentSettings($data['settings'], $settings);
 
         $user = $request->user();
         $errors = [];
@@ -264,6 +266,32 @@ class SettingController extends ApiController
      *
      * @param  array<int, array<string, mixed>>  $items
      */
+    /**
+     * Document extraction sends the document to the provider, so it needs the same acceptance as the
+     * assistant and a provider key before it can be switched on.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function validateAttachmentSettings(array $items, SettingService $settings): void
+    {
+        foreach ($items as $index => $item) {
+            if (($item['group'] ?? null) !== 'attachments') {
+                continue;
+            }
+            $value = trim((string) ($item['value'] ?? ''));
+            if (($item['key'] ?? null) !== 'extraction_enabled' || ! in_array($value, ['true', 'false'], true)) {
+                throw ValidationException::withMessages(["settings.{$index}.value" => "attachments.extraction_enabled must be 'true' or 'false'; no other attachments setting exists."]);
+            }
+            if ($value === 'true') {
+                $accepted = trim((string) $settings->get('assistant', 'data_processing_accepted_at', '')) !== ''
+                    || collect($items)->contains(fn ($i) => ($i['group'] ?? null) === 'assistant' && ($i['key'] ?? null) === 'data_processing_accepted_at' && trim((string) ($i['value'] ?? '')) !== '');
+                if (! $accepted || app(ProviderCredentials::class)->source() === 'none') {
+                    throw ValidationException::withMessages(["settings.{$index}.value" => 'Accept the data-processing notice and save a provider key before enabling document extraction.']);
+                }
+            }
+        }
+    }
+
     private function validateAssistantEnablement(array $items, SettingService $settings): void
     {
         $enablingIndex = null;

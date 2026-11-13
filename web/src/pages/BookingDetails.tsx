@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
+import AttachmentsCard from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { exponent, formatDate, formatDateTime, formatMoney, toMinor } from '../lib/format'
@@ -427,6 +428,8 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
                 </ol>
               )}
             </div>
+
+            <AttachmentsCard type="booking" recordId={booking.id} />
           </div>
         ) : null}
       </Modal>

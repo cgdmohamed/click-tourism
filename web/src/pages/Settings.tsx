@@ -9,6 +9,7 @@ import { resolveTab } from '../lib/tabs'
 import { DecisionsPanel } from '../components/DecisionsPanel'
 import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import IntegrationsPanel from '../components/IntegrationsPanel'
+import ExtractionSwitchCard from '../components/ExtractionSwitchCard'
 import McpStatusCard from '../components/McpStatusCard'
 import { Button, Card, CardHeader, ErrorState, Loading, PageHeader, TabPanel, Tabs, type TabItem } from '../components/ui'
 import { AssistantTab } from './settings/AssistantTab'
@@ -219,7 +220,12 @@ export default function Settings() {
           </>
         ) : null}
 
-        {active === 'assistant' && can('settings.view') ? <AssistantTab /> : null}
+        {active === 'assistant' && can('settings.view') ? (
+          <>
+            <AssistantTab />
+            <ExtractionSwitchCard />
+          </>
+        ) : null}
 
         {active === 'decisions' ? <DecisionsPanel /> : null}
       </TabPanel>

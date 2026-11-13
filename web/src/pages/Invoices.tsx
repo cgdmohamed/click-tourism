@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -7,6 +7,7 @@ import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
 import { useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import { taxMinor } from '../lib/tax'
+import type { InvoicePrefill } from '../lib/attachments'
 import type { Booking, Paginated } from '../lib/types'
 import {
   Badge,
@@ -104,6 +105,29 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+
+  // A confirmed document extraction opens the form pre-filled; the user still picks the party and saves it
+  // through the normal rules. The state is cleared so a refresh does not reopen it.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const prefill = (location.state as { invoicePrefill?: InvoicePrefill } | null)?.invoicePrefill
+  useEffect(() => {
+    if (!prefill) return
+    setForm((current) => ({
+      ...current,
+      type: 'supplier_invoice',
+      party_type: 'supplier',
+      party_id: '',
+      issue_date: prefill.issue_date ?? current.issue_date,
+      due_date: prefill.due_date ?? '',
+      currency: prefill.currency ?? current.currency,
+      memo: prefill.memo ?? '',
+      lines: [{ ...emptyLine, description: prefill.description ?? '', unit_price: prefill.amount ?? '' }],
+    }))
+    setOpen(true)
+    navigate(location.pathname, { replace: true, state: null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill])
   const [simpleMode, setSimpleMode] = useState(true)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)

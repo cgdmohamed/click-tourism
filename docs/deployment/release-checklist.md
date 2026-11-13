@@ -193,7 +193,8 @@ docker compose --profile workers stop worker scheduler
 docker compose exec backend php artisan down --message="Maintenance" --retry=60
 # 3. Fresh backup and the "before" fingerprint (see above), then pull the pinned release.
 docker compose pull            # or: git checkout vX.Y.Z && docker compose build
-# 4. Start the new backend. With RUN_MIGRATIONS=true the entrypoint runs `php artisan migrate --force`.
+# 4. Start the new backend. With RUN_MIGRATIONS=true the entrypoint runs `php artisan migrate --force`,
+#    then (unless RUN_UPGRADE_TASKS=false) `php artisan roles:sync` and `php artisan accounting:ensure-accounts --apply`.
 docker compose up -d --no-deps backend api web
 docker compose logs --tail=50 backend
 # 5. Release steps.

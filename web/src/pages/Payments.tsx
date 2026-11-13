@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
+import { DocumentsButton } from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
@@ -359,6 +360,7 @@ export default function Payments() {
                     {toDecimal(payment.unallocated_minor, payment.currency)} {payment.currency}
                   </Td>
                   <Td className="text-end">
+                    <DocumentsButton type="payment" recordId={payment.id} />
                     {payment.status === 'posted' && payment.unallocated_minor > 0 && can('payments.create') ? (
                       <Button
                         variant="ghost"

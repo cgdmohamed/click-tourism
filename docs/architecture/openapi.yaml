@@ -3971,6 +3971,164 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { description: Period closed or account missing }
 
+  /attachments:
+    get:
+      tags: [Attachments]
+      summary: Documents of a record (permission `attachments.view`)
+      description: |
+        Lists the documents of one customer, supplier, booking, invoice, payment or expense. The caller must be allowed to view that record (permission and branch). Documents of personal-data categories (passport, visa, travel document) are left out unless the caller has `attachments.sensitive`; `hidden_sensitive_count` says how many.
+      parameters:
+        - { name: attachable_type, in: query, required: true, schema: { type: string, enum: [customer, supplier, booking, invoice, payment, expense] } }
+        - { name: attachable_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: items and hidden_sensitive_count
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Record not found }
+    post:
+      tags: [Attachments]
+      summary: Upload one or more documents to a record (permission `attachments.upload`)
+      description: |
+        multipart/form-data with `attachable_type`, `attachable_id`, `category` (passport, visa, booking_confirmation, supplier_invoice, payment_receipt, bank_transfer, travel_document, contract, other), optional `notes` and `files[]` (up to 10; PDF, JPEG, PNG or WebP up to 10 MB, checked by content). A file already stored for the record is not stored twice (`duplicate: true`). Refused files come back in `rejected` with a reason and do not block the others. Personal-data categories need `attachments.sensitive`.
+      responses:
+        '201':
+          description: Stored documents and refused files
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Validation failed }
+        '503': { description: 'The disk is full or not writable (`storage_unavailable`); nothing is recorded for the failing file, files stored earlier in the same request remain' }
+  /attachments/{attachment}:
+    get:
+      tags: [Attachments]
+      summary: Document metadata (permission `attachments.view`)
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    patch:
+      tags: [Attachments]
+      summary: Change the category or notes (permission `attachments.upload`)
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    delete:
+      tags: [Attachments]
+      summary: Remove a document from the record (permission `attachments.delete`)
+      description: 'Soft delete: the record disappears from lists and the file is kept for audit. Audited.'
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /attachments/{attachment}/download:
+    get:
+      tags: [Attachments]
+      summary: Download the file (permission `attachments.view`)
+      description: |
+        Streamed through the API with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and a sandbox CSP; audited. Documents are never reachable by a public URL.
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The file }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /attachments/{attachment}/preview:
+    get:
+      tags: [Attachments]
+      summary: Preview the file inline (permission `attachments.view`)
+      description: 'Same checks and headers as download with `Content-Disposition: inline`; audited.'
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The file }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+  /attachments/{attachment}/extraction:
+    get:
+      tags: [Attachments]
+      summary: Latest extraction of a document (permission `attachments.view`)
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The latest extraction or null
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not found }
+    post:
+      tags: [Attachments]
+      summary: Ask the provider to read the document (permission `attachments.extract`)
+      description: |
+        A proposal only (ADR-0021): it creates no invoice, payment or customer change, posts nothing and approves nothing. Needs `attachments.extraction_enabled`, the accepted data-processing notice and a provider key (422 `extraction_unavailable` otherwise, or when the category cannot be read or the file is too large). A provider failure answers 200 with `status: failed` so the user continues by hand. An unreviewed proposal is reused instead of asking again. Unclear or missing values are flagged (`flag`: `missing` or `unclear`), never guessed. Throttled to 10 a minute.
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The extraction (status succeeded or failed)
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: extraction_unavailable }
+  /attachment-extractions/{extraction}/confirm:
+    post:
+      tags: [Attachments]
+      summary: Confirm the reviewed values (permission `attachments.extract`)
+      description: "`values` holds the reviewer's final value for each field (null leaves it empty). Unknown fields and values invalid for their type (date YYYY-MM-DD, plain decimal amount, 3-letter currency) are refused with 422. Confirming twice returns the first confirmation. Stores the values with the document and writes nothing else: invoices, payments and customers are changed only through their own forms and rules."
+      parameters:
+        - { name: extraction, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [values], properties: { values: { type: object, additionalProperties: { type: string, nullable: true } } } }
+      responses:
+        '200':
+          description: The confirmed extraction
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: Invalid values or not awaiting review }
+  /attachment-extractions/{extraction}/reject:
+    post:
+      tags: [Attachments]
+      summary: Reject a proposal (permission `attachments.extract`)
+      parameters:
+        - { name: extraction, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The rejected extraction
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /fixed-asset-categories:
     get:
       tags: [Fixed Assets]
