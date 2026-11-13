@@ -1,6 +1,6 @@
 # ADR-0021 - Document attachments and AI-assisted extraction (GAP-CORE-03)
 
-- **Status:** **Proposed - architect approval pending** for the rows in the Approval record. The requirement itself (attachments with AI-assisted extraction and mandatory review) was approved by the project owner on 2026-11-13.
+- **Status:** **Accepted** (project owner decision 2026-11-13, granting the architect approval `AGENTS.md` and `docs/architecture/README.md` require). The requirement itself (attachments with AI-assisted extraction and mandatory review) was approved the same day.
 - **Date:** 2026-11-13
 - **Related:** ADR-0017/0018/0019 (assistant provider, data-processing notice, key in Settings), ADR-0005 (branch scope), `docs/deployment/attachments.md`, `docs/architecture/openapi.yaml`, `docs/architecture/threat-model.md`.
 
@@ -29,6 +29,6 @@ The module matrix listed attachments but nothing existed. The approved requireme
 
 | # | Change | Approver (name) | Role | Date | Where the approval was given |
 |---|---|---|---|---|---|
-| 1 | Tables `attachments`, `attachment_extractions` and the file storage rules (items 1, 2, 4, 5) | _pending_ | architect | _pending_ | _pending_ |
-| 2 | Permissions, access rules and personal-data handling (item 3) | _pending_ | architect | _pending_ | _pending_ |
-| 3 | Extraction: setting, routes, review rule and data sent to the provider (items 6, 7) | _pending_ | architect | _pending_ | _pending_ |
+| 1 | Tables `attachments`, `attachment_extractions` and the file storage rules (items 1, 2, 4, 5) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0021 (PR #78) |
+| 2 | Permissions, access rules and personal-data handling (item 3) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0021 (PR #78) |
+| 3 | Extraction: setting, routes, review rule and data sent to the provider (items 6, 7) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0021 (PR #78) |
