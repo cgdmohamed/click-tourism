@@ -13,6 +13,7 @@ use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Payments\Services\SupplierSettlementService;
+use App\Modules\Reports\Services\ReportService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -221,7 +222,7 @@ class SupplierCostRecognitionTest extends TestCase
 
     private function supplierCostLines(string $from = '2026-01-01', string $to = '2026-12-31'): int
     {
-        $ledger = app(\App\Modules\Reports\Services\ReportService::class)->generalLedger(
+        $ledger = app(ReportService::class)->generalLedger(
             $this->account('5100'), $from, $to, $this->branch, 1, 100, null,
             ['type' => 'supplier', 'id' => $this->theSupplier->id],
         );

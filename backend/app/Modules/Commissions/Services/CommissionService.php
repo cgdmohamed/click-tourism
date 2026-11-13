@@ -447,6 +447,49 @@ class CommissionService
     }
 
     /**
+     * DEC-004: the commission a beneficiary can expect from bookings that are not fully collected
+     * yet. Never stored and never payable: it becomes a commission (accrued, then approved and
+     * payable) only when the whole booking amount is collected. Bounded to the newest 500 open
+     * bookings so the overview stays fast.
+     *
+     * @param  list<int>  $branchIds
+     * @return list<array{booking: string, beneficiary_type: string, beneficiary_id: int, rule: string, amount_minor: int}>
+     */
+    public function expected(array $branchIds): array
+    {
+        $bookings = Booking::query()->with('items')
+            ->whereIn('branch_id', $branchIds)
+            ->whereIn('status', ['confirmed', 'in_progress', 'completed', 'closed'])
+            ->where('total_sell_minor', '>', 0)
+            ->orderByDesc('id')->limit(500)->get();
+
+        $rows = [];
+        foreach ($bookings as $booking) {
+            if ($this->fullyCollected($booking)) {
+                continue;
+            }
+            foreach ($this->rules->resolve($booking, now()->toDateString()) as $winner) {
+                $key = Commission::activeKey($booking->id, $winner['beneficiary_type'], $winner['beneficiary_id']);
+                if (Commission::query()->where('active_key', $key)->exists()) {
+                    continue;
+                }
+                $amount = $this->calculator->forBooking($winner['rule'], $booking)['amount_minor'];
+                if ($amount > 0) {
+                    $rows[] = [
+                        'booking' => $booking->number,
+                        'beneficiary_type' => $winner['beneficiary_type'],
+                        'beneficiary_id' => $winner['beneficiary_id'],
+                        'rule' => $winner['rule']->code,
+                        'amount_minor' => $amount,
+                    ];
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * Beneficiary statement: accruals, reversals and payouts in a window,
      * with the amount currently payable. Limited to the branches the caller may see.
      *
@@ -498,6 +541,11 @@ class CommissionService
                 'payable_minor' => (int) $commissions->whereIn('status', ['posted'])->sum(fn (Commission $c) => $c->amount_minor - $c->paid_minor),
                 'paid_minor' => (int) $commissions->whereIn('status', ['posted', 'paid', 'reversed'])->sum('paid_minor'),
                 'reversed_minor' => $sum(['reversed']),
+                // DEC-004: shown apart from what is owed. Expected is not payable until fully collected;
+                // adjusted is what refunds, cancellations or corrections took back, history kept.
+                'expected_minor' => (int) collect($this->expected($branchIds))
+                    ->where('beneficiary_type', $type)->where('beneficiary_id', $beneficiaryId)->sum('amount_minor'),
+                'adjusted_minor' => $sum(['reversed', 'cancelled']),
             ],
             'lines' => $lines,
         ];
@@ -515,13 +563,25 @@ class CommissionService
             ->when($type, fn ($q) => $q->where('beneficiary_type', $type))
             ->get()->groupBy(fn (Commission $c) => $c->beneficiary_type.':'.$c->beneficiary_id);
 
-        return $rows->map(function ($items) {
-            /** @var Commission $first */
-            $first = $items->first();
+        $expected = collect($this->expected($branchIds))
+            ->when($type, fn ($c) => $c->where('beneficiary_type', $type))
+            ->groupBy(fn (array $r) => $r['beneficiary_type'].':'.$r['beneficiary_id']);
+        // A beneficiary with only expected commission still appears in the overview.
+        foreach ($expected->keys() as $key) {
+            if (! $rows->has($key)) {
+                $rows->put($key, collect());
+            }
+        }
+
+        return $rows->map(function ($items, $key) use ($expected) {
+            [$beneficiaryType, $beneficiaryId] = explode(':', (string) $key);
+            $beneficiaryId = (int) $beneficiaryId;
 
             return [
-                'beneficiary_type' => $first->beneficiary_type,
-                'beneficiary' => CommissionRule::describeBeneficiary($first->beneficiary_type, $first->beneficiary_id),
+                'beneficiary_type' => $beneficiaryType,
+                'beneficiary' => CommissionRule::describeBeneficiary($beneficiaryType, $beneficiaryId),
+                'expected_minor' => (int) ($expected->get($key)?->sum('amount_minor') ?? 0),
+                'adjusted_minor' => (int) $items->whereIn('status', ['reversed', 'cancelled'])->sum('amount_minor'),
                 'pending_approval_minor' => (int) $items->where('status', 'accrued')->sum('amount_minor'),
                 'approved_unposted_minor' => (int) $items->where('status', 'approved')->sum('amount_minor'),
                 'payable_minor' => (int) $items->where('status', 'posted')->sum(fn (Commission $c) => $c->amount_minor - $c->paid_minor),

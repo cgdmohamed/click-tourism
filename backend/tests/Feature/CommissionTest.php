@@ -593,6 +593,44 @@ class CommissionTest extends TestCase
         $this->assertSame(0, $expenseNet);
     }
 
+    public function test_expected_commission_is_shown_apart_from_payable_and_adjusted_after_a_refund(): void
+    {
+        $this->rule(['rate_bp' => 1000]);
+        $booking = $this->booking();
+        $branchIds = [$booking->branch_id];
+        $summary = fn () => $this->commissions->statement('employee', $this->seller->id, '2020-01-01', '2099-12-31', $branchIds)['summary'];
+
+        // Partly collected: expected, not payable, nothing accrued.
+        $this->pay($booking, 60000);
+        $this->assertSame(10000, $summary()['expected_minor']);
+        $this->assertSame(0, $summary()['payable_minor']);
+        $this->assertSame(0, Commission::query()->count());
+        $row = collect($this->commissions->beneficiaries($branchIds))->firstWhere('beneficiary_type', 'employee');
+        $this->assertSame(10000, $row['expected_minor']);
+
+        // Fully collected: it leaves "expected" and becomes a commission once.
+        $this->pay($booking, 40000);
+        $this->assertSame(0, $summary()['expected_minor']);
+        $commission = $this->onlyCommission();
+        $commission = $this->commissions->post($this->commissions->approve($commission, $this->checker->id), $this->checker->id);
+        $this->assertSame(10000, $summary()['payable_minor']);
+
+        // A refund breaks full collection: history is kept as adjusted, and the amount is expected again.
+        $payments = app(PaymentService::class);
+        $refund = $payments->requestRefund([
+            'payment_id' => Payment::query()->firstOrFail()->public_id,
+            'booking_id' => $booking->public_id,
+            'amount_minor' => 1000,
+            'reason' => 'Downgrade',
+        ], $this->maker->id);
+        $payments->approveRefund($refund, $this->maker->id);
+
+        $after = $summary();
+        $this->assertSame(10000, $after['adjusted_minor']);
+        $this->assertSame(0, $after['payable_minor']);
+        $this->assertSame(1, Commission::query()->where('id', $commission->id)->count(), 'The original record is never erased.');
+    }
+
     public function test_a_refund_that_breaks_full_collection_reverses_the_commission(): void
     {
         $commission = $this->accruedCommission();

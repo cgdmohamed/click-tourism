@@ -57,11 +57,11 @@ class ManagementReportRows
     {
         $exp = $this->csv->exponent($r['currency']);
         $m = fn (int $v) => $this->csv->money($v, $exp);
-        $rows = [$this->csv->header(['Beneficiary', 'Type', 'Pending approval/posting', 'Expense (ledger)', 'Paid', 'Currency'])];
+        $rows = [$this->csv->header(['Beneficiary', 'Type', 'Pending approval/posting', 'Expense (ledger)', 'Paid', 'Expected (not payable)', 'Adjusted', 'Currency'])];
         foreach ($r['rows'] as $row) {
-            $rows[] = [$row['beneficiary']['name_en'] ?? '', $row['beneficiary_type'], $m($row['pending_minor']), $m($row['expense_minor']), $m($row['paid_minor']), $r['currency']];
+            $rows[] = [$row['beneficiary']['name_en'] ?? '', $row['beneficiary_type'], $m($row['pending_minor']), $m($row['expense_minor']), $m($row['paid_minor']), $m($row['expected_minor']), $m($row['adjusted_minor']), $r['currency']];
         }
-        $rows[] = $this->csv->total(['Total', '', $m($r['total_pending_minor']), $m($r['total_expense_minor']), $m($r['total_paid_minor']), $r['currency']]);
+        $rows[] = $this->csv->total(['Total', '', $m($r['total_pending_minor']), $m($r['total_expense_minor']), $m($r['total_paid_minor']), $m($r['total_expected_minor']), $m($r['total_adjusted_minor']), $r['currency']]);
 
         return $rows;
     }
