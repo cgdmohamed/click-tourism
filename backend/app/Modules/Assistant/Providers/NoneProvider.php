@@ -23,4 +23,10 @@ final class NoneProvider implements AssistantProvider
     {
         throw new ProviderException('No assistant provider is configured.');
     }
+
+    /** No catalogue: nothing can be called without a provider. */
+    public function models(): array
+    {
+        return [];
+    }
 }

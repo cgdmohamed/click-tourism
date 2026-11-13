@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Assistant\Support\OutputSanitizer;
 use App\Modules\Assistant\Support\Redactor;
 use App\Modules\Assistant\Support\SchemaValidator;
+use App\Modules\Core\Models\AuditEvent;
+use App\Modules\Core\Models\Setting;
 use App\Modules\Core\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -51,6 +54,9 @@ class AssistantSettingsTest extends TestCase
             'rate high' => ['rate_limit_per_minute', '1000'],
             'privacy http' => ['privacy_url', 'http://example.com/p'],
             'privacy script' => ['privacy_url', 'https://x.test/"onmouseover=1'],
+            'acceptance text' => ['data_processing_accepted_at', 'yes I accept'],
+            'acceptance date only' => ['data_processing_accepted_at', '2026-11-13'],
+            'acceptance too long' => ['data_processing_accepted_at', '2026-11-13T09:00:00+00:00 extra text here'],
             'api key' => ['api_key', 'sk-secret'],
             'openai key' => ['openai_api_key', 'sk-secret'],
         ];
@@ -66,13 +72,52 @@ class AssistantSettingsTest extends TestCase
     public function test_valid_values_are_stored_and_the_key_is_not_a_setting(): void
     {
         $this->adminUser();
+        // Enabling needs the acceptance first, so it is stored before the switch (ADR-0018).
         foreach ([
+            ['data_processing_accepted_at', '2026-11-13T09:00:00+00:00'],
             ['enabled', 'true'], ['provider', 'openai'], ['model', 'gpt-4o-mini'], ['max_tool_calls_per_turn', '6'],
             ['max_output_tokens', '1024'], ['daily_token_budget', '50000'], ['rate_limit_per_minute', '20'],
             ['redact_pii', 'true'], ['privacy_url', 'https://example.com/privacy'], ['privacy_url', ''],
+            ['data_processing_accepted_at', '2026-11-13T09:00:00.123456Z'],
+            ['data_processing_accepted_at', ''],
         ] as [$key, $value]) {
             $this->putSetting($key, $value)->assertOk();
         }
+    }
+
+    public function test_enabling_the_assistant_requires_the_data_processing_acceptance(): void
+    {
+        $user = $this->adminUser();
+
+        $rejected = $this->putSetting('enabled', 'true')->assertStatus(422);
+        $this->assertSame(
+            'Accept the data-processing notice before enabling the assistant.',
+            $rejected->json('errors')['settings.0.value'][0],
+        );
+        $this->assertFalse(app(ProviderManager::class)->enabled());
+        $this->assertNull(Setting::query()->where('group', 'assistant')->where('key', 'enabled')->first());
+
+        // Stored acceptance first, then the switch.
+        $this->putSetting('data_processing_accepted_at', '2026-11-13T09:00:00+00:00')->assertOk();
+        $this->putSetting('enabled', 'true')->assertOk();
+        $this->assertTrue(app(ProviderManager::class)->enabled());
+
+        // Accepted earlier in the same payload is enough too.
+        $this->putSetting('enabled', 'false')->assertOk();
+        $this->putJson('/api/v1/settings', ['settings' => [
+            ['group' => 'assistant', 'key' => 'enabled', 'value' => 'true'],
+            ['group' => 'assistant', 'key' => 'data_processing_accepted_at', 'value' => '2026-11-13T10:00:00+00:00'],
+        ]])->assertOk();
+        $this->assertTrue(app(ProviderManager::class)->enabled());
+
+        // Switching it off never needs an acceptance.
+        $this->putSetting('data_processing_accepted_at', '')->assertOk();
+        $this->putSetting('enabled', 'false')->assertOk();
+
+        // Audit rows carry only the new state (no PII, no provider details).
+        $events = AuditEvent::query()->where('action', 'assistant.enabled_changed')->orderBy('id')->get();
+        $this->assertSame([true, false, true, false], $events->map(fn (AuditEvent $e) => $e->after['enabled'])->all());
+        $this->assertSame([$user->id], $events->pluck('actor_id')->unique()->values()->all());
     }
 
     public function test_only_roles_with_settings_update_can_change_them(): void
@@ -100,21 +145,33 @@ class AssistantSettingsTest extends TestCase
         config()->set('services.openai.key', 'sk-flag-test-key');
         $this->getJson('/api/v1/feature-flags')->assertOk()
             ->assertJsonPath('data.assistant_enabled', false)
-            ->assertJsonPath('data.assistant_provider', null);
+            ->assertJsonPath('data.assistant_provider', null)
+            ->assertJsonPath('data.assistant_key_configured', false) // provider is still 'none'
+            ->assertJsonPath('data.assistant_accepted', false)
+            ->assertJsonPath('data.assistant_model', 'gpt-4o-mini');
 
+        $this->putSetting('enabled', 'true')->assertStatus(422); // acceptance first (ADR-0018)
+        $this->putSetting('data_processing_accepted_at', '2026-11-13T09:00:00+00:00')->assertOk();
         $this->putSetting('enabled', 'true')->assertOk();
         $this->putSetting('provider', 'openai')->assertOk();
+        $this->putSetting('model', 'gpt-4.1-mini')->assertOk();
         $this->putSetting('privacy_url', 'https://example.com/privacy')->assertOk();
 
         $flags = $this->getJson('/api/v1/feature-flags')->assertOk()
             ->assertJsonPath('data.assistant_enabled', true)
             ->assertJsonPath('data.assistant_provider', 'openai')
+            ->assertJsonPath('data.assistant_key_configured', true)
+            ->assertJsonPath('data.assistant_accepted', true)
+            ->assertJsonPath('data.assistant_model', 'gpt-4.1-mini')
             ->assertJsonPath('data.assistant_redact_pii', true)
             ->assertJsonPath('data.assistant_privacy_url', 'https://example.com/privacy');
         $this->assertStringNotContainsString('sk-flag-test-key', $flags->getContent());
 
         config()->set('services.openai.key', '');
-        $this->getJson('/api/v1/feature-flags')->assertJsonPath('data.assistant_enabled', false);
+        $this->getJson('/api/v1/feature-flags')
+            ->assertJsonPath('data.assistant_enabled', false)
+            ->assertJsonPath('data.assistant_key_configured', false)
+            ->assertJsonPath('data.assistant_accepted', true);
     }
 
     // ---- helpers ------------------------------------------------------------------------------

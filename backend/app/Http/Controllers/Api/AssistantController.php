@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Assistant\Services\ChatService;
 use App\Modules\Assistant\Services\ProviderManager;
+use App\Modules\Assistant\Support\ModelCatalogue;
 use App\Modules\Assistant\Support\ProviderException;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
@@ -14,9 +15,46 @@ use Illuminate\Http\Request;
 /**
  * POST /assistant/chat (ADR-0017): the read-only in-product assistant. Stateless: the client sends
  * the conversation, nothing is stored. Permission assistant.use is enforced by the route.
+ *
+ * GET /assistant/models (ADR-0018): the models the configured provider offers, so an administrator
+ * can pick one in Settings. Read-only: saving still needs settings.update.
  */
 class AssistantController extends ApiController
 {
+    public function models(ProviderManager $providers): JsonResponse
+    {
+        // A fresh install keeps provider "none"; the key in the environment is enough to discover
+        // models, so the administrator does not have to guess a model id before saving one.
+        $discovered = $providers->discoveryProvider();
+        if ($discovered === null) {
+            return ApiResponse::error(
+                'The assistant has no provider key configured. Set OPENAI_API_KEY in the server environment; the key is never a setting.',
+                'assistant_not_configured',
+                503,
+            );
+        }
+
+        try {
+            $rows = $discovered['provider']->models();
+        } catch (ProviderException) {
+            // The provider body is never copied: it can name the key or the account.
+            return ApiResponse::error('The assistant provider is unavailable. Try again later.', 'assistant_provider_error', 502);
+        }
+
+        $models = ModelCatalogue::chatModels($rows);
+        $recommended = ModelCatalogue::recommend($models);
+
+        return $this->ok([
+            'key_configured' => true,
+            'provider' => $discovered['name'],
+            'recommended' => $recommended,
+            'models' => array_map(
+                static fn (array $model): array => ['id' => $model['id'], 'recommended' => $model['id'] === $recommended],
+                $models,
+            ),
+        ]);
+    }
+
     public function chat(Request $request, ProviderManager $providers, ChatService $chat, AuditService $audit, BranchScope $scope): JsonResponse
     {
         $user = $request->user();
@@ -24,7 +62,10 @@ class AssistantController extends ApiController
         if (! $providers->enabled()) {
             return $this->denied($audit, $request, 'disabled', 'The assistant is switched off for this installation.', 'assistant_disabled', 403);
         }
-        if (! $providers->provider()->isConfigured()) {
+        if (! $providers->accepted()) {
+            return $this->denied($audit, $request, 'not_accepted', 'Accept the data-processing notice in Settings, Assistant before using the assistant.', 'assistant_not_accepted', 403);
+        }
+        if (! $providers->keyConfigured()) {
             return $this->denied($audit, $request, 'not_configured', 'The assistant has no provider key configured. Ask an administrator.', 'assistant_not_configured', 503);
         }
 

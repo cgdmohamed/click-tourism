@@ -10,6 +10,7 @@ use App\Modules\Core\Services\SettingService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -130,6 +131,65 @@ class McpTokenController extends ApiController
             'user_id' => $user->public_id,
             'branches' => Branch::query()->whereIn('id', $allowed)->orderBy('id')->pluck('public_id')->all(),
         ]);
+    }
+
+    /** How many recent MCP tokens the status endpoint returns. */
+    private const STATUS_RECENT_LIMIT = 10;
+
+    /**
+     * GET /mcp/status (ADR-0018): the installation's MCP usage for the Settings screen. Counts
+     * every user's MCP tokens (name prefix "mcp:") and lists the 10 most recently used. Never
+     * includes a token value, its hash or its abilities.
+     */
+    public function status(SettingService $settings): JsonResponse
+    {
+        $tokens = fn () => PersonalAccessToken::query()
+            ->where('name', 'like', self::PREFIX.'%')
+            ->where('tokenable_type', (new User)->getMorphClass());
+
+        $total = $tokens()->count();
+        $active = $tokens()
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->count();
+        $lastUsed = $tokens()->max('last_used_at');
+
+        $recent = $tokens()
+            ->with('tokenable')
+            // last_used_at NULLs last, newest first, then newest token first (stable on every driver).
+            ->orderByRaw('case when last_used_at is null then 1 else 0 end')
+            ->orderByDesc('last_used_at')
+            ->orderByDesc('id')
+            ->limit(self::STATUS_RECENT_LIMIT)
+            ->get()
+            ->map(fn (PersonalAccessToken $token) => $this->presentConnection($token))
+            ->all();
+
+        return $this->ok([
+            'enabled' => $settings->bool('mcp', 'enabled', false),
+            'tokens' => [
+                'active' => $active,
+                'expired' => $total - $active,
+                'total' => $total,
+            ],
+            'last_connection_at' => $lastUsed === null ? null : Carbon::parse($lastUsed)->toIso8601String(),
+            'recent' => $recent,
+        ]);
+    }
+
+    /** @return array<string, mixed> A recent MCP connection row: owner and timestamps, never a secret. */
+    private function presentConnection(PersonalAccessToken $token): array
+    {
+        $owner = $token->tokenable;
+
+        return [
+            'id' => $token->getKey(),
+            'name' => substr($token->name, strlen(self::PREFIX)),
+            'state' => $token->expires_at !== null && $token->expires_at->isPast() ? 'expired' : 'active',
+            'created_at' => $token->created_at?->toIso8601String(),
+            'last_used_at' => $token->last_used_at?->toIso8601String(),
+            'expires_at' => $token->expires_at?->toIso8601String(),
+            'user' => $owner instanceof User ? ['id' => $owner->public_id, 'name' => $owner->name, 'email' => $owner->email] : null,
+        ];
     }
 
     /** @return array<string, mixed> Never includes the secret. */

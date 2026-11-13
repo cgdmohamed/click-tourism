@@ -36,6 +36,9 @@ class FeatureFlagsTest extends TestCase
                 'mcp_enabled' => false,
                 'assistant_enabled' => false,
                 'assistant_provider' => null,
+                'assistant_key_configured' => false,
+                'assistant_accepted' => false,
+                'assistant_model' => 'gpt-4o-mini',
                 'assistant_redact_pii' => true,
                 'assistant_privacy_url' => '',
             ]]);

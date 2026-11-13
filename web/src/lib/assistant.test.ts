@@ -147,6 +147,7 @@ describe('misc', () => {
   it('maps API error codes to message keys', () => {
     expect(assistantErrorKey(403, 'assistant_disabled')).toBe('assistantErrDisabled')
     expect(assistantErrorKey(503, 'assistant_not_configured')).toBe('assistantErrNotConfigured')
+    expect(assistantErrorKey(403, 'assistant_not_accepted')).toBe('assistantErrNotAccepted')
     expect(assistantErrorKey(429, 'assistant_budget_exceeded')).toBe('assistantErrBudget')
     expect(assistantErrorKey(429, 'assistant_rate_limited')).toBe('assistantErrRate')
     expect(assistantErrorKey(502, 'assistant_provider_error')).toBe('assistantErrProvider')

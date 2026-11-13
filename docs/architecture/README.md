@@ -43,3 +43,4 @@ Users never type master-data codes. `App\Support\CodeGenerator` fills a blank `c
 
 - `DEC-001..014`, `DEC-017..019`, `DEC-027` from `docs/product/decisions-needed.md`.
 - Architect sign-off on module boundaries and the OpenAPI draft before implementation of shared contracts.
+- **ADR-0018** (`GET /assistant/models`, `GET /mcp/status`, three feature-flag fields, the `assistant_not_accepted` chat error and the acceptance setting) is approved row by row in its "Approval record" (project owner, 2026-11-13), for those six additions only. `backend/tests/Feature/ContractApprovalTest.php` enforces that record: it fails while a contract-changing ADR is unapproved, and it fails if the status claims Accepted while a row is still a placeholder — so a later contract edit cannot merge on a status edit alone.

@@ -163,6 +163,7 @@ export const STARTERS: Record<'ar' | 'en', string[]> = {
 export type AssistantErrorKey =
   | 'assistantErrDisabled'
   | 'assistantErrNotConfigured'
+  | 'assistantErrNotAccepted'
   | 'assistantErrBudget'
   | 'assistantErrRate'
   | 'assistantErrProvider'
@@ -176,6 +177,8 @@ export function assistantErrorKey(status: number | undefined, code: string | und
       return 'assistantErrDisabled'
     case 'assistant_not_configured':
       return 'assistantErrNotConfigured'
+    case 'assistant_not_accepted':
+      return 'assistantErrNotAccepted'
     case 'assistant_budget_exceeded':
       return 'assistantErrBudget'
     case 'assistant_rate_limited':
