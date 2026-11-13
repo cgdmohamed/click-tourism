@@ -7,6 +7,7 @@ use App\Modules\Attachments\Services\AttachmentTargets;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -162,6 +163,43 @@ class AttachmentTest extends TestCase
         $this->actAs('sales'); // may upload but not delete
         $this->upload(['attachable_id' => $customer->public_id])->assertCreated();
         $this->deleteJson('/api/v1/attachments/'.Attachment::query()->latest('id')->value('public_id'))->assertForbidden();
+    }
+
+    public function test_a_failed_write_records_nothing_and_a_later_upload_repairs_it(): void
+    {
+        $customer = $this->customer();
+        $disk = \Mockery::mock(Filesystem::class);
+        $disk->shouldReceive('put')->andReturn(false); // the local disk does not throw when it is full
+        $disk->shouldReceive('exists')->andReturn(false);
+        Storage::shouldReceive('disk')->with(config('attachments.disk'))->andReturn($disk);
+
+        $this->upload(['attachable_id' => $customer->public_id])->assertStatus(503)->assertJsonPath('code', 'storage_unavailable');
+        $this->assertSame(0, Attachment::query()->count());
+        $this->assertDatabaseMissing('audit_events', ['action' => 'attachment.uploaded']);
+    }
+
+    public function test_uploading_again_rewrites_a_file_that_is_missing_from_the_disk(): void
+    {
+        $customer = $this->customer();
+        $this->upload(['attachable_id' => $customer->public_id])->assertCreated();
+        $attachment = Attachment::query()->firstOrFail();
+        Storage::disk(config('attachments.disk'))->delete($attachment->stored_path);
+        $this->get('/api/v1/attachments/'.$attachment->public_id.'/download')->assertNotFound();
+
+        $this->upload(['attachable_id' => $customer->public_id])->assertCreated()->assertJsonPath('data.items.0.duplicate', true);
+
+        Storage::disk(config('attachments.disk'))->assertExists($attachment->stored_path);
+        $this->get('/api/v1/attachments/'.$attachment->public_id.'/download')->assertOk();
+        $this->assertSame(1, Attachment::query()->count());
+    }
+
+    public function test_files_land_where_the_deployment_guide_says_to_back_them_up(): void
+    {
+        // docs/deployment/attachments.md: `storage/app/attachments`, the production_uploads volume.
+        $this->assertSame('local', config('attachments.disk'));
+        $this->assertSame(storage_path('app'), config('filesystems.disks.local.root'));
+        $this->upload()->assertCreated();
+        $this->assertStringStartsWith('attachments/', (string) Attachment::query()->value('stored_path'));
     }
 
     public function test_every_supported_record_type_accepts_documents(): void

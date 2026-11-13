@@ -157,7 +157,7 @@ export default function AttachmentsCard({ type, recordId, bare = false }: { type
             </Field>
           </div>
           <div className="sm:col-span-4">
-            <Field label={L('الملفات (PDF أو صور)', 'Files (PDF or images)')}>
+            <Field label={L('الملفات (مستندات أو صور)', 'Files (documents or images)')}>
               <input
                 ref={fileInput}
                 type="file"
@@ -340,34 +340,58 @@ function ReviewModal({ row, onClose }: { row: AttachmentRow | null; onClose: () 
   const [values, setValues] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
 
+  // The attachment the dialog currently shows. A response that arrives after the dialog was closed or
+  // moved to another document belongs to the old one and is dropped, so values are never mixed up.
+  const activeId = useRef<string | null>(null)
+  activeId.current = row?.id ?? null
+
   const start = useMutation({
-    mutationFn: async (id: string) => (await api.post<{ data: Extraction }>(`/attachments/${id}/extraction`)).data.data,
-    onSuccess: (data) => {
+    mutationFn: async (id: string) => ({ id, extraction: (await api.post<{ data: Extraction }>(`/attachments/${id}/extraction`)).data.data }),
+    onSuccess: ({ id, extraction: data }) => {
+      if (activeId.current !== id) return
       setExtraction(data)
       setValues(initialValues(data))
     },
-    onError: (e) => setError(errorMessage(e)),
+    onError: (e, id) => {
+      if (activeId.current === id) setError(errorMessage(e))
+    },
   })
   useEffect(() => {
     setExtraction(null)
     setValues({})
     setError('')
+    start.reset()
+    confirm.reset()
+    reject.reset()
     if (row) start.mutate(row.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row?.id])
 
   const confirm = useMutation({
-    mutationFn: async () => (await api.post<{ data: Extraction }>(`/attachment-extractions/${extraction?.id}/confirm`, { values: toConfirmPayload(values) })).data.data,
-    onSuccess: (data) => {
+    mutationFn: async (target: { attachmentId: string; extractionId: string; values: Record<string, string> }) => ({
+      attachmentId: target.attachmentId,
+      extraction: (await api.post<{ data: Extraction }>(`/attachment-extractions/${target.extractionId}/confirm`, { values: toConfirmPayload(target.values) })).data.data,
+    }),
+    onSuccess: ({ attachmentId, extraction: data }) => {
+      if (activeId.current !== attachmentId) return
       setExtraction(data)
       setError('')
     },
-    onError: (e) => setError(errorMessage(e)),
+    onError: (e, target) => {
+      if (activeId.current === target.attachmentId) setError(errorMessage(e))
+    },
   })
   const reject = useMutation({
-    mutationFn: async () => (await api.post<{ data: Extraction }>(`/attachment-extractions/${extraction?.id}/reject`)).data.data,
-    onSuccess: () => onClose(),
-    onError: (e) => setError(errorMessage(e)),
+    mutationFn: async (target: { attachmentId: string; extractionId: string }) => {
+      await api.post(`/attachment-extractions/${target.extractionId}/reject`)
+      return target.attachmentId
+    },
+    onSuccess: (attachmentId) => {
+      if (activeId.current === attachmentId) onClose()
+    },
+    onError: (e, target) => {
+      if (activeId.current === target.attachmentId) setError(errorMessage(e))
+    },
   })
 
   const fields = extraction ? (FIELDS[extraction.category] ?? []) : []
@@ -384,8 +408,8 @@ function ReviewModal({ row, onClose }: { row: AttachmentRow | null; onClose: () 
           <Button variant="secondary" onClick={onClose}>{L('إغلاق', 'Close')}</Button>
           {extraction?.status === 'succeeded' ? (
             <>
-              <Button variant="danger" disabled={reject.isPending} onClick={() => reject.mutate()}>{L('رفض الاقتراح', 'Reject')}</Button>
-              <Button disabled={confirm.isPending} onClick={() => confirm.mutate()}>{L('اعتماد القيم', 'Confirm values')}</Button>
+              <Button variant="danger" disabled={reject.isPending} onClick={() => row && extraction && reject.mutate({ attachmentId: row.id, extractionId: extraction.id })}>{L('رفض الاقتراح', 'Reject')}</Button>
+              <Button disabled={confirm.isPending} onClick={() => row && extraction && confirm.mutate({ attachmentId: row.id, extractionId: extraction.id, values })}>{L('اعتماد القيم', 'Confirm values')}</Button>
             </>
           ) : null}
           {confirmed && extraction?.category === 'supplier_invoice' ? (

@@ -4001,6 +4001,7 @@ paths:
               schema: { type: object, properties: { data: { type: object } } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { description: Validation failed }
+        '503': { description: 'The disk is full or not writable (`storage_unavailable`); nothing is recorded for the failing file, files stored earlier in the same request remain' }
   /attachments/{attachment}:
     get:
       tags: [Attachments]

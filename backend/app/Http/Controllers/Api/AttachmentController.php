@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Attachments\Models\Attachment;
 use App\Modules\Attachments\Services\AttachmentService;
+use App\Modules\Attachments\Services\AttachmentStorageException;
 use App\Modules\Attachments\Services\AttachmentTargets;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -69,6 +70,9 @@ class AttachmentController extends ApiController
                 $stored[] = $result['attachment']->toApiArray() + ['duplicate' => $result['duplicate']];
             } catch (DomainException $e) {
                 $rejected[] = ['name' => $file->getClientOriginalName(), 'reason' => $e->getMessage()];
+            } catch (AttachmentStorageException $e) {
+                // Not a problem with the file: stop, say so, and keep what was stored before it.
+                return ApiResponse::error($e->getMessage(), 'storage_unavailable', 503);
             }
         }
 

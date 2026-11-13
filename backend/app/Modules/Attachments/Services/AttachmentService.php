@@ -32,11 +32,19 @@ class AttachmentService
                 ->where('attachable_type', $type)->where('attachable_id', $record->getKey())
                 ->where('sha256', $sha)->lockForUpdate()->first();
             if ($existing) {
+                // A stored row whose file went missing (full or unwritable disk, restored database)
+                // is repaired by uploading the same file again.
+                $disk = Storage::disk(config('attachments.disk'));
+                if (! $disk->exists($existing->stored_path)) {
+                    $this->write($existing->stored_path, $content);
+                }
+
                 return ['attachment' => $existing, 'duplicate' => true];
             }
 
             $path = 'attachments/'.now()->format('Y/m').'/'.Str::ulid().'.'.config('attachments.allowed')[$mime];
-            Storage::disk(config('attachments.disk'))->put($path, $content);
+            // The row is created only after the bytes are safely stored; a failed write aborts here.
+            $this->write($path, $content);
 
             $attachment = Attachment::query()->create([
                 'attachable_type' => $type,
@@ -57,6 +65,24 @@ class AttachmentService
 
             return ['attachment' => $attachment, 'duplicate' => false];
         });
+    }
+
+    /**
+     * The disk is configured with `throw => false`, so a full or unwritable disk answers false
+     * instead of throwing: that result must be checked.
+     *
+     * @throws AttachmentStorageException
+     */
+    private function write(string $path, string $content): void
+    {
+        try {
+            $written = Storage::disk(config('attachments.disk'))->put($path, $content);
+        } catch (\Throwable) {
+            $written = false;
+        }
+        if ($written !== true) {
+            throw new AttachmentStorageException('The document could not be saved because storage is full or not writable.');
+        }
     }
 
     public function update(Attachment $attachment, array $data, ?int $actorId): Attachment
