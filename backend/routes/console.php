@@ -58,6 +58,12 @@ Schedule::command('accounting:reverse-cost-accruals')
     ->dailyAt('00:45')
     ->withoutOverlapping();
 
+// Assistant history (ADR-0022): keep conversations only for assistant.history_retention_days.
+Schedule::command('assistant:prune-history')
+    ->name('assistant-prune-history')
+    ->dailyAt('02:10')
+    ->withoutOverlapping();
+
 // Optional Meta / WhatsApp integrations: publish queued outbox rows and re-queue
 // lost jobs. No-op while the integrations are disabled or idle.
 Schedule::command('integrations:dispatch-outbox')

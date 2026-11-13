@@ -20,6 +20,8 @@ export type ChatMessage = {
   content: string
   citations?: Citation[]
   truncated?: boolean
+  /** Tools the assistant used for this answer (shown as "Searched: ..."); not saved or sent. */
+  steps?: string[]
   /** Failed assistant turn: shown as an error, never sent back to the model. */
   error?: boolean
 }
@@ -29,6 +31,8 @@ export type ChatReply = {
   citations: Citation[]
   usage: { prompt: number; completion: number; total: number }
   truncated: boolean
+  /** Set when the server saved the turn (ADR-0022); null when saving is off. */
+  conversation_id?: string | null
 }
 
 /** Server limits (config/assistant.php); the server validates again. */
@@ -39,11 +43,16 @@ export function addUserMessage(messages: ChatMessage[], content: string): ChatMe
   return [...messages, { key: nextKey(messages), role: 'user', content: content.trim() }]
 }
 
-export function addAssistantReply(messages: ChatMessage[], reply: ChatReply): ChatMessage[] {
+export function addAssistantReply(messages: ChatMessage[], reply: ChatReply, steps: string[] = []): ChatMessage[] {
   return [
     ...messages,
-    { key: nextKey(messages), role: 'assistant', content: reply.answer, citations: reply.citations, truncated: reply.truncated },
+    { key: nextKey(messages), role: 'assistant', content: reply.answer, citations: reply.citations, truncated: reply.truncated, steps },
   ]
+}
+
+/** Messages of a saved conversation (GET /assistant/conversations/{id}) as screen messages. */
+export function fromSaved(rows: Array<{ role: 'user' | 'assistant'; content: string; citations?: Citation[]; truncated?: boolean }>): ChatMessage[] {
+  return rows.map((row, index) => ({ key: index + 1, role: row.role, content: row.content, citations: row.citations ?? [], truncated: row.truncated ?? false }))
 }
 
 export function addAssistantError(messages: ChatMessage[], text: string): ChatMessage[] {
@@ -190,4 +199,66 @@ export function assistantErrorKey(status: number | undefined, code: string | und
     default:
       return status === 403 ? 'assistantErrForbidden' : null
   }
+}
+
+const ENTITY_STEP: Record<string, { en: string; ar: string }> = {
+  customer: { en: 'customers', ar: 'العملاء' },
+  supplier: { en: 'suppliers', ar: 'الموردين' },
+  booking: { en: 'bookings', ar: 'الحجوزات' },
+  invoice: { en: 'invoices', ar: 'الفواتير' },
+  payment: { en: 'payments', ar: 'المدفوعات' },
+  expense: { en: 'expenses', ar: 'المصروفات' },
+  lead: { en: 'leads', ar: 'العملاء المحتملين' },
+  report: { en: 'reports', ar: 'التقارير' },
+  search: { en: 'the system', ar: 'النظام' },
+}
+
+/** Plural name of what a tool reads, for "Searching invoices…". Unknown entities read as the system. */
+export function stepEntity(entity: string, locale: 'ar' | 'en'): string {
+  return (ENTITY_STEP[entity] ?? ENTITY_STEP.search)[locale]
+}
+
+const POOL: Record<'ar' | 'en', string[]> = {
+  en: [
+    'Which invoices are still open?',
+    'Summarize the latest leads.',
+    'Show the receivables aging as of today.',
+    'Find a customer by name.',
+    'Which supplier invoices are due this month?',
+    'What were the most recent payments received?',
+    'Which bookings are not fully paid yet?',
+    'Show the profit and loss report for this month.',
+    'Which customers owe us the most?',
+    'List the latest expenses and who approved them.',
+    'How many new leads came in this week?',
+    'What is the status of my latest booking?',
+    'Which invoices are overdue?',
+    'Show the trial balance as of today.',
+  ],
+  ar: [
+    'ما هي الفواتير المفتوحة حتى الآن؟',
+    'لخّص آخر العملاء المحتملين.',
+    'اعرض أعمار الذمم المدينة حتى اليوم.',
+    'ابحث عن عميل بالاسم.',
+    'ما فواتير الموردين المستحقة هذا الشهر؟',
+    'ما آخر المدفوعات التي استلمناها؟',
+    'أي الحجوزات لم تُسدَّد بالكامل بعد؟',
+    'اعرض تقرير الأرباح والخسائر لهذا الشهر.',
+    'من هم العملاء الذين عليهم أكبر مبالغ؟',
+    'اعرض آخر المصروفات ومن اعتمدها.',
+    'كم عميلاً محتملاً جاء هذا الأسبوع؟',
+    'ما حالة آخر حجز؟',
+    'ما الفواتير المتأخرة عن موعد استحقاقها؟',
+    'اعرض ميزان المراجعة حتى اليوم.',
+  ],
+}
+
+/** `count` different example questions (Fisher-Yates with the given random source). */
+export function pickStarters(locale: 'ar' | 'en', count = 4, random: () => number = Math.random): string[] {
+  const pool = [...POOL[locale]]
+  for (let index = pool.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1))
+    ;[pool[index], pool[other]] = [pool[other], pool[index]]
+  }
+  return pool.slice(0, count)
 }

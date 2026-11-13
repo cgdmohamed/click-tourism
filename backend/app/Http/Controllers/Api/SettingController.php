@@ -337,6 +337,7 @@ class SettingController extends ApiController
             'max_output_tokens' => [64, 8192],
             'daily_token_budget' => [1000, 100000000],
             'rate_limit_per_minute' => [1, 600],
+            'history_retention_days' => [0, 3650],
         ];
 
         if (! in_array($key, ['enabled', 'provider', 'redact_pii', 'privacy_url', 'model', 'data_processing_accepted_at', ...array_keys($ranges)], true)) {

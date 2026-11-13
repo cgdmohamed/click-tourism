@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Assistant\Models\AssistantConversation;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
@@ -11,6 +12,7 @@ use App\Modules\CRM\Models\Lead;
 use App\Modules\CRM\Models\LeadStage;
 use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
@@ -190,6 +192,83 @@ class AssistantChatTest extends TestCase
 
         $this->assertSame($customer->public_id, $citations[1]['id']);
         $this->assertContains('Blue Sky Travel', $citations[1]['labels']);
+    }
+
+    // ---- saved history and live progress (ADR-0022) -------------------------------------------
+
+    public function test_a_turn_is_saved_encrypted_and_reopened_by_its_owner_only(): void
+    {
+        $this->script([$this->finalReply('Answer one.'), $this->finalReply('Answer two.')]);
+
+        $first = $this->chat('First question')->assertOk()->json('data');
+        $this->assertNotEmpty($first['conversation_id']);
+        $this->chat('Second question', ['conversation_id' => $first['conversation_id']])->assertOk()
+            ->assertJsonPath('data.conversation_id', $first['conversation_id']);
+
+        $raw = DB::table('assistant_messages')->pluck('content')->implode('|');
+        $this->assertStringNotContainsString('First question', $raw);
+        $this->assertStringNotContainsString('Answer one.', $raw);
+
+        $this->getJson('/api/v1/assistant/conversations')->assertOk()->assertJsonPath('data.0.title', 'First question')->assertJsonCount(1, 'data');
+        $this->getJson('/api/v1/assistant/conversations/'.$first['conversation_id'])->assertOk()
+            ->assertJsonCount(4, 'data.messages')
+            ->assertJsonPath('data.messages.3.content', 'Answer two.');
+
+        $other = User::factory()->create();
+        $other->givePermissionTo('assistant.use');
+        Sanctum::actingAs($other, ['*']);
+        $this->getJson('/api/v1/assistant/conversations')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/assistant/conversations/'.$first['conversation_id'])->assertNotFound();
+        $this->deleteJson('/api/v1/assistant/conversations/'.$first['conversation_id'])->assertNotFound();
+    }
+
+    public function test_the_owner_can_delete_one_or_all_conversations(): void
+    {
+        $this->script([$this->finalReply('A.'), $this->finalReply('B.')]);
+        $id = $this->chat('Q1')->assertOk()->json('data.conversation_id');
+        $this->chat('Q2')->assertOk();
+
+        $this->deleteJson('/api/v1/assistant/conversations/'.$id)->assertOk();
+        $this->getJson('/api/v1/assistant/conversations')->assertJsonCount(1, 'data');
+        $this->deleteJson('/api/v1/assistant/conversations')->assertOk()->assertJsonPath('data.deleted', 1);
+        $this->assertSame(0, DB::table('assistant_messages')->count());
+    }
+
+    public function test_retention_zero_saves_nothing_and_prune_removes_old_conversations(): void
+    {
+        $this->script([$this->finalReply('A.'), $this->finalReply('B.')]);
+        $this->settings->set('assistant', 'history_retention_days', '0');
+        $this->chat('Q')->assertOk()->assertJsonPath('data.conversation_id', null);
+        $this->getJson('/api/v1/assistant/conversations')->assertJsonCount(0, 'data');
+
+        $this->settings->set('assistant', 'history_retention_days', '30');
+        $id = $this->chat('Q')->assertOk()->json('data.conversation_id');
+        AssistantConversation::query()->where('public_id', $id)->update(['last_message_at' => now()->subDays(31)]);
+        $this->artisan('assistant:prune-history')->assertSuccessful();
+        $this->getJson('/api/v1/assistant/conversations')->assertJsonCount(0, 'data');
+    }
+
+    public function test_the_stream_sends_progress_then_the_answer(): void
+    {
+        $this->script([$this->toolCallReply([['erp_customers_list', []]]), $this->finalReply('Done.')]);
+
+        $response = $this->postJson('/api/v1/assistant/chat/stream', ['messages' => [['role' => 'user', 'content' => 'Customers?']], 'locale' => 'en']);
+        $response->assertOk();
+        $events = array_map(fn (string $line) => json_decode($line, true), array_values(array_filter(explode("\n", $response->streamedContent()))));
+
+        $this->assertSame(['thinking', 'tool', 'thinking', 'answer'], array_column($events, 'type'));
+        $this->assertSame('erp_customers_list', $events[1]['tool']);
+        $this->assertSame('customer', $events[1]['entity']);
+        $this->assertSame('Done.', $events[3]['data']['answer']);
+        $this->assertNotEmpty($events[3]['data']['conversation_id']);
+    }
+
+    public function test_the_stream_refuses_like_chat_before_streaming_starts(): void
+    {
+        $this->settings->set('assistant', 'enabled', 'false');
+
+        $this->postJson('/api/v1/assistant/chat/stream', ['messages' => [['role' => 'user', 'content' => 'Hi']]])
+            ->assertForbidden()->assertJsonPath('code', 'assistant_disabled');
     }
 
     public function test_the_model_cannot_invent_citations_or_tools(): void
@@ -546,10 +625,12 @@ class AssistantChatTest extends TestCase
         }
     }
 
-    public function test_nothing_is_persisted_about_the_conversation(): void
+    public function test_only_the_adr_0022_history_tables_exist(): void
     {
         $tables = collect(Schema::getTableListing());
-        $this->assertEmpty($tables->filter(fn ($t) => str_contains($t, 'assistant') || str_contains($t, 'conversation') || str_contains($t, 'transcript')));
+        // ADR-0022 replaced "nothing is stored" with exactly two tables of the user's own saved chats.
+        $found = $tables->map(fn ($t) => preg_replace('/^[a-z_]+\\./', '', $t))->filter(fn ($t) => str_contains($t, 'assistant') || str_contains($t, 'conversation') || str_contains($t, 'transcript'))->sort()->values()->all();
+        $this->assertSame(['assistant_conversations', 'assistant_messages'], $found);
     }
 
     // ---- prompt injection (AT-1, AT-2, AT-3) ---------------------------------------------------

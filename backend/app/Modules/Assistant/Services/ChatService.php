@@ -45,10 +45,11 @@ class ChatService
 
     /**
      * @param  list<array{role: string, content: string}>  $messages
+     * @param  (callable(array{type: string, tool?: string, entity?: string}): void)|null  $onEvent  progress for the live view: `thinking` before each provider round, `tool` before each catalogue call
      *
      * @throws ProviderException when the provider fails (after the audit row was written)
      */
-    public function run(User $user, array $messages, string $locale, ?Branch $branch): ChatResult
+    public function run(User $user, array $messages, string $locale, ?Branch $branch, ?callable $onEvent = null): ChatResult
     {
         $provider = $this->providers->provider();
         $redactor = new Redactor($this->settings->bool('assistant', 'redact_pii', true));
@@ -80,6 +81,9 @@ class ChatService
                 }
 
                 $rounds++;
+                if ($onEvent !== null) {
+                    $onEvent(['type' => 'thinking']);
+                }
                 $reply = $provider->chat($conversation, $tools, $options + ['allow_tools' => ! $capReached]);
                 $prompt += $reply->promptTokens;
                 $completion += $reply->completionTokens;
@@ -112,6 +116,9 @@ class ChatService
                         continue;
                     }
                     $calls++;
+                    if ($onEvent !== null && $this->catalogue->has($call['name'])) {
+                        $onEvent(['type' => 'tool', 'tool' => $call['name'], 'entity' => $this->catalogue->entity($call['name'])]);
+                    }
                     $outcome = $this->executor->execute($user, $call['name'], $call['arguments'], $redactor, $branch?->public_id, $locale);
                     $conversation[] = ['role' => 'tool', 'tool_call_id' => $call['id'], 'content' => $outcome->text];
 
