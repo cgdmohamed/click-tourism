@@ -1,6 +1,6 @@
 # In-product assistant - enabling it, settings, permissions and cost control
 
-Stage 3 of `docs/architecture/mcp-ai-assistant-blueprint.md`, decided in ADR-0017; the model picker endpoint and the data-processing acceptance gate are ADR-0018 (Accepted for those rows, 2026-11-13). Optional, **off by default**, strictly read-only. The model provider is **OpenAI** (cloud); other providers can be added behind the `AssistantProvider` interface. Write or draft tools do not exist (stage 4 stays BLOCKED). Nothing is stored about conversations.
+Stage 3 of `docs/architecture/mcp-ai-assistant-blueprint.md`, decided in ADR-0017; the model picker endpoint and the data-processing acceptance gate are ADR-0018 (Accepted for those rows, 2026-11-13). Optional, **off by default**, strictly read-only. The model provider is **OpenAI** (cloud); other providers can be added behind the `AssistantProvider` interface. Write or draft tools do not exist (stage 4 stays BLOCKED). Conversations are saved per user, encrypted, with a retention setting (ADR-0022).
 
 > **Data-processing notice (owner decision required).** Turning the assistant on sends the user's questions and the ERP data needed to answer them (after masking, see section 5) to OpenAI, a third-party cloud provider, from your server. OpenAI's own retention and abuse-monitoring rules apply to that data; check them against your customer contracts and local law before enabling. Real calls to OpenAI have **not** been verified by the team that built this (no internet or key was available): run the acceptance checks in section 8 once with your own key.
 
@@ -29,7 +29,7 @@ The panel appears only when the setting is on, the notice is accepted, a provide
 
 ## 2. Rollback / kill switch
 
-Set `assistant.provider` to `none` (or `assistant.enabled` to `false`): the button disappears and the endpoint refuses at once. Clearing `assistant.data_processing_accepted_at` also stops every chat with `403 assistant_not_accepted` without touching the key. Remove `OPENAI_API_KEY` from the environment to make sure nothing can be sent. There is no schema change and no stored conversation to clean up; `assistant.*` audit rows remain as history.
+Set `assistant.provider` to `none` (or `assistant.enabled` to `false`): the button disappears and the endpoint refuses at once. Clearing `assistant.data_processing_accepted_at` also stops every chat with `403 assistant_not_accepted` without touching the key. Remove `OPENAI_API_KEY` from the environment to make sure nothing can be sent. Saved chats stay in the database until they expire; set `assistant.history_retention_days` to `0` and run `php artisan assistant:prune-history` to delete them at once. `assistant.*` audit rows remain as history.
 
 ## 3. Settings (group `assistant`, admin only: `settings.update`)
 
@@ -83,7 +83,11 @@ With `redact_pii=true` (default) everything sent to OpenAI is redacted first:
 
 Still sent: the question text, names of customers, suppliers and leads, amounts, dates, invoice and booking numbers and other business data returned by the tools. If that is not acceptable, do not enable the assistant. With `redact_pii=false` the user's typed text is sent as typed (tool results stay masked while `mcp.mask_contacts` is on).
 
-Nothing is stored server-side: the browser keeps the conversation in memory only and sends it with each request; closing the page, signing out or changing branch clears it. The audit row `assistant.chat` records the user, branch, tool names, token counts and status, never question or answer text.
+Chats are saved on the server for their owner (ADR-0022): `assistant_conversations` and `assistant_messages`, title and text encrypted with `APP_KEY`, visible only to the user who had the chat, listed per branch, deletable one by one or all at once from the chat screen. `assistant.history_retention_days` (Settings, Assistant; default 90, `0` = do not save) is enforced daily by `assistant:prune-history`. If `APP_KEY` is changed the saved chats become unreadable: delete them. The browser still sends the visible conversation with each request. The audit row `assistant.chat` records the user, branch, tool names, token counts and status, never question or answer text.
+
+### Chat screen and live progress
+
+The header toggle turns the application into a full-screen chat; the sidebar lists the user's past chats. Progress ("thinking", "searching invoices") comes from `POST /assistant/chat/stream`, which sends newline-delimited JSON. The endpoint sets `X-Accel-Buffering: no`; behind a reverse proxy other than nginx, turn response buffering off for `/api/v1/assistant/chat/stream`, or the steps appear only when the answer is ready. Include the two new tables in database backups.
 
 ## 6. Cost control
 

@@ -43,6 +43,8 @@ class SettingService
             // ISO-8601 timestamp of the administrator's explicit acceptance of the data-processing
             // notice (ADR-0018); empty means not accepted, and the assistant cannot be enabled then.
             'data_processing_accepted_at' => '',
+            // ADR-0022: days a user's saved conversations are kept; 0 = conversations are not saved.
+            'history_retention_days' => '90',
         ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',

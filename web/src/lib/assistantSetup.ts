@@ -25,19 +25,28 @@ export type AssistantSettings = {
   model: string
   /** '' or an ISO timestamp of the accepted data-processing notice. */
   acceptedAt: string
+  /** Days saved chats are kept (ADR-0022); '0' = chats are not saved. */
+  retentionDays?: string
 }
 
 export type AssistantDraft = {
   enabled: boolean
   model: string
   acceptedAt: string
+  retentionDays?: string
 }
 
-export type AssistantSettingKey = 'enabled' | 'provider' | 'model' | 'data_processing_accepted_at'
+export type AssistantSettingKey = 'enabled' | 'provider' | 'model' | 'data_processing_accepted_at' | 'history_retention_days'
 
 export type AssistantSettingPatch = { group: 'assistant'; key: AssistantSettingKey; value: string }
 
 export const ASSISTANT_GROUP = 'assistant' as const
+export const DEFAULT_RETENTION_DAYS = '90'
+
+/** A whole number of days from 0 (do not save) to 3650. */
+export function isValidRetention(value: string): boolean {
+  return /^\d{1,4}$/.test(value.trim()) && Number(value) <= 3650
+}
 
 /** Maps GET /settings rows to the assistant group, with the server defaults for missing rows. */
 export function readAssistantSettings(rows: readonly SettingRow[]): AssistantSettings {
@@ -47,6 +56,7 @@ export function readAssistantSettings(rows: readonly SettingRow[]): AssistantSet
     provider: value('provider') || 'none',
     model: value('model'),
     acceptedAt: value('data_processing_accepted_at'),
+    retentionDays: value('history_retention_days') || DEFAULT_RETENTION_DAYS,
   }
 }
 
@@ -121,6 +131,9 @@ export function assistantChanges(current: AssistantSettings, draft: AssistantDra
   }
   if (draft.acceptedAt !== current.acceptedAt) {
     changes.push({ group: ASSISTANT_GROUP, key: 'data_processing_accepted_at', value: draft.acceptedAt })
+  }
+  if (draft.retentionDays !== undefined && draft.retentionDays.trim() !== (current.retentionDays ?? DEFAULT_RETENTION_DAYS)) {
+    changes.push({ group: ASSISTANT_GROUP, key: 'history_retention_days', value: draft.retentionDays.trim() })
   }
   const enabled = draft.enabled ? 'true' : 'false'
   if (enabled !== (current.enabled === 'true' ? 'true' : 'false')) {

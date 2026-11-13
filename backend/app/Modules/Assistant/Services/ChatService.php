@@ -45,10 +45,11 @@ class ChatService
 
     /**
      * @param  list<array{role: string, content: string}>  $messages
+     * @param  (callable(array{type: string, tool?: string, entity?: string}): void)|null  $onEvent  progress for the live view: `thinking` before each provider round, `tool` before each catalogue call
      *
      * @throws ProviderException when the provider fails (after the audit row was written)
      */
-    public function run(User $user, array $messages, string $locale, ?Branch $branch): ChatResult
+    public function run(User $user, array $messages, string $locale, ?Branch $branch, ?callable $onEvent = null): ChatResult
     {
         $provider = $this->providers->provider();
         $redactor = new Redactor($this->settings->bool('assistant', 'redact_pii', true));
@@ -80,6 +81,9 @@ class ChatService
                 }
 
                 $rounds++;
+                if ($onEvent !== null) {
+                    $onEvent(['type' => 'thinking']);
+                }
                 $reply = $provider->chat($conversation, $tools, $options + ['allow_tools' => ! $capReached]);
                 $prompt += $reply->promptTokens;
                 $completion += $reply->completionTokens;
@@ -112,6 +116,9 @@ class ChatService
                         continue;
                     }
                     $calls++;
+                    if ($onEvent !== null && $this->catalogue->has($call['name'])) {
+                        $onEvent(['type' => 'tool', 'tool' => $call['name'], 'entity' => $this->catalogue->entity($call['name'])]);
+                    }
                     $outcome = $this->executor->execute($user, $call['name'], $call['arguments'], $redactor, $branch?->public_id, $locale);
                     $conversation[] = ['role' => 'tool', 'tool_call_id' => $call['id'], 'content' => $outcome->text];
 
@@ -166,13 +173,13 @@ class ChatService
      *
      * @param  list<array<string, mixed>>  $calls
      * @param  list<array<string, mixed>>  $records
-     * @return list<array{tool: string, entity: string, id: ?string, route: string, as_of: string}>
+     * @return list<array{tool: string, entity: string, id: ?string, labels?: list<string>, route: string, as_of: string}>
      */
     private function citationsFor(string $answer, array $calls, array $records): array
     {
         $out = [];
         $seen = [];
-        $candidates = [...$calls, ...array_filter($records, fn (array $r) => str_contains($answer, $r['id']))];
+        $candidates = [...$calls, ...array_filter($records, fn (array $r) => str_contains($answer, $r['id']) || $this->namesAny($answer, $r['labels'] ?? []))];
         foreach ($candidates as $citation) {
             $key = $citation['tool'].'|'.$citation['entity'].'|'.($citation['id'] ?? '').'|'.$citation['route'];
             if (isset($seen[$key])) {
@@ -183,6 +190,18 @@ class ChatService
         }
 
         return array_slice($out, 0, 30);
+    }
+
+    /** @param  list<string>  $labels */
+    private function namesAny(string $answer, array $labels): bool
+    {
+        foreach ($labels as $label) {
+            if (str_contains($answer, $label)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function toolMessage(string $callId, string $code, string $message): array

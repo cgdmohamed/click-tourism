@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 import { useTheme } from '../theme'
 import { BrandMark, useBrandName } from './Brand'
 import { useSyncCurrencyExponents } from '../lib/useCurrencies'
-import { AssistantPanel } from './AssistantPanel'
+import { AssistantChat } from './AssistantChat'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationBell } from './NotificationBell'
 import { Icon } from './icons'
@@ -44,6 +44,11 @@ export function Layout() {
   }
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  // The assistant is a mode: while it is on the sidebar and the page are hidden (ADR-0022).
+  if (assistantVisible && assistantOpen) {
+    return <AssistantChat onExit={closeAssistant} />
   }
 
   const groups: NavGroup[] = [
@@ -221,7 +226,7 @@ export function Layout() {
                 type="button"
                 className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered hover:text-text-default"
                 onClick={() => setAssistantOpen((open) => !open)}
-                aria-expanded={assistantOpen}
+                aria-pressed={assistantOpen}
                 aria-label={t('assistantOpen')}
                 title={t('assistantOpen')}
               >
@@ -269,7 +274,6 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
-      {assistantVisible ? <AssistantPanel open={assistantOpen} onClose={closeAssistant} /> : null}
     </div>
   )
 }

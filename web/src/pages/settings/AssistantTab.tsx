@@ -10,6 +10,7 @@ import {
   assistantChanges,
   canEnableAssistant,
   isAccepted,
+  isValidRetention,
   modelsErrorState,
   readAssistantSettings,
   recommendedModel,
@@ -37,6 +38,7 @@ export function AssistantTab() {
   // so settings and the model list can finish loading in any order without overwriting each other.
   const [modelDraft, setModelDraft] = useState<string | null>(null)
   const [acceptedAt, setAcceptedAt] = useState('')
+  const [retention, setRetention] = useState('90')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [keyDraft, setKeyDraft] = useState('')
@@ -58,6 +60,7 @@ export function AssistantTab() {
     if (!settingsQuery.isSuccess) return
     setEnabled(current.enabled === 'true')
     setAcceptedAt(current.acceptedAt)
+    setRetention(current.retentionDays ?? '90')
     setModelDraft(null)
   }, [settingsQuery.isSuccess, current])
 
@@ -116,7 +119,7 @@ export function AssistantTab() {
   const accepted = isAccepted(acceptedAt)
   const enableReady = canEnableAssistant({ model, accepted, keyConfigured: keyConfigured === true })
   const switchLocked = readOnly || (!enabled && !enableReady)
-  const changes = assistantChanges(current, { enabled, model, acceptedAt })
+  const changes = assistantChanges(current, { enabled, model, acceptedAt, retentionDays: isValidRetention(retention) ? retention : current.retentionDays })
 
   const save = useMutation({
     mutationFn: async () => {
@@ -321,6 +324,23 @@ export function AssistantTab() {
             <p id="assistant-accept-hint" className="text-small text-text-subtle">
               {accepted ? fill('assistantAcceptedAt', { date: formatDateTime(acceptedAt, locale) }) : t('assistantAcceptHint')}
             </p>
+          </section>
+
+          <section className="flex flex-col gap-2 border-t border-border-subtle pt-5" aria-label={t('assistantRetentionLabel')}>
+            <Field label={t('assistantRetentionLabel')} hint={t('assistantRetentionHint')}>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={3650}
+                dir="ltr"
+                className="max-w-32"
+                value={retention}
+                disabled={readOnly}
+                aria-invalid={!isValidRetention(retention)}
+                onChange={(event) => setRetention(event.target.value)}
+              />
+            </Field>
           </section>
 
           <section className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-5">

@@ -167,7 +167,7 @@ class ToolExecutor
      * Rows of a result that the model may cite by id: list rows with a public id, and search hits
      * (group type to entity). The ChatService keeps only those whose id the answer actually names.
      *
-     * @return list<array{tool: string, entity: string, id: string, route: string, as_of: string}>
+     * @return list<array{tool: string, entity: string, id: string, labels: list<string>, route: string, as_of: string}>
      */
     private function records(string $tool, string $entity, string $path, array $body, string $asOf): array
     {
@@ -180,7 +180,22 @@ class ToolExecutor
         $add = function (mixed $row, string $rowEntity) use (&$found, $tool, $path, $asOf): void {
             $id = is_array($row) ? ($row['id'] ?? null) : null;
             if (is_string($id) && preg_match('/^[A-Za-z0-9_-]{8,64}$/', $id) === 1 && count($found) < 100) {
-                $found[] = ['tool' => $tool, 'entity' => $rowEntity, 'id' => $id, 'route' => $path, 'as_of' => $asOf];
+                // The document number or name the answer prints: the screen links it to the record.
+                $labels = [];
+                // List rows carry number/name fields; search hits carry title_ar/title_en, and for bookings
+                // and payments the title is "NUMBER · customer", so only the number names that record.
+                $candidates = [$row['number'] ?? null, $row['name'] ?? null, $row['name_ar'] ?? null, $row['name_en'] ?? null];
+                foreach (['title_ar', 'title_en'] as $field) {
+                    $title = is_string($row[$field] ?? null) ? $row[$field] : null;
+                    $candidates[] = $title !== null && in_array($rowEntity, ['booking', 'payment'], true) ? explode(' · ', $title)[0] : $title;
+                }
+                foreach ($candidates as $candidate) {
+                    $value = is_string($candidate) ? trim($candidate) : '';
+                    if (mb_strlen($value) >= 4 && mb_strlen($value) <= 80) {
+                        $labels[] = $value;
+                    }
+                }
+                $found[] = ['tool' => $tool, 'entity' => $rowEntity, 'id' => $id, 'labels' => array_values(array_unique($labels)), 'route' => $path, 'as_of' => $asOf];
             }
         };
 

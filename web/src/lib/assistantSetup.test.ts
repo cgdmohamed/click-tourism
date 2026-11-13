@@ -6,6 +6,7 @@ import {
   enabledPatch,
   initialModel,
   isAccepted,
+  isValidRetention,
   modelsErrorState,
   readAssistantSettings,
   recommendedModel,
@@ -34,8 +35,21 @@ describe('assistant setup helpers', () => {
       provider: 'openai',
       model: 'gpt-4.1-mini',
       acceptedAt: '2026-11-13T10:00:00Z',
+      retentionDays: '90',
     })
-    expect(readAssistantSettings([])).toEqual({ enabled: '', provider: 'none', model: '', acceptedAt: '' })
+    expect(readAssistantSettings([])).toEqual({ enabled: '', provider: 'none', model: '', acceptedAt: '', retentionDays: '90' })
+  })
+
+  it('saves the chat retention only when it changed and is a valid number of days', () => {
+    const current = { enabled: 'false', provider: 'none', model: '', acceptedAt: '', retentionDays: '90' }
+    const draft = { enabled: false, model: '', acceptedAt: '' }
+    expect(assistantChanges(current, { ...draft, retentionDays: '90' })).toEqual([])
+    expect(assistantChanges(current, { ...draft, retentionDays: '30' })).toEqual([{ group: 'assistant', key: 'history_retention_days', value: '30' }])
+    expect(isValidRetention('0')).toBe(true)
+    expect(isValidRetention('3650')).toBe(true)
+    expect(isValidRetention('3651')).toBe(false)
+    expect(isValidRetention('-1')).toBe(false)
+    expect(isValidRetention('')).toBe(false)
   })
 
   it('treats only a timestamp as acceptance', () => {

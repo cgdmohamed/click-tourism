@@ -3,19 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Assistant\Services\ChatService;
+use App\Modules\Assistant\Services\ConversationService;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Assistant\Support\ModelCatalogue;
 use App\Modules\Assistant\Support\ProviderCredentials;
 use App\Modules\Assistant\Support\ProviderException;
+use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * POST /assistant/chat (ADR-0017): the read-only in-product assistant. Stateless: the client sends
- * the conversation, nothing is stored. Permission assistant.use is enforced by the route.
+ * POST /assistant/chat (ADR-0017): the read-only in-product assistant. The client sends the
+ * conversation; the answer turn is saved for the user's chat history unless saving is off (ADR-0022). Permission assistant.use is enforced by the route.
  *
  * GET /assistant/models (ADR-0018): the models the configured provider offers, so an administrator
  * can pick one in Settings. Read-only: saving still needs settings.update.
@@ -90,7 +93,114 @@ class AssistantController extends ApiController
         return $this->ok(['key_source' => $credentials->source()]);
     }
 
-    public function chat(Request $request, ProviderManager $providers, ChatService $chat, AuditService $audit, BranchScope $scope): JsonResponse
+    public function chat(Request $request, ProviderManager $providers, ChatService $chat, ConversationService $history, AuditService $audit, BranchScope $scope): JsonResponse
+    {
+        $prepared = $this->prepare($request, $providers, $chat, $audit, $scope);
+        if ($prepared instanceof JsonResponse) {
+            return $prepared;
+        }
+        [$messages, $locale, $branch, $conversationId] = $prepared;
+
+        try {
+            $result = $chat->run($request->user(), $messages, $locale, $branch);
+        } catch (ProviderException) {
+            return ApiResponse::error('The assistant provider is unavailable. Try again later.', 'assistant_provider_error', 502);
+        }
+
+        return $this->ok($this->payload($history, $request, $branch, $conversationId, $messages, $result));
+    }
+
+    /**
+     * POST /assistant/chat/stream (ADR-0022): the same turn as /chat, sent as newline-delimited JSON
+     * so the screen can show what the assistant is doing. Events: thinking, tool, answer, error.
+     * The checks that can refuse the request run first and answer with the normal JSON error.
+     */
+    public function stream(Request $request, ProviderManager $providers, ChatService $chat, ConversationService $history, AuditService $audit, BranchScope $scope): JsonResponse|StreamedResponse
+    {
+        $prepared = $this->prepare($request, $providers, $chat, $audit, $scope);
+        if ($prepared instanceof JsonResponse) {
+            return $prepared;
+        }
+        [$messages, $locale, $branch, $conversationId] = $prepared;
+        $user = $request->user();
+
+        return new StreamedResponse(function () use ($chat, $history, $request, $user, $messages, $locale, $branch, $conversationId): void {
+            $send = static function (array $event): void {
+                echo json_encode($event, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n";
+                if (ob_get_level() > 0) {
+                    @ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $result = $chat->run($user, $messages, $locale, $branch, $send);
+                $send(['type' => 'answer', 'data' => $this->payload($history, $request, $branch, $conversationId, $messages, $result)]);
+            } catch (ProviderException) {
+                $send(['type' => 'error', 'code' => 'assistant_provider_error', 'message' => 'The assistant provider is unavailable. Try again later.']);
+            }
+        }, 200, [
+            'Content-Type' => 'application/x-ndjson; charset=utf-8',
+            'Cache-Control' => 'no-cache, no-transform',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    public function conversations(Request $request, ConversationService $history, BranchScope $scope): JsonResponse
+    {
+        $user = $request->user();
+        $rows = $history->list($user, $scope->resolve($user))->map(fn ($c) => [
+            'id' => $c->public_id,
+            'title' => $c->title,
+            'last_message_at' => $c->last_message_at?->toIso8601String(),
+        ])->values();
+
+        return $this->ok($rows);
+    }
+
+    public function conversation(Request $request, string $id, ConversationService $history): JsonResponse
+    {
+        $conversation = $history->find($request->user(), $id);
+        if ($conversation === null) {
+            return ApiResponse::error('Conversation not found.', 'not_found', 404);
+        }
+
+        return $this->ok([
+            'id' => $conversation->public_id,
+            'title' => $conversation->title,
+            'messages' => $conversation->messages->map(fn ($m) => [
+                'role' => $m->role,
+                'content' => $m->content,
+                'citations' => $m->citations ?? [],
+                'truncated' => $m->truncated,
+            ])->values(),
+        ]);
+    }
+
+    public function deleteConversation(Request $request, string $id, ConversationService $history): JsonResponse
+    {
+        $conversation = $history->find($request->user(), $id);
+        if ($conversation === null) {
+            return ApiResponse::error('Conversation not found.', 'not_found', 404);
+        }
+        $history->delete($conversation);
+
+        return $this->ok(['deleted' => 1]);
+    }
+
+    public function deleteConversations(Request $request, ConversationService $history, BranchScope $scope): JsonResponse
+    {
+        $user = $request->user();
+
+        return $this->ok(['deleted' => $history->deleteAll($user, $scope->resolve($user))]);
+    }
+
+    /**
+     * Shared checks of /chat and /chat/stream.
+     *
+     * @return JsonResponse|array{0: list<array{role: string, content: string}>, 1: string, 2: ?Branch, 3: ?string}
+     */
+    private function prepare(Request $request, ProviderManager $providers, ChatService $chat, AuditService $audit, BranchScope $scope): JsonResponse|array
     {
         $user = $request->user();
 
@@ -111,6 +221,7 @@ class AssistantController extends ApiController
             'messages.*.role' => ['required', 'in:user,assistant'],
             'messages.*.content' => ['required', 'string', 'max:'.(int) config('assistant.max_message_chars')],
             'locale' => ['nullable', 'in:ar,en'],
+            'conversation_id' => ['nullable', 'string', 'max:26'],
         ]);
         $messages = array_values($data['messages']);
         if (end($messages)['role'] !== 'user') {
@@ -127,13 +238,17 @@ class AssistantController extends ApiController
         // An X-Branch-Id the user does not hold is a 403 here (BranchScope), before any provider call.
         $branch = $scope->resolve($user);
 
-        try {
-            $result = $chat->run($user, $messages, $locale, $branch);
-        } catch (ProviderException) {
-            return ApiResponse::error('The assistant provider is unavailable. Try again later.', 'assistant_provider_error', 502);
-        }
+        return [$messages, $locale, $branch, $data['conversation_id'] ?? null];
+    }
 
-        return $this->ok($result->payload());
+    /** @param  list<array{role: string, content: string}>  $messages */
+    private function payload(ConversationService $history, Request $request, $branch, ?string $conversationId, array $messages, $result): array
+    {
+        $payload = $result->payload();
+        $saved = $history->saveTurn($request->user(), $branch, $conversationId, (string) end($messages)['content'], $payload['answer'], $payload['citations'], (bool) $payload['truncated']);
+        $payload['conversation_id'] = $saved?->public_id;
+
+        return $payload;
     }
 
     private function denied(AuditService $audit, Request $request, string $reason, string $message, string $code, int $status, array $headers = []): JsonResponse
