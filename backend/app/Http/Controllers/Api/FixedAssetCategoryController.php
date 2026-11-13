@@ -65,7 +65,7 @@ class FixedAssetCategoryController extends ApiController
         $presence = $partial ? 'sometimes' : 'required';
 
         return [
-            'code' => [$presence, 'string', 'max:40'],
+            'code' => $partial ? ['sometimes', 'string', 'max:40'] : ['nullable', 'string', 'max:40'],
             'name_ar' => [$presence, 'string', 'max:255'],
             'name_en' => [$presence, 'string', 'max:255'],
             'asset_account_code' => ['nullable', 'string', 'max:20'],

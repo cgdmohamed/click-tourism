@@ -7,6 +7,7 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Expenses\Models\Expense;
 use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Expenses\Services\ExpenseService;
+use App\Support\CodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,7 +31,8 @@ class ExpenseController extends ApiController
         }
 
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:30', 'unique:expense_categories,code'],
+            // Optional: blank/omitted means the system generates EXP-001, EXP-002, ...
+            'code' => ['nullable', 'string', 'max:30', 'unique:expense_categories,code'],
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'account_id' => ['required', 'string', Rule::exists('accounts', 'public_id')],
@@ -39,13 +41,13 @@ class ExpenseController extends ApiController
         $account = Account::query()->where('public_id', $data['account_id'])->firstOrFail();
         $this->assertExpenseAccount($account);
 
-        $category = ExpenseCategory::query()->create([
-            'code' => $data['code'],
+        $category = CodeGenerator::create($data['code'] ?? null, 'expense_categories', 'code', 'EXP', 3, fn (string $code) => ExpenseCategory::query()->create([
+            'code' => $code,
             'name_ar' => $data['name_ar'],
             'name_en' => $data['name_en'],
             'account_id' => $account->id,
             'is_active' => true,
-        ]);
+        ]));
         $audit->log('expense_category.created', $category, null, ['code' => $category->code], $this->actorId());
 
         return $this->created($category->load('account')->toApiArray());

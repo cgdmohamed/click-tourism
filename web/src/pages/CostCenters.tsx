@@ -4,8 +4,10 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate } from '../lib/format'
-import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
 import { localizedName } from '../lib/names'
+import { CodeField } from '../components/CodeField'
+import { createdWithCode } from '../lib/codes'
 
 type CostCenter = {
   id: string
@@ -20,7 +22,6 @@ type CostCenter = {
 }
 
 type Form = {
-  code: string
   name_ar: string
   name_en: string
   parent_id: string
@@ -28,7 +29,7 @@ type Form = {
   effective_to: string
 }
 
-const emptyForm: Form = { code: '', name_ar: '', name_en: '', parent_id: '', effective_from: '', effective_to: '' }
+const emptyForm: Form = { name_ar: '', name_en: '', parent_id: '', effective_from: '', effective_to: '' }
 
 /**
  * Analytical cost-center tree. Journal lines can be allocated to these
@@ -42,6 +43,7 @@ export default function CostCenters() {
   const [editing, setEditing] = useState<CostCenter | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<CostCenter | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [form, setForm] = useState<Form>(emptyForm)
   const ar = locale === 'ar'
   const canManage = can('cost_centers.manage')
@@ -70,6 +72,7 @@ export default function CostCenters() {
 
   const startCreate = () => {
     setError('')
+    setNotice('')
     setEditing(null)
     setForm(emptyForm)
     setOpen(true)
@@ -79,7 +82,6 @@ export default function CostCenters() {
     setError('')
     setEditing(center)
     setForm({
-      code: center.code,
       name_ar: center.name_ar,
       name_en: center.name_en,
       parent_id: center.parent_id ?? '',
@@ -91,21 +93,26 @@ export default function CostCenters() {
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!form.code.trim() || !form.name_ar.trim() || !form.name_en.trim()) {
-        throw new Error(ar ? 'الرمز والاسمان مطلوبان' : 'Code and both names are required')
+      if (!form.name_ar.trim() || !form.name_en.trim()) {
+        throw new Error(ar ? 'الاسمان مطلوبان' : 'Both names are required')
       }
+      // No code is sent: the server generates it on create and it never changes afterwards.
       const payload = {
-        code: form.code.trim(),
         name_ar: form.name_ar.trim(),
         name_en: form.name_en.trim(),
         parent_id: form.parent_id || null,
         effective_from: form.effective_from || null,
         effective_to: form.effective_to || null,
       }
-      if (editing) await api.patch(`/cost-centers/${editing.id}`, payload)
-      else await api.post('/cost-centers', payload)
+      if (editing) {
+        await api.patch(`/cost-centers/${editing.id}`, payload)
+        return null
+      }
+      const { data } = await api.post<{ data: CostCenter }>('/cost-centers', payload)
+      return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (created) => {
+      if (created) setNotice(createdWithCode(ar, 'مركز التكلفة', 'Cost center', created.code))
       closeEditor()
       setError('')
       await queryClient.invalidateQueries({ queryKey: ['cost-centers'] })
@@ -138,6 +145,11 @@ export default function CostCenters() {
         }
       />
 
+      {notice ? (
+        <div className="mb-4" role="status">
+          <InlineNotice tone="positive">{notice}</InlineNotice>
+        </div>
+      ) : null}
       {error && !open && !archiveTarget ? (
         <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
       ) : null}
@@ -210,9 +222,7 @@ export default function CostCenters() {
         }
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('code')} required>
-            <Input value={form.code} maxLength={40} onChange={(event) => setForm({ ...form, code: event.target.value })} dir="ltr" />
-          </Field>
+          <CodeField code={editing?.code} label={t('code')} ar={ar} />
           <Field label={ar ? 'المركز الأب' : 'Parent'}>
             <Select value={form.parent_id} onChange={(event) => setForm({ ...form, parent_id: event.target.value })}>
               <option value="">{ar ? 'بدون' : 'None'}</option>

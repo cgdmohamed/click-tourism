@@ -24,6 +24,7 @@ use App\Modules\Money\Services\FxService;
 use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Parties\Services\PartyLedgerService;
+use App\Support\CodeGenerator;
 use App\Support\Money;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -66,17 +67,22 @@ class FixedAssetService
     /** @param array<string, mixed> $data */
     public function createCategory(array $data, ?int $actorId): FixedAssetCategory
     {
-        $attributes = $this->categoryAttributes($data);
+        // A blank code is generated (FAC-001, ...); a supplied one is kept as typed.
+        $category = CodeGenerator::create((string) ($data['code'] ?? ''), 'fixed_asset_categories', 'code', 'FAC', 3, function (string $code) use ($data, $actorId) {
+            $attributes = $this->categoryAttributes(['code' => $code] + $data);
 
-        if (FixedAssetCategory::query()->where('code', $attributes['code'])->exists()) {
-            throw new DomainException('A category with this code already exists.');
-        }
+            if (FixedAssetCategory::query()->where('code', $attributes['code'])->exists()) {
+                throw new DomainException('A category with this code already exists.');
+            }
 
-        $category = FixedAssetCategory::query()->create($attributes + ['created_by' => $actorId]);
+            $category = FixedAssetCategory::query()->create($attributes + ['created_by' => $actorId]);
 
-        $this->audit->log('fixed_asset_category.created', $category, null, [
-            'code' => $category->code,
-        ], $actorId);
+            $this->audit->log('fixed_asset_category.created', $category, null, [
+                'code' => $category->code,
+            ], $actorId);
+
+            return $category;
+        });
 
         return $category->refresh()->load(
             'assetAccount',

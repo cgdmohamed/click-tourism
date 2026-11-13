@@ -425,6 +425,21 @@ class ImportFrameworkTest extends TestCase
         $this->assertSame('driver', Employee::query()->where('internal_code', 'EMP-1')->value('category'));
     }
 
+    public function test_employees_import_generates_a_code_when_the_cell_is_blank(): void
+    {
+        $csv = "internal_code,name_ar,name_en\n,سعاد,Soad\nemp-0007,علي,Ali\n,منى,Mona\n";
+        $this->upload('employees', $csv, ['dry_run' => '0'])->assertJsonPath('data.created_count', 3);
+
+        $this->assertSame('EMP-0001', Employee::query()->where('name_en', 'Soad')->value('internal_code'));
+        $this->assertSame('EMP-0007', Employee::query()->where('name_en', 'Ali')->value('internal_code'));
+        $this->assertSame('EMP-0008', Employee::query()->where('name_en', 'Mona')->value('internal_code'));
+
+        // Re-importing a code-less row matches the existing employee by name instead of duplicating it.
+        $this->upload('employees', "internal_code,name_ar,name_en\n,سعاد,Soad\n", ['dry_run' => '0', 'duplicate_policy' => 'update'])
+            ->assertJsonPath('data.updated_count', 1);
+        $this->assertSame(3, Employee::query()->count());
+    }
+
     public function test_tour_packages_import(): void
     {
         $csv = "code,name,category,execution_type,destination,currency,base_price,estimated_cost\n"
@@ -583,6 +598,30 @@ class ImportFrameworkTest extends TestCase
         $response = $this->upload('employees', "internal_code,name_ar,name_en\nEMP-X,x,Hijack\n", ['dry_run' => '0', 'duplicate_policy' => 'update']);
         $response->assertJsonPath('data.status', 'failed')->assertJsonPath('data.errors.0.code', 'other_branch');
         $this->assertSame('Foreign Emp', Employee::query()->where('internal_code', 'EMP-X')->value('name_en'));
+    }
+
+    public function test_code_less_employee_rows_match_by_name_only_inside_the_importing_branch(): void
+    {
+        $other = Branch::query()->create(['code' => 'ALX', 'name_ar' => 'الإسكندرية', 'name_en' => 'Alexandria', 'accounting_mode' => 'dimension', 'is_active' => true]);
+        // The lowest id belongs to ANOTHER branch and shares the English name.
+        $foreign = Employee::query()->create(['internal_code' => 'EMP-A', 'name_ar' => 'سعاد', 'name_en' => 'Soad', 'category' => 'staff', 'branch_id' => $other->id, 'is_active' => true]);
+        $mine = Employee::query()->create(['internal_code' => 'EMP-B', 'name_ar' => 'سعاد', 'name_en' => 'Mona', 'category' => 'staff', 'branch_id' => $this->branch->id, 'is_active' => true]);
+
+        // A same-named employee in another branch neither blocks creating one here ...
+        $this->upload('employees', "internal_code,name_ar,name_en\n,سعاد,Soad\n", ['dry_run' => '0'])
+            ->assertJsonPath('data.status', 'completed')->assertJsonPath('data.created_count', 1);
+        $this->assertSame(1, Employee::query()->where('branch_id', $this->branch->id)->where('name_en', 'Soad')->count());
+        $this->assertSame('Soad', $foreign->refresh()->name_en);
+
+        // ... nor hides this branch's own employee when both share a name.
+        $this->upload('employees', "internal_code,name_ar,name_en\n,منى محدّث,Mona\n", ['dry_run' => '0', 'duplicate_policy' => 'update'])
+            ->assertJsonPath('data.updated_count', 1)->assertJsonPath('data.created_count', 0);
+        $this->assertSame('منى محدّث', $mine->refresh()->name_ar);
+        $this->assertSame(2, Employee::query()->where('branch_id', $this->branch->id)->count());
+
+        // Code matching stays global: a code owned by another branch is still reported.
+        $this->upload('employees', "internal_code,name_ar,name_en\nEMP-A,x,Hijack\n", ['dry_run' => '0', 'duplicate_policy' => 'update'])
+            ->assertJsonPath('data.errors.0.code', 'other_branch');
     }
 
     // ---- background processing -------------------------------------------

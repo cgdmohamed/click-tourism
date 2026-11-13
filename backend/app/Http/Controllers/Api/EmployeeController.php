@@ -33,7 +33,8 @@ class EmployeeController extends ApiController
     public function store(Request $request, EmployeeFinanceService $service): JsonResponse
     {
         $data = $request->validate([
-            'internal_code' => ['required', 'string', 'max:40', 'unique:employees,internal_code'],
+            // Optional: blank/omitted means the system generates EMP-0001, EMP-0002, ...
+            'internal_code' => ['nullable', 'string', 'max:40', 'unique:employees,internal_code'],
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'category' => ['nullable', Rule::in(Employee::categories())],

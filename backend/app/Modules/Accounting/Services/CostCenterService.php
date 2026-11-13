@@ -10,6 +10,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Support\CodeGenerator;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -36,8 +37,10 @@ class CostCenterService
      */
     public function create(array $data, ?int $actorId = null): CostCenter
     {
-        return DB::transaction(function () use ($data, $actorId) {
-            $code = strtoupper((string) $data['code']);
+        // A blank code is generated (CC-001, ...); a supplied one is kept (upper-cased).
+        $supplied = strtoupper(trim((string) ($data['code'] ?? '')));
+
+        return CodeGenerator::create($supplied, 'cost_centers', 'code', 'CC', 3, function (string $code) use ($data, $actorId) {
             $parentId = null;
             $parentPublicId = $data['parent_id'] ?? null;
 

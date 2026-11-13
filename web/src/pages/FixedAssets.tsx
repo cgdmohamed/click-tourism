@@ -24,6 +24,7 @@ import {
   statusTone,
 } from '../components/ui'
 import { localizedName } from '../lib/names'
+import { CodeField } from '../components/CodeField'
 
 type AccountRef = { code?: string; name_ar?: string; name_en?: string }
 
@@ -253,7 +254,6 @@ const emptyAssetForm = {
 }
 
 const emptyCategoryForm = {
-  code: '',
   name_ar: '',
   name_en: '',
   default_useful_life_months: '',
@@ -467,9 +467,9 @@ export default function FixedAssets() {
   const createCategory = useMutation({
     mutationFn: async () => {
       const { data } = await api.post<{ data: Category }>('/fixed-asset-categories', {
-        code: categoryForm.code,
-        name_ar: categoryForm.name_ar || categoryForm.code,
-        name_en: categoryForm.name_en || categoryForm.code,
+        // No code is sent: the server generates it (FAC-001, ...).
+        name_ar: categoryForm.name_ar.trim(),
+        name_en: categoryForm.name_en.trim(),
         default_useful_life_months: categoryForm.default_useful_life_months
           ? Number(categoryForm.default_useful_life_months)
           : undefined,
@@ -1365,20 +1365,18 @@ export default function FixedAssets() {
             <Button variant="secondary" onClick={() => setCategoryOpen(false)}>
               {L('إلغاء', 'Cancel')}
             </Button>
-            <Button onClick={() => createCategory.mutate()} disabled={createCategory.isPending || !categoryForm.code}>
+            <Button onClick={() => createCategory.mutate()} disabled={createCategory.isPending || !categoryForm.name_ar.trim() || !categoryForm.name_en.trim()}>
               {L('حفظ', 'Save')}
             </Button>
           </>
         }
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={L('الكود', 'Code')} required>
-            <Input value={categoryForm.code} onChange={(event) => setCategoryForm({ ...categoryForm, code: event.target.value.toUpperCase() })} maxLength={40} />
-          </Field>
-          <Field label={L('الاسم بالعربية', 'Arabic name')}>
+          <CodeField label={L('الكود', 'Code')} ar={locale === 'ar'} />
+          <Field label={L('الاسم بالعربية', 'Arabic name')} required>
             <Input value={categoryForm.name_ar} onChange={(event) => setCategoryForm({ ...categoryForm, name_ar: event.target.value })} maxLength={255} />
           </Field>
-          <Field label={L('الاسم بالإنجليزية', 'English name')}>
+          <Field label={L('الاسم بالإنجليزية', 'English name')} required>
             <Input value={categoryForm.name_en} onChange={(event) => setCategoryForm({ ...categoryForm, name_en: event.target.value })} maxLength={255} />
           </Field>
           <Field label={L('العمر الافتراضي (شهر)', 'Default life (months)')}>

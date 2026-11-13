@@ -38,7 +38,8 @@ class CostCenterController extends ApiController
     public function store(Request $request, CostCenterService $service): JsonResponse
     {
         $data = $request->validate([
-            'code' => ['required', 'string', 'max:40', 'unique:cost_centers,code'],
+            // Optional: blank/omitted means the system generates CC-001, CC-002, ...
+            'code' => ['nullable', 'string', 'max:40', 'unique:cost_centers,code'],
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['required', 'string', 'max:255'],
             'parent_id' => ['nullable', 'string', Rule::exists('cost_centers', 'public_id')],

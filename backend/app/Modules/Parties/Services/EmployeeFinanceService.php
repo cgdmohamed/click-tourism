@@ -18,6 +18,7 @@ use App\Modules\Parties\Models\EmployeeAdvance;
 use App\Modules\Parties\Models\EmployeeCustody;
 use App\Modules\Parties\Models\EmployeeTransaction;
 use App\Modules\Treasury\Models\CashAccount;
+use App\Support\CodeGenerator;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -73,9 +74,10 @@ class EmployeeFinanceService
             $this->branchScope->assertBranch($user, $branch);
         }
 
-        return DB::transaction(function () use ($data, $branch, $actorId) {
-            $internalCode = strtoupper((string) $data['internal_code']);
+        // A blank internal_code is generated (EMP-0001, ...); a supplied one is kept (upper-cased).
+        $supplied = strtoupper(trim((string) ($data['internal_code'] ?? '')));
 
+        return CodeGenerator::create($supplied, 'employees', 'internal_code', 'EMP', 4, function (string $internalCode) use ($data, $branch, $actorId) {
             $employee = Employee::query()->create([
                 'internal_code' => $internalCode,
                 'name_ar' => $data['name_ar'],

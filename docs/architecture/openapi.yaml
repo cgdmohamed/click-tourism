@@ -184,6 +184,8 @@ paths:
     post:
       tags: [Platform]
       summary: Create a branch
+      description: >-
+        The code is optional; blank or omitted generates the next free code (BR-01 style) and returns it. A supplied code is validated.
       requestBody:
         required: true
         content:
@@ -347,7 +349,8 @@ paths:
     post:
       tags: [Platform]
       summary: Create a currency (settings.update, audited)
-      description: The code is 3 uppercase letters (ISO-like) and immutable after creation. Exponent 0-3.
+      description: >-
+        The code is 3 uppercase letters (ISO 4217) and immutable after creation. Exponent 0-3. This is the one master-data code that is NOT generated: an ISO code cannot be invented, so the web form offers a picker of common ISO currencies (prefilling code, name, symbol and exponent) plus an `Other` option for manual entry.
       requestBody:
         required: true
         content:
@@ -496,8 +499,29 @@ paths:
     post:
       tags: [Accounting]
       summary: Create an account
+      description: >-
+        `code` is optional. When blank or omitted the next free code under `parent_id` is generated
+        (sibling pattern: highest numeric child plus the step between the last two children; with no numeric
+        child the parent code plus a two-digit counter; a root account takes the next hundred above the
+        roots of its type). A supplied code is accepted and validated (unique, max 20), so accountants keep
+        their own numbering. Use `GET /accounts/next-code` to preview the suggestion. The code can still be
+        edited on update until the account has postings.
       responses:
         '201': { description: Created }
+        '422': { $ref: '#/components/responses/Validation' }
+  /accounts/next-code:
+    get:
+      tags: [Accounting]
+      summary: Suggest the next free account code (accounts.create)
+      description: >-
+        Read-only preview of the code `POST /accounts` would generate for a blank code. Pass `parent_id`
+        (the account type is then taken from the parent) or, for a root account, `type`.
+      parameters:
+        - { name: parent_id, in: query, schema: { type: string }, description: Parent account id }
+        - { name: type, in: query, schema: { type: string, enum: [asset, liability, equity, revenue, expense] }, description: Required when parent_id is absent }
+      responses:
+        '200': { description: 'The suggested code, as data.code' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
   /cash-accounts:
     get:
@@ -603,6 +627,8 @@ paths:
     post:
       tags: [Accounting]
       summary: Create an expense category
+      description: >-
+        The code is optional; blank or omitted generates the next free code (EXP-001 style) and returns it. A supplied code is validated.
       requestBody:
         required: true
         content:
@@ -1185,6 +1211,8 @@ paths:
     post:
       tags: [Accounting]
       summary: Create a cost center
+      description: >-
+        The code is optional; blank or omitted generates the next free code (CC-001 style) and returns it. A supplied code is validated.
       requestBody:
         required: true
         content:
@@ -2539,7 +2567,8 @@ paths:
     post:
       tags: [CRM]
       summary: Create a lead source (requires leads.manage_rules)
-      description: The code is lower-cased, must match `alpha_dash`, and is immutable afterwards.
+      description: >-
+        The code is optional, blank generates `src-001`, ... A supplied code is lower-cased, must match `alpha_dash`, and is immutable afterwards.
       requestBody:
         required: true
         content:
@@ -2617,7 +2646,8 @@ paths:
     post:
       tags: [CRM]
       summary: Create a pipeline stage (requires leads.manage_rules)
-      description: The code is lower-cased, must match `alpha_dash`, and is immutable afterwards.
+      description: >-
+        The code is optional, blank generates `stg-001`, ... A supplied code is lower-cased, must match `alpha_dash`, and is immutable afterwards.
       requestBody:
         required: true
         content:
@@ -2845,6 +2875,8 @@ paths:
     post:
       tags: [Parties]
       summary: Create an employee master record
+      description: >-
+        The code is optional; blank or omitted generates the next free code (EMP-0001 style) and returns it. A supplied code is validated.
       requestBody:
         required: true
         content:
@@ -3611,6 +3643,8 @@ paths:
     post:
       tags: [Fixed Assets]
       summary: Create a fixed-asset category
+      description: >-
+        The code is optional; blank or omitted generates the next free code (FAC-001 style) and returns it. A supplied code is validated.
       requestBody:
         required: true
         content:
@@ -5535,9 +5569,9 @@ components:
         is_active: { type: boolean }
     BranchInput:
       type: object
-      required: [code, name_ar, name_en]
+      required: [name_ar, name_en]
       properties:
-        code: { type: string, maxLength: 20 }
+        code: { type: string, maxLength: 20, description: 'Optional on create: blank or omitted generates the next free code (BR-01); a supplied code is accepted and validated (unique). The generated code is returned in the response.' }
         name_ar: { type: string }
         name_en: { type: string }
         accounting_mode: { type: string, enum: [dimension, customer, independent], default: dimension }
@@ -5749,10 +5783,10 @@ components:
         submit: { type: boolean, default: false }
     CommissionRuleInput:
       type: object
-      description: Rates are basis points (10000 = 100%); fixed amounts are base-currency minor units. code is required on create only.
+      description: Rates are basis points (10000 = 100%); fixed amounts are base-currency minor units. code is optional on create only (blank or omitted generates RULE-001, RULE-002, ...); the generated code is returned.
       required: [name_ar, name_en, beneficiary_type, basis, effective_from]
       properties:
-        code: { type: string, maxLength: 40, description: Identifies the rule across versions; create only }
+        code: { type: string, maxLength: 40, description: Identifies the rule across versions; create only. Generated when blank }
         name_ar: { type: string }
         name_en: { type: string }
         beneficiary_type: { type: string, enum: [employee, agent, branch] }
@@ -5777,9 +5811,9 @@ components:
         is_active: { type: boolean }
     ExpenseCategoryInput:
       type: object
-      required: [code, name_ar, name_en, account_id]
+      required: [name_ar, name_en, account_id]
       properties:
-        code: { type: string, maxLength: 30 }
+        code: { type: string, maxLength: 30, description: 'Optional on create: blank or omitted generates the next free code (EXP-001); a supplied code is accepted and validated (unique). The generated code is returned in the response.' }
         name_ar: { type: string }
         name_en: { type: string }
         account_id: { type: string }
@@ -5930,9 +5964,9 @@ components:
           items: { $ref: '#/components/schemas/CostCenter' }
     CostCenterInput:
       type: object
-      required: [code, name_ar, name_en]
+      required: [name_ar, name_en]
       properties:
-        code: { type: string, maxLength: 40 }
+        code: { type: string, maxLength: 40, description: 'Optional on create: blank or omitted generates the next free code (CC-001); a supplied code is accepted and validated (unique). The generated code is returned in the response.' }
         name_ar: { type: string }
         name_en: { type: string }
         parent_id: { type: string }
@@ -5981,9 +6015,9 @@ components:
         custody_balance_minor: { type: integer }
     EmployeeInput:
       type: object
-      required: [internal_code, name_ar, name_en]
+      required: [name_ar, name_en]
       properties:
-        internal_code: { type: string, maxLength: 40 }
+        internal_code: { type: string, maxLength: 40, description: 'Optional on create: blank or omitted generates the next free code (EMP-0001); a supplied code is accepted and validated (unique). The generated code is returned in the response. Not editable on update.' }
         name_ar: { type: string }
         name_en: { type: string }
         category: { type: string, enum: [staff, executive, driver, other] }
@@ -6536,9 +6570,9 @@ components:
         created_at: { type: string, format: date-time, nullable: true }
     FixedAssetCategoryInput:
       type: object
-      required: [code, name_ar, name_en]
+      required: [name_ar, name_en]
       properties:
-        code: { type: string, maxLength: 40 }
+        code: { type: string, maxLength: 40, description: 'Optional on create: blank or omitted generates the next free code (FAC-001); a supplied code is accepted and validated (unique). The generated code is returned in the response.' }
         name_ar: { type: string, maxLength: 255 }
         name_en: { type: string, maxLength: 255 }
         asset_account_code: { type: string, maxLength: 20, description: Defaults from assets.asset_account_code }
@@ -6963,7 +6997,9 @@ components:
     LeadSourceInput:
       type: object
       required: [name_ar, name_en]
-      description: On create, `code` is also required and immutable afterwards.
+      description: >-
+        On create, `code` is optional (blank generates the next free `src-001`, `src-002`, ...) and it is
+        immutable afterwards. Seeded codes such as `other` are never renamed.
       properties:
         code: { type: string, maxLength: 40, pattern: '^[a-z0-9_-]+$' }
         name_ar: { type: string, maxLength: 255 }
@@ -6982,7 +7018,8 @@ components:
       type: object
       required: [name_ar, name_en]
       description: >-
-        On create, `code` is also required and immutable afterwards. `is_won`
+        On create, `code` is optional (blank generates the next free `stg-001`, `stg-002`, ...) and it is
+        immutable afterwards. Seeded codes such as `new` and `won` are never renamed. `is_won`
         and `is_lost` are mutually exclusive.
       properties:
         code: { type: string, maxLength: 40, pattern: '^[a-z0-9_-]+$' }

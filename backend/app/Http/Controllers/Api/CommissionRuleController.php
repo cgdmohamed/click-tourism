@@ -97,7 +97,7 @@ class CommissionRuleController extends ApiController
         $required = $partial ? 'sometimes' : 'required';
 
         return $request->validate([
-            'code' => $partial ? ['prohibited'] : ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'code' => $partial ? ['prohibited'] : ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/'],
             'name_ar' => [$required, 'string', 'max:255'],
             'name_en' => [$required, 'string', 'max:255'],
             'beneficiary_type' => [$required, Rule::in(CommissionRule::BENEFICIARIES)],
