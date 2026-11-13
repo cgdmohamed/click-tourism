@@ -1,6 +1,6 @@
 # ADR-0020 - Contract additions for the approved requirements of 2026-11-13 (PR 1)
 
-- **Status:** **Proposed - architect approval pending** for the rows in the Approval record. The business requirements themselves were approved by the project owner on 2026-11-13; the shared-contract additions below were not approved row by row.
+- **Status:** **Accepted** (project owner decision 2026-11-13, granting the architect approval `AGENTS.md` and `docs/architecture/README.md` require). The business requirements were approved the same day; the rows below were approved after this ADR was presented.
 - **Date:** 2026-11-13
 - **Related:** `docs/product/approved-requirements-2026-11-13.md`, ADR-0015 (party subledgers), ADR-0018, `docs/architecture/openapi.yaml`.
 
@@ -23,7 +23,7 @@ Rollback: the migration is reversible; the new routes can be removed without dat
 
 | # | Change | Approver (name) | Role | Date | Where the approval was given |
 |---|---|---|---|---|---|
-| 1 | Schema: `invoice_lines.booking_item_id` | _pending_ | architect | _pending_ | _pending_ |
-| 2 | Routes: revaluation and cost-accrual review/confirm | _pending_ | architect | _pending_ | _pending_ |
-| 3 | Response additions (items 3) | _pending_ | architect | _pending_ | _pending_ |
-| 4 | Supplier party on cost lines (item 4) | _pending_ | architect | _pending_ | _pending_ |
+| 1 | Schema: `invoice_lines.booking_item_id` | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0020 (PR #77) |
+| 2 | Routes: revaluation and cost-accrual review/confirm | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0020 (PR #77) |
+| 3 | Response additions (items 3) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0020 (PR #77) |
+| 4 | Supplier party on cost lines (item 4) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "اوافق" in answer to the request to approve ADR-0020 (PR #77) |
