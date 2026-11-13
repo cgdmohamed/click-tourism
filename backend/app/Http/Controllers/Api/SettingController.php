@@ -299,7 +299,7 @@ class SettingController extends ApiController
 
     /**
      * Exact values only (the stored string is read back as is). Unknown keys are refused so nobody
-     * can park a provider key or other secret in the assistant group: the key is env-only.
+     * can park a provider key or other secret in the assistant group: the key has its own endpoint.
      */
     private function validateAssistantValue(int $index, string $key, string $value): void
     {
@@ -312,7 +312,7 @@ class SettingController extends ApiController
         ];
 
         if (! in_array($key, ['enabled', 'provider', 'redact_pii', 'privacy_url', 'model', 'data_processing_accepted_at', ...array_keys($ranges)], true)) {
-            $fail("assistant.{$key} is not a known setting. The provider API key is never a setting: set OPENAI_API_KEY in the environment.");
+            $fail("assistant.{$key} is not a known setting. The provider API key is saved with PUT /assistant/key, never as a plain setting.");
         }
         if (in_array($key, ['enabled', 'redact_pii'], true) && ! in_array($value, ['true', 'false'], true)) {
             $fail("assistant.{$key} must be 'true' or 'false'.");

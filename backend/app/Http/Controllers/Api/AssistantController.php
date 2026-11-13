@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Assistant\Services\ChatService;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Assistant\Support\ModelCatalogue;
+use App\Modules\Assistant\Support\ProviderCredentials;
 use App\Modules\Assistant\Support\ProviderException;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
@@ -28,7 +29,7 @@ class AssistantController extends ApiController
         $discovered = $providers->discoveryProvider();
         if ($discovered === null) {
             return ApiResponse::error(
-                'The assistant has no provider key configured. Set OPENAI_API_KEY in the server environment; the key is never a setting.',
+                'The assistant has no provider key configured. Save the provider key in Settings > Assistant.',
                 'assistant_not_configured',
                 503,
             );
@@ -53,6 +54,31 @@ class AssistantController extends ApiController
                 $models,
             ),
         ]);
+    }
+
+    /** PUT /assistant/key: save the provider key (encrypted). The key is never returned. */
+    public function storeKey(Request $request, ProviderCredentials $credentials, AuditService $audit): JsonResponse
+    {
+        $data = $request->validate([
+            'api_key' => ['required', 'string', 'min:20', 'max:300', 'regex:/^\S+$/'],
+        ]);
+
+        $before = $credentials->source();
+        $credentials->store($data['api_key']);
+        // The audit trail records that the key changed, never the key itself.
+        $audit->log('assistant.key_saved', null, ['source' => $before], ['source' => 'settings'], $request->user()?->id);
+
+        return $this->ok(['key_source' => $credentials->source()]);
+    }
+
+    /** DELETE /assistant/key: remove the saved key (an environment key, if any, then applies). */
+    public function destroyKey(Request $request, ProviderCredentials $credentials, AuditService $audit): JsonResponse
+    {
+        $before = $credentials->source();
+        $credentials->clear();
+        $audit->log('assistant.key_removed', null, ['source' => $before], ['source' => $credentials->source()], $request->user()?->id);
+
+        return $this->ok(['key_source' => $credentials->source()]);
     }
 
     public function chat(Request $request, ProviderManager $providers, ChatService $chat, AuditService $audit, BranchScope $scope): JsonResponse

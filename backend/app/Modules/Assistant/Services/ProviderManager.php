@@ -5,6 +5,7 @@ namespace App\Modules\Assistant\Services;
 use App\Modules\Assistant\Contracts\AssistantProvider;
 use App\Modules\Assistant\Providers\NoneProvider;
 use App\Modules\Assistant\Providers\OpenAiProvider;
+use App\Modules\Assistant\Support\ProviderCredentials;
 use App\Modules\Core\Services\SettingService;
 
 /** Picks the provider named by the setting assistant.provider. Unknown names fall back to 'none'. */
@@ -50,7 +51,13 @@ class ProviderManager
         return trim((string) $this->settings->get('assistant', 'data_processing_accepted_at', '')) !== '';
     }
 
-    /** The chosen provider holds a credential in the environment (never a setting). */
+    /** 'settings' (saved in the product), 'env' (server environment) or 'none'. */
+    public function keySource(): string
+    {
+        return app(ProviderCredentials::class)->source();
+    }
+
+    /** The chosen provider holds a credential (saved in Settings or in the environment). */
     public function keyConfigured(): bool
     {
         return $this->provider()->isConfigured();

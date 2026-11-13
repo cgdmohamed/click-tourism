@@ -20,6 +20,7 @@ export type FeatureFlags = {
   assistant_privacy_url?: string
   /** The provider key exists in the server environment (never returned itself). */
   assistant_key_configured?: boolean
+  assistant_key_source?: 'settings' | 'env' | 'none'
   /** The data-processing notice has been accepted in Settings > Assistant. */
   assistant_accepted?: boolean
   /** The model the assistant will use (blank = the server default). */

@@ -6,14 +6,7 @@ Stage 3 of `docs/architecture/mcp-ai-assistant-blueprint.md`, decided in ADR-001
 
 ## 1. Enable it (all four steps)
 
-1. **Key, environment only.** Put the key in `backend/.env` (never in the database, settings or git):
-
-   ```
-   OPENAI_API_KEY=sk-...
-   # OPENAI_BASE_URL=https://api.openai.com/v1   # only for a proxy / compatible endpoint
-   ```
-
-   Restart the PHP workers (or `php artisan config:cache` again) so the value is read. The key is never returned by any endpoint, never written to settings or logs, and the Settings API refuses to store it.
+1. **Key, from Settings.** An administrator (`settings.update`) pastes the OpenAI key in **Settings > Assistant** and saves. It is stored encrypted (flagged secret), is write-only (no endpoint ever returns it, the audit trail records only that it changed) and can be replaced or removed there at any time. Installers who prefer the environment can still set `OPENAI_API_KEY=sk-...` in `backend/.env` (optionally `OPENAI_BASE_URL` for a proxy); a key saved in Settings wins over it. A saved key is tied to the application key (`APP_KEY`): if that changes, enter the key again.
 2. **Settings** (admin, group `assistant`, Settings → Assistant tab). The tab reads `GET /api/v1/feature-flags` for `assistant_key_configured` (does the PHP environment see the key?), then `GET /api/v1/assistant/models` for the models this key's account can use (see section 3).
    1. Pick a model from the list the API returned (`recommended` is preselected). Saving it also sets `provider` = `openai`; by hand that is `provider` = `openai` plus `model` = one of the listed ids.
    2. Read the data-processing notice and accept it: this stores `data_processing_accepted_at` (ISO-8601 timestamp; empty means not accepted). This is required before the switch: without it a request that sets `enabled` = `true` is refused with 422 "Accept the data-processing notice before enabling the assistant." Acceptance may be stored first or in the same payload.
@@ -104,7 +97,7 @@ Nothing is stored server-side: the browser keeps the conversation in memory only
 |---|---|
 | Button missing | no `assistant.use`, setting off, notice not accepted, provider `none`, or no key (check `GET /feature-flags`) |
 | `403 assistant_not_accepted` | the data-processing notice was never accepted (setting `assistant.data_processing_accepted_at` empty); an administrator accepts it in Settings → Assistant |
-| `503 assistant_not_configured` | `OPENAI_API_KEY` empty in the PHP environment (restart workers / clear config cache) |
+| `503 assistant_not_configured` | no key saved in Settings and `OPENAI_API_KEY` empty in the environment |
 | `502 assistant_provider_error` | OpenAI unreachable, key rejected, model name unknown or provider error; the response body is deliberately not copied anywhere; check the network and the key from the server |
 | `429 assistant_rate_limited` / `assistant_budget_exceeded` | limits above |
 

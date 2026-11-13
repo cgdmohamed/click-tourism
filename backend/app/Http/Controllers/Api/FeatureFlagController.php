@@ -30,6 +30,7 @@ class FeatureFlagController extends ApiController
             'assistant_enabled' => $assistant->usable(),
             'assistant_provider' => $assistant->usable() ? $assistant->providerName() : null,
             'assistant_key_configured' => $assistant->keyConfigured(),
+            'assistant_key_source' => $assistant->keySource(),
             'assistant_accepted' => $assistant->accepted(),
             'assistant_model' => $assistant->model(),
             'assistant_redact_pii' => $settings->bool('assistant', 'redact_pii', true),
