@@ -13,6 +13,11 @@ export type FeatureFlags = {
   refund_segregation: boolean
   /** Installation switch for MCP access tokens (setting mcp.enabled, default off). */
   mcp_enabled?: boolean
+  /** The assistant can answer: switched on, a provider chosen and its key present (ADR-0017). */
+  assistant_enabled?: boolean
+  assistant_provider?: string | null
+  assistant_redact_pii?: boolean
+  assistant_privacy_url?: string
 }
 
 /**

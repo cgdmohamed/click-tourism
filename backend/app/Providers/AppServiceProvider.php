@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Http\Middleware\McpReadOnly;
+use App\Modules\Assistant\Services\ProviderManager;
+use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\RoundingPolicy;
 use App\Modules\Integrations\Adapters\GraphMetaLeadFetcher;
 use App\Modules\Integrations\Adapters\GraphWhatsAppSender;
@@ -13,6 +15,7 @@ use App\Modules\Parties\Models\Employee;
 use App\Modules\Parties\Models\EmployeeAdvance;
 use App\Modules\Parties\Models\EmployeeCustody;
 use App\Modules\Parties\Models\Supplier;
+use App\Support\ApiResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -66,6 +69,19 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $limits;
+        });
+
+        // Assistant chat (ADR-0017): per user, limit from the setting assistant.rate_limit_per_minute
+        // (default 20). A refusal is audited as assistant.denied.
+        RateLimiter::for('assistant-chat', function (Request $request): Limit {
+            $limit = Limit::perMinute(app(ProviderManager::class)->limit('rate_limit_per_minute'))
+                ->by('assistant:'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
+
+            return $limit->response(function (Request $request, array $headers) {
+                app(AuditService::class)->log('assistant.denied', null, null, ['reason' => 'rate_limited', 'status' => 429], $request->user()?->id);
+
+                return ApiResponse::error('Too many assistant requests; slow down.', 'assistant_rate_limited', 429)->withHeaders($headers);
+            });
         });
 
         // MCP tokens (mcp:read only): 60 requests/minute per token (ADR-0016).

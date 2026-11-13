@@ -264,6 +264,14 @@ Rules are effective-dated and versioned; an approved version is immutable. Maker
 
 `mcp.admin` lists every user's MCP tokens (`GET /mcp/tokens?all=1`) and revokes any of them (`DELETE /mcp/tokens/{id}`, audited with the owner and `revoked_by_admin`). It grants no data access: an administrator's own MCP token is limited by the administrator's own permissions like any other.
 
+### In-product assistant (ADR-0017)
+
+| Permission | admin | finance_manager | senior_accountant | accountant | supervisor | sales | reservations | cashier | viewer |
+|---|---|---|---|---|---|---|---|---|---|
+| `assistant.use` | ✓ | ✓ | — | — | — | — | — | — | — |
+
+`assistant.use` allows `POST /assistant/chat` and shows the Assistant panel (with the installation setting `assistant.enabled`, a provider other than `none` and the key in the environment). It grants **no data access**: every tool call runs as the signed-in user through the normal GET route, so the same view permissions, branch assignment, masking and row budget as for the MCP tools apply (the table above). The assistant is read-only; no write permission is involved. Settings `assistant.*` need `settings.update`. On an existing installation run `php artisan roles:sync`.
+
 Installation switch: setting `mcp.enabled` (default `false`, exposed as `mcp_enabled` in `GET /feature-flags`). While it is off, no token can be created and every request made with an MCP token is refused with `403 mcp_disabled`.
 
 ## 4. Known follow-ups

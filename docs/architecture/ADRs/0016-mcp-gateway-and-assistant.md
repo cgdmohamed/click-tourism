@@ -1,6 +1,6 @@
 # ADR-0016 — MCP gateway and assistant (stage 1)
 
-- **Status:** Accepted for stages 1 and 2 (project owner decisions, 2026-11-12 and 2026-11-13; see the amendment at the end). The owner granted the architect approval that `mcp-ai-assistant-blueprint.md` section 12(1) required for the contract additions, for these changes only. Stage 3 (assistant UI) is not started; stage 4 (write/draft tools) is BLOCKED and not approved.
+- **Status:** Accepted for stages 1 and 2 (project owner decisions, 2026-11-12 and 2026-11-13; see the amendment at the end). The owner granted the architect approval that `mcp-ai-assistant-blueprint.md` section 12(1) required for the contract additions, for these changes only. Stage 3 (assistant UI) is decided separately in ADR-0017 (OpenAI behind a provider abstraction); stage 4 (write/draft tools) is BLOCKED and not approved.
 - **Date:** 2026-11-12
 - **Related:** ADR-0005 (branch scoping), ADR-0006 (auth), ADR-0008 (API conventions), `mcp-ai-assistant-blueprint.md`, `threat-model.md` section 6.
 

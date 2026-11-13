@@ -28,6 +28,19 @@ class SettingService
             // setting default on purpose: its default is config('mcp.daily_row_budget') (env MCP_DAILY_ROW_BUDGET),
             // and a stored setting overrides it.
         ],
+        // In-product assistant (ADR-0017). Off by default; the provider key is env-only (OPENAI_API_KEY)
+        // and is never a setting. Read-only: there are no write tools. The numeric limits and the model
+        // have NO built-in setting default on purpose (like mcp.daily_row_budget): their defaults come
+        // from config('assistant.*') / env, and a stored setting overrides them.
+        'assistant' => [
+            'enabled' => 'false',
+            // none | openai. 'none' keeps the assistant disabled whatever 'enabled' says.
+            'provider' => 'none',
+            // Mask phone/e-mail/tax id in everything sent to the provider (AT-12).
+            'redact_pii' => 'true',
+            // Optional https link shown next to the data-processing notice in the panel.
+            'privacy_url' => '',
+        ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',
             'company_name_en' => 'Tourism ERP',
