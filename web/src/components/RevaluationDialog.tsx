@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -36,15 +36,21 @@ type Preview = {
  */
 export function RevaluationDialog({ period, baseCurrency, onClose }: { period: { id: string | number; name: string } | null; baseCurrency: string; onClose: () => void }) {
   const { locale } = useI18n()
-  const { can } = useAuth()
+  const { can, activeBranch } = useAuth()
   const queryClient = useQueryClient()
   const ar = locale === 'ar'
   const L = (a: string, e: string) => (ar ? a : e)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
+  // A result or error belongs to the branch it was produced for.
+  useEffect(() => {
+    setMessage('')
+    setError('')
+  }, [activeBranch?.id, period?.id])
+
   const query = useQuery({
-    queryKey: ['revaluation', period?.id],
+    queryKey: ['revaluation', period?.id, activeBranch?.id],
     queryFn: async () => (await api.get<{ data: Preview }>(`/fiscal-periods/${period?.id}/revaluation`)).data.data,
     enabled: period !== null,
   })
@@ -66,7 +72,7 @@ export function RevaluationDialog({ period, baseCurrency, onClose }: { period: {
   })
 
   const data = query.data
-  const blocked = !data || !data.enabled || !data.policy_approved || data.rows.length === 0 || data.run_status === 'posted' || data.run_status === 'reversal_pending'
+  const blocked = query.isFetching || !data || !data.enabled || !data.policy_approved || data.rows.length === 0 || data.run_status === 'posted' || data.run_status === 'reversal_pending'
   const money = (minor: number) => formatMoney(minor, baseCurrency, locale)
 
   return (

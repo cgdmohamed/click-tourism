@@ -42,7 +42,7 @@ class CostAccrualService
      * Bookings of the branch whose service has started by $endDate and whose estimated cost
      * exceeds what the ledger carries at that date.
      *
-     * @return list<array{booking: Booking, estimated_minor: int, recognized_minor: int, accrual_minor: int, already_accrued: bool}>
+     * @return list<array{booking: Booking, estimated_minor: int, recognized_minor: int, accrual_minor: int, remaining_by_supplier: array<int, int>, already_accrued: bool}>
      */
     public function preview(string $endDate, Branch $branch, ?FiscalPeriod $period = null): array
     {
@@ -64,7 +64,8 @@ class CostAccrualService
                 ? (int) $booking->total_cost_minor
                 : (new Money((int) $booking->total_cost_minor, (string) $booking->currency_code))->convertTo($base, (string) ($booking->fx_rate ?: '1'))->amountMinor;
 
-            $recognized = $this->carriedCost($booking, $endDate, $costIds, $costCode);
+            $carried = $this->carriedCostBySupplier($booking, $endDate, $period?->starts_on?->toDateString(), $costIds, $costCode);
+            $recognized = (int) array_sum($carried);
             $accrual = $estimated - $recognized;
             if ($accrual <= 0) {
                 continue;
@@ -75,6 +76,7 @@ class CostAccrualService
                 'estimated_minor' => $estimated,
                 'recognized_minor' => $recognized,
                 'accrual_minor' => $accrual,
+                'remaining_by_supplier' => $this->remainingBySupplier($booking, $estimated, $carried),
                 'already_accrued' => $period !== null && $this->existingEntry($booking, $period) !== null,
             ];
         }
@@ -111,7 +113,7 @@ class CostAccrualService
                 entryDate: $end,
                 branch: $branch,
                 currency: $this->settings->baseCurrency(),
-                lines: $this->lines($booking, $amount, $cost, $accrued),
+                lines: $this->lines($booking, $amount, $cost, $accrued, $row['remaining_by_supplier']),
                 memo: "Cost accrual {$booking->number} {$period->name}",
                 sourceType: 'booking',
                 sourceId: $booking->id,
@@ -173,24 +175,47 @@ class CostAccrualService
     }
 
     /**
-     * The accrual split across the booking's suppliers by their estimated cost, so the ledger
-     * filtered by supplier finds it (GAP-RPT-05). The last share takes the rounding residue.
+     * What each supplier of the booking still has uninvoiced and unaccrued: its share of the
+     * estimate (scaled to the base-currency estimate) minus the cost the ledger already carries
+     * for that supplier. Key 0 stands for services without a supplier.
      *
-     * @return list<PostingLine>
+     * @param  array<int, int>  $carried
+     * @return array<int, int>
      */
-    private function lines(Booking $booking, int $amount, Account $cost, Account $accrued): array
+    private function remainingBySupplier(Booking $booking, int $estimatedBase, array $carried): array
     {
         $weights = [];
         foreach ($booking->items as $item) {
             $key = $item->supplier_id ?? 0;
             $weights[$key] = ($weights[$key] ?? 0) + max(0, (int) $item->total_cost_minor);
         }
-        $weights = array_filter($weights);
         $totalWeight = array_sum($weights);
-        if ($totalWeight <= 0) {
-            $weights = [0 => 1];
-            $totalWeight = 1;
+        $remaining = [];
+        $left = $estimatedBase;
+        $last = array_key_last($weights);
+        foreach ($weights as $supplierId => $weight) {
+            $estimate = $supplierId === $last ? $left : ($totalWeight > 0 ? intdiv($estimatedBase * $weight, $totalWeight) : 0);
+            $left -= $estimate;
+            $remaining[$supplierId] = max(0, $estimate - (int) ($carried[$supplierId] ?? 0));
         }
+
+        return $remaining;
+    }
+
+    /**
+     * The accrual split across suppliers by what each still owes, so a supplier whose invoice is
+     * already in the books gets none of it (GAP-RPT-05). The last share takes the rounding residue.
+     *
+     * @param  array<int, int>  $remaining
+     * @return list<PostingLine>
+     */
+    private function lines(Booking $booking, int $amount, Account $cost, Account $accrued, array $remaining): array
+    {
+        $weights = array_filter($remaining);
+        if ($weights === []) {
+            $weights = [0 => 1];
+        }
+        $totalWeight = array_sum($weights);
 
         $lines = [];
         $left = $amount;
@@ -210,8 +235,15 @@ class CostAccrualService
         return $lines;
     }
 
-    /** Cost the ledger carries for this booking up to a date (base minor, nets any open accrual). */
-    private function carriedCost(Booking $booking, string $endDate, array $costIds, string $costCode): int
+    /**
+     * Cost the ledger carries for this booking up to a date, per supplier (key 0 = unattributed),
+     * base minor. Accruals of an earlier period and their reversals are left out: their reversal
+     * is due on the first day of this period, so they must not suppress this period's accrual
+     * whether or not the reversal job has run yet.
+     *
+     * @return array<int, int>
+     */
+    private function carriedCostBySupplier(Booking $booking, string $endDate, ?string $periodStart, array $costIds, string $costCode): array
     {
         $rows = DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
@@ -223,18 +255,24 @@ class CostAccrualService
             ->where(fn ($q) => $q->whereNull('je.source_type')->orWhere('je.source_type', '!=', 'fiscal_year'))
             ->whereDate('je.entry_date', '<=', $endDate)
             ->whereRaw("COALESCE(CASE WHEN je.source_type = 'booking' THEN je.source_id END, inv.booking_id, ad.booking_id) = ?", [$booking->id])
-            ->groupBy('a.id', 'a.code')
-            ->selectRaw('a.id as account_id, a.code, COALESCE(SUM(jl.base_debit_minor - jl.base_credit_minor), 0) as net')
+            ->when($periodStart !== null, function ($query) use ($periodStart) {
+                $earlier = fn ($sub) => $sub->select('id')->from('journal_entries')
+                    ->where('event', 'like', self::EVENT.':%')->whereDate('entry_date', '<', $periodStart);
+                $query->whereNotIn('je.id', $earlier)->whereNotIn(DB::raw('COALESCE(je.reversal_of_id, 0)'), $earlier);
+            })
+            ->groupBy('a.id', 'a.code', 'jl.party_type', 'jl.party_id')
+            ->selectRaw('a.id as account_id, a.code, jl.party_type, jl.party_id, COALESCE(SUM(jl.base_debit_minor - jl.base_credit_minor), 0) as net')
             ->get();
 
-        $net = 0;
+        $bySupplier = [];
         foreach ($rows as $row) {
             if (isset($costIds[(int) $row->account_id]) || str_starts_with((string) $row->code, $costCode)) {
-                $net += (int) $row->net;
+                $key = $row->party_type === 'supplier' && $row->party_id !== null ? (int) $row->party_id : 0;
+                $bySupplier[$key] = ($bySupplier[$key] ?? 0) + (int) $row->net;
             }
         }
 
-        return $net;
+        return $bySupplier;
     }
 
     private function existingEntry(Booking $booking, FiscalPeriod $period): ?JournalEntry

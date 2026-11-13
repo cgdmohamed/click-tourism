@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -16,14 +16,20 @@ type Preview = { period: { id: number; name: string; ends_on: string }; reversal
  */
 export function CostAccrualDialog({ period, baseCurrency, onClose }: { period: { id: string | number; name: string } | null; baseCurrency: string; onClose: () => void }) {
   const { locale } = useI18n()
-  const { can } = useAuth()
+  const { can, activeBranch } = useAuth()
   const queryClient = useQueryClient()
   const L = (a: string, e: string) => (locale === 'ar' ? a : e)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
+  // A result or error belongs to the branch it was produced for.
+  useEffect(() => {
+    setMessage('')
+    setError('')
+  }, [activeBranch?.id, period?.id])
+
   const query = useQuery({
-    queryKey: ['cost-accrual', period?.id],
+    queryKey: ['cost-accrual', period?.id, activeBranch?.id],
     queryFn: async () => (await api.get<{ data: Preview }>(`/fiscal-periods/${period?.id}/cost-accrual`)).data.data,
     enabled: period !== null,
   })
@@ -55,7 +61,7 @@ export function CostAccrualDialog({ period, baseCurrency, onClose }: { period: {
         <>
           <Button variant="secondary" onClick={onClose}>{L('إغلاق', 'Close')}</Button>
           {can('periods.close') ? (
-            <Button onClick={() => confirm.mutate()} disabled={!data || data.total_minor <= 0 || confirm.isPending}>{L('تأكيد وترحيل', 'Confirm and post')}</Button>
+            <Button onClick={() => confirm.mutate()} disabled={query.isFetching || !data || data.total_minor <= 0 || confirm.isPending}>{L('تأكيد وترحيل', 'Confirm and post')}</Button>
           ) : null}
         </>
       }

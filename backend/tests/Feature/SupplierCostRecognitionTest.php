@@ -240,6 +240,61 @@ class SupplierCostRecognitionTest extends TestCase
         $this->assertSame(140000, $this->supplierCostLines());
     }
 
+    public function test_next_periods_accrual_is_not_suppressed_while_the_previous_reversal_has_not_run(): void
+    {
+        $this->booking();
+        $accruals = app(CostAccrualService::class);
+        $accruals->accrue($this->period, $this->branch, $this->user->id);
+
+        $april = FiscalPeriod::query()->create([
+            'fiscal_year_id' => $this->period->fiscal_year_id,
+            'name' => '2026-04', 'starts_on' => '2026-04-01', 'ends_on' => '2026-04-30', 'status' => 'open',
+        ]);
+        Carbon::setTestNow(Carbon::create(2026, 4, 30, 12));
+
+        // March's reversal has not run; the service is still uninvoiced, so April accrues it again.
+        $preview = $accruals->preview('2026-04-30', $this->branch, $april);
+        $this->assertSame(100000, $preview[0]['accrual_minor']);
+        $this->assertSame('posted', $accruals->accrue($april, $this->branch, $this->user->id)['status']);
+
+        // The job then reverses March only; April's accrual stays as the liability.
+        $this->assertSame(1, $accruals->postDueReversals());
+        $liability = (int) DB::table('journal_lines as jl')->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->where('a.code', '2170')->selectRaw('COALESCE(SUM(jl.base_credit_minor - jl.base_debit_minor),0) as t')->value('t');
+        $this->assertSame(100000, $liability);
+    }
+
+    public function test_accrual_goes_to_the_supplier_that_is_still_uninvoiced(): void
+    {
+        $other = $this->supplier();
+        $booking = app(BookingService::class)->create([
+            'branch_id' => $this->branch->public_id,
+            'customer_id' => $this->customer()->public_id,
+            'owner_user_id' => $this->user->public_id,
+            'start_date' => '2026-03-12',
+            'end_date' => '2026-03-15',
+            'currency' => 'EGP',
+            'fx_rate' => '1',
+            'items' => [
+                ['service_type' => 'hotel', 'description' => 'A', 'quantity' => 1, 'unit_cost_minor' => 100000, 'unit_sell_minor' => 150000, 'supplier_id' => $this->theSupplier->public_id],
+                ['service_type' => 'transport', 'description' => 'B', 'quantity' => 1, 'unit_cost_minor' => 100000, 'unit_sell_minor' => 150000, 'supplier_id' => $other->public_id],
+            ],
+        ], $this->user->id);
+        app(BookingService::class)->transition($booking, 'confirmed', null, $this->user->id);
+        $booking = $booking->refresh()->load('items');
+
+        // A is invoiced in full; only B is still owed.
+        app(InvoiceService::class)->issue($this->supplierInvoice($booking, 100000), $this->user->id);
+        app(CostAccrualService::class)->accrue($this->period, $this->branch, $this->user->id);
+
+        $debits = fn ($supplier) => (int) app(ReportService::class)->generalLedger(
+            $this->account('5100'), '2026-01-01', '2026-12-31', $this->branch, 1, 100, null, ['type' => 'supplier', 'id' => $supplier->id],
+        )['summary']['total_debit_minor'];
+
+        $this->assertSame(100000, $debits($this->theSupplier));
+        $this->assertSame(100000, $debits($other));
+    }
+
     public function test_a_booking_whose_cost_is_already_invoiced_is_not_accrued(): void
     {
         $booking = $this->booking();
