@@ -22,7 +22,7 @@ export const UNTRUSTED_KEYS = new Set([
 
 // Keys whose free text may embed contact details; scanned with regexes.
 const FREE_TEXT_KEYS = new Set(['notes', 'memo', 'subtitle', 'description', 'reason', 'cancellation_reason', 'margin_approval_reason']);
-const CONTACT_KEYS = new Set(['phone', 'email', 'mobile', 'whatsapp']);
+const CONTACT_KEYS = new Set(['phone', 'email', 'mobile', 'whatsapp', 'tax_id']);
 
 // C0/C1 control characters except tab/newline, zero-width and bidi override characters.
 // eslint-disable-next-line no-control-regex
@@ -49,6 +49,10 @@ export function cleanText(value, max = MAX_TEXT_LENGTH) {
 export function maskPhone(value) {
   const digits = String(value).replace(/\D/g, '');
   return `***${digits.slice(-2)}`;
+}
+
+export function maskTaxId(value) {
+  return `***${String(value).replace(/[^A-Za-z0-9]/g, '').slice(-2)}`;
 }
 
 export function maskEmail(value) {
@@ -86,6 +90,7 @@ export function sanitizeValue(value, { maskContacts = true, seen = new Set() } =
   }
   if (CONTACT_KEYS.has(key) && maskContacts) {
     if (value === '') return value;
+    if (key === 'tax_id') return maskTaxId(value);
     return key === 'email' ? maskEmail(value) : maskPhone(value);
   }
   let text = value;

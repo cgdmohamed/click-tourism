@@ -63,9 +63,9 @@ Status: Draft. Scope: self-hosted single-tenant installation. Method: asset inve
 - Meta/WhatsApp credentials are customer-managed → compromise is outside product control; provide rotation guidance.
 - No formal penetration test in MVP → schedule before first production if required.
 
-## 6. AI assistant / MCP gateway (proposed, not implemented)
+## 6. AI assistant / MCP gateway (read-only gateway implemented, assistant not started)
 
-Status: **stage 1 implemented** (ADR-0016): token endpoints, `mcp.readonly` allowlist, per-token rate limit, audit, and a read-only gateway in `mcp-gateway/` with three tools. Full detail in `mcp-ai-assistant-blueprint.md`. No AI provider is integrated, no write tools exist, no transcripts are stored, contact details are masked by default (`mcp.mask_contacts`), and no keys are stored in the repository. Nothing is deployed unless a user creates a token and runs the gateway.
+Status: **stages 1 and 2 implemented** (ADR-0016): token endpoints (own and, with `mcp.admin`, all users'), the `mcp.enabled` kill switch (default off), `mcp.readonly` allowlist of 15 tool routes, per-token rate limit, report limiter, daily row budget, bulk-read flag, audit of every call, and a read-only gateway in `mcp-gateway/` with 15 tools, a second branch check and a circuit breaker. The in-product assistant (stage 3) is not started; write tools (stage 4) are BLOCKED. Full detail in `mcp-ai-assistant-blueprint.md`. No AI provider is integrated, no write tools exist, no transcripts are stored, contact details are masked by default (`mcp.mask_contacts`), and no keys are stored in the repository. Nothing is deployed unless a user creates a token and runs the gateway.
 
 New trust boundary: assistant client <-> MCP gateway (sidecar, no DB access) <-> Laravel API using the **end user's own** read-only token (`mcp:read` ability, 8h expiry). Authorization stays in Laravel (permission middleware + `BranchScope`).
 
@@ -74,9 +74,10 @@ New trust boundary: assistant client <-> MCP gateway (sidecar, no DB access) <->
 | Indirect prompt injection | Lead notes, names, memos or bank memos contain instructions | Untrusted-field wrapping, no outbound tools in the same session, no write tools, tool calls after untrusted content need user confirmation |
 | Data exfiltration | Model renders external links/images or chains to another MCP server that can send data | Same-origin links only, CSP, dedicated assistant profile, per-token row/rate budgets, contact masking by default |
 | Privilege escalation / cross-branch | Tool arguments tampered, foreign branch id | Laravel authoritative; gateway drops foreign-branch rows; method fixed to GET |
-| Token theft | MCP token leaked | Short expiry, read-only ability, revoke endpoints, never logged |
+| Token theft | MCP token leaked | Short expiry, read-only ability, revoke endpoints (self and `mcp.admin`), kill switch `mcp.enabled`, daily row budget, never logged |
 | Provider data leakage | PII sent to cloud model | Customer-chosen provider (cloud or local), PII redaction on by default, provider allowlist |
-| Repudiation | User denies a query | Every tool call audited by Laravel (`mcp.tool_call`), no result bodies stored |
+| Repudiation | User denies a query | Every authenticated tool call audited by Laravel (`mcp.tool_called` / `mcp.tool_denied` with request id), no result bodies stored, the gateway has no audit write path |
+| Bulk harvesting | Paging through customers, leads or reports | `per_page` <= 25, daily row budget per token (`429 mcp_budget_exceeded`), `mcp.bulk_read` flag, report limiter, contact and tax id masking, gateway circuit breaker |
 
 Additional abuse cases to test (blueprint AT-1..AT-14):
 
@@ -84,4 +85,7 @@ Additional abuse cases to test (blueprint AT-1..AT-14):
 14. An MCP token cannot call any non-GET route or any export route.
 15. Cross-branch ids requested through the assistant return 403/404 and are audited.
 16. A deactivated or revoked user's MCP token fails immediately.
-17. A paged bulk read hits the row budget and is flagged. (Stage 1 only has the per-token rate limit; the row budget and bulk-read flag are stage 2.)
+17. A paged bulk read is flagged (`mcp.bulk_read`) and hits the daily row budget. (Implemented and tested in stage 2.)
+18. With `mcp.enabled` off, no MCP token can be created and every MCP request is refused and audited.
+19. A gateway pinned to a branch the token's user does not hold refuses every call, and fails closed when the branch list is unavailable.
+20. A user without `mcp.admin` cannot list or revoke another user's MCP tokens; an administrator's revocation is audited with the owner.

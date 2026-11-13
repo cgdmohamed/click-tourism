@@ -11,6 +11,8 @@ export type FeatureFlags = {
   credit_limit_policy: 'off' | 'warn' | 'block'
   base_currency: string
   refund_segregation: boolean
+  /** Installation switch for MCP access tokens (setting mcp.enabled, default off). */
+  mcp_enabled?: boolean
 }
 
 /**

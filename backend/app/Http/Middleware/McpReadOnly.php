@@ -8,6 +8,8 @@ use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -16,17 +18,40 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * A token carrying "mcp:read" without the full "*" ability is an MCP token.
  * SPA login tokens carry "*" and pass through untouched (createToken default).
- * For MCP tokens the middleware also audits every call (no payloads, no PII)
- * and masks contact details in the JSON response when mcp.mask_contacts is on.
+ * For MCP tokens the middleware also
+ *  - refuses everything while the feature flag mcp.enabled is off (403 mcp_disabled),
+ *  - enforces the per-day row budget (429 mcp_budget_exceeded) and the report limiter,
+ *  - flags bulk reads (mcp.bulk_read audit event),
+ *  - audits every call exactly once (mcp.tool_called or mcp.tool_denied; no payloads, no PII),
+ *  - masks contact details in the JSON response when mcp.mask_contacts is on.
  */
 class McpReadOnly
 {
-    /** GET route uri => MCP tool name. Stage 1 exposes exactly three tools. */
+    /** Internal helper used by the gateway to learn the token owner's branches; not an MCP tool. */
+    public const CONTEXT_TOOL = 'mcp_context';
+
+    /** GET route uri => MCP tool name. Exactly the tools of the gateway, never a wildcard. */
     public const ALLOWED = [
         'api/v1/search' => 'erp_search',
+        'api/v1/customers' => 'erp_customers_list',
+        'api/v1/customers/{customer}' => 'erp_customer_get',
+        'api/v1/suppliers' => 'erp_suppliers_list',
         'api/v1/bookings' => 'erp_bookings_list',
+        'api/v1/bookings/{booking}' => 'erp_booking_get',
         'api/v1/invoices' => 'erp_invoices_list',
+        'api/v1/invoices/{invoice}' => 'erp_invoice_get',
+        'api/v1/payments' => 'erp_payments_list',
+        'api/v1/expenses' => 'erp_expenses_list',
+        'api/v1/leads' => 'erp_leads_list',
+        'api/v1/reports/party-statement' => 'erp_party_statement',
+        'api/v1/reports/aging' => 'erp_aging',
+        'api/v1/reports/trial-balance' => 'erp_trial_balance',
+        'api/v1/reports/income-statement' => 'erp_income_statement',
+        'api/v1/mcp/context' => self::CONTEXT_TOOL,
     ];
+
+    /** Heavier tools with their own, tighter limiter. */
+    public const REPORT_TOOLS = ['erp_party_statement', 'erp_aging', 'erp_trial_balance', 'erp_income_statement'];
 
     private const CONTACT_KEYS = ['phone', 'email', 'mobile', 'whatsapp'];
 
@@ -50,23 +75,57 @@ class McpReadOnly
         $route = '/'.preg_replace('#^api/v1/?#', '', $uri);
         $tool = $request->isMethod('GET') ? (self::ALLOWED[$uri] ?? null) : null;
 
-        if ($tool === null) {
-            $this->audit->log('mcp.tool_denied', null, null, [
-                'method' => $request->method(),
-                'route' => $route,
-                'token_id' => $token->getKey(),
-            ], $user->id);
+        $deny = fn (string $reason, string $message, string $code, int $status, array $headers = []) => $this->deny(
+            $request, $user->id, $token, $tool, $route, $reason, $message, $code, $status, $headers,
+        );
 
-            return ApiResponse::error('This token may only use the read-only MCP tools.', 'mcp_scope_denied', 403);
+        if (! $this->settings->bool('mcp', 'enabled', false)) {
+            return $deny('disabled', 'MCP access is switched off for this installation.', 'mcp_disabled', 403);
+        }
+
+        // Employee statements stay out of MCP (blueprint section 4): enforced here, not only in the gateway.
+        if ($tool === null || ($tool === 'erp_party_statement' && $request->query('party_type') === 'employee')) {
+            return $deny('scope', 'This token may only use the read-only MCP tools.', 'mcp_scope_denied', 403);
+        }
+
+        $internal = $tool === self::CONTEXT_TOOL;
+
+        if (! $internal && in_array($tool, self::REPORT_TOOLS, true)) {
+            $key = 'mcp-report:'.$token->getKey();
+            if (RateLimiter::tooManyAttempts($key, (int) config('mcp.report_rate_limit_per_minute', 6))) {
+                return $deny('report_rate_limited', 'Too many report requests; slow down.', 'rate_limited', 429, [
+                    'Retry-After' => (string) RateLimiter::availableIn($key),
+                ]);
+            }
+            RateLimiter::hit($key, 60);
+        }
+
+        $budget = $this->dailyBudget();
+        if (! $internal && $this->rowsToday($token) >= $budget) {
+            return $deny('budget_exceeded', 'The daily MCP row budget for this token is used up. Try again tomorrow.', 'mcp_budget_exceeded', 429, [
+                'Retry-After' => (string) max(1, (int) now()->diffInSeconds(now()->addDay()->startOfDay())),
+            ]);
         }
 
         $response = $next($request);
+        $status = $response->getStatusCode();
+
+        $rows = 0;
+        if ($response instanceof JsonResponse && $status < 300) {
+            $rows = $internal ? 0 : self::countRows($response->getData(true));
+            if ($rows > 0) {
+                $this->addRows($token, $rows);
+            }
+            $this->detectBulkRead($token, $user->id, $tool, $rows);
+        }
 
         $this->audit->log('mcp.tool_called', null, null, [
             'tool' => $tool,
             'route' => $route,
             'branch' => $request->header('X-Branch-Id'),
-            'status' => $response->getStatusCode(),
+            'status' => $status,
+            'outcome' => $status < 300 ? 'ok' : (in_array($status, [401, 403], true) ? 'denied' : 'error'),
+            'rows' => $rows,
             'token_id' => $token->getKey(),
         ], $user->id);
 
@@ -77,7 +136,109 @@ class McpReadOnly
         return $response;
     }
 
-    /** Recursively masks phone/email values and the "subtitle" text of search hits. */
+    private function deny(Request $request, int $userId, PersonalAccessToken $token, ?string $tool, string $route, string $reason, string $message, string $code, int $status, array $headers = []): Response
+    {
+        $this->audit->log('mcp.tool_denied', null, null, [
+            'tool' => $tool,
+            'method' => $request->method(),
+            'route' => $route,
+            'reason' => $reason,
+            'status' => $status,
+            'token_id' => $token->getKey(),
+        ], $userId);
+
+        return ApiResponse::error($message, $code, $status)->withHeaders($headers);
+    }
+
+    /** Setting mcp.daily_row_budget, falling back to config when blank or invalid. */
+    private function dailyBudget(): int
+    {
+        $value = $this->settings->int('mcp', 'daily_row_budget', 0);
+
+        return $value > 0 ? $value : max(1, (int) config('mcp.daily_row_budget', 5000));
+    }
+
+    private function rowsKey(PersonalAccessToken $token): string
+    {
+        return 'mcp-rows:'.$token->getKey().':'.now()->toDateString();
+    }
+
+    private function rowsToday(PersonalAccessToken $token): int
+    {
+        return (int) Cache::get($this->rowsKey($token), 0);
+    }
+
+    private function addRows(PersonalAccessToken $token, int $rows): void
+    {
+        $key = $this->rowsKey($token);
+        Cache::add($key, 0, now()->addDays(2));
+        Cache::increment($key, $rows);
+    }
+
+    /** Many large list pages inside a short window raise one mcp.bulk_read event per window. */
+    private function detectBulkRead(PersonalAccessToken $token, int $userId, string $tool, int $rows): void
+    {
+        if ($rows < (int) config('mcp.bulk_page_min_rows', 20)) {
+            return;
+        }
+
+        $window = max(1, (int) config('mcp.bulk_window_seconds', 300));
+        $key = 'mcp-bulk:'.$token->getKey();
+        Cache::add($key, 0, now()->addSeconds($window));
+        $pages = (int) Cache::increment($key);
+
+        if ($pages >= (int) config('mcp.bulk_pages', 10) && Cache::add('mcp-bulk-flag:'.$token->getKey(), 1, now()->addSeconds($window))) {
+            $this->audit->log('mcp.bulk_read', null, null, [
+                'tool' => $tool,
+                'pages' => $pages,
+                'window_seconds' => $window,
+                'rows_today' => $this->rowsToday($token),
+                'token_id' => $token->getKey(),
+            ], $userId);
+        }
+    }
+
+    /**
+     * Rows in a response: the length of the data list, or the sum of the lists inside a data object
+     * (search groups count their items). A single record counts as one row.
+     */
+    public static function countRows(mixed $body): int
+    {
+        $data = is_array($body) ? ($body['data'] ?? null) : null;
+
+        return is_array($data) ? max(1, self::rowsIn($data)) : 0;
+    }
+
+    private static function rowsIn(array $node, int $depth = 0): int
+    {
+        if (array_is_list($node)) {
+            $grouped = $node !== [];
+            $sum = 0;
+            foreach ($node as $item) {
+                if (is_array($item) && isset($item['items']) && is_array($item['items'])) {
+                    $sum += count($item['items']);
+                } else {
+                    $grouped = false;
+                    break;
+                }
+            }
+
+            return $grouped ? $sum : count($node);
+        }
+
+        $sum = 0;
+        if ($depth < 3) {
+            foreach ($node as $child) {
+                if (is_array($child)) {
+                    $sum += self::rowsIn($child, $depth + 1);
+                }
+            }
+        }
+
+        return $sum;
+    }
+
+    /** Recursively masks phone/email/tax id values and the "subtitle" text of search hits. */
     public static function mask(mixed $value, ?string $key = null): mixed
     {
         if (is_array($value)) {
@@ -98,6 +259,10 @@ class McpReadOnly
 
         if (in_array($key, self::CONTACT_KEYS, true)) {
             return self::maskPhone($value);
+        }
+
+        if ($key === 'tax_id') {
+            return '***'.substr(preg_replace('/[^A-Za-z0-9]/', '', $value) ?? '', -2);
         }
 
         if ($key === 'subtitle') {

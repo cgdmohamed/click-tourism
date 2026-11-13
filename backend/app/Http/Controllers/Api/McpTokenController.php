@@ -2,16 +2,25 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\BranchScope;
+use App\Modules\Core\Services\SettingService;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
- * Own read-only MCP tokens (ADR-0016). Tokens carry only the "mcp:read"
+ * Read-only MCP tokens (ADR-0016). Tokens carry only the "mcp:read"
  * ability and are stored with the "mcp:" name prefix to tell them apart from
  * SPA sessions. The plaintext value is returned once, on creation.
+ *
+ * Users manage their own tokens. A user with "mcp.admin" can also list
+ * (?all=1) and revoke every user's MCP tokens; revocations are audited.
  */
 class McpTokenController extends ApiController
 {
@@ -19,18 +28,41 @@ class McpTokenController extends ApiController
 
     public function index(Request $request): JsonResponse
     {
-        $tokens = $request->user()->tokens()
+        $user = $request->user();
+        $all = $request->boolean('all');
+
+        if ($all && ! $user->can('mcp.admin')) {
+            throw new AccessDeniedHttpException('Listing every user\'s MCP tokens requires the mcp.admin permission.');
+        }
+
+        $query = $all
+            ? PersonalAccessToken::query()->where('tokenable_type', $user->getMorphClass())->with('tokenable')->limit(500)
+            : $user->tokens();
+
+        $tokens = $query
             ->where('name', 'like', self::PREFIX.'%')
             ->orderByDesc('id')
             ->get()
-            ->map(fn (PersonalAccessToken $token) => $this->present($token))
+            ->map(fn (PersonalAccessToken $token) => $this->present($token, $all))
             ->all();
 
-        return $this->ok($tokens);
+        // The limits let the UI offer only expiry choices the server accepts.
+        return response()->json([
+            'data' => $tokens,
+            'meta' => [
+                'default_minutes' => min((int) config('mcp.token_default_minutes'), (int) config('mcp.token_max_minutes')),
+                'max_minutes' => (int) config('mcp.token_max_minutes'),
+                'max_active_per_user' => (int) config('mcp.max_tokens_per_user'),
+            ],
+        ]);
     }
 
-    public function store(Request $request, AuditService $audit): JsonResponse
+    public function store(Request $request, AuditService $audit, SettingService $settings): JsonResponse
     {
+        if (! $settings->bool('mcp', 'enabled', false)) {
+            return ApiResponse::error('MCP access is switched off for this installation.', 'mcp_disabled', 403);
+        }
+
         $max = (int) config('mcp.token_max_minutes');
         $data = $request->validate([
             'name' => ['required', 'string', 'min:1', 'max:80'],
@@ -64,22 +96,46 @@ class McpTokenController extends ApiController
     public function destroy(Request $request, string $id, AuditService $audit): JsonResponse
     {
         $user = $request->user();
-        $token = $user->tokens()->where('name', 'like', self::PREFIX.'%')->whereKey((int) $id)->first();
+        $query = $user->can('mcp.admin')
+            ? PersonalAccessToken::query()->where('tokenable_type', $user->getMorphClass())
+            : $user->tokens();
+        $token = $query->where('name', 'like', self::PREFIX.'%')->whereKey((int) $id)->first();
         abort_if($token === null, 404, 'Token not found.');
 
+        $ownerId = (int) $token->tokenable_id;
         $token->delete();
-        $audit->log('mcp.token_revoked', null, null, [
+
+        $after = [
             'token_id' => (int) $id,
             'name' => substr($token->name, strlen(self::PREFIX)),
-        ], $user->id);
+        ];
+        if ($ownerId !== $user->id) {
+            $after += ['owner_id' => $ownerId, 'revoked_by_admin' => true];
+        }
+        $audit->log('mcp.token_revoked', null, null, $after, $user->id);
 
         return $this->ok(['message' => 'Token revoked.']);
     }
 
-    /** @return array<string, mixed> Never includes the secret. */
-    private function present(PersonalAccessToken $token): array
+    /**
+     * What the gateway needs to double-check its pinned branch: the branches the token's user may
+     * use (the same rule as BranchScope). No profile data, no permissions.
+     */
+    public function context(Request $request, BranchScope $scope): JsonResponse
     {
-        return [
+        $user = $request->user();
+        $allowed = $scope->allowedBranchIds($user);
+
+        return $this->ok([
+            'user_id' => $user->public_id,
+            'branches' => Branch::query()->whereIn('id', $allowed)->orderBy('id')->pluck('public_id')->all(),
+        ]);
+    }
+
+    /** @return array<string, mixed> Never includes the secret. */
+    private function present(PersonalAccessToken $token, bool $withOwner = false): array
+    {
+        $row = [
             'id' => $token->getKey(),
             'name' => substr($token->name, strlen(self::PREFIX)),
             'abilities' => $token->abilities,
@@ -87,5 +143,12 @@ class McpTokenController extends ApiController
             'last_used_at' => $token->last_used_at?->toIso8601String(),
             'expires_at' => $token->expires_at?->toIso8601String(),
         ];
+
+        if ($withOwner) {
+            $owner = $token->tokenable;
+            $row['user'] = $owner instanceof User ? ['id' => $owner->public_id, 'name' => $owner->name, 'email' => $owner->email] : null;
+        }
+
+        return $row;
     }
 }

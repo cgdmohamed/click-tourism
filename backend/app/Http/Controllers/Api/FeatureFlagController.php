@@ -23,6 +23,7 @@ class FeatureFlagController extends ApiController
             'credit_limit_policy' => in_array($policy, ['off', 'warn', 'block'], true) ? $policy : 'warn',
             'base_currency' => $settings->baseCurrency(),
             'refund_segregation' => $settings->bool('accounting', 'refund_segregation', false),
+            'mcp_enabled' => $settings->bool('mcp', 'enabled', false),
         ]);
     }
 }

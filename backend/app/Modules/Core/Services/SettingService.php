@@ -18,9 +18,14 @@ use Illuminate\Support\Facades\DB;
 class SettingService
 {
     public const DEFAULTS = [
-        // MCP gateway (ADR-0016): contact details are masked in MCP token responses.
+        // MCP gateway (ADR-0016). Off by default: while 'enabled' is false no MCP token can be
+        // created and every request made with one is refused (403 mcp_disabled).
         'mcp' => [
+            'enabled' => 'false',
+            // Contact details (phone, e-mail, tax id) are masked in MCP token responses.
             'mask_contacts' => 'true',
+            // Rows one MCP token may read per day (blueprint section 8).
+            'daily_row_budget' => '5000',
         ],
         'general' => [
             'company_name_ar' => 'نظام إدارة السياحة',

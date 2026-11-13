@@ -6,6 +6,9 @@ import { api, errorMessage } from '../lib/api'
 import { Badge, Button, Card, CardHeader, Field, InlineNotice, Input, Select } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader } from '../components/profile'
 import { localizedName } from '../lib/names'
+import { useFeatureFlags } from '../lib/useSetting'
+import { showMcpSection } from '../lib/mcpTokens'
+import McpTokensCard from '../components/McpTokensCard'
 
 function initialsOf(name: string) {
   return (
@@ -19,7 +22,8 @@ function initialsOf(name: string) {
 }
 
 export default function Profile() {
-  const { user, refresh, activeBranch } = useAuth()
+  const { user, refresh, activeBranch, can } = useAuth()
+  const { flags } = useFeatureFlags()
   const { t, locale, setLocale } = useI18n()
 
   const [localeDraft, setLocaleDraft] = useState<'ar' | 'en'>(user?.locale ?? 'ar')
@@ -202,6 +206,8 @@ export default function Profile() {
             </div>
           </Card>
         </div>
+
+        {showMcpSection(can('mcp.use'), flags?.mcp_enabled) ? <McpTokensCard /> : null}
       </div>
     </div>
   )

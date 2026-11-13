@@ -192,6 +192,22 @@ class SettingController extends ApiController
 
                 continue;
             }
+            if (($item['group'] ?? null) === 'mcp') {
+                // Exact values only: the stored string is read back as is.
+                $value = (string) ($item['value'] ?? '');
+                if (in_array($item['key'], ['enabled', 'mask_contacts'], true) && ! in_array($value, ['true', 'false'], true)) {
+                    throw ValidationException::withMessages([
+                        "settings.{$index}.value" => "mcp.{$item['key']} must be 'true' or 'false'.",
+                    ]);
+                }
+                if ($item['key'] === 'daily_row_budget' && (preg_match('/^\d{1,7}$/', $value) !== 1 || (int) $value < 100)) {
+                    throw ValidationException::withMessages([
+                        "settings.{$index}.value" => 'The MCP daily row budget must be a whole number from 100 to 9999999.',
+                    ]);
+                }
+
+                continue;
+            }
             if (($item['group'] ?? null) === 'treasury') {
                 $value = trim((string) ($item['value'] ?? ''));
                 if (in_array($item['key'], ['reconciliation_lookahead_days', 'reconciliation_date_window_days'], true)
