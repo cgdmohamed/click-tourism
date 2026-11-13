@@ -23,7 +23,7 @@ import {
   toApiMessages,
   uniqueCitations,
 } from '../lib/assistant'
-import type { ChatMessage, Citation } from '../lib/assistant'
+import type { ActionCard, ChatMessage, Citation } from '../lib/assistant'
 import { linkRecords, parseAnswer } from '../lib/answerText'
 import type { Inline } from '../lib/answerText'
 import { AssistantRequestError, streamChat } from '../lib/assistantStream'
@@ -31,7 +31,7 @@ import { localizedName } from '../lib/names'
 import { useFeatureFlags } from '../lib/useSetting'
 import { useTheme } from '../theme'
 import { Icon } from './icons'
-import { Button, IconButton, InlineNotice, Spinner, cx } from './ui'
+import { Badge, Button, IconButton, InlineNotice, Spinner, cx } from './ui'
 
 type SavedConversation = { id: string; title: string; last_message_at: string | null }
 
@@ -126,6 +126,8 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
           onEvent: (event) => {
             if (event.type === 'thinking') {
               setStatus(t('assistantStepThinking'))
+            } else if (event.type === 'tool' && event.entity === 'action') {
+              setStatus(t('assistantStepPreparing'))
             } else if (event.type === 'tool') {
               const label = stepEntity(event.entity, locale)
               if (!stepsRef.current.includes(label)) stepsRef.current = [...stepsRef.current, label]
@@ -469,6 +471,9 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
       >
         {mine ? message.content : <AnswerBody text={message.content} citations={message.citations ?? []} />}
       </div>
+      {(message.actions ?? []).map((card) => (
+        <ActionCardView key={card.id} initial={card} />
+      ))}
       {message.truncated ? <p className="text-small text-warning-text">{t('assistantTruncated')}</p> : null}
       {citations.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -491,6 +496,85 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
         </div>
       ) : null}
     </div>
+  )
+}
+
+/** Confirmation card of an action the assistant prepared (ADR-0023): nothing runs until the user confirms. */
+function ActionCardView({ initial }: { initial: ActionCard }) {
+  const { t, locale } = useI18n()
+  const [card, setCard] = useState(initial)
+  const [error, setError] = useState('')
+  const decide = useMutation({
+    mutationFn: async (verb: 'confirm' | 'reject') => {
+      const { data } = await api.post<{ data: ActionCard }>(`/assistant/actions/${encodeURIComponent(card.id)}/${verb}`)
+      return data.data
+    },
+    onSuccess: (next) => {
+      setCard(next)
+      setError('')
+    },
+    onError: (cause) => {
+      const code = axios.isAxiosError<{ code?: string }>(cause) ? cause.response?.data?.code : undefined
+      if (code === 'assistant_action_expired') setCard({ ...card, status: 'expired' })
+      else setError(errorMessage(cause))
+    },
+  })
+  const link = card.result ? citationLink({ entity: card.result.entity, id: card.result.id }, locale) : null
+  const tone =
+    card.status === 'confirmed' ? 'border-success-border' : card.status === 'failed' || card.status === 'expired' ? 'border-danger-border' : 'border-border-selected'
+  const statusText: Record<ActionCard['status'], string> = {
+    pending: '',
+    confirmed: t('assistantActionConfirmed'),
+    rejected: t('assistantActionRejected'),
+    failed: t('assistantActionFailed'),
+    expired: t('assistantActionExpired'),
+  }
+
+  return (
+    <section className={cx('w-full max-w-xl rounded-16 border bg-surface-default p-4 shadow-1', tone)} aria-label={card.title}>
+      <h3 className="label flex items-center gap-2">
+        <Icon name="sparkles" className="h-4 w-4 text-brand-1-accent" />
+        {card.title}
+      </h3>
+      <dl className="text-medium mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+        {card.rows.map((row, index) => (
+          <div key={`${row.label}-${index}`} className="contents">
+            <dt className="text-text-subtle">{row.label}</dt>
+            <dd dir="auto" className="min-w-0 break-words text-text-default">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {card.status === 'pending' ? (
+        <>
+          <p className="text-small mt-3 text-text-subtle">{t('assistantActionNote')}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="button" icon="check" disabled={decide.isPending} onClick={() => decide.mutate('confirm')}>
+              {t('assistantActionConfirm')}
+            </Button>
+            <Button type="button" variant="secondary" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>
+              {t('assistantActionReject')}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-3" role="status">
+          <Badge tone={card.status === 'confirmed' ? 'positive' : card.status === 'rejected' ? 'neutral' : 'negative'}>{statusText[card.status]}</Badge>
+          {card.status === 'failed' && card.error?.message ? <span className="text-small text-danger-text">{card.error.message}</span> : null}
+          {card.status === 'confirmed' && link?.href ? (
+            <Link to={link.href} className="text-small text-brand-1-accent underline">
+              {t('assistantActionOpen')}
+            </Link>
+          ) : null}
+        </div>
+      )}
+      {error ? (
+        <div className="mt-3" role="alert">
+          <InlineNotice tone="negative">{error}</InlineNotice>
+        </div>
+      ) : null}
+    </section>
   )
 }
 

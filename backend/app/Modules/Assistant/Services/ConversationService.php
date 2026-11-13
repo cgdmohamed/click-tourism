@@ -53,14 +53,15 @@ class ConversationService
      * starts a new conversation titled from the question.
      *
      * @param  list<array<string, mixed>>  $citations
+     * @param  list<string>  $actionIds
      */
-    public function saveTurn(User $user, ?Branch $branch, ?string $conversationId, string $question, string $answer, array $citations, bool $truncated): ?AssistantConversation
+    public function saveTurn(User $user, ?Branch $branch, ?string $conversationId, string $question, string $answer, array $citations, bool $truncated, array $actionIds = []): ?AssistantConversation
     {
         if (! $this->enabled()) {
             return null;
         }
 
-        return DB::transaction(function () use ($user, $branch, $conversationId, $question, $answer, $citations, $truncated) {
+        return DB::transaction(function () use ($user, $branch, $conversationId, $question, $answer, $citations, $truncated, $actionIds) {
             $conversation = $conversationId !== null ? $this->find($user, $conversationId) : null;
             $conversation ??= AssistantConversation::query()->create([
                 'user_id' => $user->id,
@@ -72,7 +73,7 @@ class ConversationService
             AssistantMessage::query()->create(['conversation_id' => $conversation->id, 'role' => 'user', 'content' => $question]);
             AssistantMessage::query()->create([
                 'conversation_id' => $conversation->id, 'role' => 'assistant', 'content' => $answer,
-                'citations' => $citations, 'truncated' => $truncated,
+                'citations' => $citations, 'truncated' => $truncated, 'actions' => $actionIds,
             ]);
             $conversation->forceFill(['last_message_at' => now()])->save();
 

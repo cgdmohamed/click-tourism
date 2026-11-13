@@ -20,6 +20,8 @@ final class ChatResult
         public readonly int $toolErrors,
         public readonly int $rejectedTools,
         public readonly int $rounds,
+        /** @var list<array<string, mixed>> confirmation cards of the actions prepared in this turn (ADR-0023) */
+        public readonly array $actions = [],
     ) {}
 
     public function payload(): array
@@ -33,6 +35,7 @@ final class ChatResult
                 'total' => $this->promptTokens + $this->completionTokens,
             ],
             'truncated' => $this->truncated,
+            'actions' => $this->actions,
         ];
     }
 }

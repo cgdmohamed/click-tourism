@@ -76,6 +76,7 @@ class Lead extends Model
     {
         return [
             'id' => $this->public_id,
+            'created_via' => $this->created_via,
             'name' => $this->name,
             'phone' => $this->phone,
             'email' => $this->email,

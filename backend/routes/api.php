@@ -95,6 +95,9 @@ Route::prefix('v1')->group(function () {
         Route::post('assistant/chat', [AssistantController::class, 'chat'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
         // ADR-0022: live progress as NDJSON, and the user's own saved conversations.
         Route::post('assistant/chat/stream', [AssistantController::class, 'stream'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
+        // ADR-0023: the user confirms or rejects an action the assistant prepared.
+        Route::post('assistant/actions/{id}/confirm', [AssistantController::class, 'confirmAction'])->middleware(['permission:assistant.use', 'throttle:30,1']);
+        Route::post('assistant/actions/{id}/reject', [AssistantController::class, 'rejectAction'])->middleware('permission:assistant.use');
         Route::get('assistant/conversations', [AssistantController::class, 'conversations'])->middleware('permission:assistant.use');
         Route::delete('assistant/conversations', [AssistantController::class, 'deleteConversations'])->middleware('permission:assistant.use');
         Route::get('assistant/conversations/{id}', [AssistantController::class, 'conversation'])->middleware('permission:assistant.use');

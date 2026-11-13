@@ -8,6 +8,7 @@ import { formatDateTime } from '../lib/format'
 import type { Lead, LeadSourceConfig, LeadStageConfig, Paginated } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { statusLabel } from '../lib/labels'
+import { AiBadge } from '../components/AiBadge'
 
 export default function Leads() {
   const { t, locale } = useI18n()
@@ -196,6 +197,7 @@ export default function Leads() {
                       <Link to={`/leads/${lead.id}`} className="text-brand-1-accent hover:underline">
                         {lead.name}
                       </Link>
+                      <AiBadge via={lead.created_via} />
                       {lead.duplicate_of ? (
                         <Badge tone="warning">
                           {locale === 'ar' ? 'تكرار محتمل' : 'Possible duplicate'}

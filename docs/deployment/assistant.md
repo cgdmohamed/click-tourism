@@ -112,3 +112,7 @@ The header toggle turns the application into a full-screen chat; the sidebar lis
 3. With a proxy or request log on the outbound side, confirm no raw phone number or e-mail address appears in the request bodies, and that `store` is `false`.
 4. Confirm the model name you set is accepted and that `max_completion_tokens` is accepted by that model (older models may require `max_tokens`).
 5. Call `GET /api/v1/assistant/models` with the real key and confirm the list, the filtered non-chat ids and the `recommended` choice match what the OpenAI account offers (no live call was made by the builders).
+
+## Assistant actions (ADR-0023)
+
+The assistant can prepare: create a lead, update a lead's stage or add a note, create a customer or supplier, and draft a customer invoice, an expense or a booking. It only shows a confirmation card; the user presses "Confirm and run" and the request then runs through the normal API route as that user (their permissions and branch). Records created this way show an **AI** badge (`created_via = assistant`). There is no setting for it: a user sees an action only when they hold the underlying permission, and `assistant.enabled = false` switches everything off. Drafts are never posted or approved by the assistant. Pending cards expire after 15 minutes. Audit: `assistant.action_proposed|executed|failed|rejected`.

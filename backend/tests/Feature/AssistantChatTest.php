@@ -2,16 +2,26 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Models\AssistantConversation;
 use App\Modules\Assistant\Services\ProviderManager;
+use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\CRM\Models\LeadStage;
+use App\Modules\Expenses\Models\Expense;
+use App\Modules\Expenses\Models\ExpenseCategory;
+use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Parties\Models\Customer;
+use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -90,6 +100,8 @@ class AssistantChatTest extends TestCase
     /** @param  list<array<string, mixed>>  $replies */
     private function script(array $replies): void
     {
+        // A fresh client per script: a second fake would queue behind the first, already used up.
+        Http::swap(new Factory);
         $sequence = Http::sequence();
         foreach ($replies as $reply) {
             $sequence->push($reply);
@@ -287,6 +299,187 @@ class AssistantChatTest extends TestCase
         $this->assertSame('customer', $hit['entity']);
         $this->assertContains('Blue Sky Travel', $hit['labels']);
         $this->assertContains('بلو سكاي للسفر', $hit['labels']);
+    }
+
+    // ---- prepared actions (ADR-0023) -----------------------------------------------------------
+
+    private function grant(string ...$names): void
+    {
+        foreach ($names as $name) {
+            Permission::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+        }
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->user->givePermissionTo($names);
+    }
+
+    /** Runs one chat turn in which the model prepares $tool, and returns the card. */
+    private function prepare(string $tool, array $args): array
+    {
+        $this->script([$this->toolCallReply([[$tool, $args]]), $this->finalReply('Please confirm the card.')]);
+
+        return $this->chat('please do it')->assertOk()->json('data.actions.0') ?? [];
+    }
+
+    public function test_actions_are_offered_only_for_permissions_the_user_holds(): void
+    {
+        $this->script([$this->finalReply('ok')]);
+        $this->chat()->assertOk();
+        $names = array_column(array_column($this->sent()[0]['tools'], 'function'), 'name');
+        $this->assertNotContains('erp_customer_create', $names);
+
+        $this->grant('customers.create');
+        $this->script([$this->finalReply('ok')]);
+        $this->chat()->assertOk();
+        $bodies = $this->sent();
+        $names = array_column(array_column(end($bodies)['tools'], 'function'), 'name');
+        $this->assertContains('erp_customer_create', $names);
+        $this->assertNotContains('erp_lead_create', $names);
+    }
+
+    public function test_preparing_an_action_changes_nothing_until_the_user_confirms(): void
+    {
+        $this->grant('customers.create', 'customers.view');
+        $before = Customer::query()->count();
+
+        $card = $this->prepare('erp_customer_create', ['name_ar' => 'شركة النيل', 'name_en' => 'Nile Co']);
+
+        $this->assertSame('pending', $card['status']);
+        $this->assertSame($before, Customer::query()->count());
+        $this->assertContains('Nile Co', array_column($card['rows'], 'value'));
+
+        $confirmed = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $confirmed['status']);
+        $this->assertSame('customer', $confirmed['result']['entity']);
+
+        $created = Customer::query()->where('public_id', $confirmed['result']['id'])->firstOrFail();
+        $this->assertSame('assistant', $created->created_via);
+        $this->assertSame('assistant', $this->getJson('/api/v1/customers/'.$created->public_id)->json('data.party.created_via'));
+        $this->assertNotEmpty($this->auditRows('assistant.action_executed'));
+        $this->assertNotEmpty($this->auditRows('customer.created'));
+    }
+
+    public function test_an_action_can_be_confirmed_once_and_only_by_its_owner(): void
+    {
+        $this->grant('customers.create');
+        $card = $this->prepare('erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'Once Co']);
+
+        $other = User::factory()->create();
+        $other->givePermissionTo(['assistant.use']);
+        Sanctum::actingAs($other, ['*']);
+        $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertNotFound();
+        $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/reject')->assertNotFound();
+
+        Sanctum::actingAs($this->user, ['*']);
+        $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk();
+        $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertStatus(409)->assertJsonPath('code', 'assistant_action_decided');
+        $this->assertSame(1, Customer::query()->where('name_en', 'Once Co')->count());
+    }
+
+    public function test_a_rejected_or_expired_action_never_runs(): void
+    {
+        $this->grant('customers.create');
+        $rejected = $this->prepare('erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'Rejected Co']);
+        $this->postJson('/api/v1/assistant/actions/'.$rejected['id'].'/reject')->assertOk()->assertJsonPath('data.status', 'rejected');
+        $this->postJson('/api/v1/assistant/actions/'.$rejected['id'].'/confirm')->assertStatus(409);
+
+        $expired = $this->prepare('erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'Expired Co']);
+        AssistantAction::query()->where('public_id', $expired['id'])->update(['expires_at' => now()->subMinute()]);
+        $this->postJson('/api/v1/assistant/actions/'.$expired['id'].'/confirm')->assertStatus(410)->assertJsonPath('code', 'assistant_action_expired');
+
+        $this->assertSame(0, Customer::query()->whereIn('name_en', ['Rejected Co', 'Expired Co'])->count());
+    }
+
+    public function test_confirming_runs_with_the_users_permissions_not_the_assistants(): void
+    {
+        $this->grant('customers.create');
+        $card = $this->prepare('erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'Revoked Co']);
+        $this->user->revokePermissionTo('customers.create');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $failed = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('failed', $failed['status']);
+        $this->assertSame('forbidden', $failed['error']['code']);
+        $this->assertSame(0, Customer::query()->where('name_en', 'Revoked Co')->count());
+    }
+
+    public function test_a_model_cannot_prepare_an_action_the_user_may_not_perform_or_with_bad_arguments(): void
+    {
+        $this->script([$this->toolCallReply([['erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'No Permission']]]), $this->finalReply('sorry')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+
+        $this->grant('customers.create');
+        $this->script([$this->toolCallReply([['erp_customer_create', ['name_en' => 'Missing Arabic']]]), $this->finalReply('need the Arabic name')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $this->assertSame(0, AssistantAction::query()->count());
+    }
+
+    public function test_an_expense_draft_resolves_the_category_and_stays_a_draft(): void
+    {
+        $this->grant('expenses.create', 'expenses.view');
+        $account = Account::query()->where('type', 'expense')->where('is_postable', true)->firstOrFail();
+        $category = ExpenseCategory::query()->create(['code' => 'EXP-T1', 'name_ar' => 'مياه', 'name_en' => 'Water', 'account_id' => $account->id, 'is_active' => true]);
+
+        $cash = CashAccount::query()->create([
+            'account_id' => Account::query()->where('code', '1110')->firstOrFail()->id,
+            'branch_id' => $this->user->branches()->first()->id ?? Branch::query()->first()->id,
+            'kind' => 'cash', 'name_ar' => 'خزينة', 'name_en' => 'Main cash', 'currency_code' => 'EGP', 'is_active' => true,
+        ]);
+        $card = $this->prepare('erp_expense_draft_create', ['category' => $category->code, 'expense_date' => now()->toDateString(), 'amount_minor' => 12500, 'description' => 'Office water', 'payment_account' => 'main cash']);
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $expense = Expense::query()->where('public_id', $done['result']['id'])->firstOrFail();
+        $this->assertSame('draft', $expense->status);
+        $this->assertSame('assistant', $expense->created_via);
+    }
+
+    public function test_an_unknown_expense_category_is_reported_to_the_model_with_the_choices(): void
+    {
+        $this->grant('expenses.create');
+        $this->script([$this->toolCallReply([['erp_expense_draft_create', ['category' => 'nope', 'expense_date' => now()->toDateString(), 'amount_minor' => 100, 'description' => 'x']]]), $this->finalReply('which category?')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $tool = $this->lastToolMessages()[0]['content'];
+        $this->assertStringContainsString('Expense category not found', $tool);
+    }
+
+    public function test_saved_chats_reopen_with_the_current_state_of_their_actions(): void
+    {
+        $this->grant('customers.create');
+        $this->script([$this->toolCallReply([['erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'Saved Co']]]), $this->finalReply('Confirm please.')]);
+        $data = $this->chat('make a customer')->assertOk()->json('data');
+        $this->postJson('/api/v1/assistant/actions/'.$data['actions'][0]['id'].'/confirm')->assertOk();
+
+        $messages = $this->getJson('/api/v1/assistant/conversations/'.$data['conversation_id'])->assertOk()->json('data.messages');
+        $this->assertSame('confirmed', $messages[1]['actions'][0]['status']);
+    }
+
+    public function test_invoice_booking_and_lead_actions_run_through_their_real_routes(): void
+    {
+        $this->grant('invoices.create', 'invoices.view', 'bookings.create', 'bookings.view', 'leads.create', 'leads.update', 'leads.view');
+        $customer = $this->customer();
+
+        $invoice = $this->prepare('erp_invoice_draft_create', ['customer_id' => $customer->public_id, 'issue_date' => now()->toDateString(), 'lines' => [['description' => 'Umrah package', 'quantity' => 2, 'unit_price_minor' => 150000]]]);
+        $done = $this->postJson('/api/v1/assistant/actions/'.$invoice['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $row = Invoice::query()->where('public_id', $done['result']['id'])->firstOrFail();
+        $this->assertSame('draft', $row->status);
+        $this->assertSame('assistant', $row->created_via);
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'invoice')->count(), 'a draft invoice posts nothing');
+
+        $booking = $this->prepare('erp_booking_draft_create', ['customer_id' => $customer->public_id, 'start_date' => now()->addMonth()->toDateString(), 'currency' => 'EGP', 'items' => [['service_type' => 'hotel', 'description' => 'Hotel', 'quantity' => 1, 'unit_cost_minor' => 100000, 'unit_sell_minor' => 120000]]]);
+        $done = $this->postJson('/api/v1/assistant/actions/'.$booking['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $this->assertSame('assistant', Booking::query()->where('public_id', $done['result']['id'])->value('created_via'));
+
+        $lead = $this->prepare('erp_lead_create', ['name' => 'Walk-in Ahmed', 'notes' => 'asked about Umrah']);
+        $done = $this->postJson('/api/v1/assistant/actions/'.$lead['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $leadId = $done['result']['id'];
+        $this->assertSame('assistant', Lead::query()->where('public_id', $leadId)->value('created_via'));
+
+        $update = $this->prepare('erp_lead_update', ['id' => $leadId, 'note' => 'called back']);
+        $this->assertContains('Walk-in Ahmed', array_column($update['rows'], 'value'));
+        $this->assertSame('confirmed', $this->postJson('/api/v1/assistant/actions/'.$update['id'].'/confirm')->assertOk()->json('data.status'));
     }
 
     public function test_the_model_cannot_invent_citations_or_tools(): void
@@ -648,7 +841,7 @@ class AssistantChatTest extends TestCase
         $tables = collect(Schema::getTableListing());
         // ADR-0022 replaced "nothing is stored" with exactly two tables of the user's own saved chats.
         $found = $tables->map(fn ($t) => preg_replace('/^[a-z_]+\\./', '', $t))->filter(fn ($t) => str_contains($t, 'assistant') || str_contains($t, 'conversation') || str_contains($t, 'transcript'))->sort()->values()->all();
-        $this->assertSame(['assistant_conversations', 'assistant_messages'], $found);
+        $this->assertSame(['assistant_actions', 'assistant_conversations', 'assistant_messages'], $found);
     }
 
     // ---- prompt injection (AT-1, AT-2, AT-3) ---------------------------------------------------

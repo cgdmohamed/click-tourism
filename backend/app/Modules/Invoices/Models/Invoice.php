@@ -148,6 +148,7 @@ class Invoice extends Model
     {
         $payload = [
             'id' => $this->public_id,
+            'created_via' => $this->created_via,
             'type' => $this->type,
             'series' => $this->series,
             'number' => $this->number,

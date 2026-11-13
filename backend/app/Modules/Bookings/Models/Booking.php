@@ -129,6 +129,7 @@ class Booking extends Model
     {
         $payload = [
             'id' => $this->public_id,
+            'created_via' => $this->created_via,
             'number' => $this->number,
             'customer_id' => $this->customer?->public_id,
             'customer' => $this->customer?->toApiArray(),

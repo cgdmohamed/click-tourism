@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Assistant\Services\ActionException;
+use App\Modules\Assistant\Services\ActionService;
 use App\Modules\Assistant\Services\ChatService;
 use App\Modules\Assistant\Services\ConversationService;
 use App\Modules\Assistant\Services\ProviderManager;
@@ -158,7 +160,7 @@ class AssistantController extends ApiController
         return $this->ok($rows);
     }
 
-    public function conversation(Request $request, string $id, ConversationService $history): JsonResponse
+    public function conversation(Request $request, string $id, ConversationService $history, ActionService $actions): JsonResponse
     {
         $conversation = $history->find($request->user(), $id);
         if ($conversation === null) {
@@ -173,8 +175,34 @@ class AssistantController extends ApiController
                 'content' => $m->content,
                 'citations' => $m->citations ?? [],
                 'truncated' => $m->truncated,
+                'actions' => $actions->cards($request->user(), $m->actions ?? [], $this->locale()),
             ])->values(),
         ]);
+    }
+
+    /** POST /assistant/actions/{id}/confirm (ADR-0023): the user approves a prepared action; it then runs as the user. */
+    public function confirmAction(Request $request, string $id, ActionService $actions, BranchScope $scope): JsonResponse
+    {
+        $user = $request->user();
+        try {
+            return $this->ok($actions->confirm($user, $scope->resolve($user), $id, $this->locale()));
+        } catch (ActionException $e) {
+            return ApiResponse::error($e->getMessage(), $e->errorCode, $e->status);
+        }
+    }
+
+    public function rejectAction(Request $request, string $id, ActionService $actions): JsonResponse
+    {
+        try {
+            return $this->ok($actions->reject($request->user(), $id, $this->locale()));
+        } catch (ActionException $e) {
+            return ApiResponse::error($e->getMessage(), $e->errorCode, $e->status);
+        }
+    }
+
+    private function locale(): string
+    {
+        return in_array(app()->getLocale(), ['ar', 'en'], true) ? app()->getLocale() : 'ar';
     }
 
     public function deleteConversation(Request $request, string $id, ConversationService $history): JsonResponse
@@ -245,7 +273,7 @@ class AssistantController extends ApiController
     private function payload(ConversationService $history, Request $request, $branch, ?string $conversationId, array $messages, $result): array
     {
         $payload = $result->payload();
-        $saved = $history->saveTurn($request->user(), $branch, $conversationId, (string) end($messages)['content'], $payload['answer'], $payload['citations'], (bool) $payload['truncated']);
+        $saved = $history->saveTurn($request->user(), $branch, $conversationId, (string) end($messages)['content'], $payload['answer'], $payload['citations'], (bool) $payload['truncated'], array_column($payload['actions'], 'id'));
         $payload['conversation_id'] = $saved?->public_id;
 
         return $payload;

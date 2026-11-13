@@ -35,6 +35,7 @@ import { statusLabel } from '../lib/labels'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
+import { AiBadge } from '../components/AiBadge'
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -48,6 +49,7 @@ type InvoiceLine = {
 }
 type Invoice = {
   id: string
+  created_via?: string | null
   type: 'customer_invoice' | 'supplier_invoice' | 'credit_note'
   series: string
   number: string
@@ -437,6 +439,7 @@ export default function Invoices() {
                       <Link to={`/invoices/${invoice.id}`} className="font-medium text-brand-1-accent hover:underline">
                         {invoice.number}
                       </Link>
+                      <AiBadge via={invoice.created_via} />
                     </Td>
                     <Td>
                       <Badge tone="brand">

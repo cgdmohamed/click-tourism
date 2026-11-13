@@ -9,6 +9,7 @@ import type { Customer, Paginated } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
 import { Icon } from '../components/icons'
 import { localizedName } from '../lib/names'
+import { AiBadge } from '../components/AiBadge'
 
 export default function Customers() {
   const { t, locale } = useI18n()
@@ -109,6 +110,7 @@ export default function Customers() {
                     <Link to={`/customers/${customer.id}`} className="font-medium text-brand-1-accent hover:underline">
                       {localizedName(customer, locale)}
                     </Link>
+                    <AiBadge via={customer.created_via} />
                   </Td>
                   <Td dir="ltr">{customer.phone ?? '—'}</Td>
                   <Td dir="ltr">{customer.email ?? '—'}</Td>

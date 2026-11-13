@@ -32,6 +32,7 @@ import { statusLabel } from '../lib/labels'
 import { taxMinor } from '../lib/tax'
 import { useBaseCurrency, useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
+import { AiBadge } from '../components/AiBadge'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
 type TourOption = { id: string; name: string; currency: string; execution_type: string; base_price_minor: number; estimated_cost_minor: number; departures: DepartureOption[] | null }
@@ -387,7 +388,10 @@ export default function Bookings() {
             <tbody>
               {bookings.map((booking) => (
                 <tr key={booking.id}>
-                  <Td className="font-medium">{booking.number}</Td>
+                  <Td className="font-medium">
+                    {booking.number}
+                    <AiBadge via={booking.created_via} />
+                  </Td>
                   <Td>{booking.customer?.name_ar ?? booking.customer?.name_en ?? '—'}</Td>
                   <Td>{formatDate(booking.start_date, locale)}</Td>
                   <Td className="tabular">{booking.pax_adults + booking.pax_children + booking.pax_infants}</Td>
