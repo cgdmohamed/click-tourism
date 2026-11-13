@@ -166,13 +166,13 @@ class ChatService
      *
      * @param  list<array<string, mixed>>  $calls
      * @param  list<array<string, mixed>>  $records
-     * @return list<array{tool: string, entity: string, id: ?string, route: string, as_of: string}>
+     * @return list<array{tool: string, entity: string, id: ?string, labels?: list<string>, route: string, as_of: string}>
      */
     private function citationsFor(string $answer, array $calls, array $records): array
     {
         $out = [];
         $seen = [];
-        $candidates = [...$calls, ...array_filter($records, fn (array $r) => str_contains($answer, $r['id']))];
+        $candidates = [...$calls, ...array_filter($records, fn (array $r) => str_contains($answer, $r['id']) || $this->namesAny($answer, $r['labels'] ?? []))];
         foreach ($candidates as $citation) {
             $key = $citation['tool'].'|'.$citation['entity'].'|'.($citation['id'] ?? '').'|'.$citation['route'];
             if (isset($seen[$key])) {
@@ -183,6 +183,18 @@ class ChatService
         }
 
         return array_slice($out, 0, 30);
+    }
+
+    /** @param  list<string>  $labels */
+    private function namesAny(string $answer, array $labels): bool
+    {
+        foreach ($labels as $label) {
+            if (str_contains($answer, $label)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function toolMessage(string $callId, string $code, string $message): array

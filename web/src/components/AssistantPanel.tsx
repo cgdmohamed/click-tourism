@@ -20,7 +20,9 @@ import {
   toApiMessages,
   uniqueCitations,
 } from '../lib/assistant'
-import type { ChatMessage, ChatReply } from '../lib/assistant'
+import type { ChatMessage, ChatReply, Citation } from '../lib/assistant'
+import { linkRecords, parseAnswer } from '../lib/answerText'
+import type { Inline } from '../lib/answerText'
 import { useFeatureFlags } from '../lib/useSetting'
 import { Icon } from './icons'
 import { Button, IconButton, InlineNotice, Spinner, Textarea } from './ui'
@@ -277,7 +279,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
             : 'text-medium max-w-full whitespace-pre-wrap break-words rounded-12 bg-surface-subtle px-3 py-2 text-text-default'
         }
       >
-        {message.content}
+        {mine ? message.content : <AnswerBody text={message.content} citations={message.citations ?? []} />}
       </div>
       {message.truncated ? <p className="text-small text-warning-text">{t('assistantTruncated')}</p> : null}
       {citations.length > 0 ? (
@@ -300,6 +302,61 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
           })}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function InlineRuns({ runs }: { runs: Inline[] }) {
+  return (
+    <>
+      {runs.map((run, index) => {
+        if (run.kind === 'link') {
+          return (
+            <Link key={index} to={run.href} className="text-brand-1-accent underline hover:bg-surface-hovered">
+              {run.text}
+            </Link>
+          )
+        }
+        return run.kind === 'bold' ? <strong key={index}>{run.text}</strong> : <span key={index}>{run.text}</span>
+      })}
+    </>
+  )
+}
+
+/** The model's light markdown as real structure; record numbers become links to the record. */
+function AnswerBody({ text, citations }: { text: string; citations: Citation[] }) {
+  const { locale } = useI18n()
+  const link = (runs: Inline[]) => linkRecords(runs, citations, locale)
+  return (
+    <div className="flex flex-col gap-2">
+      {parseAnswer(text).map((block, index) => {
+        if (block.kind === 'p') {
+          return (
+            <p key={index} className="whitespace-pre-wrap">
+              <InlineRuns runs={link(block.inline)} />
+            </p>
+          )
+        }
+        const List = block.kind === 'ol' ? 'ol' : 'ul'
+        return (
+          <List key={index} start={block.kind === 'ol' ? block.start : undefined} className={`flex flex-col gap-1 ps-5 ${block.kind === 'ol' ? 'list-decimal' : 'list-disc'}`}>
+            {block.items.map((item, itemIndex) => (
+              <li key={itemIndex}>
+                <InlineRuns runs={link(item.inline)} />
+                {item.children.length > 0 ? (
+                  <ul className="mt-1 flex list-disc flex-col gap-0.5 ps-5">
+                    {item.children.map((child, childIndex) => (
+                      <li key={childIndex}>
+                        <InlineRuns runs={link(child)} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </List>
+        )
+      })}
     </div>
   )
 }

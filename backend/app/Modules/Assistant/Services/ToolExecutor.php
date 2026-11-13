@@ -167,7 +167,7 @@ class ToolExecutor
      * Rows of a result that the model may cite by id: list rows with a public id, and search hits
      * (group type to entity). The ChatService keeps only those whose id the answer actually names.
      *
-     * @return list<array{tool: string, entity: string, id: string, route: string, as_of: string}>
+     * @return list<array{tool: string, entity: string, id: string, labels: list<string>, route: string, as_of: string}>
      */
     private function records(string $tool, string $entity, string $path, array $body, string $asOf): array
     {
@@ -180,7 +180,15 @@ class ToolExecutor
         $add = function (mixed $row, string $rowEntity) use (&$found, $tool, $path, $asOf): void {
             $id = is_array($row) ? ($row['id'] ?? null) : null;
             if (is_string($id) && preg_match('/^[A-Za-z0-9_-]{8,64}$/', $id) === 1 && count($found) < 100) {
-                $found[] = ['tool' => $tool, 'entity' => $rowEntity, 'id' => $id, 'route' => $path, 'as_of' => $asOf];
+                // The document number or name the answer prints: the screen links it to the record.
+                $labels = [];
+                foreach (['number', 'name', 'name_ar', 'name_en'] as $field) {
+                    $value = is_string($row[$field] ?? null) ? trim($row[$field]) : '';
+                    if (mb_strlen($value) >= 4 && mb_strlen($value) <= 80) {
+                        $labels[] = $value;
+                    }
+                }
+                $found[] = ['tool' => $tool, 'entity' => $rowEntity, 'id' => $id, 'labels' => array_values(array_unique($labels)), 'route' => $path, 'as_of' => $asOf];
             }
         };
 

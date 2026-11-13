@@ -7,6 +7,8 @@ export type Citation = {
   tool: string
   entity: string
   id: string | null
+  /** Document number / names of a cited row, as the server read them; the screen links them in the answer. */
+  labels?: string[]
   route: string
   as_of: string
 }

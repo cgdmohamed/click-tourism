@@ -144,8 +144,10 @@ class AssistantChatTest extends TestCase
         $this->assertSame('Your customer is Nile Travel Customer (as of now).', $data['answer']);
         $this->assertSame(['prompt' => 250, 'completion' => 50, 'total' => 300], $data['usage']);
         $this->assertFalse($data['truncated']);
-        $this->assertCount(1, $data['citations']);
-        $this->assertSame(['tool' => 'erp_customers_list', 'entity' => 'customer', 'id' => null, 'route' => '/customers'], array_diff_key($data['citations'][0], ['as_of' => 1]));
+        // The list call, plus the customer row because the answer prints its name (the screen links it).
+        $this->assertCount(2, $data['citations']);
+        $this->assertSame(['tool' => 'erp_customers_list', 'entity' => 'customer', 'id' => null, 'route' => '/customers'], array_diff_key($data['citations'][0], ['as_of' => 1, 'labels' => 1]));
+        $this->assertContains('Nile Travel Customer', $data['citations'][1]['labels']);
         $this->assertNotEmpty($data['citations'][0]['as_of']);
 
         // The request to the provider carries the key as a bearer header, tools, and asks for no storage.
@@ -173,6 +175,21 @@ class AssistantChatTest extends TestCase
         $this->assertCount(2, $citations);
         $this->assertSame($id, $citations[1]['id']);
         $this->assertSame('customer', $citations[1]['entity']);
+    }
+
+    public function test_a_record_the_answer_prints_by_name_is_cited_with_its_labels_for_linking(): void
+    {
+        $customer = $this->customer();
+        $customer->update(['name_en' => 'Blue Sky Travel']);
+        $this->script([
+            $this->toolCallReply([['erp_customers_list', []]]),
+            $this->finalReply('The customer is Blue Sky Travel.'),
+        ]);
+
+        $citations = $this->chat()->assertOk()->json('data.citations');
+
+        $this->assertSame($customer->public_id, $citations[1]['id']);
+        $this->assertContains('Blue Sky Travel', $citations[1]['labels']);
     }
 
     public function test_the_model_cannot_invent_citations_or_tools(): void
