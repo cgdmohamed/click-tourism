@@ -7,6 +7,7 @@ use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\PermissionRegistrar;
@@ -84,6 +85,19 @@ class AssistantKeyTest extends TestCase
         Sanctum::actingAs($viewer, ['*']);
         $this->putJson('/api/v1/assistant/key', ['api_key' => self::KEY])->assertForbidden();
         $this->deleteJson('/api/v1/assistant/key')->assertForbidden();
+    }
+
+    public function test_an_unusable_app_key_gives_a_clear_error_and_stores_nothing(): void
+    {
+        config()->set('app.key', 'not-a-valid-key');
+        app()->forgetInstance('encrypter');
+        Crypt::clearResolvedInstance('encrypter');
+
+        $this->putJson('/api/v1/assistant/key', ['api_key' => self::KEY])
+            ->assertStatus(503)->assertJsonPath('code', 'encryption_key_invalid');
+        $this->assertDatabaseMissing('settings', ['key' => 'openai_api_key']);
+        // The rest of the app keeps answering.
+        $this->getJson('/api/v1/feature-flags')->assertOk();
     }
 
     public function test_the_generic_settings_endpoint_still_refuses_a_key(): void

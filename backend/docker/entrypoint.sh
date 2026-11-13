@@ -21,6 +21,12 @@ if [ -z "${APP_KEY:-}" ]; then
     exit 1
 fi
 
+# An APP_KEY that cannot encrypt breaks every encrypted feature (a provider key saved from Settings,
+# extracted document values) with a 500. Existing installations keep starting; the warning is loud.
+if ! php -r '$k = (string) getenv("APP_KEY"); if (strncmp($k, "base64:", 7) === 0) { $k = base64_decode(substr($k, 7), true); } exit(is_string($k) && in_array(strlen($k), [16, 32], true) ? 0 : 1);'; then
+    echo "WARNING: APP_KEY is not a valid encryption key (expected 32 random bytes, e.g. from 'php artisan key:generate --show'). Encrypted features will fail until it is fixed." >&2
+fi
+
 # Refuse well-known database passwords on a real (non-demo) installation.
 if [ "${DEMO_MODE:-false}" != "true" ] && [ "${APP_ENV:-production}" = "production" ]; then
     case "$(printf '%s' "${DB_PASSWORD:-}" | tr 'A-Z' 'a-z')" in

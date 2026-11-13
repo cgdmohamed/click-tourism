@@ -4,9 +4,10 @@ namespace App\Modules\Assistant\Support;
 
 use App\Modules\Core\Models\Setting;
 use App\Modules\Core\Services\SettingService;
-use Illuminate\Contracts\Encryption\DecryptException;
+use DomainException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Throwable;
 
 /**
  * The provider API key. An administrator saves it from Settings (stored encrypted, flagged secret,
@@ -38,8 +39,28 @@ final class ProviderCredentials
         return trim((string) config('services.openai.key')) !== '' ? 'env' : 'none';
     }
 
-    public function store(string $key): void
+    /** True when APP_KEY is a valid encryption key, so a secret can be stored encrypted. */
+    public function canEncrypt(): bool
     {
+        try {
+            Crypt::decryptString(Crypt::encryptString('probe'));
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * The key argument is marked sensitive so it never appears in a stack trace or log line.
+     *
+     * @throws DomainException when APP_KEY cannot encrypt
+     */
+    public function store(#[\SensitiveParameter] string $key): void
+    {
+        if (! $this->canEncrypt()) {
+            throw new DomainException('APP_KEY is not a valid encryption key, so the provider key cannot be stored.');
+        }
         $this->settings->set(self::GROUP, self::KEY, Crypt::encryptString(trim($key)), true);
     }
 
@@ -58,8 +79,8 @@ final class ProviderCredentials
 
         try {
             return trim(Crypt::decryptString($raw));
-        } catch (DecryptException) {
-            // The app key changed since the key was saved: treat it as absent, never as a credential.
+        } catch (Throwable) {
+            // The app key changed (or is unusable) since the key was saved: treat it as absent, never as a credential.
             return '';
         }
     }

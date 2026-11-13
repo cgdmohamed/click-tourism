@@ -48,6 +48,9 @@ class ExtractionService
         if (! $this->available()) {
             throw new DomainException('Document extraction is not enabled.');
         }
+        if (! $this->credentials->canEncrypt()) {
+            throw new DomainException('APP_KEY is not a valid encryption key, so extracted values cannot be stored.');
+        }
         if (! ExtractionSchema::supports($attachment->category)) {
             throw new DomainException('This kind of document cannot be read automatically; enter the details by hand.');
         }

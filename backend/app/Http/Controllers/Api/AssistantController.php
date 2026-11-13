@@ -63,6 +63,15 @@ class AssistantController extends ApiController
             'api_key' => ['required', 'string', 'min:20', 'max:300', 'regex:/^\S+$/'],
         ]);
 
+        if (! $credentials->canEncrypt()) {
+            // Nothing is written. The administrator fixes APP_KEY in the server environment.
+            return ApiResponse::error(
+                'The server encryption key (APP_KEY) is not valid, so the provider key cannot be stored. Set a valid APP_KEY in the server environment (php artisan key:generate --show) and restart.',
+                'encryption_key_invalid',
+                503,
+            );
+        }
+
         $before = $credentials->source();
         $credentials->store($data['api_key']);
         // The audit trail records that the key changed, never the key itself.
