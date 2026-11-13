@@ -1,6 +1,6 @@
 # ADR-0019 - Assistant provider key entered from Settings (amends ADR-0017 §2)
 
-- **Status:** **Proposed - architect approval pending.** Amends ADR-0017 §2 ("Secrets", environment only). Until the Approval record below is signed, the code in this change must not be merged or deployed as an accepted design.
+- **Status:** **Accepted** (project owner decision 2026-11-13, granting the architect approval `AGENTS.md` and `docs/architecture/README.md` require). Amends ADR-0017 §2 ("Secrets", environment only) for the rows in the Approval record below only.
 - **Date:** 2026-11-13
 - **Related:** ADR-0017 (assistant provider abstraction and OpenAI), ADR-0018, ADR-0010 (configuration and feature toggles), `docs/architecture/threat-model.md`, `docs/deployment/assistant.md`, `AGENTS.md` ("Never store secrets").
 
@@ -28,9 +28,9 @@ ADR-0017 §2 made `OPENAI_API_KEY` environment-only: never stored in `settings`.
 
 ## Approval record
 
-`AGENTS.md` and `docs/architecture/README.md` require architect approval for contract changes and for departing from an accepted ADR. Not yet given.
+`AGENTS.md` and `docs/architecture/README.md` require architect approval for contract changes and for departing from an accepted ADR. Given by the project owner in the implementation session (branch `claude/clever-sagan-89spcf`, PR #76).
 
 | # | Change | Approver (name) | Role | Date | Where the approval was given |
 |---|---|---|---|---|---|
-| 1 | Amend ADR-0017 §2: store the provider key encrypted in `settings` (items 1-6 above) | _pending_ | architect | _pending_ | _pending_ |
-| 2 | `PUT`/`DELETE /api/v1/assistant/key` and `assistant_key_source` in `GET /feature-flags` | _pending_ | architect | _pending_ | _pending_ |
+| 1 | Amend ADR-0017 §2: store the provider key encrypted in `settings` (items 1-6 above) | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "أوافق على الخيار الأول وسجّل الموافقة" (store the key encrypted from Settings) (PR #76) |
+| 2 | `PUT`/`DELETE /api/v1/assistant/key` and `assistant_key_source` in `GET /feature-flags` | Project owner | architect | 2026-11-13 | Owner decision in the implementation session: "أوافق على الخيار الأول وسجّل الموافقة" (store the key encrypted from Settings) (PR #76) |

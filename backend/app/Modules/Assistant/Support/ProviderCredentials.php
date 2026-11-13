@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Crypt;
 /**
  * The provider API key. An administrator saves it from Settings (stored encrypted, flagged secret,
  * never returned by any endpoint); the environment value (OPENAI_API_KEY) remains a fallback for
- * installers who prefer it (ADR-0019, pending architect approval). The stored key wins, so changing it in the product takes effect at once.
+ * installers who prefer it (ADR-0019). The stored key wins, so changing it in the product takes effect at once.
  */
 final class ProviderCredentials
 {
