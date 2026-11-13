@@ -47,6 +47,7 @@ class ChartOfAccountsSeeder extends Seeder
             ['code' => '1153', 'name_ar' => 'دفعات مقدمة للموردين', 'name_en' => 'Supplier advances', 'type' => 'asset', 'parent_code' => '1150'],
             ['code' => '1154', 'name_ar' => 'مصروفات مدفوعة مقدماً', 'name_en' => 'Prepaid expenses', 'type' => 'asset', 'parent_code' => '1150'],
             ['code' => '2100', 'name_ar' => 'دائنون - موردون', 'name_en' => 'Accounts Payable', 'type' => 'liability'],
+            ['code' => '2150', 'name_ar' => 'تكاليف موردين مستحقة', 'name_en' => 'Accrued supplier costs', 'type' => 'liability'],
             ['code' => '2160', 'name_ar' => 'حساب جاري بين الفروع - دائن', 'name_en' => 'Inter-branch payable', 'type' => 'liability'],
             ['code' => '2200', 'name_ar' => 'ضريبة القيمة المضافة المستحقة', 'name_en' => 'VAT Payable', 'type' => 'liability'],
             ['code' => '2300', 'name_ar' => 'دفعات مقدمة من العملاء', 'name_en' => 'Customer Advances', 'type' => 'liability'],

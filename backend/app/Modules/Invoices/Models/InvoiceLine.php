@@ -11,6 +11,7 @@ class InvoiceLine extends Model
     protected $fillable = [
         'invoice_id',
         'account_id',
+        'booking_item_id',
         'description',
         'quantity',
         'unit_price_minor',
@@ -56,6 +57,7 @@ class InvoiceLine extends Model
             'tax_account' => $this->taxAccount?->toApiArray(),
             'party_type' => $this->party_type,
             'party_id' => $this->party_id,
+            'booking_item_id' => $this->booking_item_id !== null ? (string) $this->booking_item_id : null,
         ];
     }
 }

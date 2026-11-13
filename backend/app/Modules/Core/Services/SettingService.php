@@ -85,6 +85,7 @@ class SettingService
             // create these with `php artisan accounting:ensure-fx-accounts`.
             'fx_unrealized_gain_account_code' => '7901',
             'fx_unrealized_loss_account_code' => '6901',
+            'accrued_costs_account_code' => '2150',
             // PENDING ACCOUNTANT APPROVAL (DEC-031/032/034): provisional account mappings.
             'bank_charges_account_code' => '6500',
             // PENDING ACCOUNTANT APPROVAL (DEC-037): interest earned credited on reconciliation.

@@ -9,6 +9,7 @@ use App\Modules\Accounting\Services\FiscalCloseService;
 use App\Modules\Accounting\Services\FiscalYearSuggestionService;
 use App\Modules\Accounting\Services\PeriodEndChecklistService;
 use App\Modules\Accounting\Services\RevaluationService;
+use App\Modules\Bookings\Services\CostAccrualService;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
@@ -125,6 +126,32 @@ class FiscalPeriodController extends ApiController
             'reversal_number' => $result['reversal']?->number,
             'rows' => $result['rows'],
         ]);
+    }
+
+    /** DEC-002: supplier costs incurred but not yet invoiced that the period would accrue (read-only). */
+    public function accrualPreview(FiscalPeriod $period, CostAccrualService $accruals): JsonResponse
+    {
+        $rows = $accruals->preview($period->ends_on->toDateString(), $this->branch(), $period);
+
+        return $this->ok([
+            'period' => ['id' => $period->id, 'name' => $period->name, 'ends_on' => $period->ends_on->toDateString()],
+            'reversal_date' => $period->ends_on->copy()->addDay()->toDateString(),
+            'rows' => array_map(static fn (array $row): array => [
+                'booking_id' => $row['booking']->public_id,
+                'booking_number' => $row['booking']->number,
+                'estimated_minor' => $row['estimated_minor'],
+                'recognized_minor' => $row['recognized_minor'],
+                'accrual_minor' => $row['accrual_minor'],
+                'already_accrued' => $row['already_accrued'],
+            ], $rows),
+            'total_minor' => array_sum(array_map(static fn (array $row): int => $row['already_accrued'] ? 0 : $row['accrual_minor'], $rows)),
+        ]);
+    }
+
+    /** DEC-002: post the accruals; repeating posts only what is missing. */
+    public function accrualConfirm(FiscalPeriod $period, CostAccrualService $accruals): JsonResponse
+    {
+        return $this->ok($accruals->accrue($period, $this->branch(), $this->actorId()));
     }
 
     public function close(FiscalYear $fiscalYear, FiscalCloseService $closing): JsonResponse

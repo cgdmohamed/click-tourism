@@ -9,6 +9,7 @@ use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Bookings\Models\BookingItem;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
@@ -155,7 +156,7 @@ class InvoiceService
                 }
             }
 
-            $lines = $this->prepareLines($data, $currency, $branch);
+            $lines = $this->prepareLines($data, $currency, $branch, $linkedBookingId, $partyType === 'supplier' ? $partyId : null);
 
             $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
             $tax = (int) array_sum(array_column($lines, 'tax_minor'));
@@ -202,6 +203,7 @@ class InvoiceService
                     'tax_account_id' => $line['tax_account_id'] ?? null,
                     'party_type' => $line['party_type'] ?? null,
                     'party_id' => $line['party_id'] ?? null,
+                    'booking_item_id' => $line['booking_item_id'] ?? null,
                 ]);
             }
 
@@ -255,7 +257,7 @@ class InvoiceService
             }
 
             if (isset($data['lines'])) {
-                $lines = $this->prepareLines($data, $currency, $invoice->branch);
+                $lines = $this->prepareLines($data, $currency, $invoice->branch, $invoice->booking_id, $invoice->party_type === 'supplier' ? (int) $invoice->party_id : null);
                 $invoice->lines()->delete();
                 foreach ($lines as $line) {
                     InvoiceLine::query()->create([
@@ -270,6 +272,7 @@ class InvoiceService
                         'tax_account_id' => $line['tax_account_id'] ?? null,
                         'party_type' => $line['party_type'] ?? null,
                         'party_id' => $line['party_id'] ?? null,
+                        'booking_item_id' => $line['booking_item_id'] ?? null,
                     ]);
                 }
                 $subtotal = (int) array_sum(array_column($lines, 'subtotal_minor'));
@@ -652,7 +655,7 @@ class InvoiceService
     }
 
     /** @return array<int, array{account_id: int, description: string, debit_minor: int, credit_minor: int, tax_minor: int, tax_account_id: ?int, party_type: ?string, party_id: ?int, subtotal_minor: int}> */
-    private function prepareLines(array $data, string $currency, Branch $branch): array
+    private function prepareLines(array $data, string $currency, Branch $branch, ?int $bookingId = null, ?int $supplierId = null): array
     {
         $rawLines = $data['lines'] ?? [];
         if (count($rawLines) < 1) {
@@ -726,11 +729,32 @@ class InvoiceService
                 'tax_account_id' => $taxAccountId,
                 'party_type' => $raw['party_type'] ?? null,
                 'party_id' => $raw['party_id'] ?? null,
+                'booking_item_id' => $this->resolveBookingItemId($raw['booking_item_id'] ?? null, $bookingId, $supplierId, $position),
                 'subtotal_minor' => $debit + $credit,
             ];
         }
 
         return $lines;
+    }
+
+    /** DEC-002: the service a supplier invoice line pays for must belong to the invoice's booking (and supplier). */
+    private function resolveBookingItemId(mixed $itemId, ?int $bookingId, ?int $supplierId, int $position): ?int
+    {
+        if ($itemId === null || $itemId === '') {
+            return null;
+        }
+        if ($bookingId === null) {
+            throw new DomainException("Line {$position}: link the invoice to a booking before linking a line to one of its services.");
+        }
+        $item = BookingItem::query()->find((int) $itemId);
+        if (! $item || $item->booking_id !== $bookingId) {
+            throw new DomainException("Line {$position}: the service does not belong to the linked booking.");
+        }
+        if ($supplierId !== null && $item->supplier_id !== null && $item->supplier_id !== $supplierId) {
+            throw new DomainException("Line {$position}: the service is provided by another supplier.");
+        }
+
+        return $item->id;
     }
 
     /**
