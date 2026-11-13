@@ -88,6 +88,9 @@ Assistant-specific rows (ADR-0017):
 | Rendered exfiltration | Answer contains an image, link or HTML that carries data | Output reduced to plain text; links come only from server-built citations; web renders text, internal `Link`s only |
 | Denial of wallet | Loop of questions or long tool chains | Per-user rate limit, daily token budget, tool-call cap per turn, max output tokens, report limiter, row budget |
 | Key exposure | Key stored, logged or echoed | Env only (ADR-0017); ADR-0019 (accepted) adds an encrypted, write-only, audited store in Settings; Settings API refuses unknown `assistant.*` keys; provider errors never copy bodies; test asserts the key is absent from responses, flags, settings and audit |
+| Document disclosure | Another user or a guessed URL reads a passport or invoice | Private disk, random names, no public URL; every read re-checks record permission, branch and `attachments.*`; personal-data categories need `attachments.sensitive` and are hidden from lists; responses are `no-store` with nosniff and a sandbox CSP; reads are audited (ADR-0021) |
+| Malicious upload | Script or polyglot file stored and served | Type from content on an allowlist (PDF, JPEG, PNG, WebP), size and count limits, images must decode, PDFs with active content refused, served only as an attachment or sandboxed inline; no malware scan (stated in `docs/deployment/attachments.md`) |
+| Extraction abuse | Instructions hidden in a document steer the model, or a wrong reading is trusted | The document is declared untrusted data; only the fields of the category are kept and validated by type; unclear or missing values are flagged; the proposal creates and posts nothing; a person confirms; values are encrypted at rest and audit entries carry field names only |
 | Transcript retention | Conversations kept server-side | None stored; audit rows hold counts and tool names only |
 
 Additional abuse cases to test (blueprint AT-1..AT-14):

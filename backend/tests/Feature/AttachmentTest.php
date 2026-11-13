@@ -108,6 +108,15 @@ class AttachmentTest extends TestCase
         $this->assertStringNotContainsString('ok.png', (string) Attachment::query()->value('stored_path'));
     }
 
+    public function test_a_plain_pdf_is_accepted_and_served_as_a_pdf(): void
+    {
+        $pdf = UploadedFile::fake()->createWithContent('invoice.pdf', "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
+        $this->upload(['category' => 'supplier_invoice'], [$pdf])->assertCreated()->assertJsonPath('data.items.0.mime', 'application/pdf');
+
+        $id = Attachment::query()->value('public_id');
+        $this->assertSame('application/pdf', $this->get('/api/v1/attachments/'.$id.'/preview')->headers->get('Content-Type'));
+    }
+
     public function test_a_user_without_the_record_permission_or_branch_cannot_reach_its_documents(): void
     {
         $customer = $this->customer();

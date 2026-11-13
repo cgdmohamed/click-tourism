@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
+import { DocumentsButton } from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
@@ -249,6 +250,7 @@ export default function Expenses() {
                     </Td>
                     <Td className="text-end">
                       <div className="flex flex-wrap justify-end gap-1">
+                        <DocumentsButton type="expense" recordId={expense.id} />
                         {expense.status === 'draft' && can('expenses.create') ? (
                           <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
                         ) : null}
