@@ -340,7 +340,7 @@ paths:
                       key_source: { type: string, enum: [settings, env, none] }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { description: Key missing, too short or containing whitespace }
+        '422': { description: 'Key missing, too short or containing whitespace' }
     delete:
       tags: [Auth]
       summary: Remove the saved assistant provider key (permission `settings.update`)
