@@ -97,7 +97,7 @@ class RolePermissionSeeder extends Seeder
         'finance_manager' => [
             '@accountant',
             'journal.post_own_drafts',
-            'accounting.approve_policy', 'reports.export',
+            'accounting.approve_policy', 'reports.export', 'reports.schedule',
             'expenses.approve', 'documents.approve', 'schedules.approve',
             'assets.approve', 'reconciliation.approve',
             'users.view', 'roles.view',
@@ -152,7 +152,7 @@ class RolePermissionSeeder extends Seeder
         'bookings.override_credit_limit',
         'payments.view', 'payments.create', 'payments.manage', 'payments.reverse',
         'refunds.create', 'refunds.approve',
-        'reports.view', 'reports.export',
+        'reports.view', 'reports.export', 'reports.schedule',
         'audit.view', 'audit.export',
         'leads.view', 'leads.create', 'leads.update', 'leads.convert', 'leads.manage_rules',
         'cash_accounts.manage', 'transfers.view', 'transfers.create', 'transfers.reverse',

@@ -48,6 +48,7 @@ use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\PipelineReportController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\ReportScheduleController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SessionController;
@@ -417,6 +418,12 @@ Route::prefix('v1')->group(function () {
         Route::get('exports/{export}', [ExportJobController::class, 'show'])->middleware('permission:reports.export');
         Route::get('exports/{export}/download', [ExportJobController::class, 'download'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::delete('exports/{export}', [ExportJobController::class, 'destroy'])->middleware('permission:reports.export');
+        // ADR-0026 (GAP-RPT-06): reports e-mailed on a schedule, owner-only.
+        Route::get('report-schedules', [ReportScheduleController::class, 'index'])->middleware('permission:reports.schedule');
+        Route::post('report-schedules', [ReportScheduleController::class, 'store'])->middleware('permission:reports.schedule');
+        Route::patch('report-schedules/{schedule}', [ReportScheduleController::class, 'update'])->middleware('permission:reports.schedule');
+        Route::delete('report-schedules/{schedule}', [ReportScheduleController::class, 'destroy'])->middleware('permission:reports.schedule');
+        Route::post('report-schedules/{schedule}/run', [ReportScheduleController::class, 'run'])->middleware(['permission:reports.schedule', 'throttle:report-exports']);
         Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/general-ledger', [ReportController::class, 'generalLedger'])->middleware('permission:reports.view');
         Route::get('reports/general-ledger/export', [ReportController::class, 'exportGeneralLedger'])->middleware(['permission:reports.export', 'throttle:report-exports']);

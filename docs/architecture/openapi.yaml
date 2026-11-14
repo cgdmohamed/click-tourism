@@ -372,6 +372,89 @@ paths:
         '409': { description: 'Not ready (code export_not_ready)' }
         '410': { description: 'Expired (code export_expired); run the export again' }
 
+  /report-schedules:
+    get:
+      tags: [Reports]
+      summary: The signed-in user's scheduled report e-mails in the active branch (ADR-0026, permission `reports.schedule`)
+      responses:
+        '200':
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReportSchedule' }
+    post:
+      tags: [Reports]
+      summary: Create a schedule that e-mails a report file to up to 10 addresses
+      description: |
+        Runs as the creator (their permissions and branch) at 06:00 server time through the SMTP settings of the environment. A `period` preset (`yesterday`, `previous_week`, `previous_month`, `month_to_date`, `year_to_date`, `last_30_days`) sets `from`, `to` and `as_of` at each run; fixed filters go in `params`. Nothing is mailed when the export fails or while the mailer is `log`, `array` or `null` (`GET /feature-flags` exposes `mail_configured`). Five consecutive failures pause the schedule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report, format, frequency, recipients]
+              properties:
+                name: { type: string, maxLength: 100 }
+                report: { type: string }
+                format: { type: string, enum: [csv, xlsx, pdf] }
+                frequency: { type: string, enum: [daily, weekly, monthly] }
+                day: { type: integer, minimum: 1, maximum: 28, description: 'weekly: 1 (Monday) to 7; monthly: 1 to 28' }
+                period: { type: string, enum: [yesterday, previous_week, previous_month, month_to_date, year_to_date, last_30_days] }
+                params: { type: object, additionalProperties: { type: string } }
+                recipients: { type: array, minItems: 1, maxItems: 10, items: { type: string, format: email } }
+      responses:
+        '201':
+          description: The schedule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ReportSchedule' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 'Invalid report, period, frequency or e-mail address' }
+
+  /report-schedules/{schedule}:
+    patch:
+      tags: [Reports]
+      summary: Change or pause one of my schedules (re-activating resets the failure count)
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'The schedule' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Reports]
+      summary: Delete one of my schedules
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /report-schedules/{schedule}/run:
+    post:
+      tags: [Reports]
+      summary: Send the report now; the outcome is in `last_status` (sent, failed, mail_not_configured)
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The schedule after the run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ReportSchedule' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /assistant/chat:
     post:
       tags: [Auth]
@@ -6101,6 +6184,24 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    ReportSchedule:
+      type: object
+      description: 'A report e-mailed on a schedule (ADR-0026)'
+      properties:
+        id: { type: string }
+        name: { type: [string, 'null'] }
+        report: { type: string }
+        format: { type: string, enum: [csv, xlsx, pdf] }
+        params: { type: object, additionalProperties: { type: string } }
+        period: { type: [string, 'null'] }
+        frequency: { type: string, enum: [daily, weekly, monthly] }
+        day: { type: [integer, 'null'] }
+        recipients: { type: array, items: { type: string } }
+        is_active: { type: boolean }
+        next_run_at: { type: [string, 'null'], format: date-time }
+        last_run_at: { type: [string, 'null'], format: date-time }
+        last_status: { type: [string, 'null'], enum: [sent, failed, mail_not_configured, null] }
+        last_error: { type: [string, 'null'] }
     ExportJob:
       type: object
       description: 'A background report export (ADR-0025)'

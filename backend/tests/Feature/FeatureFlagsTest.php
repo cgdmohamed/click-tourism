@@ -39,6 +39,7 @@ class FeatureFlagsTest extends TestCase
                 'assistant_key_configured' => false,
                 'attachments_extraction_enabled' => false,
                 'assistant_key_source' => 'none',
+                'mail_configured' => false,
                 'assistant_accepted' => false,
                 'assistant_model' => 'gpt-4o-mini',
                 'assistant_redact_pii' => true,

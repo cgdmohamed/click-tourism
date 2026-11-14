@@ -137,6 +137,7 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 |---|---|---|---|---|---|---|---|---|---|
 | `reports.view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `reports.export` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
+| `reports.schedule` | ✓ | ✓ | — | — | — | — | — | — | — |
 
 ### Leads (CRM)
 

@@ -74,3 +74,29 @@ test('a background export is queued from the Reports page and listed with its st
   await expect(list.getByRole('status').first()).toContainText(/Queued|Running|Ready|Failed/)
   await noBlockingViolations(page, '[aria-label="Background export"]')
 })
+
+test('a scheduled report is created, says when the mailer is not configured, and is deleted', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  await page.goto('/reports')
+
+  const section = page.getByRole('region', { name: 'Scheduled reports' })
+  await expect(section).toBeVisible()
+  await section.getByRole('button', { name: 'New schedule' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await noBlockingViolations(page, '[role="dialog"]')
+
+  await dialog.getByLabel(/Recipients/).fill('boss@example.com, cfo@example.com')
+  await dialog.getByRole('button', { name: 'Save schedule' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  const list = section.getByRole('list', { name: 'Schedules' })
+  await expect(list).toContainText('boss@example.com, cfo@example.com')
+
+  // A bare install has no SMTP: sending says so instead of pretending.
+  await list.getByRole('button', { name: 'Send now' }).first().click()
+  await expect(list.getByRole('status').first()).toContainText(/Mail not configured|Sent/)
+
+  await list.getByRole('button', { name: 'Delete' }).first().click()
+  await expect(list).toHaveCount(0)
+})

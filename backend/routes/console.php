@@ -70,6 +70,12 @@ Schedule::command('exports:prune')
     ->dailyAt('02:20')
     ->withoutOverlapping();
 
+// Scheduled report e-mail (ADR-0026): sends what is due; a no-op while SMTP is not configured.
+Schedule::command('reports:send-scheduled')
+    ->name('reports-send-scheduled')
+    ->hourlyAt(5)
+    ->withoutOverlapping();
+
 // Optional Meta / WhatsApp integrations: publish queued outbox rows and re-queue
 // lost jobs. No-op while the integrations are disabled or idle.
 Schedule::command('integrations:dispatch-outbox')

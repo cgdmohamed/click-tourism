@@ -18,6 +18,7 @@ import type { ManagementReportKey } from '../lib/managementReports'
 import type { IconName } from '../components/icons'
 import { localizedName } from '../lib/names'
 import { BackgroundExports } from '../components/BackgroundExports'
+import { ScheduledReports } from '../components/ScheduledReports'
 
 type CurrencyRow = { code: string; is_active: boolean }
 type PartyType = 'customer' | 'supplier' | 'employee'
@@ -773,6 +774,8 @@ export default function Reports() {
             </Button>
           ) : null}
         </div>
+
+        <ScheduledReports />
 
         {canExport ? (
           <BackgroundExports

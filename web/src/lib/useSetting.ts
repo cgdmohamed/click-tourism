@@ -21,6 +21,8 @@ export type FeatureFlags = {
   /** The provider key exists in the server environment (never returned itself). */
   assistant_key_configured?: boolean
   assistant_key_source?: 'settings' | 'env' | 'none'
+  /** True when the server environment has a real mailer (scheduled report e-mail, ADR-0026). */
+  mail_configured?: boolean
   attachments_extraction_enabled?: boolean
   /** The data-processing notice has been accepted in Settings > Assistant. */
   assistant_accepted?: boolean
