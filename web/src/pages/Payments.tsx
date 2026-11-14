@@ -97,6 +97,16 @@ export default function Payments() {
     setPage(1)
   }, [urlSearch])
 
+  // The history filter lists every method, deactivated ones included, so old receipts stay findable.
+  // The dialogs below keep using `methodsQuery`, which is active methods only.
+  const filterMethodsQuery = useQuery({
+    queryKey: ['payment-methods', 'with-inactive'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PaymentMethod[] }>('/payment-methods', { params: { include_inactive: 1 } })
+      return data.data
+    },
+  })
+
   const methodsQuery = useQuery({
     queryKey: ['payment-methods'],
     queryFn: async () => {
@@ -124,7 +134,10 @@ export default function Payments() {
         key: 'payment_method_id',
         label: t('paymentMethod'),
         type: 'select',
-        options: (methodsQuery.data ?? []).map((method) => ({ value: method.id, label: locale === 'ar' ? method.name_ar : method.name_en })),
+        options: (filterMethodsQuery.data ?? []).map((method) => ({
+          value: method.id,
+          label: `${locale === 'ar' ? method.name_ar : method.name_en}${method.is_active === false ? (locale === 'ar' ? ' (موقوفة)' : ' (inactive)') : ''}`,
+        })),
         allLabel: locale === 'ar' ? 'كل طرق الدفع' : 'All methods',
       },
       {
