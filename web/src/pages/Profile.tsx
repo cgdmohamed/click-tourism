@@ -10,6 +10,7 @@ import { useFeatureFlags } from '../lib/useSetting'
 import { showMcpSection } from '../lib/mcpTokens'
 import McpTokensCard from '../components/McpTokensCard'
 import SessionsCard from '../components/SessionsCard'
+import { roleLabel } from '../lib/permissionLabels'
 
 function initialsOf(name: string) {
   return (
@@ -96,7 +97,7 @@ export default function Profile() {
           <span className="flex flex-wrap gap-1">
             {user.roles.map((role) => (
               <Badge key={role} tone="neutral">
-                {role}
+                {roleLabel(role, locale)}
               </Badge>
             ))}
           </span>
@@ -126,7 +127,7 @@ export default function Profile() {
                 ) : (
                   user.roles.map((role) => (
                     <Badge key={role} tone="neutral">
-                      {role}
+                      {roleLabel(role, locale)}
                     </Badge>
                   ))
                 )}

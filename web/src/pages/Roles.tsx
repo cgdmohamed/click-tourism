@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
+import { permissionGroupLabel, permissionLabel, roleLabel } from '../lib/permissionLabels'
 import { api, errorMessage } from '../lib/api'
 import { groupPermissionsByPrefix, roleSubsetOfActor } from '../lib/iam'
 import type { RoleRecord } from '../lib/types'
@@ -41,14 +42,14 @@ function PermissionGroups({
   notHeld: Set<string>
   onToggle: (permission: string, checked: boolean) => void
 }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   if (groups.length === 0) return <p className="text-medium text-text-subtle">{t('noData')}</p>
   return (
     <div className="flex flex-col gap-3">
       {groups.map((group) => (
         <div key={group.prefix} className="rounded-12 border border-border-subtle bg-surface-subtle p-3">
-          <p className="text-small mb-2 font-semibold uppercase tracking-wide text-text-subtlest" dir="ltr">
-            {group.prefix}
+          <p className="text-small mb-2 font-semibold tracking-wide text-text-subtlest">
+            {permissionGroupLabel(group.prefix, locale)}
           </p>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {group.items.map((permission) => {
@@ -57,7 +58,7 @@ function PermissionGroups({
                 <label
                   key={permission}
                   className="text-small flex items-center gap-2"
-                  title={notHeld.has(permission) ? t('cannotAssignPrivileges') : undefined}
+                  title={notHeld.has(permission) ? t('cannotAssignPrivileges') : permission}
                 >
                   <input
                     type="checkbox"
@@ -66,9 +67,7 @@ function PermissionGroups({
                     disabled={locked}
                     onChange={(event) => onToggle(permission, event.target.checked)}
                   />
-                  <span className="truncate" dir="ltr">
-                    {permission}
-                  </span>
+                  <span className="truncate">{permissionLabel(permission, locale)}</span>
                   {notHeld.has(permission) ? <Badge tone="neutral">{t('notHeldPermission')}</Badge> : null}
                 </label>
               )
@@ -81,7 +80,7 @@ function PermissionGroups({
 }
 
 export default function Roles() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { user, can } = useAuth()
   const queryClient = useQueryClient()
   const canView = can('roles.view')
@@ -280,8 +279,8 @@ export default function Roles() {
                     selectedRoleId === role.id ? 'bg-surface-selected' : 'hover:bg-surface-hovered',
                   )}
                 >
-                  <Td className="font-medium" dir="ltr">
-                    {role.name}
+                  <Td className="font-medium">
+                    {roleLabel(role.name, locale)}
                   </Td>
                   <Td>
                     <Badge tone={role.is_system ? 'brand' : 'neutral'}>
@@ -317,7 +316,7 @@ export default function Roles() {
       {selectedRole ? (
         <Card className="mt-6">
           <CardHeader
-            title={selectedRole.name}
+            title={roleLabel(selectedRole.name, locale)}
             subtitle={`${t('users')}: ${selectedRole.users_count} · ${t('permissions')}: ${selectedRole.permissions.length}`}
             icon="shield"
             actions={

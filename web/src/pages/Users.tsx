@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
+import { roleLabel } from '../lib/permissionLabels'
 import type { MessageKey } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
@@ -103,7 +104,7 @@ export default function Users() {
             <option value="">{t('allRoles')}</option>
             {roleFilterOptions.map((name) => (
               <option key={name} value={name}>
-                {name}
+                {roleLabel(name, locale)}
               </option>
             ))}
           </Select>
@@ -418,7 +419,7 @@ export default function Users() {
                 </div>
                 <p className="text-small break-all text-text-subtle" dir="ltr">{account.email}</p>
                 <dl className="grid grid-cols-2 gap-3">
-                  <CardField label={t('roles')}>{account.roles.length ? account.roles.join(', ') : '—'}</CardField>
+                  <CardField label={t('roles')}>{account.roles.length ? account.roles.map((role) => roleLabel(role, locale)).join(', ') : '—'}</CardField>
                   <CardField label={t('branches')}>{account.branches.length ? account.branches.map((branch) => branchName(branch)).join(', ') : '—'}</CardField>
                   <CardField label={t('lastLogin')}>{formatDateTime(account.last_login_at, locale)}</CardField>
                 </dl>
@@ -460,7 +461,7 @@ export default function Users() {
                       <span className="flex flex-wrap gap-1">
                         {account.roles.map((role) => (
                           <Badge key={role} tone="neutral">
-                            {role}
+                            {roleLabel(role, locale)}
                           </Badge>
                         ))}
                       </span>
@@ -573,9 +574,7 @@ export default function Users() {
                   disabled={!option.assignable}
                   onChange={(event) => toggleRole(option.name, event.target.checked)}
                 />
-                <span className="truncate" dir="ltr">
-                  {option.name}
-                </span>
+                <span className="truncate">{roleLabel(option.name, locale)}</span>
               </label>
             ))}
           </div>
