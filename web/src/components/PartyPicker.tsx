@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n'
-import { usePartyOptions, type PartyKind } from '../lib/usePartyOptions'
+import { usePartyOptions, type PartyKind, type PartyRow } from '../lib/usePartyOptions'
 import { SearchableSelect } from './ui'
 
 /**
@@ -14,15 +14,18 @@ export default function PartyPicker({
   onChange,
   placeholder,
   clearLabel,
+  known,
 }: {
   kind: PartyKind
   value: string
   onChange: (value: string) => void
   placeholder?: string
   clearLabel?: string
+  /** A party created in a dialog, kept visible even when the search page does not contain it. */
+  known?: PartyRow[]
 }) {
   const { locale } = useI18n()
-  const picker = usePartyOptions(kind, { value, locale })
+  const picker = usePartyOptions(kind, { value, locale, known })
 
   return (
     <SearchableSelect

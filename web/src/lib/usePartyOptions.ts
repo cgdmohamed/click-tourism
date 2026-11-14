@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { SelectOption } from '../components/ui'
 import { useRemoteOptions } from './useRemoteOptions'
 import { localizedName } from './names'
@@ -30,7 +30,7 @@ const ENDPOINTS: Record<PartyKind, string> = {
  */
 export function usePartyOptions(
   kind: PartyKind,
-  { enabled = true, value = '', locale }: { enabled?: boolean; value?: string; locale: 'ar' | 'en' },
+  { enabled = true, value = '', locale, known }: { enabled?: boolean; value?: string; locale: 'ar' | 'en'; known?: PartyRow[] },
 ): { options: SelectOption[]; rows: PartyRow[]; setSearch: (query: string) => void; loading: boolean; hasMore: boolean } {
   const toOption = useCallback(
     (party: PartyRow): SelectOption => ({
@@ -41,11 +41,16 @@ export function usePartyOptions(
     [locale],
   )
 
+  // A party just created in a quick dialog may sit outside the loaded page or the current search;
+  // keeping it as a known option keeps its name visible while it is selected.
+  const knownOptions = useMemo(() => (known ?? []).map(toOption), [known, toOption])
+
   return useRemoteOptions<PartyRow>({
     endpoint: ENDPOINTS[kind],
     toOption,
     value,
     enabled,
     keyPrefix: 'party-options',
+    known: knownOptions,
   })
 }

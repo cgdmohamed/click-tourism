@@ -60,6 +60,7 @@ export default function Bookings() {
   const createRequested = searchParams.get('create') === '1'
   const [open, setOpen] = useState(Boolean(requestedDepartureId || createRequested))
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
+  const [createdCustomer, setCreatedCustomer] = useState<{ id: string; name_ar: string; name_en: string } | null>(null)
   const [error, setError] = useState('')
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
@@ -516,6 +517,7 @@ export default function Bookings() {
                 <Field label={t('customer')} required error={showErrors ? validation.errors.customer : undefined}>
                   <PartyPicker
                     kind="customer"
+                    known={createdCustomer ? [createdCustomer] : undefined}
                     value={form.customer_id}
                     onChange={(customer_id) => setForm({ ...form, customer_id })}
                     placeholder={t('selectCustomer')}
@@ -617,7 +619,7 @@ export default function Bookings() {
         </BookingFormShell>
       ) : null}
       <QuickCreateCustomer open={quickCustomerOpen} onClose={() => setQuickCustomerOpen(false)}
-        onCreated={(customer) => { setForm((current) => ({ ...current, customer_id: customer.id })); setQuickCustomerOpen(false) }} />
+        onCreated={(customer) => { setCreatedCustomer(customer); setForm((current) => ({ ...current, customer_id: customer.id })); setQuickCustomerOpen(false) }} />
     </div>
   )
 }
