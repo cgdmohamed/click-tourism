@@ -622,21 +622,25 @@ export default function Invoices() {
               <option value="supplier_invoice">{L('فاتورة مورد', 'Supplier invoice')}</option>
             </Select>
           </Field>
-          <Field label={L('الطرف', 'Party')} required>
-            <SearchableSelect
-              value={form.party_id}
-              onChange={(value) => setForm({ ...form, party_id: value })}
-              placeholder={L('اختر الطرف', 'Select party')}
-              options={partyOptions}
-              onSearch={partyPicker.setSearch}
-              hasMore={partyPicker.hasMore}
-            />
+          <div className="min-w-0">
+            <Field label={L('الطرف', 'Party')} required>
+              <SearchableSelect
+                value={form.party_id}
+                onChange={(value) => setForm({ ...form, party_id: value })}
+                placeholder={L('اختر الطرف', 'Select party')}
+                options={partyOptions}
+                onSearch={partyPicker.setSearch}
+                hasMore={partyPicker.hasMore}
+              />
+            </Field>
             {can(isCustomer ? 'customers.create' : 'suppliers.create') ? (
-              <Button variant="ghost" icon="plus" className="mt-2 px-2" onClick={() => setQuickParty(true)}>
-                {isCustomer ? L('إضافة عميل جديد', 'Add new customer') : L('إضافة مورد جديد', 'Add new supplier')}
-              </Button>
+              <div className="mt-1 flex justify-start">
+                <Button variant="ghost" icon="plus" className="px-2" onClick={() => setQuickParty(true)}>
+                  {isCustomer ? L('إضافة عميل جديد', 'Add new customer') : L('إضافة مورد جديد', 'Add new supplier')}
+                </Button>
+              </div>
             ) : null}
-          </Field>
+          </div>
           {form.type === 'supplier_invoice' ? (
             <Field label={L('الحجز المرتبط (اختياري)', 'Linked booking (optional)')}>
               <SearchableSelect
