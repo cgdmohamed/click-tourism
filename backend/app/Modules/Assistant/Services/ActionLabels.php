@@ -27,8 +27,13 @@ final class ActionLabels
         'expense_date' => ['ar' => 'تاريخ المصروف', 'en' => 'Expense date'], 'description' => ['ar' => 'الوصف', 'en' => 'Description'], 'reference' => ['ar' => 'المرجع', 'en' => 'Reference'],
         'payee_name' => ['ar' => 'المستفيد', 'en' => 'Payee'], 'start_date' => ['ar' => 'تاريخ البدء', 'en' => 'Start date'], 'end_date' => ['ar' => 'تاريخ الانتهاء', 'en' => 'End date'],
         'pax_adults' => ['ar' => 'عدد البالغين', 'en' => 'Adults'], 'pax_children' => ['ar' => 'عدد الأطفال', 'en' => 'Children'],
-        '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
+        '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__booking' => ['ar' => 'الحجز المرتبط', 'en' => 'Linked booking'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
         'amount_minor' => ['ar' => 'المبلغ', 'en' => 'Amount'], 'lines' => ['ar' => 'البنود', 'en' => 'Lines'], 'items' => ['ar' => 'البنود', 'en' => 'Items'],
+    ];
+
+    private const SERVICES = [
+        'flight' => ['ar' => 'طيران', 'en' => 'Flight'], 'hotel' => ['ar' => 'فندق', 'en' => 'Hotel'], 'transport' => ['ar' => 'نقل', 'en' => 'Transport'],
+        'visa' => ['ar' => 'تأشيرة', 'en' => 'Visa'], 'program' => ['ar' => 'برنامج', 'en' => 'Program'], 'other' => ['ar' => 'أخرى', 'en' => 'Other'],
     ];
 
     private const HIDDEN = ['branch_id', 'party_type', 'party_id', 'category_id', 'customer_id', 'booking_id', 'submit', 'payee_type', 'payee_id', 'cash_account_id', '__id'];
@@ -44,7 +49,7 @@ final class ActionLabels
         $l = $locale === 'en' ? 'en' : 'ar';
         $currency = strtoupper((string) ($payload['currency'] ?? ''));
         $rows = [];
-        foreach (['__lead', '__customer', '__category', '__payee', '__payment'] as $key) {
+        foreach (['__lead', '__customer', '__booking', '__category', '__payee', '__payment'] as $key) {
             if (isset($payload[$key])) {
                 $rows[] = ['label' => self::FIELDS[$key][$l], 'value' => (string) $payload[$key]];
             }
@@ -58,16 +63,31 @@ final class ActionLabels
         }
         foreach (['lines', 'items'] as $key) {
             foreach ((array) ($payload[$key] ?? []) as $index => $line) {
-                $price = $line['unit_price_minor'] ?? $line['unit_sell_minor'] ?? null;
-                $text = trim(($line['description'] ?? '').' × '.($line['quantity'] ?? 1));
-                if ($price !== null) {
-                    $text .= ' — '.self::money((int) $price, $currency);
-                }
-                $rows[] = ['label' => self::FIELDS[$key][$l].' '.($index + 1), 'value' => $text];
+                $rows[] = ['label' => self::FIELDS[$key][$l].' '.($index + 1), 'value' => self::line($line, $currency, $l)];
             }
         }
 
         return $rows;
+    }
+
+    /** Every value of an invoice line or booking item that reaches the route, so the card is the exact payload. */
+    private static function line(array $line, string $currency, string $l): string
+    {
+        $type = isset($line['service_type']) ? '['.(self::SERVICES[$line['service_type']][$l] ?? $line['service_type']).'] ' : '';
+        $text = $type.trim(($line['description'] ?? '').' × '.($line['quantity'] ?? 1));
+        $parts = [];
+        if (isset($line['unit_cost_minor'])) {
+            $parts[] = ($l === 'ar' ? 'التكلفة ' : 'cost ').self::money((int) $line['unit_cost_minor'], $currency);
+        }
+        $price = $line['unit_sell_minor'] ?? $line['unit_price_minor'] ?? null;
+        if ($price !== null) {
+            $parts[] = ($l === 'ar' ? 'سعر البيع ' : 'sell ').self::money((int) $price, $currency);
+        }
+        if (isset($line['supplier_id'])) {
+            $parts[] = ($l === 'ar' ? 'المورد ' : 'supplier ').($line['__supplier'] ?? $line['supplier_id']);
+        }
+
+        return $parts === [] ? $text : $text.' — '.implode(' · ', $parts);
     }
 
     private static function money(int $minor, string $currency): string

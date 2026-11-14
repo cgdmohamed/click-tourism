@@ -6,6 +6,7 @@ use App\Modules\Assistant\Actions\ActionCatalogue;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Support\Redactor;
 use App\Modules\Assistant\Support\SchemaValidator;
+use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -107,7 +108,7 @@ class ActionService
             $definition = $this->catalogue->find($action->tool);
             $payload = $action->payload;
             $path = str_replace('{id}', rawurlencode((string) ($payload['__id'] ?? '')), $definition['route']);
-            $body = array_filter($payload, fn ($key) => ! str_starts_with((string) $key, '__'), ARRAY_FILTER_USE_KEY);
+            $body = $this->withoutDisplayKeys($payload);
 
             $response = $this->dispatch($user, $definition['method'], $path, $body, $branch->public_id, $locale, 'assistant-'.$action->public_id);
             $json = json_decode((string) $response->getContent(), true);
@@ -227,6 +228,13 @@ class ActionService
             throw new \DomainException('Customer not found.');
         }
         $account = (string) $this->settings->get('accounting', 'revenue_account_code', '4100');
+        $booking = null;
+        if (! empty($args['booking_id'])) {
+            $booking = Booking::query()->where('public_id', $args['booking_id'])->first();
+            if ($booking === null) {
+                throw new \DomainException('Booking not found.');
+            }
+        }
 
         return [
             'type' => 'customer_invoice',
@@ -243,6 +251,7 @@ class ActionService
             ], $args['lines']),
             'submit' => false,
             '__customer' => $customer->name_en ?: $customer->name_ar,
+            '__booking' => $booking?->number,
         ];
     }
 
@@ -290,7 +299,34 @@ class ActionService
             throw new \DomainException('Customer not found.');
         }
 
+        // Every supplier named on an item must exist: the card then shows who it is, not an id.
+        $args['items'] = array_map(function (array $item) {
+            if (! empty($item['supplier_id'])) {
+                $supplier = Supplier::query()->where('public_id', $item['supplier_id'])->first();
+                if ($supplier === null) {
+                    throw new \DomainException("Supplier {$item['supplier_id']} not found.");
+                }
+                $item['__supplier'] = $supplier->name_en ?: $supplier->name_ar;
+            }
+
+            return $item;
+        }, $args['items']);
+
         return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $customer->name_en ?: $customer->name_ar];
+    }
+
+    /** Display-only keys (`__...`) never reach the route, at any depth. */
+    private function withoutDisplayKeys(array $data): array
+    {
+        $clean = [];
+        foreach ($data as $key => $value) {
+            if (is_string($key) && str_starts_with($key, '__')) {
+                continue;
+            }
+            $clean[$key] = is_array($value) ? $this->withoutDisplayKeys($value) : $value;
+        }
+
+        return $clean;
     }
 
     /** Same-process request to the normal API route, as the user. */

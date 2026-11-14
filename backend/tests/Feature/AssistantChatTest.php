@@ -482,6 +482,49 @@ class AssistantChatTest extends TestCase
         $this->assertSame('confirmed', $this->postJson('/api/v1/assistant/actions/'.$update['id'].'/confirm')->assertOk()->json('data.status'));
     }
 
+    public function test_the_master_switch_stops_a_card_prepared_before_it_was_turned_off(): void
+    {
+        $this->grant('customers.create');
+        $card = $this->prepare('erp_customer_create', ['name_ar' => 'ا', 'name_en' => 'Switched Off Co']);
+        $this->settings->set('assistant', 'enabled', 'false');
+
+        $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertForbidden()->assertJsonPath('code', 'assistant_disabled');
+        $this->assertSame(0, Customer::query()->where('name_en', 'Switched Off Co')->count());
+        $this->assertSame('pending', AssistantAction::query()->where('public_id', $card['id'])->value('status'));
+    }
+
+    public function test_a_booking_card_shows_every_item_value_that_will_be_submitted(): void
+    {
+        $this->grant('bookings.create');
+        $supplier = $this->supplier();
+        $card = $this->prepare('erp_booking_draft_create', [
+            'customer_id' => $this->customer()->public_id, 'start_date' => now()->addMonth()->toDateString(), 'currency' => 'EGP',
+            'items' => [['service_type' => 'hotel', 'description' => 'Makkah hotel', 'quantity' => 2, 'unit_cost_minor' => 123456, 'unit_sell_minor' => 150000, 'supplier_id' => $supplier->public_id]],
+        ]);
+        $item = collect($card['rows'])->first(fn ($r) => str_starts_with($r['label'], 'Items'));
+
+        $this->assertStringContainsString('[Hotel]', $item['value']);
+        $this->assertStringContainsString('cost 1,234.56 EGP', $item['value']);
+        $this->assertStringContainsString('sell 1,500.00 EGP', $item['value']);
+        $this->assertStringContainsString('supplier '.($supplier->name_en ?: $supplier->name_ar), $item['value']);
+        $this->assertStringNotContainsString('__', json_encode($card['rows']));
+
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+    }
+
+    public function test_an_unknown_supplier_on_a_booking_item_is_refused_before_a_card_exists(): void
+    {
+        $this->grant('bookings.create');
+        $this->script([$this->toolCallReply([['erp_booking_draft_create', [
+            'customer_id' => $this->customer()->public_id, 'start_date' => now()->addMonth()->toDateString(), 'currency' => 'EGP',
+            'items' => [['service_type' => 'hotel', 'description' => 'H', 'quantity' => 1, 'unit_cost_minor' => 1, 'unit_sell_minor' => 2, 'supplier_id' => 'NOSUCHSUPPLIER1']],
+        ]]]), $this->finalReply('which supplier?')]);
+
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('not found', $this->lastToolMessages()[0]['content']);
+    }
+
     public function test_the_model_cannot_invent_citations_or_tools(): void
     {
         $this->script([

@@ -181,9 +181,13 @@ class AssistantController extends ApiController
     }
 
     /** POST /assistant/actions/{id}/confirm (ADR-0023): the user approves a prepared action; it then runs as the user. */
-    public function confirmAction(Request $request, string $id, ActionService $actions, BranchScope $scope): JsonResponse
+    public function confirmAction(Request $request, string $id, ActionService $actions, BranchScope $scope, ProviderManager $providers, AuditService $audit): JsonResponse
     {
         $user = $request->user();
+        // The master switch is the kill switch (ADR-0023): a card prepared before it was turned off must not run.
+        if (! $providers->enabled()) {
+            return $this->denied($audit, $request, 'disabled', 'The assistant is switched off for this installation.', 'assistant_disabled', 403);
+        }
         try {
             return $this->ok($actions->confirm($user, $scope->resolve($user), $id, $this->locale()));
         } catch (ActionException $e) {
