@@ -15,6 +15,7 @@ import { localizedName } from '../lib/names'
 import { showAssistant } from '../lib/assistant'
 import { useFeatureFlags } from '../lib/useSetting'
 import { useApprovalCount } from '../lib/useApprovalCount'
+import { roleLabel } from '../lib/permissionLabels'
 
 type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[]; badge?: number }
 
@@ -205,7 +206,7 @@ export function Layout() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-small truncate font-medium text-text-default">{user.name}</p>
-              <p className="text-small truncate text-text-subtle">{user.roles[0] ?? '—'}</p>
+              <p className="text-small truncate text-text-subtle">{user.roles[0] ? roleLabel(user.roles[0], locale) : '—'}</p>
             </div>
           </NavLink>
         </div>

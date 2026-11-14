@@ -8,6 +8,7 @@ import { localizedName } from '../lib/names'
 import { Icon } from './icons'
 import type { IconName } from './icons'
 import { cx } from './ui'
+import { roleLabel } from '../lib/permissionLabels'
 
 const itemClass =
   'text-medium flex w-full items-center gap-3 rounded-12 px-3 py-2 text-start text-text-default outline-none transition hover:bg-surface-hovered focus-visible:bg-surface-hovered focus-visible:ring-2 focus-visible:ring-border-focus'
@@ -109,7 +110,7 @@ export function UserMenu() {
         <div className="absolute end-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-16 border border-border-subtle bg-surface-default p-2 shadow-4">
           <div className="border-b border-border-subtle px-3 pb-2 pt-1">
             <p className="text-medium truncate font-semibold text-text-default">{user.name}</p>
-            <p className="text-small truncate text-text-subtle">{user.roles[0] ?? '—'}</p>
+            <p className="text-small truncate text-text-subtle">{user.roles[0] ? roleLabel(user.roles[0], locale) : '—'}</p>
           </div>
 
           {branches.length > 1 ? (
