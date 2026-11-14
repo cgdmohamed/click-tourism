@@ -224,7 +224,7 @@ export default function Leads() {
             </tbody>
           </Table>
         ) : null}
-        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} total={query.data?.meta.total} perPage={query.data?.meta.per_page} />
         {error && !open ? <p className="px-5 py-3 text-sm text-danger-text">{error}</p> : null}
       </Card>
 

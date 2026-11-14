@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
-import { formatDate, toMinor, todayISO } from '../lib/format'
+import { formatDate, formatMoney, toMinor, todayISO } from '../lib/format'
 import { useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import { taxMinor } from '../lib/tax'
 import type { InvoicePrefill } from '../lib/attachments'
@@ -36,6 +36,7 @@ import { usePartyOptions } from '../lib/usePartyOptions'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -105,6 +106,7 @@ export default function Invoices() {
   const [page, setPage] = useState(1)
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
 
@@ -153,7 +155,7 @@ export default function Invoices() {
   })
 
   const invoicesQuery = useQuery({
-    queryKey: ['invoices', page, typeFilter, statusFilter, bookingFilter, activeBranch?.id],
+    queryKey: ['invoices', page, typeFilter, statusFilter, search, bookingFilter, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<{ data: Invoice[]; meta: { current_page: number; last_page: number; total: number; per_page: number } }>('/invoices', {
         params: {
@@ -161,6 +163,7 @@ export default function Invoices() {
           per_page: 20,
           ...(typeFilter ? { type: typeFilter } : {}),
           ...(statusFilter ? { status: statusFilter } : {}),
+          ...(search ? { search } : {}),
           ...(bookingFilter ? { booking_id: bookingFilter } : {}),
         },
       })
@@ -372,12 +375,14 @@ export default function Invoices() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
-  const baseCls = 'rounded-12 border px-4 py-2 text-sm font-medium transition'
-  const activeCls = 'border-border-selected bg-surface-selected text-text-default'
-  const inactiveCls = 'border-border-subtle bg-surface-default text-text-subtle hover:bg-surface-hovered'
-  const tabButton = (label: string, active: boolean) => (
-    <button className={`${baseCls} ${active ? activeCls : inactiveCls}`}>{label}</button>
-  )
+  const typeLabel = (type: Invoice['type']) =>
+    type === 'credit_note' ? L('إشعار دائن', 'Credit note') : type === 'customer_invoice' ? L('عميل', 'Customer') : L('مورد', 'Supplier')
+  const openDetails = (id: string) => {
+    setError('')
+    setCreditWarnings([])
+    setOverrideReason('')
+    setDetailId(id)
+  }
 
   return (
     <div>
@@ -403,60 +408,129 @@ export default function Invoices() {
         <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {tabButton(L('الكل', 'All'), !typeFilter && !statusFilter)}
-        <button
-          onClick={() => { setTypeFilter(''); setStatusFilter(''); setPage(1) }}
-          className="text-small text-text-subtle underline underline-offset-4 hover:text-text-default"
-        >
-          {t('reset')}
-        </button>
-      </div>
-
       <Card>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            aria-label={t('search')}
+            className="max-w-xs"
+          />
+          <Select
+            value={typeFilter}
+            onChange={(event) => {
+              setTypeFilter(event.target.value)
+              setPage(1)
+            }}
+            className="max-w-[180px]"
+            aria-label={L('النوع', 'Type')}
+          >
+            <option value="">{L('كل الأنواع', 'All types')}</option>
+            <option value="customer_invoice">{typeLabel('customer_invoice')}</option>
+            <option value="supplier_invoice">{typeLabel('supplier_invoice')}</option>
+            <option value="credit_note">{typeLabel('credit_note')}</option>
+          </Select>
+          <Select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value)
+              setPage(1)
+            }}
+            className="max-w-[180px]"
+            aria-label={t('status')}
+          >
+            <option value="">{L('كل الحالات', 'All statuses')}</option>
+            {['draft', 'submitted', 'approved', 'issued', 'voided'].map((status) => (
+              <option key={status} value={status}>
+                {statusLabel(status, locale)}
+              </option>
+            ))}
+          </Select>
+          {search || typeFilter || statusFilter ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSearch('')
+                setTypeFilter('')
+                setStatusFilter('')
+                setPage(1)
+              }}
+            >
+              {t('reset')}
+            </Button>
+          ) : null}
+        </div>
         {invoicesQuery.isLoading ? <Loading /> : null}
         {invoicesQuery.isError ? <ErrorState message={errorMessage(invoicesQuery.error)} onRetry={() => void invoicesQuery.refetch()} /> : null}
         {data && data.data.length === 0 ? <EmptyState /> : null}
         {data && data.data.length > 0 ? (
           <>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>{t('date')}</Th>
-                  <Th>{L('الرقم', 'No.')}</Th>
-                  <Th>{L('النوع', 'Type')}</Th>
-                  <Th>{L('الطرف', 'Party')}</Th>
-                  <Th className="text-end">{t('total')}</Th>
-                  <Th>{t('status')}</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {data.data.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <Td className="tabular">{formatDate(invoice.issue_date, locale)}</Td>
-                    <Td className="tabular">
-                      <Link to={`/invoices/${invoice.id}`} className="font-medium text-brand-1-accent hover:underline">
-                        {invoice.number}
-                      </Link>
+            <MobileCards items={data.data} getKey={(invoice) => invoice.id} label={L('الفواتير', 'Invoices')}>
+              {(invoice) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <Link to={`/invoices/${invoice.id}`} className="text-medium font-semibold text-brand-1-accent underline">
+                      {invoice.number}
+                    </Link>
+                    <span>
+                      <Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge>
                       <AiBadge via={invoice.created_via} />
-                    </Td>
-                    <Td>
-                      <Badge tone="brand">
-                        {invoice.type === 'credit_note' ? L('إشعار دائن', 'Credit note') : invoice.type === 'customer_invoice' ? L('عميل', 'Customer') : L('مورد', 'Supplier')}
-                      </Badge>
-                    </Td>
-                    <Td>{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '')}</Td>
-                    <Td className="text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
-                    <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
-                    <Td className="text-end">
-                      <Button variant="ghost" onClick={() => { setError(''); setCreditWarnings([]); setOverrideReason(''); setDetailId(invoice.id) }}>{L('تفاصيل', 'Details')}</Button>
-                    </Td>
+                    </span>
+                  </div>
+                  <p className="text-medium font-medium">{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '') || '—'}</p>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('date')}>{formatDate(invoice.issue_date, locale)}</CardField>
+                    <CardField label={L('النوع', 'Type')}>{typeLabel(invoice.type)}</CardField>
+                    <CardField label={t('total')}>{formatMoney(invoice.total_minor, invoice.currency, locale)}</CardField>
+                  </dl>
+                  <div>
+                    <Button variant="secondary" onClick={() => openDetails(invoice.id)}>{L('تفاصيل', 'Details')}</Button>
+                  </div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>{L('الرقم', 'No.')}</Th>
+                    <Th>{t('date')}</Th>
+                    <Th>{L('النوع', 'Type')}</Th>
+                    <Th>{L('الطرف', 'Party')}</Th>
+                    <Th className="text-end">{t('total')}</Th>
+                    <Th>{t('status')}</Th>
+                    <Th className="w-28 text-end">{t('actions')}</Th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
-            <Pagination page={data.meta.current_page} lastPage={data.meta.last_page} onChange={setPage} />
+                </thead>
+                <tbody>
+                  {data.data.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <Td className="tabular whitespace-nowrap">
+                        <Link to={`/invoices/${invoice.id}`} className="font-medium text-brand-1-accent hover:underline">
+                          {invoice.number}
+                        </Link>
+                        <AiBadge via={invoice.created_via} />
+                      </Td>
+                      <Td className="tabular">{formatDate(invoice.issue_date, locale)}</Td>
+                      <Td>
+                        <Badge tone="brand">{typeLabel(invoice.type)}</Badge>
+                      </Td>
+                      <Td>{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '')}</Td>
+                      <Td className="text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
+                      <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
+                      <Td className="w-28 text-end">
+                        <Button variant="ghost" onClick={() => openDetails(invoice.id)}>{L('تفاصيل', 'Details')}</Button>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </TableOnly>
+            <Pagination page={data.meta.current_page} lastPage={data.meta.last_page} onChange={setPage} total={data.meta.total} perPage={data.meta.per_page} />
           </>
         ) : null}
       </Card>

@@ -382,14 +382,16 @@ export default function Bookings() {
                 <Th>{t('status')}</Th>
                 <Th className="text-end">{t('total')}</Th>
                 <Th className="text-end">{t('margin')}</Th>
-                <Th />
+                <Th className="w-24 text-end">{t('actions')}</Th>
               </tr>
             </thead>
             <tbody>
               {bookings.map((booking) => (
                 <tr key={booking.id}>
-                  <Td className="font-medium">
-                    {booking.number}
+                  <Td className="whitespace-nowrap font-medium">
+                    <button type="button" className="font-medium text-brand-1-accent hover:underline" onClick={() => setViewId(booking.id)}>
+                      {booking.number}
+                    </button>
                     <AiBadge via={booking.created_via} />
                   </Td>
                   <Td>{booking.customer?.name_ar ?? booking.customer?.name_en ?? '—'}</Td>
@@ -404,17 +406,14 @@ export default function Bookings() {
                   <Td className="text-end tabular">
                     {toDecimal(booking.margin_minor, booking.currency)} {booking.currency}
                   </Td>
-                  <Td className="text-end">
-                    <div className="flex items-center justify-end gap-1">
-                      {['draft', 'quoted'].includes(booking.status) && can('bookings.update') ? (
-                        <Button variant="ghost" onClick={() => startEdit(booking)}>
-                          {t('edit')}
-                        </Button>
-                      ) : null}
-                      <Button variant="ghost" onClick={() => setViewId(booking.id)}>
-                        {locale === 'ar' ? 'عرض' : 'View'}
-                      </Button>
-                    </div>
+                  <Td className="w-24 text-end">
+                    <Button
+                      variant="ghost"
+                      disabled={!(['draft', 'quoted'].includes(booking.status) && can('bookings.update'))}
+                      onClick={() => startEdit(booking)}
+                    >
+                      {t('edit')}
+                    </Button>
                   </Td>
                 </tr>
               ))}
@@ -425,6 +424,8 @@ export default function Bookings() {
           page={bookingsQuery.data?.meta.current_page ?? 1}
           lastPage={bookingsQuery.data?.meta.last_page ?? 1}
           onChange={setPage}
+          total={bookingsQuery.data?.meta.total}
+          perPage={bookingsQuery.data?.meta.per_page}
         />
       </Card>
 

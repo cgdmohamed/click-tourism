@@ -716,20 +716,36 @@ export function Pagination({
   page,
   lastPage,
   onChange,
+  total,
+  perPage,
 }: {
   page: number
   lastPage: number
   onChange: (page: number) => void
+  /** Optional: when given with `perPage`, shows a "1-20 of 120" range next to the pager. */
+  total?: number
+  perPage?: number
 }) {
-  const { t } = useI18n()
-  if (lastPage <= 1) return null
+  const { t, locale } = useI18n()
+  const hasRange = total !== undefined && perPage !== undefined && total > 0
+  if (lastPage <= 1 && !hasRange) return null
+  const from = hasRange ? (page - 1) * perPage + 1 : 0
+  const to = hasRange ? Math.min(page * perPage, total) : 0
+  const fmt = (value: number) => new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US').format(value)
   return (
-    <div className="text-medium flex items-center justify-end gap-2 px-4 py-3">
+    <div className="text-medium flex items-center justify-between gap-2 px-4 py-3">
+      <span className="tabular text-small text-text-subtle">
+        {hasRange ? (locale === 'ar' ? `${fmt(from)}-${fmt(to)} من ${fmt(total)}` : `${fmt(from)}-${fmt(to)} of ${fmt(total)}`) : null}
+      </span>
+      {lastPage > 1 ? (
+      <div className="flex items-center gap-2">
       <IconButton icon="chevronLeft" label={t('previousPage')} variant="secondary" disabled={page <= 1} onClick={() => onChange(page - 1)} />
       <span className="tabular px-1 text-text-subtle">
         {page} / {lastPage}
       </span>
       <IconButton icon="chevronRight" label={t('nextPage')} variant="secondary" disabled={page >= lastPage} onClick={() => onChange(page + 1)} />
+      </div>
+      ) : null}
     </div>
   )
 }
