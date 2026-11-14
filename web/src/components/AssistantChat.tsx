@@ -505,6 +505,8 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
   const { t, locale } = useI18n()
   const [card, setCard] = useState(initial)
   const [error, setError] = useState('')
+  // post / pay / void / delete need a second, explicit "yes" after the card (the card itself is the first).
+  const [armed, setArmed] = useState(false)
   const decide = useMutation({
     mutationFn: async (verb: 'confirm' | 'reject') => {
       const { data } = await api.post<{ data: ActionCard }>(`/assistant/actions/${encodeURIComponent(card.id)}/${verb}`)
@@ -520,6 +522,7 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
       else setError(errorMessage(cause))
     },
   })
+  const strong = card.risk === 'post' || card.risk === 'pay' || card.risk === 'void' || card.risk === 'delete'
   const link = card.result ? citationLink({ entity: card.result.entity, id: card.result.id }, locale) : null
   const tone =
     card.status === 'confirmed' ? 'border-success-border' : card.status === 'failed' || card.status === 'expired' ? 'border-danger-border' : 'border-border-selected'
@@ -550,12 +553,23 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
       {card.status === 'pending' ? (
         <>
           <p className="text-small mt-3 text-text-subtle">{t('assistantActionNote')}</p>
+          {armed ? (
+            <div className="anim-rise mt-3" role="alert">
+              <InlineNotice tone="warning">{t('assistantActionSure')}</InlineNotice>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" icon="check" disabled={decide.isPending} onClick={() => decide.mutate('confirm')}>
-              {t('assistantActionConfirm')}
+            <Button
+              type="button"
+              icon="check"
+              variant={armed && (card.risk === 'delete' || card.risk === 'void') ? 'danger' : 'primary'}
+              disabled={decide.isPending}
+              onClick={() => (strong && !armed ? setArmed(true) : decide.mutate('confirm'))}
+            >
+              {armed ? t('assistantActionSureYes') : t('assistantActionConfirm')}
             </Button>
-            <Button type="button" variant="secondary" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>
-              {t('assistantActionReject')}
+            <Button type="button" variant="secondary" disabled={decide.isPending} onClick={() => (armed ? setArmed(false) : decide.mutate('reject'))}>
+              {armed ? t('assistantActionBack') : t('assistantActionReject')}
             </Button>
           </div>
         </>

@@ -10,7 +10,7 @@
  */
 return [
     // File under resources/assistant/ sent as the system prompt. Bump the version when it changes.
-    'system_prompt' => 'system-prompt.v2.md',
+    'system_prompt' => 'system-prompt.v3.md',
 
     // Model used when the setting assistant.model is blank. UNVERIFIED: model names were not
     // checked against the provider (no internet access when this was written); set the setting.

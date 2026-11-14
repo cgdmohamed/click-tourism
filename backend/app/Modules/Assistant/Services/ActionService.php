@@ -2,6 +2,7 @@
 
 namespace App\Modules\Assistant\Services;
 
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Assistant\Actions\ActionCatalogue;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Support\Redactor;
@@ -178,6 +179,7 @@ class ActionService
             'tool' => $action->tool,
             'title' => ActionLabels::title($action->tool, $locale),
             'status' => $status,
+            'risk' => $this->catalogue->find($action->tool)['risk'] ?? 'create',
             'rows' => ActionLabels::rows($payload, $locale),
             'expires_at' => $action->expires_at->toIso8601String(),
             'result' => $action->entity_id !== null ? ['entity' => $action->entity, 'id' => $action->entity_id] : null,
@@ -204,7 +206,12 @@ class ActionService
             'erp_invoice_draft_create' => $this->prepareInvoice($args, $branch, $base),
             'erp_expense_draft_create' => $this->prepareExpense($args, $branch, $base),
             'erp_booking_draft_create' => $this->prepareBooking($args, $branch),
-            default => throw new \DomainException('Unknown action.'),
+            'erp_payment_record' => $this->preparePayment($args, $branch, $base),
+            'erp_supplier_payment_record' => $this->prepareSupplierPayment($args, $branch, $base),
+            'erp_export_queue' => $this->prepareExport($args),
+            default => ($this->catalogue->find($tool)['kind'] ?? null) === 'record'
+                ? $this->prepareRecord($tool, $args, $branch)
+                : throw new \DomainException('Unknown action.'),
         };
     }
 
@@ -313,6 +320,141 @@ class ActionService
         }, $args['items']);
 
         return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $customer->name_en ?: $customer->name_ar];
+    }
+
+    /**
+     * An action on an existing record: it is found in THIS branch by public id or number, and the card
+     * names it with its current status so the user sees exactly what they are about to change.
+     */
+    private function prepareRecord(string $tool, array $args, Branch $branch): array
+    {
+        $definition = $this->catalogue->find($tool);
+        $query = $definition['model']::query();
+        if (! empty($args['id'])) {
+            $query->where('public_id', $args['id']);
+        } elseif (! empty($args['number'])) {
+            $query->where('number', $args['number']);
+        } else {
+            throw new \DomainException('Give the record id or its number.');
+        }
+        $records = $query->where('branch_id', $branch->id)->limit(2)->get();
+        if ($records->count() !== 1) {
+            throw new \DomainException($records->isEmpty() ? 'No such record in this branch.' : 'More than one record has this number: use the id.');
+        }
+        $record = $records->first();
+
+        $payload = ['__tool' => $tool, '__id' => $record->public_id, '__record' => (string) ($record->number ?? $record->public_id), '__status' => (string) $record->status];
+        // The amount the user is asked to approve: a journal entry has none stored, it is the sum of its debit lines.
+        if ($record instanceof JournalEntry) {
+            $record->loadMissing('lines');
+            $mixed = $record->lines->pluck('currency_code')->unique()->count() > 1;
+            $minor = $record->totalMinor();
+            $currency = $mixed ? $this->settings->baseCurrency() : (string) ($record->currency_code ?: $this->settings->baseCurrency());
+        } else {
+            $minor = $record->total_minor ?? $record->amount_minor ?? null;
+            $currency = (string) ($record->currency_code ?? '');
+        }
+        if ($minor !== null) {
+            $payload['__total'] = ActionLabels::moneyText((int) $minor, $currency);
+        }
+        $note = $record->memo ?? $record->description ?? null;
+        if (! empty($note)) {
+            $payload['__note'] = mb_substr((string) $note, 0, 120);
+        }
+
+        if ($tool === 'erp_commission_pay') {
+            // The route pays what is outstanding when no amount is sent; state it and send it, so
+            // confirming authorises exactly the amount the card shows.
+            $outstanding = (int) $record->amount_minor - (int) $record->paid_minor;
+            if ($outstanding <= 0) {
+                throw new \DomainException('Nothing is outstanding on this commission.');
+            }
+            $account = $this->cashAccount((string) ($args['payment_account'] ?? ''), $branch);
+            $payload += [
+                'cash_account_id' => $account->public_id, '__payment' => $account->name_en ?: $account->name_ar,
+                'amount_minor' => $outstanding, 'currency' => (string) $record->currency_code,
+            ];
+            if ((int) $record->paid_minor > 0) {
+                $payload['__paid'] = ActionLabels::moneyText((int) $record->paid_minor, (string) $record->currency_code);
+            }
+            if (! empty($args['reference'])) {
+                $payload['reference'] = $args['reference'];
+            }
+        }
+
+        return $payload;
+    }
+
+    private function preparePayment(array $args, Branch $branch, string $base): array
+    {
+        $customer = Customer::query()->where('public_id', $args['customer_id'])->first();
+        if ($customer === null) {
+            throw new \DomainException('Customer not found.');
+        }
+        $account = $this->cashAccount($args['payment_account'], $branch);
+        $currency = strtoupper($args['currency'] ?? $base);
+
+        // With a booking and no explicit allocations the route puts the WHOLE receipt on that booking,
+        // so the card must name it; without one the receipt is an unallocated advance.
+        $booking = null;
+        if (! empty($args['booking_id'])) {
+            $booking = Booking::query()->where('public_id', $args['booking_id'])->orWhere('number', $args['booking_id'])->first();
+            if ($booking === null || $booking->branch_id !== $branch->id) {
+                throw new \DomainException('Booking not found in this branch.');
+            }
+            if ($booking->customer_id !== $customer->id) {
+                throw new \DomainException('That booking belongs to another customer.');
+            }
+        }
+
+        return array_filter([
+            '__tool' => 'erp_payment_record',
+            '__allocation' => $booking !== null ? 'booking' : 'advance',
+            '__booking' => $booking?->number,
+            'customer_id' => $customer->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
+            'method' => $args['method'] ?? 'cash', 'amount_minor' => $args['amount_minor'], 'currency' => $currency,
+            'booking_id' => $booking?->public_id, 'paid_at' => $args['paid_at'] ?? null,
+            '__customer' => $customer->name_en ?: $customer->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
+        ], fn ($v) => $v !== null);
+    }
+
+    private function prepareSupplierPayment(array $args, Branch $branch, string $base): array
+    {
+        $supplier = Supplier::query()->where('public_id', $args['supplier_id'])->first();
+        if ($supplier === null) {
+            throw new \DomainException('Supplier not found.');
+        }
+        $account = $this->cashAccount($args['payment_account'], $branch);
+
+        return array_filter([
+            '__tool' => 'erp_supplier_payment_record',
+            'supplier_id' => $supplier->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
+            'amount_minor' => $args['amount_minor'], 'currency' => strtoupper($args['currency'] ?? $base), 'paid_at' => $args['paid_at'] ?? null,
+            '__payee' => $supplier->name_en ?: $supplier->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
+        ], fn ($v) => $v !== null);
+    }
+
+    private function prepareExport(array $args): array
+    {
+        return array_filter([
+            '__tool' => 'erp_export_queue',
+            'report' => $args['report'], 'format' => $args['format'], 'language' => $args['language'] ?? null,
+            'params' => $args['params'] ?? null,
+        ], fn ($v) => $v !== null && $v !== []);
+    }
+
+    /** The active cash or bank account of this branch with exactly this name; otherwise the user is told which exist. */
+    private function cashAccount(string $name, Branch $branch): CashAccount
+    {
+        $accounts = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->get();
+        $needle = mb_strtolower(trim($name));
+        $match = $accounts->filter(fn ($a) => $needle !== '' && (mb_strtolower((string) $a->name_en) === $needle || mb_strtolower((string) $a->name_ar) === $needle));
+        if ($match->count() !== 1) {
+            $list = $accounts->take(15)->map(fn ($a) => $a->name_en ?: $a->name_ar)->implode(', ');
+            throw new \DomainException('Say which payment account to use (payment_account). Payment accounts in this branch: '.($list ?: 'none').'.');
+        }
+
+        return $match->first();
     }
 
     /** Display-only keys (`__...`) never reach the route, at any depth. */
