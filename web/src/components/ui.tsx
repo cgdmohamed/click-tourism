@@ -311,7 +311,7 @@ export function SearchableSelect({
         onClick={toggle}
         onKeyDown={onTriggerKeyDown}
       >
-        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-placeholder')} title={selected ? optionText(selected) : undefined}>
+        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-subtle')} title={selected ? optionText(selected) : undefined}>
           {selected ? optionText(selected) : placeholder ?? ''}
         </span>
         <Icon name="chevronDown" className={cx('h-4 w-4 shrink-0 text-text-subtle transition', open && 'rotate-180')} />

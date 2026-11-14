@@ -6,7 +6,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
-import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
+import { formatDate, toDecimal, toMinor, todayISO, formatMoney } from '../lib/format'
 import type { Booking, Paginated } from '../lib/types'
 import {
   Badge,
@@ -33,6 +33,7 @@ import { taxMinor } from '../lib/tax'
 import { useBaseCurrency, useDefaultTaxRate, useTaxEnabled, useTaxInclusive } from '../lib/useSetting'
 import BookingDetails from './BookingDetails'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
 type TourOption = { id: string; name: string; currency: string; execution_type: string; base_price_minor: number; estimated_cost_minor: number; departures: DepartureOption[] | null }
@@ -372,6 +373,42 @@ export default function Bookings() {
         ) : null}
         {bookingsQuery.data && bookings.length === 0 ? <EmptyState /> : null}
         {bookings.length > 0 ? (
+          <>
+          <MobileCards items={bookings} getKey={(booking) => booking.id} label={t('bookings')}>
+            {(booking) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <button type="button" className="text-medium whitespace-nowrap font-semibold text-brand-1-accent underline" onClick={() => setViewId(booking.id)}>
+                    {booking.number}
+                  </button>
+                  <span>
+                    <Badge tone={statusTone(booking.status)}>{statusLabel(booking.status, locale)}</Badge>
+                    <AiBadge via={booking.created_via} />
+                  </span>
+                </div>
+                <p className="text-medium font-medium">{booking.customer?.name_ar ?? booking.customer?.name_en ?? '—'}</p>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('startDate')}>{formatDate(booking.start_date, locale)}</CardField>
+                  <CardField label={t('pax')}>{booking.pax_adults + booking.pax_children + booking.pax_infants}</CardField>
+                  <CardField label={t('total')}>{formatMoney(booking.total_sell_minor, booking.currency, locale)}</CardField>
+                  <CardField label={t('margin')}>
+                    <span className={booking.margin_minor < 0 ? 'text-warning-text' : undefined}>{formatMoney(booking.margin_minor, booking.currency, locale)}</span>
+                  </CardField>
+                </dl>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => setViewId(booking.id)}>
+                    {locale === 'ar' ? 'عرض' : 'View'}
+                  </Button>
+                  {['draft', 'quoted'].includes(booking.status) && can('bookings.update') ? (
+                    <Button variant="secondary" onClick={() => startEdit(booking)}>
+                      {t('edit')}
+                    </Button>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -388,7 +425,7 @@ export default function Bookings() {
             <tbody>
               {bookings.map((booking) => (
                 <tr key={booking.id}>
-                  <Td className="font-medium">
+                  <Td className="whitespace-nowrap font-medium">
                     {booking.number}
                     <AiBadge via={booking.created_via} />
                   </Td>
@@ -399,10 +436,10 @@ export default function Bookings() {
                     <Badge tone={statusTone(booking.status)}>{statusLabel(booking.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end tabular">
-                    {toDecimal(booking.total_sell_minor, booking.currency)} {booking.currency}
+                    {formatMoney(booking.total_sell_minor, booking.currency, locale)}
                   </Td>
                   <Td className={`text-end tabular${booking.margin_minor < 0 ? ' text-warning-text' : ''}`}>
-                    {toDecimal(booking.margin_minor, booking.currency)} {booking.currency}
+                    {formatMoney(booking.margin_minor, booking.currency, locale)}
                   </Td>
                   <Td className="text-end">
                     <div className="flex items-center justify-end gap-1">
@@ -420,6 +457,8 @@ export default function Bookings() {
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
         <Pagination
           page={bookingsQuery.data?.meta.current_page ?? 1}
@@ -516,80 +555,85 @@ export default function Bookings() {
 
         <h3 className="mt-6 text-sm font-semibold">{t('items')}</h3>
         <div className="mt-3 flex flex-col gap-3">
-          {items.map((item, index) => (
-            <div key={index} className="grid gap-2 rounded-12 border border-border-default p-3 sm:grid-cols-12">
-              <div className="sm:col-span-2">
-                <Select value={item.service_type} onChange={(event) => updateItem(index, { service_type: event.target.value })}>
-                  {['flight', 'hotel', 'transport', 'visa', 'program', 'other'].map((service) => (
-                    <option key={service} value={service}>
-                      {serviceLabel(service)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="sm:col-span-3">
-                <PartyPicker
-                  kind="supplier"
-                  value={item.supplier_id}
-                  onChange={(supplier_id) => updateItem(index, { supplier_id })}
-                  placeholder={t('supplier')}
-                  clearLabel={t('none')}
-                />
-              </div>
-              <div className="sm:col-span-3">
-                <Input
-                  placeholder={t('description')}
-                  value={item.description}
-                  onChange={(event) => updateItem(index, { description: event.target.value })}
-                />
-              </div>
-              <div className="sm:col-span-1">
-                <Input
-                  placeholder={t('quantity')}
-                  value={item.quantity}
-                  onChange={(event) => updateItem(index, { quantity: event.target.value })}
-                  inputMode="numeric"
-                  dir="ltr"
-                />
-              </div>
-              <div className="sm:col-span-1">
-                <Input
-                  placeholder={t('unitCost')}
-                  value={item.unit_cost}
-                  onChange={(event) => updateItem(index, { unit_cost: event.target.value })}
-                  inputMode="decimal"
-                  dir="ltr"
-                />
-              </div>
-              <div className="sm:col-span-1">
-                <Input
-                  placeholder={t('unitPrice')}
-                  value={item.unit_sell}
-                  onChange={(event) => updateItem(index, { unit_sell: event.target.value })}
-                  inputMode="decimal"
-                  dir="ltr"
-                />
-              </div>
-              <div className="sm:col-span-4">
+          {items.map((item, index) => {
+            const amounts = itemAmounts(item)
+            return (
+              <div key={index} className="grid gap-3 rounded-12 border border-border-default p-3 sm:grid-cols-12">
+                <div className="sm:col-span-3">
+                  <Field label={t('service')}>
+                    <Select value={item.service_type} onChange={(event) => updateItem(index, { service_type: event.target.value })}>
+                      {['flight', 'hotel', 'transport', 'visa', 'program', 'other'].map((service) => (
+                        <option key={service} value={service}>
+                          {serviceLabel(service)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <div className="sm:col-span-4">
+                  <Field label={t('supplier')}>
+                    <PartyPicker
+                      kind="supplier"
+                      value={item.supplier_id}
+                      onChange={(supplier_id) => updateItem(index, { supplier_id })}
+                      placeholder={t('supplier')}
+                      clearLabel={t('none')}
+                    />
+                  </Field>
+                </div>
+                <div className="sm:col-span-5">
+                  <Field label={t('description')}>
+                    <Input value={item.description} onChange={(event) => updateItem(index, { description: event.target.value })} />
+                  </Field>
+                </div>
+                <div className="sm:col-span-2">
+                  <Field label={t('quantity')}>
+                    <Input value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} inputMode="numeric" dir="ltr" />
+                  </Field>
+                </div>
+                <div className="sm:col-span-3">
+                  <Field label={`${t('unitCost')} (${item.cost_currency})`}>
+                    <Input value={item.unit_cost} onChange={(event) => updateItem(index, { unit_cost: event.target.value })} inputMode="decimal" dir="ltr" />
+                  </Field>
+                </div>
+                <div className="sm:col-span-3">
+                  <Field label={`${t('unitPrice')} (${item.sell_currency})`}>
+                    <Input value={item.unit_sell} onChange={(event) => updateItem(index, { unit_sell: event.target.value })} inputMode="decimal" dir="ltr" />
+                  </Field>
+                </div>
+                <div className="flex items-end justify-between gap-2 sm:col-span-4">
+                  <dl className="text-small min-w-0 text-text-subtle">
+                    <div className="flex gap-2">
+                      <dt>{t('total')}:</dt>
+                      <dd className="tabular text-text-default">{formatMoney(amounts.sell, item.sell_currency, locale)}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt>{t('margin')}:</dt>
+                      <dd className={`tabular ${amounts.sell - amounts.cost < 0 ? 'text-warning-text' : 'text-text-default'}`}>
+                        {formatMoney(amounts.sell - amounts.cost, item.sell_currency, locale)}
+                      </dd>
+                    </div>
+                    {taxEnabled ? (
+                      <div className="flex gap-2">
+                        <dt>{t('tax')}:</dt>
+                        <dd className="tabular text-text-default">{formatMoney(amounts.tax, item.sell_currency, locale)}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                  <Button
+                    variant="ghost"
+                    icon="x"
+                    disabled={items.length <= 1}
+                    onClick={() => setItems((current) => current.filter((_, i) => i !== index))}
+                    aria-label={t('removeLine')}
+                  />
+                </div>
                 {!taxEnabled ? (
-                  <p className="text-small text-text-subtle">{locale === 'ar' ? 'الضريبة معطلة في الإعدادات.' : 'Tax is disabled in settings.'}</p>
+                  <p className="text-small text-text-subtle sm:col-span-12">{locale === 'ar' ? 'الضريبة معطلة في الإعدادات.' : 'Tax is disabled in settings.'}</p>
                 ) : null}
               </div>
-              <div className="text-small self-center text-text-subtle sm:col-span-7">
-                {taxEnabled ? `${t('tax')}: ${toDecimal(itemAmounts(item).tax, item.sell_currency)} ${item.sell_currency}` : ''}
-              </div>
-              <div className="sm:col-span-1">
-                <Button
-                  variant="ghost"
-                  className="w-full"
-                  icon="x"
-                  disabled={items.length <= 1}
-                  onClick={() => setItems((current) => current.filter((_, i) => i !== index))}
-                  aria-label={t('removeLine')}
-                />
-              </div>
-            </div>
-          ))}
+            )
+          })}
           <Button variant="secondary" onClick={() => setItems((current) => [...current, emptyItem(draftCurrency)])}>
             + {t('addLine')}
           </Button>

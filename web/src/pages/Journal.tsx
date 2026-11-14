@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { formatDate, isValidAmount, parseAmount, toDecimal, todayISO } from '../lib/format'
+import { formatDate, isValidAmount, parseAmount, toDecimal, todayISO, formatMoney } from '../lib/format'
 import type { Account, Customer, JournalEntry, Paginated, Supplier } from '../lib/types'
 import {
   Badge,
@@ -431,7 +431,7 @@ export default function Journal() {
                     <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end tabular">
-                    {toDecimal(entry.total_minor, entry.currency)} {entry.currency}
+                    {formatMoney(entry.total_minor, entry.currency, locale)}
                   </Td>
                   <Td className="text-end">
                     <div className="flex items-center justify-end gap-1">

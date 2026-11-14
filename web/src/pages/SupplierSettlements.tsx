@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
-import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
+import { formatDate, formatMoney, toDecimal, toMinor, todayISO } from '../lib/format'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
 import type { Paginated, Supplier, SupplierObligation, SupplierPayment } from '../lib/types'
@@ -40,9 +40,9 @@ type IssuedInvoice = { id: string; number: string; currency: string; total_minor
 
 const invoiceToOption = (invoice: IssuedInvoice): SelectOption => ({ value: invoice.id, label: invoice.number })
 
-const obligationToOption = (obligation: SupplierObligation): SelectOption => ({
+const obligationToOption = (locale: 'ar' | 'en') => (obligation: SupplierObligation): SelectOption => ({
   value: obligation.id,
-  label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
+  label: `${obligation.invoice_reference ?? obligation.id} — ${formatMoney(obligation.balance_minor, obligation.currency, locale)}`,
 })
 
 const emptyObligationForm = {
@@ -173,7 +173,7 @@ export default function SupplierSettlements() {
     endpoint: '/supplier-obligations',
     keyPrefix: 'supplier-obligations',
     params: paymentObligationParams,
-    toOption: obligationToOption,
+    toOption: obligationToOption(locale),
     value: paymentForm.supplier_obligation_id,
     enabled: paymentForm.supplier_id !== '',
   })
@@ -187,7 +187,7 @@ export default function SupplierSettlements() {
     endpoint: '/supplier-obligations',
     keyPrefix: 'supplier-obligations',
     params: applyObligationParams,
-    toOption: obligationToOption,
+    toOption: obligationToOption(locale),
     value: applyForm.supplier_obligation_id,
     enabled: Boolean(applyPayment?.supplier_id),
   })
@@ -422,13 +422,13 @@ export default function SupplierSettlements() {
                       <div className="mt-1 text-small text-text-subtle">{obligation.accounting_status === 'recognized' ? L('مُعترف به محاسبيًا', 'Recognized in GL') : L('غير مُرحّل', 'Not posted')}</div>
                     </Td>
                     <Td className="text-end tabular">
-                      {toDecimal(obligation.amount_minor, obligation.currency)} {obligation.currency}
+                      {formatMoney(obligation.amount_minor, obligation.currency, locale)}
                     </Td>
                     <Td className="text-end tabular">
-                      {toDecimal(obligation.paid_minor, obligation.currency)} {obligation.currency}
+                      {formatMoney(obligation.paid_minor, obligation.currency, locale)}
                     </Td>
                     <Td className="text-end tabular">
-                      {toDecimal(obligation.balance_minor, obligation.currency)} {obligation.currency}
+                      {formatMoney(obligation.balance_minor, obligation.currency, locale)}
                     </Td>
                     <Td>
                       {obligation.accounting_status !== 'recognized' && obligation.paid_minor === 0 && can('supplier_obligations.create') ? (
@@ -482,13 +482,13 @@ export default function SupplierSettlements() {
                       <Badge tone={statusTone(payment.status)}>{statusLabelOf(payment.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end tabular">
-                      {toDecimal(payment.amount_minor, payment.currency)} {payment.currency}
+                      {formatMoney(payment.amount_minor, payment.currency, locale)}
                     </Td>
                     <Td className="text-end tabular">
-                      {toDecimal(payment.applied_minor, payment.currency)} {payment.currency}
+                      {formatMoney(payment.applied_minor, payment.currency, locale)}
                     </Td>
                     <Td className="text-end tabular">
-                      {toDecimal(payment.unallocated_minor, payment.currency)} {payment.currency}
+                      {formatMoney(payment.unallocated_minor, payment.currency, locale)}
                     </Td>
                     <Td>
                       {payment.unallocated_minor > 0 && can('supplier_payments.create') ? (
@@ -724,7 +724,7 @@ export default function SupplierSettlements() {
               <Input value={supplierName(applyPayment.supplier)} readOnly />
             </Field>
             <Field label={t('unapplied')}>
-              <Input value={`${toDecimal(applyPayment.unallocated_minor, applyPayment.currency)} ${applyPayment.currency}`} readOnly dir="ltr" />
+              <Input value={`${formatMoney(applyPayment.unallocated_minor, applyPayment.currency, locale)}`} readOnly dir="ltr" />
             </Field>
             <Field label={t('obligation')} required hint={openObligations.length === 0 ? t('noOpenObligations') : undefined}>
               <SearchableSelect

@@ -7,7 +7,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
-import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
+import { formatDate, formatMoney, toDecimal, toMinor, todayISO } from '../lib/format'
 import { useBaseCurrency } from '../lib/useSetting'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
 import PartyPicker from '../components/PartyPicker'
@@ -41,9 +41,9 @@ import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvo
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 type OpenCustomerInvoice = { id: string; number: string; currency: string; outstanding_minor: number; issue_date: string }
 
-const bookingToOption = (booking: Booking): SelectOption => ({
+const bookingToOption = (locale: 'ar' | 'en') => (booking: Booking): SelectOption => ({
   value: booking.id,
-  label: `${booking.number} — ${toDecimal(booking.total_sell_minor, booking.currency)} ${booking.currency}`,
+  label: `${booking.number} — ${formatMoney(booking.total_sell_minor, booking.currency, locale)}`,
 })
 
 export default function Payments() {
@@ -198,7 +198,7 @@ export default function Payments() {
     endpoint: '/bookings',
     keyPrefix: 'bookings',
     params: bookingParams,
-    toOption: bookingToOption,
+    toOption: bookingToOption(locale),
     value: form.booking_id,
   })
 
@@ -219,7 +219,7 @@ export default function Payments() {
     enabled: open && !!form.customer_id,
     toOption: (invoice) => ({
       value: invoice.id,
-      label: `${invoice.number} · ${toDecimal(invoice.outstanding_minor, invoice.currency)} ${invoice.currency}`,
+      label: `${invoice.number} · ${formatMoney(invoice.outstanding_minor, invoice.currency, locale)}`,
     }),
   })
   const selectedInvoice = invoicePicker.rows.find((invoice) => invoice.id === form.invoice_id)
@@ -354,10 +354,10 @@ export default function Payments() {
                     <Badge tone={statusTone(payment.status)}>{statusLabel(payment.status, locale)}</Badge>
                   </Td>
                   <Td className="text-end tabular">
-                    {toDecimal(payment.amount_minor, payment.currency)} {payment.currency}
+                    {formatMoney(payment.amount_minor, payment.currency, locale)}
                   </Td>
                   <Td className="text-end tabular">
-                    {toDecimal(payment.unallocated_minor, payment.currency)} {payment.currency}
+                    {formatMoney(payment.unallocated_minor, payment.currency, locale)}
                   </Td>
                   <Td className="text-end">
                     <DocumentsButton type="payment" recordId={payment.id} />
@@ -500,7 +500,7 @@ export default function Payments() {
             </Link>
           </Field>
           <Field label={t('amount')} required hint={selectedInvoice
-            ? (locale === 'ar' ? `المستحق: ${toDecimal(selectedInvoice.outstanding_minor, selectedInvoice.currency)} ${selectedInvoice.currency} — يمكنك تقليل المبلغ للتحصيل الجزئي` : `Outstanding: ${toDecimal(selectedInvoice.outstanding_minor, selectedInvoice.currency)} ${selectedInvoice.currency}. Edit for partial payment.`)
+            ? (locale === 'ar' ? `المستحق: ${formatMoney(selectedInvoice.outstanding_minor, selectedInvoice.currency, locale)} — يمكنك تقليل المبلغ للتحصيل الجزئي` : `Outstanding: ${formatMoney(selectedInvoice.outstanding_minor, selectedInvoice.currency, locale)}. Edit for partial payment.`)
             : undefined}>
             <Input value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
@@ -558,7 +558,7 @@ export default function Payments() {
             <Field
               label={t('amount')}
               required
-              hint={`${locale === 'ar' ? 'المتاح للاسترداد' : 'Available'}: ${toDecimal(refundableMinor(refundTarget), refundTarget.currency)} ${refundTarget.currency}`}
+              hint={`${locale === 'ar' ? 'المتاح للاسترداد' : 'Available'}: ${formatMoney(refundableMinor(refundTarget), refundTarget.currency, locale)}`}
             >
               <Input value={refundForm.amount} onChange={(event) => setRefundForm({ ...refundForm, amount: event.target.value })} inputMode="decimal" dir="ltr" />
             </Field>
@@ -591,7 +591,7 @@ export default function Payments() {
                 <tr key={refund.id}>
                   <Td className="font-medium">{refund.number}</Td>
                   <Td className="text-end tabular">
-                    {toDecimal(refund.amount_minor, refund.currency)} {refund.currency}
+                    {formatMoney(refund.amount_minor, refund.currency, locale)}
                   </Td>
                   <Td>
                     <Badge tone={statusTone(refund.status)}>{statusLabel(refund.status, locale)}</Badge>
@@ -632,7 +632,7 @@ export default function Payments() {
         {approveTarget ? (
           <div className="grid gap-4">
             <p className="text-small text-text-subtle">
-              {locale === 'ar' ? 'المبلغ' : 'Amount'}: {toDecimal(approveTarget.amount_minor, approveTarget.currency)} {approveTarget.currency}
+              {locale === 'ar' ? 'المبلغ' : 'Amount'}: {formatMoney(approveTarget.amount_minor, approveTarget.currency, locale)}
             </p>
             {approveTarget.currency !== baseCurrency ? (
               <Field

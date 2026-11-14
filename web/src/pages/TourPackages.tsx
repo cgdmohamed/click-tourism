@@ -7,7 +7,7 @@ import { api, errorMessage } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
 import { useBaseCurrency } from '../lib/useSetting'
-import { toDecimal, toMinor, todayISO } from '../lib/format'
+import { toMinor, todayISO, formatMoney } from '../lib/format'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading,
   Modal, PageHeader, Select, Table, Td, Th,
@@ -132,7 +132,7 @@ export default function TourPackages() {
                     <div className="text-small text-text-subtle">{item.execution_type}</div>
                   </Td>
                   <Td>{item.destination ?? '—'}</Td>
-                  <Td className="text-end">{toDecimal(item.base_price_minor, item.currency)} {item.currency}</Td>
+                  <Td className="text-end">{formatMoney(item.base_price_minor, item.currency, locale)}</Td>
                   <Td>
                     {(item.departures ?? []).length === 0 ? <span>—</span> : (
                       <div className="space-y-1">
