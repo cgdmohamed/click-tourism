@@ -8,6 +8,8 @@ import { supplierCategories, supplierCategoryLabel } from '../lib/labels'
 import type { Paginated, Supplier } from '../lib/types'
 import { Badge, Button, Card, ErrorState, Field, Input, Modal, PageHeader, Pagination, Select, Td } from '../components/ui'
 import { ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { localizedName } from '../lib/names'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
@@ -38,11 +40,42 @@ export default function Suppliers() {
     setPage(1)
   }, [urlSearch])
 
+  const currencyCodes = useActiveCurrencyCodes()
+  const filters = useFilters(
+    [
+      {
+        key: 'is_active',
+        label: t('status'),
+        type: 'select',
+        options: [
+          { value: '1', label: locale === 'ar' ? 'نشط' : 'Active' },
+          { value: '0', label: locale === 'ar' ? 'موقوف' : 'Inactive' },
+        ],
+        allLabel: locale === 'ar' ? 'الكل' : 'All',
+      },
+      {
+        key: 'category',
+        label: t('category'),
+        type: 'select',
+        options: categories.map((category) => ({ value: category.value, label: supplierCategoryLabel(category.value, locale) })),
+        allLabel: locale === 'ar' ? 'كل الفئات' : 'All categories',
+      },
+      {
+        key: 'settlement_currency',
+        label: t('settlementCurrency'),
+        type: 'select',
+        options: currencyCodes.map((code) => ({ value: code, label: code })),
+        allLabel: locale === 'ar' ? 'كل العملات' : 'All currencies',
+      },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const query = useQuery({
-    queryKey: ['suppliers', search, page, activeBranch?.id],
+    queryKey: ['suppliers', search, page, filters.applied, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Supplier>>('/suppliers', {
-        params: { search: search || undefined, page, per_page: 20 },
+        params: { search: search || undefined, is_active: filters.applied.is_active || undefined, category: filters.applied.category || undefined, settlement_currency: filters.applied.settlement_currency || undefined, page, per_page: 20 },
       })
       return data
     },
@@ -88,10 +121,11 @@ export default function Suppliers() {
             placeholder={t('search')}
             className="max-w-xs"
           />
+          <FilterControl state={filters} />
         </div>
         {query.isLoading ? <ListSkeleton columns={4} /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && suppliers.length === 0 ? <ListEmpty filtered={search !== ''} onClear={() => { setSearch(''); setPage(1) }} /> : null}
+        {query.data && suppliers.length === 0 ? <ListEmpty filtered={search !== '' || filters.count > 0} onClear={() => { setSearch(''); filters.clearAll(); setPage(1) }} /> : null}
         {suppliers.length > 0 ? (
           <>
             <MobileCards items={suppliers} getKey={(supplier) => supplier.id} label={t('suppliers')}>

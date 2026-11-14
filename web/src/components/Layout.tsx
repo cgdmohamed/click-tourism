@@ -58,45 +58,57 @@ export function Layout() {
 
   const groups: NavGroup[] = [
     {
-      items: [{ to: '/', label: t('dashboard'), icon: 'dashboard' }],
-    },
-    {
-      label: t('accounting'),
       items: [
-        { to: '/accounts', label: t('accounts'), icon: 'ledger' },
-        { to: '/journal', label: t('journal'), icon: 'scale' },
-        { to: '/opening-balances', label: t('openingBalances'), icon: 'landmark', permission: 'opening_balances.view' },
-        { to: '/periods', label: t('fiscalPeriods'), icon: 'calendar', permission: 'periods.view' },
-        { to: '/documents', label: t('vouchers'), icon: 'clipboardCheck', permission: 'documents.view' },
-        { to: '/fixed-assets', label: t('fixedAssets'), icon: 'package', permission: 'assets.view' },
-        { to: '/cost-centers', label: locale === 'ar' ? 'مراكز التكلفة' : 'Cost centers', icon: 'hash', permission: 'cost_centers.view' },
-        { to: '/reports', label: t('reports'), icon: 'chart', permission: 'reports.view' },
+        { to: '/', label: t('dashboard'), icon: 'dashboard' },
+        { to: '/approvals', label: locale === 'ar' ? 'الاعتمادات' : 'Approvals', icon: 'clipboardCheck', anyPermission: APPROVAL_PERMISSIONS, badge: approvalCount },
       ],
     },
     {
-      label: t('operations'),
+      label: locale === 'ar' ? 'المبيعات' : 'Sales',
       items: [
-        { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
-        { to: '/approvals', label: locale === 'ar' ? 'الاعتمادات' : 'Approvals', icon: 'clipboardCheck', anyPermission: APPROVAL_PERMISSIONS, badge: approvalCount },
-        { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
+        { to: '/leads', label: t('crm'), icon: 'target' },
+        { to: '/customers', label: t('customers'), icon: 'users' },
+        { to: '/bookings', label: t('bookings'), icon: 'plane' },
+        { to: '/tour-packages', label: locale === 'ar' ? 'البرامج والرحلات' : 'Tours & Packages', icon: 'plane', permission: 'bookings.view' },
+      ],
+    },
+    {
+      label: locale === 'ar' ? 'الإيرادات والمدفوعات' : 'Money in & out',
+      items: [
         { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
-        { to: '/commissions', label: locale === 'ar' ? 'العمولات' : 'Commissions', icon: 'coins', permission: 'commissions.view' },
         { to: '/payments', label: locale === 'ar' ? 'تحصيلات العملاء' : 'Customer collections', icon: 'creditCard', permission: 'payments.view' },
-        { to: '/payment-methods', label: locale === 'ar' ? 'طرق الدفع' : 'Payment methods', icon: 'wallet', permission: 'payments.view' },
+        { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
         { to: '/supplier-settlements', label: t('supplierSettlements'), icon: 'handshake' },
-        { to: '/reconciliation', label: t('reconciliation'), icon: 'listChecks', permission: 'reconciliation.view' },
-        { to: '/schedules', label: t('schedules'), icon: 'calendarClock', permission: 'schedules.view' },
+        { to: '/commissions', label: locale === 'ar' ? 'العمولات' : 'Commissions', icon: 'coins', permission: 'commissions.view' },
+        { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
       ],
     },
     {
       label: t('parties'),
       items: [
-        { to: '/customers', label: t('customers'), icon: 'users' },
         { to: '/suppliers', label: t('suppliers'), icon: 'truck' },
         { to: '/employees', label: t('employees'), icon: 'userCheck', permission: 'employees.view' },
-        { to: '/tour-packages', label: locale === 'ar' ? 'البرامج والرحلات' : 'Tours & Packages', icon: 'plane', permission: 'bookings.view' },
-        { to: '/bookings', label: t('bookings'), icon: 'plane' },
-        { to: '/leads', label: t('crm'), icon: 'target' },
+      ],
+    },
+    {
+      label: t('accounting'),
+      items: [
+        { to: '/documents', label: t('vouchers'), icon: 'clipboardCheck', permission: 'documents.view' },
+        { to: '/journal', label: t('journal'), icon: 'scale' },
+        { to: '/reports', label: t('reports'), icon: 'chart', permission: 'reports.view' },
+        { to: '/reconciliation', label: t('reconciliation'), icon: 'listChecks', permission: 'reconciliation.view' },
+        { to: '/periods', label: t('fiscalPeriods'), icon: 'calendar', permission: 'periods.view' },
+        { to: '/schedules', label: t('schedules'), icon: 'calendarClock', permission: 'schedules.view' },
+        { to: '/fixed-assets', label: t('fixedAssets'), icon: 'package', permission: 'assets.view' },
+        { to: '/cost-centers', label: locale === 'ar' ? 'مراكز التكلفة' : 'Cost centers', icon: 'hash', permission: 'cost_centers.view' },
+        { to: '/opening-balances', label: t('openingBalances'), icon: 'landmark', permission: 'opening_balances.view' },
+        { to: '/accounts', label: t('accounts'), icon: 'ledger' },
+      ],
+    },
+    {
+      label: locale === 'ar' ? 'إعدادات التشغيل' : 'Operations setup',
+      items: [
+        { to: '/payment-methods', label: locale === 'ar' ? 'طرق الدفع' : 'Payment methods', icon: 'wallet', permission: 'payments.view' },
         { to: '/lead-settings', label: locale === 'ar' ? 'مصادر ومراحل العملاء' : 'Lead sources & stages', icon: 'listChecks', permission: 'leads.manage_rules' },
         { to: '/assignment-rules', label: t('assignmentRules'), icon: 'target', permission: 'leads.manage_rules' },
       ],

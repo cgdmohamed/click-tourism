@@ -21,6 +21,8 @@ class CustomerController extends ApiController
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
                 $query, ['name_ar', 'name_en', 'phone', 'email'], $search))
+            ->when($request->query('is_active') !== null && $request->query('is_active') !== '', fn ($query) => $query->where('is_active', $request->boolean('is_active')))
+            ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->orderBy('name_ar')
             ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
 

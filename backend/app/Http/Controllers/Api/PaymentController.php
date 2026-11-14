@@ -31,6 +31,9 @@ class PaymentController extends ApiController
                         });
                 });
             })
+            ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            ->when($request->query('payment_method_id'), fn ($query, $methodId) => $query->whereHas('paymentMethod', fn ($method) => $method->where('public_id', $methodId)))
+            ->when($request->boolean('unallocated'), fn ($query) => $query->where('unallocated_minor', '>', 0))
             ->when($request->query('from'), fn ($query, $from) => $query->where('paid_at', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->where('paid_at', '<=', $to.' 23:59:59'))
             ->orderByDesc('id')

@@ -128,6 +128,13 @@ export default function SupplierSettlements() {
   const paymentFilters = useFilters(
     [
       { key: 'supplier_id', label: t('supplier'), type: 'custom', render: (value, set) => <PartyFilterField kind="supplier" value={value} set={set} /> },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['posted', 'cancelled'].map((value) => ({ value, label: statusLabelOf(value, locale) })),
+        allLabel: L('كل الحالات', 'All statuses'),
+      },
       { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
       { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
     ],
@@ -159,6 +166,7 @@ export default function SupplierSettlements() {
           page: paymentPage,
           per_page: 20,
           supplier_id: paymentFilters.applied.supplier_id || undefined,
+          status: paymentFilters.applied.status || undefined,
           from: paymentFilters.applied.from || undefined,
           to: paymentFilters.applied.to || undefined,
         },

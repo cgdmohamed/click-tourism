@@ -11,6 +11,7 @@ import { ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKi
 import { localizedName } from '../lib/names'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
 
 export default function Customers() {
   const { t, locale } = useI18n()
@@ -37,11 +38,37 @@ export default function Customers() {
     setPage(1)
   }, [urlSearch])
 
+  const filters = useFilters(
+    [
+      {
+        key: 'is_active',
+        label: t('status'),
+        type: 'select',
+        options: [
+          { value: '1', label: locale === 'ar' ? 'نشط' : 'Active' },
+          { value: '0', label: locale === 'ar' ? 'موقوف' : 'Inactive' },
+        ],
+        allLabel: locale === 'ar' ? 'الكل' : 'All',
+      },
+      {
+        key: 'type',
+        label: t('type'),
+        type: 'select',
+        options: [
+          { value: 'individual', label: locale === 'ar' ? 'فرد' : 'Individual' },
+          { value: 'company', label: locale === 'ar' ? 'شركة' : 'Company' },
+        ],
+        allLabel: locale === 'ar' ? 'كل الأنواع' : 'All types',
+      },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const query = useQuery({
-    queryKey: ['customers', search, page, activeBranch?.id],
+    queryKey: ['customers', search, page, filters.applied, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Customer>>('/customers', {
-        params: { search: search || undefined, page, per_page: 20 },
+        params: { search: search || undefined, is_active: filters.applied.is_active || undefined, type: filters.applied.type || undefined, page, per_page: 20 },
       })
       return data
     },
@@ -90,10 +117,11 @@ export default function Customers() {
             placeholder={t('search')}
             className="max-w-xs"
           />
+          <FilterControl state={filters} />
         </div>
         {query.isLoading ? <ListSkeleton columns={4} /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && customers.length === 0 ? <ListEmpty filtered={search !== ''} onClear={() => { setSearch(''); setPage(1) }} /> : null}
+        {query.data && customers.length === 0 ? <ListEmpty filtered={search !== '' || filters.count > 0} onClear={() => { setSearch(''); filters.clearAll(); setPage(1) }} /> : null}
         {customers.length > 0 ? (
           <>
             <MobileCards items={customers} getKey={(customer) => customer.id} label={t('customers')}>

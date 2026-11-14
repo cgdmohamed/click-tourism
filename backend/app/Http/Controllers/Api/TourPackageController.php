@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Bookings\Models\TourDeparture;
 use App\Modules\Bookings\Models\TourPackage;
+use App\Support\Like;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,12 @@ class TourPackageController extends ApiController
         $packages = TourPackage::query()
             ->with('departures.package')
             ->where('branch_id', $branch->id)
+            ->when($request->query('category'), fn ($query, $category) => $query->where('category', $category))
+            ->when($request->query('execution_type'), fn ($query, $type) => $query->where('execution_type', $type))
+            // `status` is the package's active flag: active or inactive.
+            ->when(in_array($request->query('status'), ['active', 'inactive'], true), fn ($query) => $query->where('is_active', $request->query('status') === 'active'))
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['code', 'name', 'destination'], $search))
             ->orderByDesc('id')->get()
             ->map(fn (TourPackage $package) => $package->toApiArray());
 

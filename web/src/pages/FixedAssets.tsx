@@ -379,10 +379,28 @@ export default function FixedAssets() {
     },
   })
 
+  const runFilters = useFilters([
+    {
+      key: 'status',
+      label: L('الحالة', 'Status'),
+      type: 'select',
+      options: ['draft', 'posted', 'failed', 'reversed'].map((value) => ({ value, label: statusLabel(value) })),
+      allLabel: L('كل الحالات', 'All statuses'),
+    },
+    {
+      key: 'period',
+      label: L('الفترة', 'Period'),
+      type: 'custom',
+      render: (value, set) => <Input type="month" value={value} onChange={(event) => set(event.target.value)} aria-label={L('الفترة', 'Period')} />,
+    },
+  ])
+
   const runsQuery = useQuery({
-    queryKey: [STORAGE_KEY, 'runs', activeBranch?.id],
+    queryKey: [STORAGE_KEY, 'runs', activeBranch?.id, runFilters.applied],
     queryFn: async () => {
-      const { data } = await api.get<{ data: DepreciationRun[] }>('/depreciation-runs')
+      const { data } = await api.get<{ data: DepreciationRun[] }>('/depreciation-runs', {
+        params: { status: runFilters.applied.status || undefined, period: runFilters.applied.period || undefined },
+      })
       return data.data
     },
   })
@@ -982,10 +1000,15 @@ export default function FixedAssets() {
                 'Posting is refused in closed periods, and the same asset-month can never be posted twice.',
               )}
             />
+            <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+              <FilterControl state={runFilters} />
+            </div>
             {runsQuery.isLoading ? (
               <Loading />
             ) : runsQuery.isError ? (
               <ErrorState message={errorMessage(runsQuery.error)} onRetry={() => void runsQuery.refetch()} />
+            ) : (runsQuery.data ?? []).length === 0 && runFilters.count > 0 ? (
+              <EmptyState variant="filtered" onClear={runFilters.clearAll} />
             ) : (runsQuery.data ?? []).length === 0 ? (
               <EmptyState title={L('لا توجد تشغيلات', 'No runs yet')} hint={L('أنشئ مسودة تشغيل لفترة مفتوحة.', 'Create a draft run for an open period.')} />
             ) : (

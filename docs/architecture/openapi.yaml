@@ -1046,6 +1046,8 @@ paths:
       parameters:
         - { name: currency, in: query, schema: { type: string } }
         - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: from, in: query, description: 'Additive filter (2026-11-14). Rate date on or after.', schema: { type: string, format: date } }
+        - { name: to, in: query, description: 'Additive filter (2026-11-14). Rate date on or before.', schema: { type: string, format: date } }
       responses:
         '200': { description: FX rates }
     post:
@@ -1076,6 +1078,10 @@ paths:
         fields for ADR-0015 party subledger accounts (null on ordinary accounts): `party_type`
         (customer|supplier|employee), `party_role` (receivable|payable|advance|custody|payable_balance),
         `party_name_ar`, `party_name_en`.
+      parameters:
+        - { name: is_active, in: query, description: 'Additive filter (2026-11-14). 1 or 0; omitted returns both.', schema: { type: boolean } }
+        - { name: is_postable, in: query, description: 'Additive filter (2026-11-14). 1 or 0; omitted returns both.', schema: { type: boolean } }
+        - { name: classification, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
       responses:
         '200': { description: Accounts }
     post:
@@ -1111,6 +1117,9 @@ paths:
       summary: Registered cash and bank accounts with ledger balances (falls back to the chart of accounts until any are registered)
       parameters:
         - { name: include_inactive, in: query, schema: { type: boolean } }
+        - { name: kind, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string, enum: [cash, bank] } }
+        - { name: currency, in: query, description: 'Additive filter (2026-11-14). ISO code, case-insensitive.', schema: { type: string } }
+        - { name: search, in: query, description: 'Additive filter (2026-11-14). Name or bank name.', schema: { type: string } }
       responses:
         '200': { description: Cash accounts }
     post:
@@ -1146,6 +1155,8 @@ paths:
       tags: [Accounting]
       summary: List transfers between cash and bank accounts
       parameters:
+        - { name: status, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: cash_account_id, in: query, description: 'Additive filter (2026-11-14). Public id; matches either side of the transfer.', schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
@@ -2229,6 +2240,8 @@ paths:
       parameters:
         - { name: search, in: query, schema: { type: string } }
         - { name: branch_id, in: query, schema: { type: string } }
+        - { name: is_active, in: query, description: 'Additive filter (2026-11-14). 1 or 0; omitted returns both.', schema: { type: boolean } }
+        - { name: type, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string, enum: [individual, company] } }
       responses:
         '200': { description: Customers }
     post:
@@ -2246,6 +2259,11 @@ paths:
     get:
       tags: [Parties]
       summary: List suppliers
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: is_active, in: query, description: 'Additive filter (2026-11-14). 1 or 0; omitted returns both.', schema: { type: boolean } }
+        - { name: category, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: settlement_currency, in: query, description: 'Additive filter (2026-11-14). ISO code, case-insensitive.', schema: { type: string } }
       responses:
         '200': { description: Suppliers }
     post:
@@ -2258,6 +2276,11 @@ paths:
     get:
       tags: [Bookings]
       summary: List branch-scoped tourism packages with departures (bookings.view)
+      parameters:
+        - { name: category, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: execution_type, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: status, in: query, description: 'Additive filter (2026-11-14). Active flag of the package.', schema: { type: string, enum: [active, inactive] } }
+        - { name: search, in: query, description: 'Additive filter (2026-11-14). Code, name or destination.', schema: { type: string } }
       responses:
         '200': { description: Packages and departure seat counts }
     post:
@@ -2483,6 +2506,13 @@ paths:
     get:
       tags: [Payments]
       summary: List customer receipts
+      parameters:
+        - { name: customer_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: payment_method_id, in: query, description: 'Additive filter (2026-11-14). Public id of the payment method.', schema: { type: string } }
+        - { name: unallocated, in: query, description: 'Additive filter (2026-11-14). 1 returns only receipts with an unallocated balance (advances).', schema: { type: boolean } }
       responses:
         '200': { description: Payments }
     post:
@@ -2590,6 +2620,9 @@ paths:
         - { name: party_id, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: due_from, in: query, description: 'Additive filter (2026-11-14). Due date on or after.', schema: { type: string, format: date } }
+        - { name: due_to, in: query, description: 'Additive filter (2026-11-14). Due date on or before.', schema: { type: string, format: date } }
+        - { name: overdue, in: query, description: 'Additive filter (2026-11-14). 1 returns issued invoices still owing and past their due date (the dashboard rule).', schema: { type: boolean } }
         - { name: search, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
         - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
@@ -3474,6 +3507,7 @@ paths:
       parameters:
         - { name: search, in: query, schema: { type: string } }
         - { name: include_inactive, in: query, schema: { type: boolean, default: false } }
+        - { name: category, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
       responses:
         '200': { description: Employees }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3660,7 +3694,7 @@ paths:
         - { name: type, in: query, schema: { type: string, enum: [receipt_voucher, payment_voucher, transfer_voucher, adjustment_voucher, refund_voucher] } }
         - { name: status, in: query, schema: { type: string, enum: [draft, submitted, approved, posted, voided, rejected, cancelled] } }
         - { name: party_type, in: query, schema: { type: string, enum: [customer, supplier, employee] } }
-        - { name: party_id, in: query, schema: { type: string } }
+        - { name: party_id, in: query, description: 'Public id or internal id (the public id form is additive, 2026-11-14).', schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
         - { name: search, in: query, schema: { type: string } }
@@ -3812,6 +3846,7 @@ paths:
       summary: List imported bank statements
       parameters:
         - { name: cash_account_id, in: query, schema: { type: string }, description: Registered cash account public id }
+        - { name: period, in: query, description: 'Additive filter (2026-11-14). Month YYYY-MM; statements whose date range touches it. Other values are ignored.', schema: { type: string, pattern: '^[0-9]{4}-[0-9]{2}$' } }
       responses:
         '200': { description: Statements }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -4086,6 +4121,7 @@ paths:
       parameters:
         - { name: kind, in: query, schema: { type: string, enum: [prepaid_expense, deferred_revenue, accrued_expense, accrued_revenue] } }
         - { name: status, in: query, schema: { type: string, enum: [draft, active, completed, cancelled] } }
+        - { name: search, in: query, description: 'Additive filter (2026-11-14). Number, description or reference.', schema: { type: string } }
       responses:
         '200': { description: Schedules with their recognition and reversal events }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -5598,6 +5634,7 @@ paths:
       tags: [Payments]
       summary: List supplier payments (requires supplier_payments.view)
       parameters:
+        - { name: status, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
         - { name: supplier_id, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }

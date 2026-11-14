@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import type { Employee } from '../lib/types'
 import { employeeCategoryLabel } from '../lib/labels'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, InlineNotice, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
 import { Icon } from '../components/icons'
 import { localizedName } from '../lib/names'
@@ -28,11 +29,21 @@ export default function Employees() {
   const [search, setSearch] = useState('')
   const [includeInactive, setIncludeInactive] = useState(false)
 
+  const filters = useFilters([
+    {
+      key: 'category',
+      label: t('category'),
+      type: 'select',
+      options: CATEGORIES.map((category) => ({ value: category, label: employeeCategoryLabel(category, locale) })),
+      allLabel: ar ? 'كل الفئات' : 'All categories',
+    },
+  ])
+
   const query = useQuery({
-    queryKey: ['employees', search, includeInactive],
+    queryKey: ['employees', search, includeInactive, filters.applied],
     queryFn: async () => {
       const { data } = await api.get<{ data: Employee[] }>('/employees', {
-        params: { search: search || undefined, include_inactive: includeInactive ? 1 : 0 },
+        params: { search: search || undefined, include_inactive: includeInactive ? 1 : 0, category: filters.applied.category || undefined },
       })
       return data.data
     },
@@ -108,12 +119,13 @@ export default function Employees() {
             />
             {t('inactive')}
           </label>
+          <FilterControl state={filters} />
         </div>
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {query.data && employees.length === 0 ? (
-          search || includeInactive ? (
-            <EmptyState variant="filtered" onClear={() => { setSearch(''); setIncludeInactive(false) }} />
+          search || includeInactive || filters.count > 0 ? (
+            <EmptyState variant="filtered" onClear={() => { setSearch(''); setIncludeInactive(false); filters.clearAll() }} />
           ) : (
             <ListEmpty title={t('noData')} />
           )

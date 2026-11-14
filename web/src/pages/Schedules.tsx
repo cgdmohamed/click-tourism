@@ -175,6 +175,7 @@ export default function Schedules() {
     await queryClient.invalidateQueries({ queryKey: ['period-checklist'] })
   }
 
+  const [scheduleSearch, setScheduleSearch] = useState('')
   const scheduleFilters = useFilters([
     {
       key: 'kind',
@@ -193,10 +194,10 @@ export default function Schedules() {
   ])
 
   const schedulesQuery = useQuery({
-    queryKey: ['accounting-schedules', scheduleFilters.applied, activeBranch?.id],
+    queryKey: ['accounting-schedules', scheduleFilters.applied, scheduleSearch, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<{ data: Schedule[] }>('/accounting-schedules', {
-        params: { kind: scheduleFilters.applied.kind || undefined, status: scheduleFilters.applied.status || undefined },
+        params: { kind: scheduleFilters.applied.kind || undefined, status: scheduleFilters.applied.status || undefined, search: scheduleSearch || undefined },
       })
       return data.data
     },
@@ -492,6 +493,7 @@ export default function Schedules() {
               subtitle={L('المسودات قابلة للتعديل، وبعد الاعتماد تصبح القيود المرحّلة غير قابلة للتغيير.', 'Drafts are editable; posted events are immutable after activation.')}
             />
             <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+              <Input value={scheduleSearch} onChange={(event) => setScheduleSearch(event.target.value)} placeholder={L('بحث بالرقم أو الوصف أو المرجع', 'Search number, description or reference')} aria-label={L('بحث', 'Search')} className="max-w-xs" />
               <FilterControl state={scheduleFilters} />
             </div>
             {(schedulesQuery.data ?? []).length === 0 ? (

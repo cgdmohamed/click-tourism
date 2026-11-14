@@ -48,6 +48,11 @@ class InvoiceController extends ApiController
             ->when($request->boolean('open'), fn ($query) => $query->where('status', 'issued')->where('outstanding_minor', '>', 0))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('issue_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('issue_date', '<=', $to))
+            ->when($request->query('due_from'), fn ($query, $from) => $query->whereDate('due_date', '>=', $from))
+            ->when($request->query('due_to'), fn ($query, $to) => $query->whereDate('due_date', '<=', $to))
+            // Same rule as the dashboard's overdue figures: issued, still owing, past its due date.
+            ->when($request->boolean('overdue'), fn ($query) => $query->where('status', 'issued')
+                ->where('outstanding_minor', '>', 0)->whereNotNull('due_date')->whereDate('due_date', '<', now()->toDateString()))
             ->when(Like::term($request->query('search')), function ($query, $search) {
                 $query->where(function ($query) use ($search) {
                     Like::contains($query, ['number'], $search);

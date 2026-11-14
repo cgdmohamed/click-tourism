@@ -13,6 +13,8 @@ class FxRateController extends ApiController
     {
         $rates = FxRate::query()
             ->when($request->query('currency'), fn ($query, $currency) => $query->where('currency_code', strtoupper($currency)))
+            ->when($request->query('from'), fn ($query, $from) => $query->whereDate('rate_date', '>=', $from))
+            ->when($request->query('to'), fn ($query, $to) => $query->whereDate('rate_date', '<=', $to))
             ->orderByDesc('rate_date')
             ->limit(200)
             ->get()

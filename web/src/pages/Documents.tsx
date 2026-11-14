@@ -30,7 +30,7 @@ import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
-import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { FilterControl, PartyKindFilterField, useFilters } from '../components/FilterDrawer'
 import { ListEmpty } from '../components/ListEmpty'
 
 type DocType = 'receipt_voucher' | 'payment_voucher' | 'transfer_voucher' | 'adjustment_voucher' | 'refund_voucher'
@@ -159,6 +159,12 @@ export default function Documents() {
         options: ['draft', 'submitted', 'approved', 'posted', 'rejected', 'cancelled'].map((value) => ({ value, label: statusLabel(value, locale) })),
         allLabel: L('كل الحالات', 'All statuses'),
       },
+      {
+        key: 'party',
+        label: L('الطرف', 'Party'),
+        type: 'custom',
+        render: (value, set) => <PartyKindFilterField value={value} set={set} kinds={['customer', 'supplier', 'employee']} />,
+      },
       { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
       { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
     ],
@@ -174,6 +180,7 @@ export default function Documents() {
           per_page: 20,
           ...(filters.applied.type ? { type: filters.applied.type } : {}),
           ...(filters.applied.status ? { status: filters.applied.status } : {}),
+          ...(filters.applied.party ? { party_type: filters.applied.party.split(':')[0], party_id: filters.applied.party.slice(filters.applied.party.indexOf(':') + 1) } : {}),
           ...(filters.applied.from ? { from: filters.applied.from } : {}),
           ...(filters.applied.to ? { to: filters.applied.to } : {}),
           ...(search ? { search } : {}),
