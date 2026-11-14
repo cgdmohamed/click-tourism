@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -308,7 +309,7 @@ export default function Expenses() {
             />
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={form.expense_date} onChange={(event) => setForm({ ...form, expense_date: event.target.value })} dir="ltr" />
+            <DateField value={form.expense_date} onChange={(event) => setForm({ ...form, expense_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
             <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, cash_account_id: '' })}>

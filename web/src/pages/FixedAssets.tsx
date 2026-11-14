@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -985,7 +986,7 @@ export default function FixedAssets() {
             actions={
               <div className="flex flex-wrap items-end gap-2">
                 <Field label={L('كما في', 'As of')}>
-                  <Input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
+                  <DateField value={asOf} onChange={(event) => setAsOf(event.target.value)} />
                 </Field>
                 {viewAll ? (
                   <label className="flex h-9 items-center gap-2 text-medium text-text-default">
@@ -1326,10 +1327,10 @@ export default function FixedAssets() {
             <Input value={assetForm.acquisition_journal_entry_id} onChange={(event) => setAssetForm({ ...assetForm, acquisition_journal_entry_id: event.target.value })} maxLength={40} />
           </Field>
           <Field label={L('تاريخ الرسملة', 'Capitalization date')} required>
-            <Input type="date" value={assetForm.capitalization_date} onChange={(event) => setAssetForm({ ...assetForm, capitalization_date: event.target.value })} />
+            <DateField value={assetForm.capitalization_date} onChange={(event) => setAssetForm({ ...assetForm, capitalization_date: event.target.value })} />
           </Field>
           <Field label={L('تاريخ بدء الخدمة', 'In-service date')}>
-            <Input type="date" value={assetForm.in_service_date} onChange={(event) => setAssetForm({ ...assetForm, in_service_date: event.target.value })} />
+            <DateField value={assetForm.in_service_date} onChange={(event) => setAssetForm({ ...assetForm, in_service_date: event.target.value })} />
           </Field>
           <Field label={L('قيمة الاقتناء', 'Acquisition value')} required>
             <Input inputMode="decimal" value={assetForm.acquisition_value} onChange={(event) => setAssetForm({ ...assetForm, acquisition_value: event.target.value })} placeholder="12000.00" />
@@ -1454,7 +1455,7 @@ export default function FixedAssets() {
                   </Select>
                 </Field>
                 <Field label={L('تاريخ التحويل', 'Transfer date')} required>
-                  <Input type="date" value={lifecycle.transferDate} onChange={(event) => setLifecycle({ ...lifecycle, transferDate: event.target.value })} />
+                  <DateField value={lifecycle.transferDate} onChange={(event) => setLifecycle({ ...lifecycle, transferDate: event.target.value })} />
                 </Field>
                 <Field label={L('السبب', 'Reason')}>
                   <Input value={lifecycle.reason} onChange={(event) => setLifecycle({ ...lifecycle, reason: event.target.value })} maxLength={255} />
@@ -1465,7 +1466,7 @@ export default function FixedAssets() {
             {lifecycle.mode === 'dispose' ? (
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={L('تاريخ الاستبعاد', 'Disposal date')} required>
-                  <Input type="date" value={lifecycle.disposalDate} onChange={(event) => setLifecycle({ ...lifecycle, disposalDate: event.target.value })} />
+                  <DateField value={lifecycle.disposalDate} onChange={(event) => setLifecycle({ ...lifecycle, disposalDate: event.target.value })} />
                 </Field>
                 <Field label={L('نوع الاستبعاد', 'Disposal type')}>
                   <Select
@@ -1508,7 +1509,7 @@ export default function FixedAssets() {
                     <Input inputMode="decimal" value={lifecycle.impairmentAmount} onChange={(event) => setLifecycle({ ...lifecycle, impairmentAmount: event.target.value })} />
                   </Field>
                   <Field label={L('تاريخ المستند', 'Document date')}>
-                    <Input type="date" value={lifecycle.documentDate} onChange={(event) => setLifecycle({ ...lifecycle, documentDate: event.target.value })} />
+                    <DateField value={lifecycle.documentDate} onChange={(event) => setLifecycle({ ...lifecycle, documentDate: event.target.value })} />
                   </Field>
                   <Field label={L('ملاحظة السند', 'Voucher memo')}>
                     <Input value={lifecycle.memo} onChange={(event) => setLifecycle({ ...lifecycle, memo: event.target.value })} maxLength={255} />

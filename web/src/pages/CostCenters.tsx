@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -238,10 +239,10 @@ export default function CostCenters() {
             <Input value={form.name_en} onChange={(event) => setForm({ ...form, name_en: event.target.value })} dir="ltr" />
           </Field>
           <Field label={ar ? 'ساري من' : 'Effective from'}>
-            <Input type="date" value={form.effective_from} onChange={(event) => setForm({ ...form, effective_from: event.target.value })} dir="ltr" />
+            <DateField value={form.effective_from} onChange={(event) => setForm({ ...form, effective_from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={ar ? 'ساري إلى' : 'Effective to'}>
-            <Input type="date" value={form.effective_to} onChange={(event) => setForm({ ...form, effective_to: event.target.value })} dir="ltr" />
+            <DateField value={form.effective_to} onChange={(event) => setForm({ ...form, effective_to: event.target.value })} dir="ltr" />
           </Field>
         </div>
         {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}

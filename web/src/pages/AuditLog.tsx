@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -177,10 +178,10 @@ export default function AuditLog() {
             </Select>
           </Field>
           <Field label={t('auditFrom')}>
-            <Input id="audit-from" type="date" value={draft.from} onChange={(event) => update('from', event.target.value)} />
+            <DateField id="audit-from" value={draft.from} onChange={(event) => update('from', event.target.value)} />
           </Field>
           <Field label={t('auditTo')}>
-            <Input id="audit-to" type="date" value={draft.to} onChange={(event) => update('to', event.target.value)} />
+            <DateField id="audit-to" value={draft.to} onChange={(event) => update('to', event.target.value)} />
           </Field>
           <div className="flex items-end gap-2">
             <Button type="submit" icon="filter">

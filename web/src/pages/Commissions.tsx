@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -631,10 +632,10 @@ export default function Commissions() {
                 </Select>
               </Field>
               <Field label={L('من', 'From')}>
-                <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} dir="ltr" />
+                <DateField value={from} onChange={(event) => setFrom(event.target.value)} dir="ltr" />
               </Field>
               <Field label={L('إلى', 'To')}>
-                <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} dir="ltr" />
+                <DateField value={to} onChange={(event) => setTo(event.target.value)} dir="ltr" />
               </Field>
             </div>
             {beneficiariesQuery.isLoading ? <Loading /> : null}
@@ -800,10 +801,10 @@ export default function Commissions() {
             />
           </Field>
           <Field label={L('يسري من', 'Effective from')} required>
-            <Input type="date" value={form.effective_from} onChange={(event) => setForm({ ...form, effective_from: event.target.value })} dir="ltr" />
+            <DateField value={form.effective_from} onChange={(event) => setForm({ ...form, effective_from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('يسري حتى', 'Effective to')}>
-            <Input type="date" value={form.effective_to} onChange={(event) => setForm({ ...form, effective_to: event.target.value })} dir="ltr" />
+            <DateField value={form.effective_to} onChange={(event) => setForm({ ...form, effective_to: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('بين الفروع', 'Cross-branch')}>
             <label className="flex items-center gap-2 py-2 text-sm">
@@ -880,7 +881,7 @@ export default function Commissions() {
             <Input value={payForm.amount} onChange={(event) => setPayForm({ ...payForm, amount: event.target.value })} inputMode="decimal" dir="ltr" placeholder={L('كامل المتبقي', 'Full outstanding')} />
           </Field>
           <Field label={t('date')}>
-            <Input type="date" value={payForm.paid_on} onChange={(event) => setPayForm({ ...payForm, paid_on: event.target.value })} dir="ltr" />
+            <DateField value={payForm.paid_on} onChange={(event) => setPayForm({ ...payForm, paid_on: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('المرجع', 'Reference')}>
             <Input value={payForm.reference} onChange={(event) => setPayForm({ ...payForm, reference: event.target.value })} />

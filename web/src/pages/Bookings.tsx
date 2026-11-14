@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -478,10 +479,10 @@ export default function Bookings() {
             </Field>
           ) : null}
           <Field label={t('startDate')} required>
-            <Input type="date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} dir="ltr" />
+            <DateField value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('endDate')}>
-            <Input type="date" value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} dir="ltr" />
+            <DateField value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={locale === 'ar' ? 'بالغون' : 'Adults'}>
             <Input type="number" min="1" value={form.pax_adults} onChange={(event) => setForm({ ...form, pax_adults: event.target.value })} dir="ltr" />

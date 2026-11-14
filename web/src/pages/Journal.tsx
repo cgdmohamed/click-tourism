@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -362,10 +363,10 @@ export default function Journal() {
             </Field>
           </div>
           <Field label={ar ? 'من تاريخ' : 'From'}>
-            <Input type="date" value={filters.from} max={filters.to || undefined} onChange={(event) => updateFilters({ from: event.target.value })} dir="ltr" />
+            <DateField value={filters.from} max={filters.to || undefined} onChange={(event) => updateFilters({ from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={ar ? 'إلى تاريخ' : 'To'}>
-            <Input type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => updateFilters({ to: event.target.value })} dir="ltr" />
+            <DateField value={filters.to} min={filters.from || undefined} onChange={(event) => updateFilters({ to: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('status')}>
             <Select value={filters.status} onChange={(event) => updateFilters({ status: event.target.value as Filters['status'] })}>
@@ -506,7 +507,7 @@ export default function Journal() {
       >
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label={t('date')} required>
-            <Input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} dir="ltr" />
+            <DateField value={entryDate} onChange={(event) => setEntryDate(event.target.value)} dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
             <Select value={currency} onChange={(event) => setCurrency(event.target.value)}>

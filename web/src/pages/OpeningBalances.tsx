@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -286,7 +287,7 @@ export default function OpeningBalances() {
         {error ? <p className="mb-3 text-medium text-danger-text">{error}</p> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={L('تاريخ الترحيل', 'As-of date')} required>
-            <Input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} dir="ltr" />
+            <DateField value={asOf} onChange={(event) => setAsOf(event.target.value)} dir="ltr" />
           </Field>
           <Field label={t('description')}>
             <Input value={memo} onChange={(event) => setMemo(event.target.value)} />

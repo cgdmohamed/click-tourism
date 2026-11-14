@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -519,16 +520,16 @@ export default function Invoices() {
             </Field>
           ) : null}
           <Field label={t('date')} required>
-            <Input
-              type="date"
+            <DateField
+              
               value={form.issue_date}
               onChange={(event) => setForm({ ...form, issue_date: event.target.value })}
               dir="ltr"
             />
           </Field>
           <Field label={L('تاريخ الاستحقاق', 'Due date')}>
-            <Input
-              type="date"
+            <DateField
+              
               value={form.due_date}
               onChange={(event) => setForm({ ...form, due_date: event.target.value })}
               dir="ltr"

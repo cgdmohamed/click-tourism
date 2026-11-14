@@ -1,3 +1,4 @@
+import { DateField } from './DateField'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../i18n'
@@ -162,7 +163,7 @@ export function InvoiceCollectionModal({
                     <Input value={row.amount} inputMode="decimal" dir="ltr" onChange={(e) => updateRow(index, { amount: e.target.value })} />
                   </Field>
                   <Field label={L('تاريخ التحصيل', 'Collection date')} required>
-                    <Input value={row.paidAt} type="date" dir="ltr" onChange={(e) => updateRow(index, { paidAt: e.target.value })} />
+                    <DateField value={row.paidAt} onChange={(e) => updateRow(index, { paidAt: e.target.value })} />
                   </Field>
                   {invoice.currency !== baseCurrency ? (
                     <Field label={L('سعر الصرف وقت التحصيل', 'Collection FX rate')} required>

@@ -57,26 +57,75 @@ const statuses: Record<string, Label> = {
   closed: { ar: 'مغلق', en: 'Closed' },
   cancelled: { ar: 'ملغي', en: 'Cancelled' },
   no_show: { ar: 'لم يحضر', en: 'No show' },
-  submitted: { ar: 'مُقدم', en: 'Submitted' },
+  submitted: { ar: 'بانتظار الاعتماد', en: 'Awaiting approval' },
   approved: { ar: 'معتمد', en: 'Approved' },
   issued: { ar: 'صادر', en: 'Issued' },
-  voided: { ar: 'ملغي', en: 'Voided' },
+  voided: { ar: 'مُبطَل', en: 'Voided' },
   open: { ar: 'مفتوح', en: 'Open' },
   partially_paid: { ar: 'مدفوع جزئياً', en: 'Partially paid' },
   paid: { ar: 'مدفوع', en: 'Paid' },
   posted: { ar: 'مُرحّل', en: 'Posted' },
-  requested: { ar: 'مطلوب', en: 'Requested' },
+  requested: { ar: 'تم الطلب', en: 'Requested' },
   disbursed: { ar: 'مصروف', en: 'Disbursed' },
   settled: { ar: 'مُسدد', en: 'Settled' },
   cleared: { ar: 'مُسوّى', en: 'Cleared' },
-  returned: { ar: 'مُعاد', en: 'Returned' },
+  returned: { ar: 'مُرجَع', en: 'Returned' },
   rejected: { ar: 'مرفوض', en: 'Rejected' },
   reversed: { ar: 'معكوس', en: 'Reversed' },
-  soft_closed: { ar: 'إغلاق مبدئي', en: 'Soft closed' },
+  soft_closed: { ar: 'مغلق مؤقتاً', en: 'Soft closed' },
   pending: { ar: 'قيد الانتظار', en: 'Pending' },
   active: { ar: 'نشط', en: 'Active' },
   new: { ar: 'جديد', en: 'New' },
+  overdue: { ar: 'متأخر', en: 'Overdue' },
+  failed: { ar: 'فشل', en: 'Failed' },
 }
+
+export type StatusTone = 'neutral' | 'info' | 'positive' | 'warning' | 'negative'
+
+/**
+ * One semantic colour map for every status badge:
+ * neutral = not started / waiting, info = in flight, positive = done or good,
+ * warning = needs attention, negative = cancelled / failed.
+ */
+const statusTones: Record<string, StatusTone> = {
+  draft: 'neutral',
+  quoted: 'neutral',
+  pending: 'neutral',
+  new: 'neutral',
+  requested: 'neutral',
+  closed: 'neutral',
+  returned: 'neutral',
+  in_progress: 'info',
+  open: 'info',
+  issued: 'info',
+  disbursed: 'info',
+  accrued: 'info',
+  confirmed: 'positive',
+  completed: 'positive',
+  approved: 'positive',
+  paid: 'positive',
+  posted: 'positive',
+  active: 'positive',
+  settled: 'positive',
+  cleared: 'positive',
+  submitted: 'warning',
+  partially_paid: 'warning',
+  soft_closed: 'warning',
+  cancelled: 'negative',
+  no_show: 'negative',
+  voided: 'negative',
+  void: 'negative',
+  rejected: 'negative',
+  reversed: 'negative',
+  overdue: 'negative',
+  failed: 'negative',
+}
+
+export function statusToneOf(status: string): StatusTone {
+  return statusTones[status] ?? 'neutral'
+}
+
+export const knownStatuses = Object.keys(statuses)
 
 export function statusLabel(value: string | null | undefined, locale: Locale): string {
   if (!value) return '—'

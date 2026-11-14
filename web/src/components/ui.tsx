@@ -10,6 +10,7 @@ import type {
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { formatMoney } from '../lib/format'
+import { statusToneOf } from '../lib/labels'
 import { nextTabIndex } from '../lib/tabs'
 import { Icon } from './icons'
 import type { IconName } from './icons'
@@ -448,11 +449,12 @@ export function PageHeader({
   )
 }
 
-type BadgeTone = 'neutral' | 'positive' | 'warning' | 'negative' | 'brand'
+type BadgeTone = 'neutral' | 'info' | 'positive' | 'warning' | 'negative' | 'brand'
 
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: BadgeTone }) {
   const tones: Record<BadgeTone, string> = {
     neutral: 'border-border-subtle bg-surface-subtle text-text-subtle',
+    info: 'border-info-border bg-info-background text-info-text',
     positive: 'border-success-border bg-success-background text-success-text',
     warning: 'border-warning-border bg-warning-background text-warning-text',
     negative: 'border-danger-border bg-danger-background text-danger-text',
@@ -465,32 +467,9 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
   )
 }
 
+/** Semantic tone for a status code; the map lives in lib/labels.ts. */
 export function statusTone(status: string): BadgeTone {
-  switch (status) {
-    case 'confirmed':
-    case 'completed':
-    case 'posted':
-    case 'paid':
-    case 'approved':
-      return 'positive'
-    case 'draft':
-    case 'quoted':
-    case 'accrued':
-    case 'partially_paid':
-      return 'warning'
-    case 'cancelled':
-    case 'no_show':
-    case 'void':
-    case 'rejected':
-    case 'reversed':
-      return 'negative'
-    case 'open':
-      return 'positive'
-    case 'submitted':
-      return 'warning'
-    default:
-      return 'brand'
-  }
+  return statusToneOf(status)
 }
 
 export function Table({ children }: { children: ReactNode }) {

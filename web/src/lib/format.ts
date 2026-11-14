@@ -70,6 +70,19 @@ export function formatDate(value: string | undefined | null, locale: 'ar' | 'en'
   }).format(date)
 }
 
+/** Unambiguous long date (e.g. "14 نوفمبر 2026") for an ISO `YYYY-MM-DD` value; timezone-safe. */
+export function formatDateLong(value: string | undefined | null, locale: 'ar' | 'en'): string {
+  if (!value) return ''
+  const date = new Date(`${value.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)
+}
+
 export function formatDateTime(value: string | undefined | null, locale: 'ar' | 'en'): string {
   if (!value) return '—'
   const date = new Date(value)

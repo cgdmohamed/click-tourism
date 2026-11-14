@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -512,7 +513,7 @@ export default function Payments() {
             </Select>
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={form.paid_at} onChange={(event) => setForm({ ...form, paid_at: event.target.value })} dir="ltr" />
+            <DateField value={form.paid_at} onChange={(event) => setForm({ ...form, paid_at: event.target.value })} dir="ltr" />
           </Field>
           <Field label={locale === 'ar' ? 'سعر الصرف' : 'FX rate'}>
             <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} dir="ltr" />

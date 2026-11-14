@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -488,7 +489,7 @@ export default function Documents() {
             </Field>
           ) : null}
           <Field label={t('date')} required>
-            <Input type="date" value={form.document_date} onChange={(event) => setForm({ ...form, document_date: event.target.value })} dir="ltr" />
+            <DateField value={form.document_date} onChange={(event) => setForm({ ...form, document_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
             <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
