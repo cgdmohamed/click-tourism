@@ -18,7 +18,6 @@ import {
   Field,
   Input,
   Loading,
-  Modal,
   PageHeader,
   Pagination,
   Select,
@@ -36,33 +35,14 @@ import BookingDetails from './BookingDetails'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
+import { BookingFormShell, FormSection } from '../components/booking/BookingFormShell'
+import { BookingSummary } from '../components/booking/BookingSummary'
+import { ServiceCard } from '../components/booking/ServiceCard'
+import { emptyItem, withUid, type DraftItem } from '../components/booking/types'
+import { focusField, validateBooking } from '../components/booking/validation'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
 type TourOption = { id: string; name: string; currency: string; execution_type: string; base_price_minor: number; estimated_cost_minor: number; departures: DepartureOption[] | null }
-
-type DraftItem = {
-  service_type: string
-  supplier_id: string
-  description: string
-  starts_on: string
-  quantity: string
-  unit_cost: string
-  unit_sell: string
-  cost_currency: string
-  sell_currency: string
-}
-
-const emptyItem = (currency: string): DraftItem => ({
-  service_type: 'flight',
-  supplier_id: '',
-  description: '',
-  starts_on: todayISO(),
-  quantity: '1',
-  unit_cost: '0',
-  unit_sell: '0',
-  cost_currency: currency,
-  sell_currency: currency,
-})
 
 export default function Bookings() {
   const currencyCodes = useActiveCurrencyCodes()
@@ -98,6 +78,8 @@ export default function Bookings() {
     notes: '',
   })
   const [items, setItems] = useState<DraftItem[]>([emptyItem('EGP')])
+  // Inline errors appear after the first save attempt (the "still needed" list is always visible).
+  const [showErrors, setShowErrors] = useState(false)
   // A new draft must never keep a currency that is no longer offered (e.g. the hard-coded default
   // after it was deactivated): reconcile the draft and its lines with the active currencies.
   const draftCurrency = editTarget ? form.currency : resolveCurrency(form.currency, currencyCodes, baseCurrency)
@@ -241,6 +223,7 @@ export default function Bookings() {
     onSuccess: async (booking) => {
       setOpen(false)
       setEditTarget(null)
+      setShowErrors(false)
       setError('')
       setItems([emptyItem(draftCurrency)])
       await queryClient.invalidateQueries({ queryKey: ['bookings'] })
@@ -251,6 +234,7 @@ export default function Bookings() {
 
   const startCreate = () => {
     setError('')
+    setShowErrors(false)
     setEditTarget(null)
     setForm({
       customer_id: requestedCustomerId,
@@ -307,6 +291,7 @@ export default function Bookings() {
 
   const startEdit = (booking: Booking) => {
     setError('')
+    setShowErrors(false)
     setEditTarget(booking)
     setForm({
       customer_id: booking.customer_id,
@@ -321,7 +306,7 @@ export default function Bookings() {
       notes: booking.notes ?? '',
     })
     setItems(
-      (booking.items ?? []).map((item) => ({
+      (booking.items ?? []).map((item) => withUid({
         service_type: item.service_type,
         supplier_id: item.supplier_id ?? '',
         description: item.description,
@@ -340,17 +325,30 @@ export default function Bookings() {
     setItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
 
-  const serviceLabel = (value: string) => {
-    const labels: Record<string, [string, string]> = {
-      flight: ['طيران', 'Flight'],
-      hotel: ['فندق', 'Hotel'],
-      transport: ['نقل', 'Transport'],
-      visa: ['تأشيرة', 'Visa'],
-      program: ['برنامج سياحي', 'Program'],
-      other: ['أخرى', 'Other'],
+  const duplicateItem = (index: number) => {
+    setItems((current) => {
+      const source = current[index]
+      if (!source) return current
+      return [...current.slice(0, index + 1), { ...source, uid: withUid(source).uid }, ...current.slice(index + 1)]
+    })
+  }
+
+  const closeForm = () => {
+    setOpen(false)
+    setEditTarget(null)
+    setShowErrors(false)
+  }
+
+  const validation = useMemo(() => validateBooking(form, items, locale === 'ar'), [form, items, locale])
+
+  const submit = () => {
+    if (create.isPending) return
+    if (!validation.valid) {
+      setShowErrors(true)
+      focusField(validation.missing[0].target)
+      return
     }
-    const found = labels[value]
-    return found ? found[locale === 'ar' ? 0 : 1] : value
+    create.mutate()
   }
 
   return (
@@ -480,179 +478,138 @@ export default function Bookings() {
       </Card>
 
       <BookingDetails bookingId={viewId} onClose={() => setViewId(null)} />
-      <QuickCreateCustomer open={quickCustomerOpen} onClose={() => setQuickCustomerOpen(false)}
-        onCreated={(customer) => { setForm((current) => ({ ...current, customer_id: customer.id })); setQuickCustomerOpen(false) }} />
 
-      <Modal
-        open={open}
-        title={editTarget ? `${t('edit')} ${editTarget.number}` : t('newBooking')}
-        onClose={() => { setOpen(false); setEditTarget(null) }}
-        footer={
-          <>
-            <span className="me-auto text-sm text-text-subtle">
-              {t('total')}: {toDecimal(totals.sell, draftCurrency)} · {t('tax')}: {toDecimal(totals.tax, draftCurrency)} · {t('margin')}: {toDecimal(totals.margin, draftCurrency)}
-              {totals.margin < 0 ? (
-                <strong role="alert" className="ms-2 text-warning-text">
-                  {locale === 'ar' ? 'تنبيه: الهامش سالب (سعر البيع أقل من التكلفة).' : 'Warning: negative margin (selling below cost).'}
-                </strong>
-              ) : null}
-            </span>
-            <Button variant="secondary" onClick={() => { setOpen(false); setEditTarget(null) }}>
-              {t('cancel')}
-            </Button>
-            <Button disabled={create.isPending || !form.customer_id} onClick={() => create.mutate()}>
-              {create.isPending ? t('saving') : t('save')}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <Field label={t('customer')} required>
-              <PartyPicker
-                kind="customer"
-                value={form.customer_id}
-                onChange={(customer_id) => setForm({ ...form, customer_id })}
-                placeholder={t('selectCustomer')}
-              />
-            </Field>
-            {!editTarget && can('customers.create') ? (
-              <Button variant="ghost" icon="plus" onClick={() => setQuickCustomerOpen(true)}>
-                {locale === 'ar' ? 'إضافة عميل جديد دون مغادرة الحجز' : 'Add customer without leaving booking'}
-              </Button>
-            ) : null}
-          </div>
-          {!editTarget ? (
-            <Field label={locale === 'ar' ? 'موعد برنامج سياحي (اختياري)' : 'Tour departure (optional)'}>
-              <Select
-                value={form.tour_departure_id}
-                onChange={(event) => selectDeparture(event.target.value)}
-              >
-                <option value="">{locale === 'ar' ? 'حجز مستقل / خدمة منفصلة' : 'Independent booking / standalone service'}</option>
-                {departureOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </Select>
-            </Field>
-          ) : null}
-          <Field label={t('startDate')} required>
-            <DateField value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={t('endDate')}>
-            <DateField value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={locale === 'ar' ? 'بالغون' : 'Adults'}>
-            <Input type="number" min="1" value={form.pax_adults} onChange={(event) => setForm({ ...form, pax_adults: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={locale === 'ar' ? 'أطفال' : 'Children'}>
-            <Input type="number" min="0" value={form.pax_children} onChange={(event) => setForm({ ...form, pax_children: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={locale === 'ar' ? 'رضع' : 'Infants'}>
-            <Input type="number" min="0" value={form.pax_infants} onChange={(event) => setForm({ ...form, pax_infants: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={t('currency')} required>
-            <Select value={draftCurrency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
-              {currencyCodes.map((code) => (
-                <option key={code} value={code}>{code}</option>
-              ))}
-            </Select>
-          </Field>
-          {draftCurrency !== baseCurrency ? (
-            <Field label={locale === 'ar' ? 'سعر الصرف (اختياري)' : 'Exchange rate (optional)'}>
-              <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
-            </Field>
-          ) : null}
-          <Field label={locale === 'ar' ? 'ملاحظات' : 'Notes'}>
-            <Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-          </Field>
-        </div>
-
-        <h3 className="mt-6 text-sm font-semibold">{t('items')}</h3>
-        <div className="mt-3 flex flex-col gap-3">
-          {items.map((item, index) => {
-            const amounts = itemAmounts(item)
-            return (
-              <div key={index} className="grid gap-3 rounded-12 border border-border-default p-3 sm:grid-cols-12">
-                <div className="sm:col-span-3">
-                  <Field label={t('service')}>
-                    <Select value={item.service_type} onChange={(event) => updateItem(index, { service_type: event.target.value })}>
-                      {['flight', 'hotel', 'transport', 'visa', 'program', 'other'].map((service) => (
-                        <option key={service} value={service}>
-                          {serviceLabel(service)}
-                        </option>
-                      ))}
+      {open ? (
+        <BookingFormShell
+          title={editTarget ? `${t('edit')} ${editTarget.number}` : t('newBooking')}
+          onClose={closeForm}
+          escapeDisabled={quickCustomerOpen}
+          footer={
+            <BookingSummary
+              currency={draftCurrency}
+              sell={totals.sell}
+              tax={totals.tax}
+              margin={totals.margin}
+              taxEnabled={taxEnabled}
+              missing={validation.missing}
+              error={error}
+              actions={
+                <>
+                  <Button variant="secondary" onClick={closeForm}>{t('cancel')}</Button>
+                  <Button disabled={create.isPending} onClick={submit}>{create.isPending ? t('saving') : t('save')}</Button>
+                </>
+              }
+            />
+          }
+        >
+          <FormSection id="bf-trip" title={locale === 'ar' ? 'العميل والرحلة' : 'Customer and trip'}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <div className="min-w-0 sm:col-span-2" id="bf-customer">
+                <Field label={t('customer')} required error={showErrors ? validation.errors.customer : undefined}>
+                  <PartyPicker
+                    kind="customer"
+                    value={form.customer_id}
+                    onChange={(customer_id) => setForm({ ...form, customer_id })}
+                    placeholder={t('selectCustomer')}
+                  />
+                </Field>
+                {!editTarget && can('customers.create') ? (
+                  <Button variant="ghost" icon="plus" className="mt-2 px-2" onClick={() => setQuickCustomerOpen(true)}>
+                    {locale === 'ar' ? 'إضافة عميل جديد دون مغادرة الحجز' : 'Add customer without leaving booking'}
+                  </Button>
+                ) : null}
+              </div>
+              {!editTarget ? (
+                <div className="min-w-0 sm:col-span-2">
+                  <Field label={locale === 'ar' ? 'موعد برنامج سياحي (اختياري)' : 'Tour departure (optional)'}>
+                    <Select value={form.tour_departure_id} onChange={(event) => selectDeparture(event.target.value)}>
+                      <option value="">{locale === 'ar' ? 'حجز مستقل / خدمة منفصلة' : 'Independent booking / standalone service'}</option>
+                      {departureOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                     </Select>
                   </Field>
                 </div>
-                <div className="sm:col-span-4">
-                  <Field label={t('supplier')}>
-                    <PartyPicker
-                      kind="supplier"
-                      value={item.supplier_id}
-                      onChange={(supplier_id) => updateItem(index, { supplier_id })}
-                      placeholder={t('supplier')}
-                      clearLabel={t('none')}
-                    />
-                  </Field>
-                </div>
-                <div className="sm:col-span-5">
-                  <Field label={t('description')}>
-                    <Input value={item.description} onChange={(event) => updateItem(index, { description: event.target.value })} />
-                  </Field>
-                </div>
-                <div className="sm:col-span-2">
-                  <Field label={t('quantity')}>
-                    <Input value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} inputMode="numeric" dir="ltr" />
-                  </Field>
-                </div>
-                <div className="sm:col-span-3">
-                  <Field label={`${t('unitCost')} (${item.cost_currency})`}>
-                    <Input value={item.unit_cost} onChange={(event) => updateItem(index, { unit_cost: event.target.value })} inputMode="decimal" dir="ltr" />
-                  </Field>
-                </div>
-                <div className="sm:col-span-3">
-                  <Field label={`${t('unitPrice')} (${item.sell_currency})`}>
-                    <Input value={item.unit_sell} onChange={(event) => updateItem(index, { unit_sell: event.target.value })} inputMode="decimal" dir="ltr" />
-                  </Field>
-                </div>
-                <div className="flex items-end justify-between gap-2 sm:col-span-4">
-                  <dl className="text-small min-w-0 text-text-subtle">
-                    <div className="flex gap-2">
-                      <dt>{t('total')}:</dt>
-                      <dd className="tabular text-text-default">{formatMoney(amounts.sell, item.sell_currency, locale)}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt>{t('margin')}:</dt>
-                      <dd className={`tabular ${amounts.sell - amounts.cost < 0 ? 'text-warning-text' : 'text-text-default'}`}>
-                        {formatMoney(amounts.sell - amounts.cost, item.sell_currency, locale)}
-                      </dd>
-                    </div>
-                    {taxEnabled ? (
-                      <div className="flex gap-2">
-                        <dt>{t('tax')}:</dt>
-                        <dd className="tabular text-text-default">{formatMoney(amounts.tax, item.sell_currency, locale)}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                  <Button
-                    variant="ghost"
-                    icon="x"
-                    disabled={items.length <= 1}
-                    onClick={() => setItems((current) => current.filter((_, i) => i !== index))}
-                    aria-label={t('removeLine')}
-                  />
-                </div>
-                {!taxEnabled ? (
-                  <p className="text-small text-text-subtle sm:col-span-12">{locale === 'ar' ? 'الضريبة معطلة في الإعدادات.' : 'Tax is disabled in settings.'}</p>
-                ) : null}
+              ) : null}
+              <div className="min-w-0">
+                <Field label={t('startDate')} required error={showErrors ? validation.errors.start_date : undefined}>
+                  <DateField id="bf-start-date" value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} dir="ltr" aria-invalid={showErrors && Boolean(validation.errors.start_date)} />
+                </Field>
               </div>
-            )
-          })}
-          <Button variant="secondary" onClick={() => setItems((current) => [...current, emptyItem(draftCurrency)])}>
-            + {t('addLine')}
-          </Button>
-        </div>
+              <div className="min-w-0">
+                <Field label={t('endDate')} error={showErrors ? validation.errors.end_date : undefined}>
+                  <DateField id="bf-end-date" value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} dir="ltr" aria-invalid={showErrors && Boolean(validation.errors.end_date)} />
+                </Field>
+              </div>
+              <div className="min-w-0">
+                <Field label={t('currency')} required>
+                  <Select value={draftCurrency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>
+                    {currencyCodes.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+              {draftCurrency !== baseCurrency ? (
+                <div className="min-w-0">
+                  <Field label={locale === 'ar' ? 'سعر الصرف (اختياري)' : 'Exchange rate (optional)'}>
+                    <Input value={form.fx_rate} onChange={(event) => setForm({ ...form, fx_rate: event.target.value })} placeholder={locale === 'ar' ? 'تلقائي حسب جدول الأسعار' : 'Automatic from the rate table'} inputMode="decimal" dir="ltr" />
+                  </Field>
+                </div>
+              ) : null}
+              <div className="min-w-0 sm:col-span-2 md:col-span-4">
+                <Field label={locale === 'ar' ? 'ملاحظات' : 'Notes'}>
+                  <Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+                </Field>
+              </div>
+            </div>
+          </FormSection>
 
-        {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
-      </Modal>
+          <FormSection id="bf-travellers" title={locale === 'ar' ? 'المسافرون' : 'Travellers'}>
+            <div className="grid max-w-xl grid-cols-3 gap-4">
+              <div className="min-w-0">
+                <Field label={locale === 'ar' ? 'بالغون' : 'Adults'} required error={showErrors ? validation.errors.pax_adults : undefined}>
+                  <Input id="bf-adults" type="number" min="1" value={form.pax_adults} onChange={(event) => setForm({ ...form, pax_adults: event.target.value })} dir="ltr" aria-invalid={showErrors && Boolean(validation.errors.pax_adults)} />
+                </Field>
+              </div>
+              <div className="min-w-0">
+                <Field label={locale === 'ar' ? 'أطفال' : 'Children'} error={showErrors ? validation.errors.pax_children : undefined}>
+                  <Input id="bf-children" type="number" min="0" value={form.pax_children} onChange={(event) => setForm({ ...form, pax_children: event.target.value })} dir="ltr" aria-invalid={showErrors && Boolean(validation.errors.pax_children)} />
+                </Field>
+              </div>
+              <div className="min-w-0">
+                <Field label={locale === 'ar' ? 'رضع' : 'Infants'} error={showErrors ? validation.errors.pax_infants : undefined}>
+                  <Input id="bf-infants" type="number" min="0" value={form.pax_infants} onChange={(event) => setForm({ ...form, pax_infants: event.target.value })} dir="ltr" aria-invalid={showErrors && Boolean(validation.errors.pax_infants)} />
+                </Field>
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection id="bf-services" title={t('items')} hint={locale === 'ar' ? 'كل خدمة بطاقة مستقلة بتكلفتها وسعرها وهامشها.' : 'Each service is its own card with its cost, price and margin.'}>
+            <ul className="flex list-none flex-col gap-3 p-0" aria-label={t('items')}>
+              {items.map((item, index) => (
+                <ServiceCard
+                  key={item.uid}
+                  item={item}
+                  index={index}
+                  amounts={itemAmounts(item)}
+                  errors={validation.errors.lines[index] ?? {}}
+                  showErrors={showErrors}
+                  taxEnabled={taxEnabled}
+                  canRemove={items.length > 1}
+                  onChange={(patch) => updateItem(index, patch)}
+                  onDuplicate={() => duplicateItem(index)}
+                  onRemove={() => setItems((current) => current.filter((_, i) => i !== index))}
+                />
+              ))}
+            </ul>
+            {showErrors && validation.errors.items ? <p className="text-small mt-2 text-danger-text">{validation.errors.items}</p> : null}
+            <Button id="bf-add-line" variant="secondary" icon="plus" className="mt-3 w-full sm:w-auto" onClick={() => setItems((current) => [...current, emptyItem(draftCurrency)])}>
+              {t('addLine')}
+            </Button>
+          </FormSection>
+        </BookingFormShell>
+      ) : null}
+      <QuickCreateCustomer open={quickCustomerOpen} onClose={() => setQuickCustomerOpen(false)}
+        onCreated={(customer) => { setForm((current) => ({ ...current, customer_id: customer.id })); setQuickCustomerOpen(false) }} />
     </div>
   )
 }
