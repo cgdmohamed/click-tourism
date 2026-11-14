@@ -102,7 +102,7 @@ export default function Approvals() {
             const data = queries[index].data
             if (!data || data.data.length === 0) return null
             return (
-              <Card key={source.key}>
+              <Card key={source.key} className="p-4 sm:p-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="heading-small">{source.label[locale]}</h2>
                   <Badge tone="warning">{data.meta.total}</Badge>
@@ -154,7 +154,7 @@ export default function Approvals() {
             )
           })}
           {refundQuery.data && refundQuery.data.data.length > 0 ? (
-            <Card>
+            <Card className="p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="heading-small">{L('استردادات', 'Refunds')}</h2>
                 <Badge tone="warning">{refundQuery.data.meta.total}</Badge>
