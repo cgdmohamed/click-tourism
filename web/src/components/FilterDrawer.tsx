@@ -252,7 +252,7 @@ export function FilterDrawer({ state, title, children, applyDisabled = false }: 
       closeDrawer()
       return
     }
-    if (event.key === 'Enter' && event.target instanceof HTMLInputElement && event.target.type !== 'checkbox') {
+    if (event.key === 'Enter' && !event.defaultPrevented && event.target instanceof HTMLInputElement && event.target.type !== 'checkbox') {
       event.preventDefault()
       if (!applyDisabled) state.apply()
       return

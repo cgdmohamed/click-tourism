@@ -386,6 +386,9 @@ export function SearchableSelect({
       setActiveIndex(step(rows.length, -1))
     } else if (event.key === 'Enter') {
       event.preventDefault()
+      // The list is portaled, but React still bubbles the event to the picker's ancestors (a drawer or form
+      // that submits on Enter); choosing an option must not also submit them.
+      event.stopPropagation()
       if (rows[activeIndex]) select(rows[activeIndex])
     } else if (event.key === 'Escape') {
       event.preventDefault()
@@ -446,7 +449,8 @@ export function SearchableSelect({
                   aria-label={t('search')}
                   onChange={(event) => {
                     setQuery(event.target.value)
-                    setActiveIndex(0)
+                    // With a query, the first match is active: Enter must not pick the leading "All" row.
+                    setActiveIndex(clearLabel && event.target.value.trim() !== '' ? 1 : 0)
                   }}
                   onKeyDown={onSearchKeyDown}
                 />

@@ -9,7 +9,7 @@ import type { Paginated } from '../lib/types'
 import { ReasonModal } from '../components/ReasonModal'
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Money, PageHeader } from '../components/ui'
 
-import { REFUND_SOURCE, rowAmount, rowDate, visibleSources } from '../lib/approvals'
+import { REFUND_SOURCE, recordHref, rowAmount, rowDate, visibleSources } from '../lib/approvals'
 import type { Row, Source } from '../lib/approvals'
 
 type Pending = { source: Source; row: Row }
@@ -111,7 +111,7 @@ export default function Approvals() {
                   {data.data.map((row) => (
                     <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                       <div className="min-w-0">
-                        <Link to={source.page} className="label text-text-link hover:underline">
+                        <Link to={recordHref(source, row.id)} className="label text-text-link hover:underline">
                           {row.number ?? row.id}
                         </Link>
                         <p className="text-small truncate text-text-subtle">
