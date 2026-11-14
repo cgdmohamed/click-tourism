@@ -89,11 +89,14 @@ class AssistantUploadService
         $upload->delete();
     }
 
-    /** Removes expired files and their rows. */
+    /**
+     * Removes expired files and their rows. Walks the rows by id: each() pages by offset, and deleting
+     * rows from the set being paged would skip the next page and leave expired files on disk.
+     */
     public function prune(): int
     {
         $count = 0;
-        AssistantUpload::query()->where('expires_at', '<=', now())->each(function (AssistantUpload $upload) use (&$count) {
+        AssistantUpload::query()->where('expires_at', '<=', now())->eachById(function (AssistantUpload $upload) use (&$count) {
             $this->delete($upload);
             $count++;
         });

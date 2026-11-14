@@ -16,6 +16,8 @@ import {
   canSend,
   citationLink,
   dropLastTurn,
+  lastUserAttachmentIds,
+  withoutFileNote,
   formatAsOf,
   fromSaved,
   pickStarters,
@@ -114,7 +116,9 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
   })
 
   const ask = useCallback(
-    async (turns: ChatMessage[], conversation: string | null, attachments: string[] = []) => {
+    async (turns: ChatMessage[], conversation: string | null) => {
+      // The files belong to the user turn, so a retry or a resubmit sends them again.
+      const attachments = lastUserAttachmentIds(turns)
       const controller = new AbortController()
       abortRef.current = controller
       stepsRef.current = []
@@ -172,12 +176,11 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
     const text = draft.trim() === '' && files.length > 0 ? t('assistantAttachDefault') : draft
     if (!canSend(text, busy) || uploading) return
     const label = files.length > 0 ? `${text}\n[${files.map((file) => file.name).join(', ')}]` : text
-    const next = addUserMessage(messages, label)
-    const ids = files.map((file) => file.id)
+    const next = addUserMessage(messages, label, files)
     setMessages(next)
     setDraft('')
     setFiles([])
-    void ask(next, conversationId, ids)
+    void ask(next, conversationId)
   }
 
   async function attach(list: FileList | null) {
@@ -216,7 +219,10 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
     setStatus('')
     // Take the question back into the input so nothing typed is lost.
     const last = [...messages].reverse().find((message) => message.role === 'user')
-    if (last) setDraft(last.content)
+    if (last) {
+      setDraft(withoutFileNote(last))
+      setFiles(last.attachments ?? [])
+    }
     setMessages(dropLastTurn(messages))
     inputRef.current?.focus()
   }

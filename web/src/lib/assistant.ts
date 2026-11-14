@@ -32,6 +32,8 @@ export type ChatMessage = {
   key: number
   role: 'user' | 'assistant'
   content: string
+  /** Files uploaded with this user turn (ADR-0028). Kept with the turn so a retry or a resubmit sends them again. */
+  attachments?: Array<{ id: string; name: string }>
   citations?: Citation[]
   actions?: ActionCard[]
   truncated?: boolean
@@ -55,8 +57,23 @@ export type ChatReply = {
 export const MAX_MESSAGES = 40
 export const MAX_MESSAGE_CHARS = 4000
 
-export function addUserMessage(messages: ChatMessage[], content: string): ChatMessage[] {
-  return [...messages, { key: nextKey(messages), role: 'user', content: content.trim() }]
+export function addUserMessage(messages: ChatMessage[], content: string, attachments: Array<{ id: string; name: string }> = []): ChatMessage[] {
+  return [...messages, { key: nextKey(messages), role: 'user', content: content.trim(), ...(attachments.length > 0 ? { attachments } : {}) }]
+}
+
+/** The file ids to send with this turn: those of the last user message. */
+export function lastUserAttachmentIds(turns: ChatMessage[]): string[] {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index].role === 'user') return (turns[index].attachments ?? []).map((file) => file.id)
+  }
+  return []
+}
+
+/** The text of a user turn without the `[file names]` line that was added for display. */
+export function withoutFileNote(message: ChatMessage): string {
+  const names = message.attachments?.map((file) => file.name) ?? []
+  const note = names.length > 0 ? `\n[${names.join(', ')}]` : ''
+  return note !== '' && message.content.endsWith(note) ? message.content.slice(0, -note.length) : message.content
 }
 
 export function addAssistantReply(messages: ChatMessage[], reply: ChatReply, steps: string[] = []): ChatMessage[] {

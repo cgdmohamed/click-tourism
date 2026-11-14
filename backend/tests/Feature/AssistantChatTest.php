@@ -36,6 +36,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -684,6 +685,28 @@ class AssistantChatTest extends TestCase
 
         $this->assertSame(1, app(AssistantUploadService::class)->prune());
         $this->assertSame(0, AssistantUpload::query()->count());
+    }
+
+    public function test_pruning_removes_every_expired_file_even_beyond_one_page(): void
+    {
+        Storage::fake(config('attachments.disk'));
+        $rows = [];
+        foreach (range(1, 2300) as $i) {
+            $rows[] = [
+                'public_id' => (string) Str::ulid(), 'user_id' => $this->user->id, 'name' => "r$i.png", 'mime' => 'image/png', 'size_bytes' => 1,
+                'sha256' => str_repeat('a', 64), 'stored_path' => "assistant-uploads/test/$i.png", 'expires_at' => now()->subHour(), 'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        foreach (array_chunk($rows, 500) as $chunk) {
+            AssistantUpload::query()->insert($chunk);
+        }
+        Storage::disk(config('attachments.disk'))->put('assistant-uploads/test/2300.png', 'x');
+        $live = $this->uploadReceipt('keep.png')->assertCreated()->json('data.id');
+
+        $this->assertSame(2300, app(AssistantUploadService::class)->prune());
+
+        $this->assertSame([$live], AssistantUpload::query()->pluck('public_id')->all(), 'only the unexpired file is left');
+        Storage::disk(config('attachments.disk'))->assertMissing('assistant-uploads/test/2300.png');
     }
 
     public function test_uploads_follow_the_assistant_switches_and_attachment_count_is_capped(): void
