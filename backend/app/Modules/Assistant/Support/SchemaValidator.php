@@ -12,7 +12,7 @@ final class SchemaValidator
 {
     public const SUPPORTED_KEYWORDS = [
         'type', 'properties', 'required', 'additionalProperties', 'enum', 'minLength', 'maxLength',
-        'pattern', 'format', 'minimum', 'maximum', 'default',
+        'pattern', 'format', 'minimum', 'maximum', 'default', 'items', 'minItems', 'maxItems',
     ];
 
     /** @return list<string> Human-readable problems; empty when valid. */
@@ -26,6 +26,7 @@ final class SchemaValidator
             'object' => $this->object($schema, $value, $path),
             'string' => $this->string($schema, $value, $path),
             'integer' => $this->integer($schema, $value, $path),
+            'array' => $this->array($schema, $value, $path),
             'boolean' => is_bool($value) ? [] : ["{$path} must be a boolean"],
             default => [],
         };
@@ -53,6 +54,26 @@ final class SchemaValidator
                 continue;
             }
             array_push($errors, ...$this->errors($properties[$name], $item, (string) $name));
+        }
+
+        return $errors;
+    }
+
+    private function array(array $schema, mixed $value, string $path): array
+    {
+        if (! is_array($value) || ! array_is_list($value)) {
+            return ["{$path} must be a list"];
+        }
+
+        $errors = [];
+        if (isset($schema['minItems']) && count($value) < $schema['minItems']) {
+            $errors[] = "{$path} needs at least {$schema['minItems']} items";
+        }
+        if (isset($schema['maxItems']) && count($value) > $schema['maxItems']) {
+            $errors[] = "{$path} allows at most {$schema['maxItems']} items";
+        }
+        foreach ($value as $index => $item) {
+            array_push($errors, ...$this->errors($schema['items'] ?? [], $item, "{$path}[{$index}]"));
         }
 
         return $errors;

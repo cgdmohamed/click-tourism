@@ -37,6 +37,7 @@ class Supplier extends Model
     {
         return [
             'id' => $this->public_id,
+            'created_via' => $this->created_via,
             'category' => $this->category,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,

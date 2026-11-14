@@ -9,6 +9,7 @@ import type { Paginated, Supplier } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
 import { Icon } from '../components/icons'
 import { localizedName } from '../lib/names'
+import { AiBadge } from '../components/AiBadge'
 
 const categories = supplierCategories
 
@@ -108,6 +109,7 @@ export default function Suppliers() {
                     <Link to={`/suppliers/${supplier.id}`} className="font-medium text-brand-1-accent hover:underline">
                       {localizedName(supplier, locale)}
                     </Link>
+                    <AiBadge via={supplier.created_via} />
                   </Td>
                   <Td>{categoryLabel(supplier.category)}</Td>
                   <Td dir="ltr">{supplier.phone ?? '—'}</Td>

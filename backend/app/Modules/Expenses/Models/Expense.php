@@ -74,6 +74,7 @@ class Expense extends Model
     {
         return [
             'id' => $this->public_id,
+            'created_via' => $this->created_via,
             'number' => $this->number,
             'expense_date' => $this->expense_date?->toDateString(),
             'category' => $this->category?->toApiArray(),

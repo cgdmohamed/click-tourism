@@ -91,6 +91,7 @@ export type Refund = {
 
 export type Customer = {
   id: string
+  created_via?: string | null
   type: 'individual' | 'company'
   name_ar: string
   name_en: string
@@ -106,6 +107,7 @@ export type Customer = {
 
 export type Supplier = {
   id: string
+  created_via?: string | null
   category: string
   name_ar: string
   name_en: string
@@ -175,6 +177,7 @@ export type BookingCostSummary = {
 
 export type Booking = {
   id: string
+  created_via?: string | null
   number: string
   tour_departure_id?: string | null
   customer_id: string
@@ -261,6 +264,7 @@ export type SupplierPayment = {
 
 export type Lead = {
   id: string
+  created_via?: string | null
   name: string
   phone?: string
   email?: string

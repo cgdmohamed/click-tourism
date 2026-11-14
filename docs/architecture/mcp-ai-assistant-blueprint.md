@@ -272,6 +272,8 @@ Existing limiters (`throttle:60,1` on search, `throttle:20,1` on exports) stay i
 
 ## 9. Write tools: BLOCKED
 
+> 2026-11-13: for the **in-product assistant only**, a first batch of prepare-and-confirm actions is accepted in ADR-0023 (leads, customers, suppliers, draft invoices/expenses/bookings). The MCP gateway and MCP tokens remain read-only, and everything below still applies to MCP.
+
 All write tools are **BLOCKED pending explicit product approval and accounting governance**. No schema is published for them, no route is allowlisted, and the `mcp.readonly` middleware rejects every non-GET. Listed for traceability only:
 
 | Candidate write tool | Underlying route | Why blocked |

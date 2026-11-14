@@ -2,6 +2,7 @@
 
 namespace App\Modules\Assistant\Services;
 
+use App\Modules\Assistant\Actions\ActionCatalogue;
 use App\Modules\Assistant\Support\ChatResult;
 use App\Modules\Assistant\Support\OutputSanitizer;
 use App\Modules\Assistant\Support\ProviderException;
@@ -31,6 +32,8 @@ class ChatService
         private readonly OutputSanitizer $output,
         private readonly AuditService $audit,
         private readonly SettingService $settings,
+        private readonly ActionCatalogue $actionCatalogue,
+        private readonly ActionService $actionService,
     ) {}
 
     public function tokenBudget(): int
@@ -55,7 +58,9 @@ class ChatService
         $redactor = new Redactor($this->settings->bool('assistant', 'redact_pii', true));
         $maxCalls = $this->providers->limit('max_tool_calls_per_turn');
         $options = ['model' => $this->providers->model(), 'max_output_tokens' => $this->providers->limit('max_output_tokens')];
-        $tools = $this->catalogue->modelTools();
+        // Read tools for everyone; the actions the user may prepare are added by permission (ADR-0023).
+        $tools = [...$this->catalogue->modelTools(), ...$this->actionCatalogue->modelTools($user)];
+        $actions = [];
 
         $conversation = [['role' => 'system', 'content' => $this->systemPrompt($locale, $branch)]];
         foreach ($messages as $message) {
@@ -108,6 +113,25 @@ class ChatService
                 ];
 
                 foreach ($reply->toolCalls as $call) {
+                    if ($this->actionCatalogue->has($call['name']) && $calls < $maxCalls) {
+                        $calls++;
+                        if ($onEvent !== null) {
+                            $onEvent(['type' => 'tool', 'tool' => $call['name'], 'entity' => 'action']);
+                        }
+                        $decoded = json_decode((string) $call['arguments'], true);
+                        $proposal = is_array($decoded)
+                            ? $this->actionService->propose($user, $branch, $call['name'], $decoded, $redactor, $locale)
+                            : ['ok' => false, 'text' => "<erp_error>\n{\"error\":{\"code\":\"validation_failed\",\"message\":\"The arguments are not a JSON object.\"}}\n</erp_error>", 'card' => null];
+                        $conversation[] = ['role' => 'tool', 'tool_call_id' => $call['id'], 'content' => $proposal['text']];
+                        $executed[] = $call['name'];
+                        if ($proposal['card'] !== null) {
+                            $actions[] = $proposal['card'];
+                        } elseif (! $proposal['ok']) {
+                            $toolErrors++;
+                        }
+
+                        continue;
+                    }
                     if ($calls >= $maxCalls) {
                         $capReached = $truncated = true;
                         $status = 'tool_limit';
@@ -161,6 +185,7 @@ class ChatService
             $toolErrors,
             $rejected,
             $rounds,
+            $actions,
         );
         $this->log($user, $branch, $locale, $status, $options['model'], $prompt, $completion, $executed, $toolErrors, $rejected, $rounds, $calls);
 

@@ -27,6 +27,7 @@ class ContractApprovalTest extends TestCase
      */
     private const CONTRACT_ADRS = [
         'ADR-0018' => 'docs/architecture/ADRs/0018-assistant-enablement-and-mcp-status.md',
+        'ADR-0023' => 'docs/architecture/ADRs/0023-assistant-prepared-actions.md',
         'ADR-0022' => 'docs/architecture/ADRs/0022-assistant-chat-mode-history-and-live-progress.md',
     ];
 

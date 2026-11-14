@@ -30,6 +30,7 @@ import {
 } from '../components/ui'
 import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
+import { AiBadge } from '../components/AiBadge'
 
 type Category = { id: string; code: string; name_ar: string; name_en: string; account_code: string }
 type CashAccount = { id: string; cash_account_id?: string; name_ar: string; name_en: string; currency: string; registered: boolean; is_active?: boolean }
@@ -37,6 +38,7 @@ type CurrencyRow = { code: string; is_active: boolean }
 
 type Expense = {
   id: string
+  created_via?: string | null
   number: string
   expense_date: string
   category: Category | null
@@ -230,7 +232,10 @@ export default function Expenses() {
                 {data.data.map((expense) => (
                   <tr key={expense.id}>
                     <Td className="tabular">{formatDate(expense.expense_date, locale)}</Td>
-                    <Td className="tabular">{expense.number}</Td>
+                    <Td className="tabular">
+                      {expense.number}
+                      <AiBadge via={expense.created_via} />
+                    </Td>
                     <Td>{catName(expense.category)}</Td>
                     <Td>
                       {expense.description}

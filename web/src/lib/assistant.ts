@@ -13,12 +13,25 @@ export type Citation = {
   as_of: string
 }
 
+/** An action the assistant prepared; nothing is saved until the user confirms it (ADR-0023). */
+export type ActionCard = {
+  id: string
+  tool: string
+  title: string
+  status: 'pending' | 'confirmed' | 'rejected' | 'failed' | 'expired'
+  rows: Array<{ label: string; value: string }>
+  expires_at: string
+  result: { entity: string; id: string } | null
+  error: { code: string | null; message: string | null } | null
+}
+
 export type ChatMessage = {
   /** Client-side key only; never sent to the server. */
   key: number
   role: 'user' | 'assistant'
   content: string
   citations?: Citation[]
+  actions?: ActionCard[]
   truncated?: boolean
   /** Tools the assistant used for this answer (shown as "Searched: ..."); not saved or sent. */
   steps?: string[]
@@ -31,6 +44,7 @@ export type ChatReply = {
   citations: Citation[]
   usage: { prompt: number; completion: number; total: number }
   truncated: boolean
+  actions?: ActionCard[]
   /** Set when the server saved the turn (ADR-0022); null when saving is off. */
   conversation_id?: string | null
 }
@@ -46,13 +60,13 @@ export function addUserMessage(messages: ChatMessage[], content: string): ChatMe
 export function addAssistantReply(messages: ChatMessage[], reply: ChatReply, steps: string[] = []): ChatMessage[] {
   return [
     ...messages,
-    { key: nextKey(messages), role: 'assistant', content: reply.answer, citations: reply.citations, truncated: reply.truncated, steps },
+    { key: nextKey(messages), role: 'assistant', content: reply.answer, citations: reply.citations, truncated: reply.truncated, steps, actions: reply.actions ?? [] },
   ]
 }
 
 /** Messages of a saved conversation (GET /assistant/conversations/{id}) as screen messages. */
-export function fromSaved(rows: Array<{ role: 'user' | 'assistant'; content: string; citations?: Citation[]; truncated?: boolean }>): ChatMessage[] {
-  return rows.map((row, index) => ({ key: index + 1, role: row.role, content: row.content, citations: row.citations ?? [], truncated: row.truncated ?? false }))
+export function fromSaved(rows: Array<{ role: 'user' | 'assistant'; content: string; citations?: Citation[]; truncated?: boolean; actions?: ActionCard[] }>): ChatMessage[] {
+  return rows.map((row, index) => ({ key: index + 1, role: row.role, content: row.content, citations: row.citations ?? [], truncated: row.truncated ?? false, actions: row.actions ?? [] }))
 }
 
 export function addAssistantError(messages: ChatMessage[], text: string): ChatMessage[] {

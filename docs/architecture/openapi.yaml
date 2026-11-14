@@ -299,6 +299,10 @@ paths:
                             route: { type: string, example: /invoices/01HX }
                             as_of: { type: string, format: date-time }
                             labels: { type: array, items: { type: string }, description: 'Document number or names of the cited row; the screen links them in the answer (ADR-0022)' }
+                      actions:
+                        type: array
+                        description: 'Confirmation cards of the actions prepared in this turn (ADR-0023); nothing is saved until the user confirms'
+                        items: { $ref: '#/components/schemas/AssistantActionCard' }
                       usage:
                         type: object
                         properties:
@@ -342,6 +346,44 @@ paths:
       responses:
         '200': { description: 'NDJSON event stream', content: { application/x-ndjson: { schema: { type: string } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /assistant/actions/{id}/confirm:
+    post:
+      tags: [Auth]
+      summary: The user confirms an action the assistant prepared; it runs as the user (ADR-0023)
+      description: |
+        Replays the prepared request through the normal API route with the signed-in user as actor, the action's branch in `X-Branch-Id` and `Idempotency-Key: assistant-<id>`. The route's own permission, validation and audit apply, so the result can be `status: failed` with the route's message (for example `forbidden` when the permission was revoked). Errors: 404 (not yours), 409 `assistant_action_decided` (already confirmed, rejected or failed), 409 `assistant_action_branch_mismatch`, 410 `assistant_action_expired` (15 minutes).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The card with its new status (`confirmed` with `result.entity` / `result.id`, or `failed` with `error`)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AssistantActionCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Already decided or prepared in another branch }
+        '410': { description: Expired }
+
+  /assistant/actions/{id}/reject:
+    post:
+      tags: [Auth]
+      summary: Discard an action the assistant prepared (ADR-0023)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The card with status `rejected` (an already decided action is returned unchanged)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AssistantActionCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /assistant/conversations:
     get:
@@ -5934,6 +5976,32 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    AssistantActionCard:
+      type: object
+      description: 'An action the assistant prepared (ADR-0023)'
+      properties:
+        id: { type: string }
+        tool: { type: string, enum: [erp_lead_create, erp_lead_update, erp_customer_create, erp_supplier_create, erp_invoice_draft_create, erp_expense_draft_create, erp_booking_draft_create] }
+        title: { type: string }
+        status: { type: string, enum: [pending, confirmed, rejected, failed, expired] }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              value: { type: string }
+        expires_at: { type: string, format: date-time }
+        result:
+          type: [object, 'null']
+          properties:
+            entity: { type: string }
+            id: { type: string }
+        error:
+          type: [object, 'null']
+          properties:
+            code: { type: [string, 'null'] }
+            message: { type: [string, 'null'] }
     Error:
       type: object
       properties:

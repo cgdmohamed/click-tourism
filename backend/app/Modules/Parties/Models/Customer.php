@@ -41,6 +41,7 @@ class Customer extends Model
     {
         return [
             'id' => $this->public_id,
+            'created_via' => $this->created_via,
             'type' => $this->type,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,

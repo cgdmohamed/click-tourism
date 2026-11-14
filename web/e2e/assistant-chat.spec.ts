@@ -67,3 +67,45 @@ test('the assistant mode replaces the system with a chat that shows steps, links
   await page.getByRole('button', { name: /العودة إلى النظام|Back to the system/ }).click()
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
 })
+
+test('an action the assistant prepares waits for the user and then runs as confirmed', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  const pending = {
+    id: '01HACTIONACTIONACTIONACTION', tool: 'erp_customer_create', title: 'إنشاء عميل', status: 'pending', expires_at: '2099-01-01T00:00:00Z', result: null, error: null,
+    rows: [{ label: 'الاسم بالإنجليزية', value: 'Nile Co' }, { label: 'الاسم بالعربية', value: 'شركة النيل' }],
+  }
+  let confirmed = 0
+  await page.route('**/api/v1/feature-flags', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { data: Record<string, unknown> }
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, assistant_enabled: true, assistant_provider: 'openai' } } })
+  })
+  await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    const answer = { type: 'answer', data: { answer: 'جهّزت العميل، راجع البطاقة.', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [pending], conversation_id: null } }
+    const lines = [{ type: 'thinking' }, { type: 'tool', tool: 'erp_customer_create', entity: 'action' }, answer]
+    return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: lines.map((line) => JSON.stringify(line)).join('\n') + '\n' })
+  })
+  await page.route('**/api/v1/assistant/actions/*/confirm', (route) => {
+    confirmed += 1
+    return route.fulfill({ json: { data: { ...pending, status: 'confirmed', result: { entity: 'customer', id: 'customer12345' } } } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
+  await page.locator('#assistant-input').fill('أنشئ عميل شركة النيل')
+  await page.keyboard.press('Enter')
+
+  const card = page.getByRole('region', { name: 'إنشاء عميل' })
+  await expect(card).toBeVisible()
+  await expect(card).toContainText('Nile Co')
+  expect(confirmed, 'nothing runs before the user decides').toBe(0)
+
+  const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
+
+  await card.getByRole('button', { name: /تأكيد وتنفيذ|Confirm and run/ }).click()
+  await expect(card.getByRole('status')).toContainText(/تم التنفيذ|Done/)
+  await expect(card.getByRole('link', { name: /افتح السجل|Open record/ })).toHaveAttribute('href', '/customers/customer12345')
+  expect(confirmed).toBe(1)
+})
