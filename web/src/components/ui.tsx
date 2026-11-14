@@ -12,7 +12,7 @@ import { Children, Fragment, isValidElement, useEffect, useId, useLayoutEffect, 
 import { createPortal } from 'react-dom'
 import { useI18n } from '../i18n'
 import { describeError, recallError } from '../lib/errors'
-import { formatMoney } from '../lib/format'
+import { formatMoneyParts, moneyFitStyle } from '../lib/format'
 import { statusToneOf } from '../lib/labels'
 import { nextTabIndex } from '../lib/tabs'
 import { Icon } from './icons'
@@ -886,9 +886,30 @@ export function StatCard({
   )
 }
 
-export function Money({ amountMinor, currency }: { amountMinor?: number | null; currency: string }) {
+/**
+ * The one amount rule: a single nowrap, left-to-right, bidi-isolated run with
+ * the minus sign first (and the danger colour), tabular digits and the full
+ * value in `title`. Inside a `.money-fit` container the font steps down so a
+ * 15-digit value still fits on one line.
+ */
+export function Money({
+  amountMinor,
+  currency,
+  className,
+}: {
+  amountMinor?: number | null
+  currency: string
+  className?: string
+}) {
   const { locale } = useI18n()
-  return <span className="tabular">{formatMoney(amountMinor, currency, locale)}</span>
+  const { negative, segments, text } = formatMoneyParts(amountMinor, currency, locale)
+  return (
+    <span dir="ltr" title={text} style={moneyFitStyle(text)} className={cx('money-run', negative && 'text-danger-text', className)}>
+      {segments.map((segment, index) =>
+        segment.kind === 'currency' ? <bdi key={index} dir="auto">{segment.value}</bdi> : <span key={index}>{segment.value}</span>,
+      )}
+    </span>
+  )
 }
 
 export function Modal({
