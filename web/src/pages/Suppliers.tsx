@@ -7,9 +7,9 @@ import { api, errorMessage } from '../lib/api'
 import { supplierCategories, supplierCategoryLabel } from '../lib/labels'
 import type { Paginated, Supplier } from '../lib/types'
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
-import { Icon } from '../components/icons'
 import { localizedName } from '../lib/names'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 
 const categories = supplierCategories
 
@@ -64,13 +64,14 @@ export default function Suppliers() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
+  const inactiveLabel = locale === 'ar' ? 'موقوف' : 'Inactive'
   const categoryLabel = (value: string) => supplierCategoryLabel(value, locale)
 
   return (
     <div>
       <PageHeader
         title={t('suppliers')}
-        subtitle={locale === 'ar' ? 'الموردون حسب النشاط وأرصدتهم' : 'Suppliers by category and balances'}
+        subtitle={locale === 'ar' ? 'الموردون حسب النشاط وجهات الاتصال' : 'Suppliers by category and contact details'}
         icon="truck"
         actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newSupplier')}</Button>}
       />
@@ -91,46 +92,60 @@ export default function Suppliers() {
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {query.data && suppliers.length === 0 ? <EmptyState /> : null}
         {suppliers.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>{t('name')}</Th>
-                <Th>{t('category')}</Th>
-                <Th>{t('phone')}</Th>
-                <Th>{t('currency')}</Th>
-                <Th>{t('status')}</Th>
-                <Th className="text-end">{t('actions')}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {suppliers.map((supplier) => (
-                <tr key={supplier.id}>
-                  <Td>
-                    <Link to={`/suppliers/${supplier.id}`} className="font-medium text-brand-1-accent hover:underline">
+          <>
+            <MobileCards items={suppliers} getKey={(supplier) => supplier.id} label={t('suppliers')}>
+              {(supplier) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <Link to={`/suppliers/${supplier.id}`} className="text-medium font-semibold text-brand-1-accent underline">
                       {localizedName(supplier, locale)}
                     </Link>
-                    <AiBadge via={supplier.created_via} />
-                  </Td>
-                  <Td>{categoryLabel(supplier.category)}</Td>
-                  <Td dir="ltr">{supplier.phone ?? '—'}</Td>
-                  <Td>{supplier.settlement_currency}</Td>
-                  <Td>
-                    <Badge tone={supplier.is_active ? 'positive' : 'neutral'}>
-                      {supplier.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
-                    </Badge>
-                  </Td>
-                  <Td className="text-end">
-                    <Link to={`/suppliers/${supplier.id}`} className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
-                      {t('viewProfile')}
-                      <Icon name="chevronRight" className="h-3.5 w-3.5" directional />
-                    </Link>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+                    <span>
+                      {supplier.is_active ? null : <Badge tone="neutral">{inactiveLabel}</Badge>}
+                      <AiBadge via={supplier.created_via} />
+                    </span>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('category')}>{categoryLabel(supplier.category)}</CardField>
+                    <CardField label={t('currency')}>{supplier.settlement_currency}</CardField>
+                    <CardField label={t('phone')}>
+                      <span dir="ltr">{supplier.phone ?? '—'}</span>
+                    </CardField>
+                  </dl>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>{t('name')}</Th>
+                    <Th>{t('category')}</Th>
+                    <Th>{t('phone')}</Th>
+                    <Th>{t('currency')}</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppliers.map((supplier) => (
+                    <tr key={supplier.id}>
+                      <Td>
+                        <Link to={`/suppliers/${supplier.id}`} className="font-medium text-brand-1-accent hover:underline">
+                          {localizedName(supplier, locale)}
+                        </Link>
+                        {supplier.is_active ? null : <Badge tone="neutral">{inactiveLabel}</Badge>}
+                        <AiBadge via={supplier.created_via} />
+                      </Td>
+                      <Td>{categoryLabel(supplier.category)}</Td>
+                      <Td dir="ltr">{supplier.phone ?? '—'}</Td>
+                      <Td>{supplier.settlement_currency}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </TableOnly>
+          </>
         ) : null}
-        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} total={query.data?.meta.total} perPage={query.data?.meta.per_page} />
       </Card>
 
       <Modal
