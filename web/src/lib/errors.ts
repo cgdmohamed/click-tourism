@@ -349,3 +349,143 @@ export function translateError(message: string, locale: ErrorLocale): string {
   }
   return message
 }
+
+// ---------------------------------------------------------------------------------
+// Friendly, locale-aware description of a failed request (used by <ErrorState>).
+// `errorMessage()` in api.ts is unchanged and still feeds form messages.
+// ---------------------------------------------------------------------------------
+
+export type ErrorKind =
+  | 'offline'
+  | 'network'
+  | 'timeout'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'notFound'
+  | 'validation'
+  | 'rateLimit'
+  | 'server'
+  | 'unknown'
+
+export type ErrorDescription = {
+  kind: ErrorKind
+  status?: number
+  code?: string
+  title: string
+  hint: string
+  /** The server's own message (translated when Arabic); shown only under "details". */
+  detail?: string
+  requestId?: string
+}
+
+const COPY: Record<ErrorKind, Record<ErrorLocale, { title: string; hint: string }>> = {
+  offline: {
+    ar: { title: 'لا يوجد اتصال بالإنترنت', hint: 'تحقق من اتصالك ثم أعد المحاولة.' },
+    en: { title: 'You are offline', hint: 'Check your connection and try again.' },
+  },
+  network: {
+    ar: { title: 'تعذّر الوصول إلى الخادم', hint: 'قد يكون الخادم متوقفاً مؤقتاً. أعد المحاولة بعد قليل.' },
+    en: { title: 'Could not reach the server', hint: 'The server may be temporarily unavailable. Try again shortly.' },
+  },
+  timeout: {
+    ar: { title: 'استغرق الطلب وقتاً طويلاً', hint: 'لم يردّ الخادم في الوقت المحدد. أعد المحاولة.' },
+    en: { title: 'The request took too long', hint: 'The server did not answer in time. Try again.' },
+  },
+  unauthorized: {
+    ar: { title: 'انتهت جلستك', hint: 'سجّل الدخول من جديد للمتابعة.' },
+    en: { title: 'Your session has ended', hint: 'Sign in again to continue.' },
+  },
+  forbidden: {
+    ar: { title: 'ليست لديك صلاحية لهذا الإجراء', hint: 'اطلب من المسؤول منحك الصلاحية المناسبة.' },
+    en: { title: 'You do not have permission for this', hint: 'Ask an administrator to grant you access.' },
+  },
+  notFound: {
+    ar: { title: 'لم يُعثر على السجل المطلوب', hint: 'ربما حُذف أو نُقل. عُد إلى القائمة وحاول مجدداً.' },
+    en: { title: 'The record was not found', hint: 'It may have been deleted or moved. Go back to the list and try again.' },
+  },
+  validation: {
+    ar: { title: 'البيانات المرسلة غير صالحة', hint: 'راجع القيم المُدخلة وحاول مرة أخرى.' },
+    en: { title: 'The submitted data is not valid', hint: 'Review the values you entered and try again.' },
+  },
+  rateLimit: {
+    ar: { title: 'طلبات كثيرة في وقت قصير', hint: 'انتظر لحظات ثم أعد المحاولة.' },
+    en: { title: 'Too many requests', hint: 'Wait a moment, then try again.' },
+  },
+  server: {
+    ar: { title: 'حدث خطأ في الخادم', hint: 'لم يتم تنفيذ الطلب. أعد المحاولة، وإن استمر الخطأ فأبلغ الدعم برقم الطلب.' },
+    en: { title: 'The server hit an error', hint: 'The request was not completed. Try again; if it persists, give support the request ID.' },
+  },
+  unknown: {
+    ar: { title: 'حدث خطأ غير متوقع', hint: 'أعد المحاولة، وإن استمر الخطأ فأبلغ الدعم.' },
+    en: { title: 'Something went wrong', hint: 'Try again; if it persists, contact support.' },
+  },
+}
+
+type ResponseData = { message?: string; code?: string; requestId?: string; errors?: Record<string, string[]> }
+type Shaped = {
+  isAxiosError?: boolean
+  code?: string
+  message?: string
+  response?: { status?: number; headers?: unknown; data?: unknown }
+}
+
+function readHeader(headers: unknown, name: string): string | undefined {
+  if (typeof headers !== 'object' || headers === null) return undefined
+  const getter = (headers as { get?: (n: string) => unknown }).get
+  const viaGet = typeof getter === 'function' ? getter.call(headers, name) : undefined
+  const raw = viaGet ?? (headers as Record<string, unknown>)[name.toLowerCase()]
+  return typeof raw === 'string' && raw ? raw : undefined
+}
+
+function kindFromStatus(status: number): ErrorKind {
+  if (status === 401) return 'unauthorized'
+  if (status === 403) return 'forbidden'
+  if (status === 404) return 'notFound'
+  if (status === 408) return 'timeout'
+  if (status === 400 || status === 422) return 'validation'
+  if (status === 429) return 'rateLimit'
+  if (status >= 500) return 'server'
+  return 'unknown'
+}
+
+/** Maps any thrown value to a translated headline + hint, with the server text kept as detail. */
+export function describeError(
+  error: unknown,
+  locale: ErrorLocale,
+  online: boolean = typeof navigator === 'undefined' || navigator.onLine !== false,
+): ErrorDescription {
+  const e = (typeof error === 'object' && error !== null ? error : {}) as Shaped
+  const status = e.response?.status
+  const data = (e.response?.data && typeof e.response.data === 'object' ? e.response.data : {}) as ResponseData
+  const code = typeof data.code === 'string' ? data.code : undefined
+
+  let kind: ErrorKind
+  if (typeof status === 'number') kind = kindFromStatus(status)
+  else if (e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT') kind = 'timeout'
+  else if (!online) kind = 'offline'
+  else if (e.isAxiosError) kind = 'network'
+  else kind = 'unknown'
+
+  const first = data.errors ? Object.values(data.errors)[0]?.[0] : undefined
+  const serverText = first ?? data.message ?? (e.isAxiosError || error instanceof Error ? e.message : undefined)
+  const detail = serverText ? translateError(serverText, locale) : undefined
+  const requestId = readHeader(e.response?.headers, 'X-Request-Id') ?? (typeof data.requestId === 'string' ? data.requestId : undefined)
+
+  const copy = COPY[kind][locale]
+  return { kind, status, code, title: copy.title, hint: copy.hint, detail, requestId }
+}
+
+// ErrorState receives only the already-formatted message string from errorMessage();
+// this bounded registry lets it recover the original error without changing any caller.
+const remembered = new Map<string, unknown>()
+
+export function rememberError(message: string, error: unknown): void {
+  if (!message || typeof error !== 'object' || error === null) return
+  remembered.delete(message)
+  remembered.set(message, error)
+  if (remembered.size > 50) remembered.delete(remembered.keys().next().value as string)
+}
+
+export function recallError(message: string): unknown {
+  return remembered.get(message)
+}
