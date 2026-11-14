@@ -24,7 +24,7 @@ export function MobileCards<T>({
   return (
     <ul className="flex flex-col gap-3 p-3 md:hidden" aria-label={label}>
       {items.map((item) => (
-        <li key={getKey(item)} className="flex flex-col gap-3 rounded-12 border border-border-subtle bg-surface-default p-4">
+        <li key={getKey(item)} className="anim-rise flex flex-col gap-3 rounded-12 border border-border-subtle bg-surface-default p-4">
           {children(item)}
         </li>
       ))}
