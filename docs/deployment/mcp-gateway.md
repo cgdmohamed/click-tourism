@@ -189,3 +189,31 @@ Never reachable with an MCP token: exports, settings, users, roles, audit data, 
 Rows: `mcp.token_created`, `mcp.token_revoked` (an admin revocation records `owner_id` and `revoked_by_admin`), `mcp.tool_called`, `mcp.tool_denied`, `mcp.bulk_read`.
 
 To switch the feature off: set `mcp.enabled` to `false` (all MCP tokens stop working at once), stop the gateway, revoke tokens, optionally remove `mcp.use` / `mcp.admin` from the roles.
+
+## Remote gateway over HTTP (Claude Code and OpenAI) - ADR-0024
+
+`src/http.js` serves the same 15 read-only tools over Streamable HTTP so clients that need a **remote** server can connect. It is stateless: each request carries the user's own MCP token (`Authorization: Bearer <token>`), so the gateway holds no secret.
+
+```bash
+cd mcp-gateway && npm ci
+API_BASE_URL=https://erp.example.com PORT=8787 node src/http.js     # or: docker build -t click-tourism-mcp . && docker run -p 8787:8787 -e API_BASE_URL=... click-tourism-mcp src/http.js
+```
+
+| Env | Meaning |
+|---|---|
+| `API_BASE_URL` | the ERP address (required) |
+| `PORT`, `HOST` | listen port (8787) and interface (0.0.0.0) |
+| `MCP_ALLOWED_ORIGINS` | comma list of browser origins allowed (empty = none; server-to-server clients send no Origin) |
+| `MCP_BREAKER_*`, `MCP_MASK_CONTACTS` | as for stdio |
+
+**Serve it over HTTPS only.** On Coolify: add a second application from this repository, base directory `mcp-gateway`, Dockerfile build, start command `node src/http.js`, port 8787, a domain such as `mcp.example.com` (Coolify issues TLS), env `API_BASE_URL`. Do not give it database credentials; it needs none.
+
+Endpoints: `POST /mcp` (JSON-RPC), `GET /health`. Test:
+
+```bash
+curl https://mcp.example.com/health
+curl https://mcp.example.com/mcp -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Clients: Claude Code `claude mcp add --transport http click-tourism-erp https://mcp.example.com/mcp --header "Authorization: Bearer $TOKEN"`; OpenAI Responses API tool `{"type":"mcp","server_label":"click_tourism_erp","server_url":"https://mcp.example.com/mcp","authorization":"$TOKEN"}`; Claude Desktop keeps using the stdio entry (`src/index.js`). The same instructions, with copyable snippets, are in **Settings > MCP**. Not supported: claude.ai custom connectors and the ChatGPT app's connectors (both need OAuth). UNVERIFIED against live OpenAI/Claude clients.
