@@ -101,6 +101,8 @@ Route::prefix('v1')->group(function () {
         // In-product read-only assistant (ADR-0017). Stateless; permission first, then the per-user limiter.
         Route::post('assistant/chat', [AssistantController::class, 'chat'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
         // ADR-0022: live progress as NDJSON, and the user's own saved conversations.
+        // ADR-0028: a file (receipt, slip, invoice photo) to read with the next message.
+        Route::post('assistant/uploads', [AssistantController::class, 'upload'])->middleware(['permission:assistant.use', 'throttle:30,1,assistant-uploads']);
         Route::post('assistant/chat/stream', [AssistantController::class, 'stream'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
         // ADR-0023: the user confirms or rejects an action the assistant prepared.
         Route::post('assistant/actions/{id}/confirm', [AssistantController::class, 'confirmAction'])->middleware(['permission:assistant.use', 'throttle:30,1,assistant-actions-id-confirm']);

@@ -9,6 +9,8 @@ use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Models\AssistantConversation;
+use App\Modules\Assistant\Models\AssistantUpload;
+use App\Modules\Assistant\Services\AssistantUploadService;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
@@ -29,9 +31,12 @@ use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -618,6 +623,104 @@ class AssistantChatTest extends TestCase
         }
     }
 
+    private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+    private function uploadReceipt(string $name = 'receipt.png', ?string $bytes = null)
+    {
+        Storage::fake(config('attachments.disk'));
+
+        return $this->post('/api/v1/assistant/uploads', ['file' => UploadedFile::fake()->createWithContent($name, $bytes ?? base64_decode(self::PNG))], ['Accept' => 'application/json']);
+    }
+
+    public function test_a_receipt_is_uploaded_checked_on_its_bytes_and_stored_privately_for_a_few_hours(): void
+    {
+        $done = $this->uploadReceipt()->assertCreated()->json('data');
+        $this->assertSame('image/png', $done['mime']);
+        $row = AssistantUpload::query()->where('public_id', $done['id'])->firstOrFail();
+        $this->assertSame($this->user->id, $row->user_id);
+        $this->assertTrue($row->expires_at->isFuture() && $row->expires_at->lt(now()->addHours(7)));
+        Storage::disk(config('attachments.disk'))->assertExists($row->stored_path);
+        $this->assertStringNotContainsString('receipt', $row->stored_path, 'stored under a random name');
+
+        $this->uploadReceipt('notes.txt', 'just text')->assertStatus(422);
+        $this->uploadReceipt('evil.pdf', "%PDF-1.4\n/JavaScript (app.alert(1))\n%%EOF")->assertStatus(422);
+        $this->assertSame(1, AssistantUpload::query()->count());
+    }
+
+    public function test_an_attached_receipt_reaches_the_provider_as_an_image_and_only_its_name_is_saved(): void
+    {
+        $id = $this->uploadReceipt()->assertCreated()->json('data.id');
+        $this->script([$this->finalReply('I read a receipt.')]);
+
+        $response = $this->chat('what is this receipt?', ['attachments' => [$id]])->assertOk();
+
+        $last = end($this->sent()[0]['messages']);
+        $this->assertIsArray($last['content']);
+        $this->assertSame('text', $last['content'][0]['type']);
+        $this->assertStringContainsString('"receipt.png"', $last['content'][0]['text']);
+        $this->assertStringContainsString('untrusted data', $last['content'][0]['text']);
+        $this->assertSame('image_url', $last['content'][1]['type']);
+        $this->assertStringStartsWith('data:image/png;base64,', $last['content'][1]['image_url']['url']);
+
+        $saved = AssistantConversation::query()->where('public_id', $response->json('data.conversation_id'))->firstOrFail();
+        $this->assertStringContainsString('[receipt.png]', $saved->messages()->where('role', 'user')->firstOrFail()->content);
+        $this->assertStringNotContainsString(self::PNG, json_encode($saved->messages()->get()->toArray()));
+        $this->assertSame(1, $this->auditRows('assistant.chat')[0]->after['files']);
+    }
+
+    public function test_a_file_of_another_user_or_an_expired_one_cannot_be_attached(): void
+    {
+        $id = $this->uploadReceipt()->assertCreated()->json('data.id');
+
+        $other = User::factory()->create();
+        $other->givePermissionTo('assistant.use');
+        Sanctum::actingAs($other, ['*']);
+        $this->script([$this->finalReply('no')]);
+        $this->chat('look', ['attachments' => [$id]])->assertStatus(422);
+        $this->assertCount(0, Http::recorded(), 'nothing was sent to the provider');
+
+        Sanctum::actingAs($this->user, ['*']);
+        AssistantUpload::query()->update(['expires_at' => now()->subMinute()]);
+        $this->chat('look', ['attachments' => [$id]])->assertStatus(422);
+
+        $this->assertSame(1, app(AssistantUploadService::class)->prune());
+        $this->assertSame(0, AssistantUpload::query()->count());
+    }
+
+    public function test_pruning_removes_every_expired_file_even_beyond_one_page(): void
+    {
+        Storage::fake(config('attachments.disk'));
+        $rows = [];
+        foreach (range(1, 2300) as $i) {
+            $rows[] = [
+                'public_id' => (string) Str::ulid(), 'user_id' => $this->user->id, 'name' => "r$i.png", 'mime' => 'image/png', 'size_bytes' => 1,
+                'sha256' => str_repeat('a', 64), 'stored_path' => "assistant-uploads/test/$i.png", 'expires_at' => now()->subHour(), 'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        foreach (array_chunk($rows, 500) as $chunk) {
+            AssistantUpload::query()->insert($chunk);
+        }
+        Storage::disk(config('attachments.disk'))->put('assistant-uploads/test/2300.png', 'x');
+        $live = $this->uploadReceipt('keep.png')->assertCreated()->json('data.id');
+
+        $this->assertSame(2300, app(AssistantUploadService::class)->prune());
+
+        $this->assertSame([$live], AssistantUpload::query()->pluck('public_id')->all(), 'only the unexpired file is left');
+        Storage::disk(config('attachments.disk'))->assertMissing('assistant-uploads/test/2300.png');
+    }
+
+    public function test_uploads_follow_the_assistant_switches_and_attachment_count_is_capped(): void
+    {
+        $ids = [];
+        foreach (range(1, 4) as $i) {
+            $ids[] = $this->post('/api/v1/assistant/uploads', ['file' => UploadedFile::fake()->createWithContent("r$i.png", base64_decode(self::PNG).$i)], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+        }
+        $this->chat('four files', ['attachments' => $ids])->assertStatus(422);
+
+        $this->settings->set('assistant', 'enabled', 'false');
+        $this->uploadReceipt()->assertStatus(403);
+    }
+
     public function test_an_unknown_payment_account_is_reported_with_the_choices_and_no_card_exists(): void
     {
         $this->grant('payments.create');
@@ -1085,12 +1188,12 @@ class AssistantChatTest extends TestCase
         }
     }
 
-    public function test_only_the_adr_0022_history_tables_exist(): void
+    public function test_only_the_known_assistant_tables_exist(): void
     {
         $tables = collect(Schema::getTableListing());
-        // ADR-0022 replaced "nothing is stored" with exactly two tables of the user's own saved chats.
+        // ADR-0022 replaced "nothing is stored" with the user's own saved chats; ADR-0023 added prepared actions, ADR-0028 short-lived chat files.
         $found = $tables->map(fn ($t) => preg_replace('/^[a-z_]+\\./', '', $t))->filter(fn ($t) => str_contains($t, 'assistant') || str_contains($t, 'conversation') || str_contains($t, 'transcript'))->sort()->values()->all();
-        $this->assertSame(['assistant_actions', 'assistant_conversations', 'assistant_messages'], $found);
+        $this->assertSame(['assistant_actions', 'assistant_conversations', 'assistant_messages', 'assistant_uploads'], $found);
     }
 
     // ---- prompt injection (AT-1, AT-2, AT-3) ---------------------------------------------------

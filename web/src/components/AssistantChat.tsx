@@ -16,6 +16,8 @@ import {
   canSend,
   citationLink,
   dropLastTurn,
+  lastUserAttachmentIds,
+  withoutFileNote,
   formatAsOf,
   fromSaved,
   pickStarters,
@@ -49,6 +51,10 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [files, setFiles] = useState<Array<{ id: string; name: string }>>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string>('')
   const [done, setDone] = useState<string[]>([])
@@ -111,6 +117,8 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
 
   const ask = useCallback(
     async (turns: ChatMessage[], conversation: string | null) => {
+      // The files belong to the user turn, so a retry or a resubmit sends them again.
+      const attachments = lastUserAttachmentIds(turns)
       const controller = new AbortController()
       abortRef.current = controller
       stepsRef.current = []
@@ -122,6 +130,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
           messages: toApiMessages(turns),
           locale,
           conversationId: conversation,
+          attachments,
           signal: controller.signal,
           onEvent: (event) => {
             if (event.type === 'thinking') {
@@ -163,11 +172,37 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
 
   function submit(event?: FormEvent) {
     event?.preventDefault()
-    if (!canSend(draft, busy)) return
-    const next = addUserMessage(messages, draft)
+    // A file with no words still sends: the assistant is asked to read it.
+    const text = draft.trim() === '' && files.length > 0 ? t('assistantAttachDefault') : draft
+    if (!canSend(text, busy) || uploading) return
+    const label = files.length > 0 ? `${text}\n[${files.map((file) => file.name).join(', ')}]` : text
+    const next = addUserMessage(messages, label, files)
     setMessages(next)
     setDraft('')
+    setFiles([])
     void ask(next, conversationId)
+  }
+
+  async function attach(list: FileList | null) {
+    if (!list || list.length === 0) return
+    setUploadError('')
+    setUploading(true)
+    try {
+      let count = files.length
+      for (const file of Array.from(list)) {
+        if (count >= 3) break
+        count += 1
+        const form = new FormData()
+        form.append('file', file)
+        const { data } = await api.post<{ data: { id: string; name: string } }>('/assistant/uploads', form)
+        setFiles((current) => [...current, { id: data.data.id, name: data.data.name }])
+      }
+    } catch (cause) {
+      setUploadError(errorMessage(cause))
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -184,7 +219,10 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
     setStatus('')
     // Take the question back into the input so nothing typed is lost.
     const last = [...messages].reverse().find((message) => message.role === 'user')
-    if (last) setDraft(last.content)
+    if (last) {
+      setDraft(withoutFileNote(last))
+      setFiles(last.attachments ?? [])
+    }
     setMessages(dropLastTurn(messages))
     inputRef.current?.focus()
   }
@@ -197,6 +235,8 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
     setMessages([])
     setConversationId(null)
     setDraft('')
+    setFiles([])
+    setUploadError('')
     setStarters(pickStarters(locale))
     setListOpen(false)
     inputRef.current?.focus()
@@ -396,7 +436,31 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
             <label className="sr-only" htmlFor="assistant-input">
               {t('assistantInputLabel')}
             </label>
+            {files.length > 0 || uploading || uploadError ? (
+              <div className="flex flex-wrap items-center gap-2" aria-live="polite">
+                {files.map((file) => (
+                  <span key={file.id} className="anim-rise text-small inline-flex max-w-full items-center gap-1 rounded-full border border-border-default bg-surface-subtle py-1 pe-1 ps-3">
+                    <Icon name="paperclip" size={14} />
+                    <bdi className="truncate">{file.name}</bdi>
+                    <IconButton icon="x" label={t('assistantAttachRemove')} onClick={() => setFiles((current) => current.filter((item) => item.id !== file.id))} />
+                  </span>
+                ))}
+                {uploading ? <span className="text-small text-text-subtle">{t('assistantAttachUploading')}</span> : null}
+                {uploadError ? <span role="alert" className="text-small text-danger-text">{uploadError}</span> : null}
+              </div>
+            ) : null}
             <div className="flex items-end gap-2 rounded-16 border border-border-default bg-surface-default p-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                multiple
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(event) => void attach(event.target.files)}
+              />
+              <IconButton icon="paperclip" label={t('assistantAttach')} disabled={busy || uploading || files.length >= 3} onClick={() => fileInputRef.current?.click()} />
               <textarea
                 id="assistant-input"
                 ref={inputRef}
@@ -414,12 +478,13 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
                   {t('assistantStop')}
                 </Button>
               ) : null}
-              <Button type="submit" icon="send" disabled={!canSend(draft, busy)}>
+              <Button type="submit" icon="send" disabled={busy || uploading || !(canSend(draft, busy) || (draft.trim() === '' && files.length > 0))}>
                 {t('assistantSend')}
               </Button>
             </div>
             <p className="text-small text-center text-text-subtle">
               {t(noticeKey).replace('{provider}', provider)}{' '}
+              {files.length > 0 ? `${t('assistantAttachNote')} ` : null}
               {privacyUrl ? (
                 <a href={privacyUrl} target="_blank" rel="noopener noreferrer" className="underline">
                   {t('assistantPrivacyLink')}

@@ -482,6 +482,11 @@ paths:
                       content: { type: string, maxLength: 4000 }
                 locale: { type: string, enum: [ar, en] }
                 conversation_id: { type: string, maxLength: 26, description: 'Saved chat to continue (ADR-0022); an unknown or foreign id starts a new chat' }
+                attachments:
+                  type: array
+                  maxItems: 3
+                  description: 'Ids of files uploaded with POST /assistant/uploads, read together with the last message (ADR-0028). An unknown, expired or foreign id answers 422 before any provider call.'
+                  items: { type: string, maxLength: 26 }
       responses:
         '200':
           description: The answer
@@ -524,6 +529,41 @@ paths:
         '429': { description: Rate limit or daily token budget used up }
         '502': { description: The provider failed (`assistant_provider_error`) }
         '503': { description: No provider key configured (`assistant_not_configured`) }
+
+  /assistant/uploads:
+    post:
+      tags: [Auth]
+      summary: Upload a file for the assistant to read with the next message (ADR-0028; permission `assistant.use`)
+      description: |
+        A transfer or payment receipt, a bank slip or a supplier invoice photo, as multipart field `file`. The same byte checks as record attachments apply (real type from the content: PDF, JPEG, PNG or WebP; at most 10 MB; a PDF with active content is refused). The file is stored on the private disk under a random name for `assistant.upload_ttl_hours` (default 6), readable only by its owner, never attached to a record, and removed by `assistant:prune-history`. At most 20 live files per user. Errors: 403 `assistant_disabled`, 403 `assistant_not_accepted`, 422 (type, size, active content, too many files), 429 (limiter). Audited as `assistant.file_uploaded` (no content). The provider reads the file unredacted; the data-processing notice says so.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: The stored file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      mime: { type: string, enum: [application/pdf, image/jpeg, image/png, image/webp] }
+                      size_bytes: { type: integer }
+                      expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
 
   /assistant/chat/stream:
     post:
