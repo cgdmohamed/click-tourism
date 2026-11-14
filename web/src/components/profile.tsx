@@ -114,9 +114,9 @@ export function ProfileStat({
       >
         <Icon name={icon} size={18} />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-small text-text-subtle">{label}</p>
-        <p className="heading-small mt-0.5 tabular text-text-default">{value}</p>
+        <div className="money-fit heading-small mt-0.5 tabular text-text-default">{value}</div>
         {hint ? <p className="text-small mt-1 text-text-subtlest">{hint}</p> : null}
       </div>
     </div>
