@@ -15,6 +15,46 @@ final class ActionLabels
         'erp_invoice_draft_create' => ['ar' => 'إنشاء مسودة فاتورة عميل', 'en' => 'Create a customer invoice draft'],
         'erp_expense_draft_create' => ['ar' => 'إنشاء مسودة مصروف', 'en' => 'Create an expense draft'],
         'erp_booking_draft_create' => ['ar' => 'إنشاء مسودة حجز', 'en' => 'Create a booking draft'],
+        'erp_invoice_submit' => ['ar' => 'إرسال فاتورة للاعتماد', 'en' => 'Send an invoice for approval'],
+        'erp_invoice_approve' => ['ar' => 'اعتماد فاتورة', 'en' => 'Approve an invoice'],
+        'erp_invoice_issue' => ['ar' => 'إصدار فاتورة', 'en' => 'Issue an invoice'],
+        'erp_invoice_void' => ['ar' => 'إلغاء فاتورة', 'en' => 'Void an invoice'],
+        'erp_expense_submit' => ['ar' => 'إرسال مصروف للاعتماد', 'en' => 'Send an expense for approval'],
+        'erp_expense_approve' => ['ar' => 'اعتماد مصروف', 'en' => 'Approve an expense'],
+        'erp_document_submit' => ['ar' => 'إرسال سند للاعتماد', 'en' => 'Send a voucher for approval'],
+        'erp_document_approve' => ['ar' => 'اعتماد سند', 'en' => 'Approve a voucher'],
+        'erp_document_post' => ['ar' => 'ترحيل سند', 'en' => 'Post a voucher'],
+        'erp_commission_approve' => ['ar' => 'اعتماد عمولة', 'en' => 'Approve a commission'],
+        'erp_commission_post' => ['ar' => 'ترحيل عمولة', 'en' => 'Post a commission'],
+        'erp_commission_pay' => ['ar' => 'صرف عمولة', 'en' => 'Pay a commission'],
+        'erp_refund_approve' => ['ar' => 'اعتماد استرداد', 'en' => 'Approve a refund'],
+        'erp_journal_post' => ['ar' => 'ترحيل قيد يومية', 'en' => 'Post a journal entry'],
+        'erp_journal_draft_delete' => ['ar' => 'حذف مسودة قيد', 'en' => 'Delete a draft journal entry'],
+        'erp_payment_record' => ['ar' => 'تسجيل تحصيل من عميل', 'en' => 'Record a customer payment'],
+        'erp_supplier_payment_record' => ['ar' => 'صرف دفعة لمورد', 'en' => 'Pay a supplier'],
+        'erp_export_queue' => ['ar' => 'تصدير تقرير', 'en' => 'Export a report'],
+    ];
+
+    /** What confirming does, in one sentence, shown on the card of every action on a record or on money. */
+    private const EFFECTS = [
+        'erp_invoice_submit' => ['ar' => 'ستنتقل الفاتورة من «مسودة» إلى «قيد المراجعة» وتنتظر معتمداً.', 'en' => 'The invoice moves from Draft to Submitted and waits for an approver.'],
+        'erp_invoice_approve' => ['ar' => 'ستُعتمد الفاتورة ولا تُصدر بعد.', 'en' => 'The invoice is approved but not yet issued.'],
+        'erp_invoice_issue' => ['ar' => 'ستُصدر الفاتورة وتُرحَّل إلى القيود المحاسبية.', 'en' => 'The invoice is issued and posted to the ledger.'],
+        'erp_invoice_void' => ['ar' => 'ستُلغى الفاتورة، وتُعكس آثارها المحاسبية إن كانت مُرحَّلة.', 'en' => 'The invoice is voided, and its accounting effect is reversed if it was posted.'],
+        'erp_expense_submit' => ['ar' => 'سينتقل المصروف من «مسودة» إلى «قيد المراجعة».', 'en' => 'The expense moves from Draft to Submitted.'],
+        'erp_expense_approve' => ['ar' => 'سيُعتمد المصروف وفق سياسة النظام، وقد يُرحَّل إلى القيود المحاسبية.', 'en' => 'The expense is approved under the system policy and may be posted to the ledger.'],
+        'erp_document_submit' => ['ar' => 'سينتقل السند إلى «قيد المراجعة».', 'en' => 'The voucher moves to Submitted.'],
+        'erp_document_approve' => ['ar' => 'سيُعتمد السند ولا يُرحَّل بعد.', 'en' => 'The voucher is approved but not yet posted.'],
+        'erp_document_post' => ['ar' => 'سيُرحَّل السند إلى القيود المحاسبية، ولا يمكن تعديله بعد ذلك.', 'en' => 'The voucher is posted to the ledger and can no longer be edited.'],
+        'erp_commission_approve' => ['ar' => 'ستُعتمد العمولة ولا تُرحَّل ولا تُصرف بعد.', 'en' => 'The commission is approved, not yet posted or paid.'],
+        'erp_commission_post' => ['ar' => 'ستُرحَّل العمولة إلى القيود المحاسبية.', 'en' => 'The commission is posted to the ledger.'],
+        'erp_commission_pay' => ['ar' => 'ستُصرف العمولة من الحساب المحدد وتُسجَّل في القيود.', 'en' => 'The commission is paid from the chosen account and recorded in the ledger.'],
+        'erp_refund_approve' => ['ar' => 'سيُعتمد الاسترداد ويُسجَّل أثره المالي.', 'en' => 'The refund is approved and its financial effect is recorded.'],
+        'erp_journal_post' => ['ar' => 'سيُرحَّل القيد ولا يمكن تعديله بعد ذلك، ويمكن عكسه فقط.', 'en' => 'The entry is posted and can no longer be edited, only reversed.'],
+        'erp_journal_draft_delete' => ['ar' => 'ستُحذف المسودة نهائياً ولا يمكن استرجاعها.', 'en' => 'The draft is deleted for good and cannot be recovered.'],
+        'erp_payment_record' => ['ar' => 'سيُسجَّل التحصيل في الحساب المحدد ويُرحَّل إلى القيود المحاسبية.', 'en' => 'The payment is recorded in the chosen account and posted to the ledger.'],
+        'erp_supplier_payment_record' => ['ar' => 'ستُصرف الدفعة من الحساب المحدد وتُرحَّل إلى القيود المحاسبية.', 'en' => 'The payment is made from the chosen account and posted to the ledger.'],
+        'erp_export_queue' => ['ar' => 'سيُجهَّز ملف التقرير في الخلفية ويظهر في قائمة التصدير.', 'en' => 'The report file is prepared in the background and appears in the export list.'],
     ];
 
     private const FIELDS = [
@@ -28,6 +68,9 @@ final class ActionLabels
         'payee_name' => ['ar' => 'المستفيد', 'en' => 'Payee'], 'start_date' => ['ar' => 'تاريخ البدء', 'en' => 'Start date'], 'end_date' => ['ar' => 'تاريخ الانتهاء', 'en' => 'End date'],
         'pax_adults' => ['ar' => 'عدد البالغين', 'en' => 'Adults'], 'pax_children' => ['ar' => 'عدد الأطفال', 'en' => 'Children'],
         '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__booking' => ['ar' => 'الحجز المرتبط', 'en' => 'Linked booking'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
+        '__record' => ['ar' => 'السجل', 'en' => 'Record'], '__status' => ['ar' => 'حالته الآن', 'en' => 'Current status'], '__total' => ['ar' => 'إجمالي المبلغ', 'en' => 'Total amount'], '__paid' => ['ar' => 'المصروف سابقاً', 'en' => 'Already paid'], '__note' => ['ar' => 'البيان', 'en' => 'Note'],
+        'report' => ['ar' => 'التقرير', 'en' => 'Report'], 'format' => ['ar' => 'الصيغة', 'en' => 'Format'], 'language' => ['ar' => 'اللغة', 'en' => 'Language'], 'method' => ['ar' => 'طريقة الدفع', 'en' => 'Method'],
+        'paid_at' => ['ar' => 'تاريخ الدفع', 'en' => 'Paid on'], 'params' => ['ar' => 'عوامل التصفية', 'en' => 'Filters'],
         'amount_minor' => ['ar' => 'المبلغ', 'en' => 'Amount'], 'lines' => ['ar' => 'البنود', 'en' => 'Lines'], 'items' => ['ar' => 'البنود', 'en' => 'Items'],
     ];
 
@@ -49,7 +92,7 @@ final class ActionLabels
         $l = $locale === 'en' ? 'en' : 'ar';
         $currency = strtoupper((string) ($payload['currency'] ?? ''));
         $rows = [];
-        foreach (['__lead', '__customer', '__booking', '__category', '__payee', '__payment'] as $key) {
+        foreach (['__record', '__status', '__total', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment'] as $key) {
             if (isset($payload[$key])) {
                 $rows[] = ['label' => self::FIELDS[$key][$l], 'value' => (string) $payload[$key]];
             }
@@ -59,7 +102,18 @@ final class ActionLabels
                 continue;
             }
             $label = self::FIELDS[$key][$l] ?? $key;
+            if (is_array($value)) {
+                $value = collect($value)->map(fn ($v, $k) => $k.' = '.$v)->implode('، ');
+            }
             $rows[] = ['label' => $label, 'value' => $key === 'amount_minor' ? self::money((int) $value, $currency) : (string) (is_bool($value) ? ($value ? 'yes' : 'no') : $value)];
+        }
+        if (isset($payload['__allocation'])) {
+            $rows[] = ['label' => $l === 'ar' ? 'التخصيص' : 'Allocation', 'value' => $payload['__allocation'] === 'booking'
+                ? ($l === 'ar' ? 'سيُخصَّص كامل المبلغ على الحجز '.($payload['__booking'] ?? '') : 'The whole amount is allocated to booking '.($payload['__booking'] ?? ''))
+                : ($l === 'ar' ? 'دفعة مقدمة غير مخصصة لأي حجز أو فاتورة' : 'An unallocated advance, not tied to any booking or invoice')];
+        }
+        if (isset($payload['__tool'], self::EFFECTS[$payload['__tool']])) {
+            $rows[] = ['label' => $l === 'ar' ? 'ما سيحدث' : 'What happens', 'value' => self::EFFECTS[$payload['__tool']][$l]];
         }
         foreach (['lines', 'items'] as $key) {
             foreach ((array) ($payload[$key] ?? []) as $index => $line) {
@@ -88,6 +142,11 @@ final class ActionLabels
         }
 
         return $parts === [] ? $text : $text.' — '.implode(' · ', $parts);
+    }
+
+    public static function moneyText(int $minor, string $currency): string
+    {
+        return self::money($minor, $currency);
     }
 
     private static function money(int $minor, string $currency): string

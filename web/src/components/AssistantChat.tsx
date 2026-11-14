@@ -383,6 +383,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
                 <div className="flex items-center gap-2">
                   <Spinner />
                   <span>{status}</span>
+                  <span className="typing-dots inline-flex gap-0.5" aria-hidden="true"><span>·</span><span>·</span><span>·</span></span>
                 </div>
               </div>
             ) : null}
@@ -454,7 +455,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
   const citations = uniqueCitations(message.citations ?? [])
 
   return (
-    <div className={mine ? 'flex flex-col items-end gap-1' : 'flex flex-col items-start gap-1'}>
+    <div className={mine ? 'anim-rise flex flex-col items-end gap-1' : 'anim-rise flex flex-col items-start gap-1'}>
       <p className="text-small font-semibold text-text-subtle">{mine ? t('assistantYou') : t('assistantName')}</p>
       {message.steps && message.steps.length > 0 ? (
         <p className="text-small text-text-subtle">
@@ -504,6 +505,8 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
   const { t, locale } = useI18n()
   const [card, setCard] = useState(initial)
   const [error, setError] = useState('')
+  // post / pay / void / delete need a second, explicit "yes" after the card (the card itself is the first).
+  const [armed, setArmed] = useState(false)
   const decide = useMutation({
     mutationFn: async (verb: 'confirm' | 'reject') => {
       const { data } = await api.post<{ data: ActionCard }>(`/assistant/actions/${encodeURIComponent(card.id)}/${verb}`)
@@ -519,6 +522,7 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
       else setError(errorMessage(cause))
     },
   })
+  const strong = card.risk === 'post' || card.risk === 'pay' || card.risk === 'void' || card.risk === 'delete'
   const link = card.result ? citationLink({ entity: card.result.entity, id: card.result.id }, locale) : null
   const tone =
     card.status === 'confirmed' ? 'border-success-border' : card.status === 'failed' || card.status === 'expired' ? 'border-danger-border' : 'border-border-selected'
@@ -531,7 +535,7 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
   }
 
   return (
-    <section className={cx('w-full max-w-xl rounded-16 border bg-surface-default p-4 shadow-1', tone)} aria-label={card.title}>
+    <section className={cx('anim-rise w-full max-w-xl rounded-16 border bg-surface-default p-4 shadow-1', tone)} aria-label={card.title}>
       <h3 className="label flex items-center gap-2">
         <Icon name="sparkles" className="h-4 w-4 text-brand-1-accent" />
         {card.title}
@@ -549,17 +553,29 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
       {card.status === 'pending' ? (
         <>
           <p className="text-small mt-3 text-text-subtle">{t('assistantActionNote')}</p>
+          {armed ? (
+            <div className="anim-rise mt-3" role="alert">
+              <InlineNotice tone="warning">{t('assistantActionSure')}</InlineNotice>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" icon="check" disabled={decide.isPending} onClick={() => decide.mutate('confirm')}>
-              {t('assistantActionConfirm')}
+            <Button
+              type="button"
+              icon="check"
+              variant={armed && (card.risk === 'delete' || card.risk === 'void') ? 'danger' : 'primary'}
+              disabled={decide.isPending}
+              onClick={() => (strong && !armed ? setArmed(true) : decide.mutate('confirm'))}
+            >
+              {armed ? t('assistantActionSureYes') : t('assistantActionConfirm')}
             </Button>
-            <Button type="button" variant="secondary" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>
-              {t('assistantActionReject')}
+            <Button type="button" variant="secondary" disabled={decide.isPending} onClick={() => (armed ? setArmed(false) : decide.mutate('reject'))}>
+              {armed ? t('assistantActionBack') : t('assistantActionReject')}
             </Button>
           </div>
         </>
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-3" role="status">
+          {card.status === 'confirmed' ? <Icon name="check" className="anim-check h-4 w-4 text-success-text" /> : null}
           <Badge tone={card.status === 'confirmed' ? 'positive' : card.status === 'rejected' ? 'neutral' : 'negative'}>{statusText[card.status]}</Badge>
           {card.status === 'failed' && card.error?.message ? <span className="text-small text-danger-text">{card.error.message}</span> : null}
           {card.status === 'confirmed' && link?.href ? (

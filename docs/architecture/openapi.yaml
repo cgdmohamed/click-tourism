@@ -6279,12 +6279,13 @@ components:
         expires_at: { type: [string, 'null'], format: date-time }
     AssistantActionCard:
       type: object
-      description: 'An action the assistant prepared (ADR-0023)'
+      description: 'An action the assistant prepared (ADR-0023, widened by ADR-0027)'
       properties:
         id: { type: string }
-        tool: { type: string, enum: [erp_lead_create, erp_lead_update, erp_customer_create, erp_supplier_create, erp_invoice_draft_create, erp_expense_draft_create, erp_booking_draft_create] }
+        tool: { type: string, enum: [erp_lead_create, erp_lead_update, erp_customer_create, erp_supplier_create, erp_invoice_draft_create, erp_expense_draft_create, erp_booking_draft_create, erp_invoice_submit, erp_invoice_approve, erp_invoice_issue, erp_invoice_void, erp_expense_submit, erp_expense_approve, erp_document_submit, erp_document_approve, erp_document_post, erp_commission_approve, erp_commission_post, erp_commission_pay, erp_refund_approve, erp_journal_post, erp_journal_draft_delete, erp_payment_record, erp_supplier_payment_record, erp_export_queue] }
         title: { type: string }
         status: { type: string, enum: [pending, confirmed, rejected, failed, expired] }
+        risk: { type: string, enum: [create, approve, send, post, pay, void, delete, export], description: 'Kind of change (ADR-0027); the screen asks a second time for post, pay, void and delete' }
         rows:
           type: array
           items:

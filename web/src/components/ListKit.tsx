@@ -137,7 +137,7 @@ export function RowActions({ items, label }: { items: readonly ActionItem[]; lab
               role="menu"
               aria-label={text}
               onKeyDown={onKeyDown}
-              className={cx('fixed z-[70] flex w-52 flex-col gap-0.5 rounded-16 border border-border-subtle bg-surface-default p-2 shadow-4', place ? null : 'invisible')}
+              className={cx('anim-pop fixed z-[70] flex w-52 flex-col gap-0.5 rounded-16 border border-border-subtle bg-surface-default p-2 shadow-4', place ? null : 'invisible')}
               style={{ top: place?.top, bottom: place?.bottom, left: place?.left ?? 0 }}
             >
               {items.map((item, index) =>

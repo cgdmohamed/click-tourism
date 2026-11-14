@@ -109,3 +109,50 @@ test('an action the assistant prepares waits for the user and then runs as confi
   await expect(card.getByRole('link', { name: /افتح السجل|Open record/ })).toHaveAttribute('href', '/customers/customer12345')
   expect(confirmed).toBe(1)
 })
+
+test('an action that posts or pays asks a second time, and going back runs nothing', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  const pending = {
+    id: '01HACTIONPAYPAYPAYPAYPAY', tool: 'erp_commission_pay', title: 'صرف عمولة', status: 'pending', risk: 'pay', expires_at: '2099-01-01T00:00:00Z', result: null, error: null,
+    rows: [{ label: 'السجل', value: 'CM-000007' }, { label: 'حساب الدفع', value: 'الخزينة' }, { label: 'ما سيحدث', value: 'ستُصرف العمولة من الحساب المحدد وتُسجَّل في القيود.' }],
+  }
+  let confirmed = 0
+  await page.route('**/api/v1/feature-flags', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { data: Record<string, unknown> }
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, assistant_enabled: true, assistant_provider: 'openai' } } })
+  })
+  await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    const answer = { type: 'answer', data: { answer: 'جهّزت صرف العمولة، راجع البطاقة.', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [pending], conversation_id: null } }
+    return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
+  })
+  await page.route('**/api/v1/assistant/actions/*/confirm', (route) => {
+    confirmed += 1
+    return route.fulfill({ json: { data: { ...pending, status: 'confirmed', result: { entity: 'commission', id: 'commission12345' } } } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
+  await page.locator('#assistant-input').fill('اصرف عمولة CM-000007 من الخزينة')
+  await page.keyboard.press('Enter')
+
+  const card = page.getByRole('region', { name: 'صرف عمولة' })
+  await expect(card).toContainText('ستُصرف العمولة من الحساب المحدد')
+
+  // First press only arms it; a warning appears and nothing ran.
+  await card.getByRole('button', { name: /تأكيد وتنفيذ|Confirm and run/ }).click()
+  await expect(card.getByRole('alert')).toContainText(/لا يمكن التراجع عنه بسهولة|hard to undo/)
+  expect(confirmed).toBe(0)
+
+  // Going back disarms it.
+  await card.getByRole('button', { name: /تراجع|Go back/ }).click()
+  await expect(card.getByRole('alert')).toHaveCount(0)
+  expect(confirmed).toBe(0)
+
+  // Arm again and confirm explicitly.
+  await card.getByRole('button', { name: /تأكيد وتنفيذ|Confirm and run/ }).click()
+  await card.getByRole('button', { name: /نعم، نفّذ الآن|Yes, run it now/ }).click()
+  await expect(card.getByRole('status')).toContainText(/تم التنفيذ|Done/)
+  expect(confirmed).toBe(1)
+})
