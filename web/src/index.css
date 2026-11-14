@@ -528,6 +528,30 @@ body {
   font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
+/* Amounts: never wrap, isolated from surrounding RTL text, tabular digits. */
+.money-run {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+  direction: ltr;
+  text-align: left;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.money-run bdi {
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+/* Inside a .money-fit container the font steps down so the full value fits on one line. */
+.money-fit {
+  container-type: inline-size;
+  min-width: 0;
+}
+.money-fit .money-run {
+  font-size: min(1em, calc(100cqw / (var(--money-chars, 10) * 0.6)));
+}
+
 @media print {
   .no-print {
     display: none !important;
