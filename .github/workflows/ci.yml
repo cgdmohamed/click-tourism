@@ -146,11 +146,10 @@ jobs:
           retention-days: 7
 
   backend-coverage:
-    name: Backend coverage (pcov, non-blocking report)
+    name: "Backend coverage (pcov, blocking gate: Accounting at least 80%)"
     runs-on: ubuntu-latest
-    # GAP-QA-03: report only. Accounting-engine target is 80%; promote to a
-    # gate (`--min`) once the first recorded number is known to clear it.
-    continue-on-error: true
+    # GAP-QA-03: a blocking gate. The accounting engine must keep at least 80% line coverage
+    # (measured at 90.4% when this gate was enabled). A parse failure counts as 0% and fails.
     defaults:
       run:
         working-directory: backend
@@ -172,7 +171,9 @@ jobs:
           vendor/bin/phpunit --coverage-text --colors=never > coverage.txt
           tail -n 6 coverage.txt
           # Line coverage of app/Modules/Accounting, summed from the per-class report.
-          awk '/^App\\Modules\\Accounting/{f=1;next} /^[A-Za-z]/{f=0} f && /Lines:/{s=$0; sub(/.*Lines: *[0-9.]+% *\( */,"",s); sub(/\).*/,"",s); split(s,a,"/"); gsub(/ /,"",a[1]); gsub(/ /,"",a[2]); c+=a[1]; t+=a[2]} END{printf "Accounting engine: %d/%d lines = %.1f%% (target 80%%)\n",c,t,100*c/t}' coverage.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          covered=$(awk '/^App\\Modules\\Accounting/{f=1;next} /^[A-Za-z]/{f=0} f && /Lines:/{s=$0; sub(/.*Lines: *[0-9.]+% *\( */,"",s); sub(/\).*/,"",s); split(s,a,"/"); gsub(/ /,"",a[1]); gsub(/ /,"",a[2]); c+=a[1]; t+=a[2]} END{if (t==0) {print "0.0"; exit} printf "%.1f", 100*c/t}' coverage.txt)
+          echo "Accounting engine line coverage: ${covered}% (gate: 80%)" | tee -a "$GITHUB_STEP_SUMMARY"
+          awk -v r="$covered" 'BEGIN{exit (r+0 >= 80) ? 0 : 1}'
 
   postgres-integration:
     name: PostgreSQL 16 (migrations and financial integration)

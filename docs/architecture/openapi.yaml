@@ -247,6 +247,49 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /auth/sessions:
+    get:
+      tags: [Auth]
+      summary: The signed-in user's own devices (login tokens), newest use first (GAP-CORE-04)
+      description: Only the caller's own login tokens (not MCP tokens, never another user's). No token value or hash is returned.
+      responses:
+        '200':
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        device: { type: string }
+                        created_at: { type: string, format: date-time }
+                        last_used_at: { type: [string, 'null'], format: date-time }
+                        expires_at: { type: [string, 'null'], format: date-time }
+                        current: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Auth]
+      summary: Sign every other device out; this session and MCP tokens stay (audited)
+      responses:
+        '200': { description: 'data.revoked = number of devices signed out' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/sessions/{session}:
+    delete:
+      tags: [Auth]
+      summary: Sign one of my own devices out (audited); 404 for anyone else's or an MCP token
+      parameters:
+        - { name: session, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'data.revoked = 1, data.current = whether it was this session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /assistant/chat:
     post:
       tags: [Auth]

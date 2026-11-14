@@ -9,6 +9,7 @@ import { localizedName } from '../lib/names'
 import { useFeatureFlags } from '../lib/useSetting'
 import { showMcpSection } from '../lib/mcpTokens'
 import McpTokensCard from '../components/McpTokensCard'
+import SessionsCard from '../components/SessionsCard'
 
 function initialsOf(name: string) {
   return (
@@ -205,6 +206,10 @@ export default function Profile() {
               {passwordError ? <InlineNotice tone="negative">{passwordError}</InlineNotice> : null}
             </div>
           </Card>
+        </div>
+
+        <div className="mt-4">
+          <SessionsCard />
         </div>
 
         {showMcpSection(can('mcp.use'), flags?.mcp_enabled) ? <McpTokensCard /> : null}

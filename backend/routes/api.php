@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SearchController;
+use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
@@ -79,6 +80,10 @@ Route::prefix('v1')->group(function () {
         Route::get('auth/me', [AuthController::class, 'me']);
         Route::patch('auth/me', [AuthController::class, 'update']);
         Route::post('auth/logout', [AuthController::class, 'logout']);
+        // GAP-CORE-04: the user's own devices (login tokens).
+        Route::get('auth/sessions', [SessionController::class, 'index']);
+        Route::delete('auth/sessions', [SessionController::class, 'destroyOthers']);
+        Route::delete('auth/sessions/{session}', [SessionController::class, 'destroy'])->whereNumber('session');
         Route::get('feature-flags', [FeatureFlagController::class, 'show']);
 
         // MCP gateway tokens (ADR-0016). Listing/revoking need no `mcp.use` so a user who lost it
