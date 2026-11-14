@@ -18,6 +18,7 @@ use App\Modules\Expenses\Models\Expense;
 use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
+use App\Modules\Payments\Models\Payment;
 use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -173,7 +174,7 @@ class AssistantChatTest extends TestCase
         $this->assertSame('auto', $first['tool_choice']);
         $this->assertCount(15, $first['tools']);
         $this->assertSame('system', $first['messages'][0]['role']);
-        $this->assertStringContainsString('read-only', $first['messages'][0]['content']);
+        $this->assertStringContainsString('NOTHING runs until the user presses Confirm', $first['messages'][0]['content']);
     }
 
     public function test_a_record_citation_is_added_only_for_ids_the_answer_names(): void
@@ -431,6 +432,119 @@ class AssistantChatTest extends TestCase
         $expense = Expense::query()->where('public_id', $done['result']['id'])->firstOrFail();
         $this->assertSame('draft', $expense->status);
         $this->assertSame('assistant', $expense->created_via);
+    }
+
+    private function branchCashAccount(): CashAccount
+    {
+        return CashAccount::query()->create([
+            'account_id' => Account::query()->where('code', '1110')->firstOrFail()->id,
+            'branch_id' => $this->user->branches()->first()->id ?? Branch::query()->first()->id,
+            'kind' => 'cash', 'name_ar' => 'خزينة', 'name_en' => 'Main cash', 'currency_code' => 'EGP', 'is_active' => true,
+        ]);
+    }
+
+    /** A draft invoice made through the assistant itself, so the record exists with the route's own rules. */
+    private function assistantDraftInvoice(): Invoice
+    {
+        $this->grant('invoices.create', 'invoices.view');
+        $card = $this->prepare('erp_invoice_draft_create', ['customer_id' => $this->customer()->public_id, 'issue_date' => now()->toDateString(), 'lines' => [['description' => 'Umrah', 'quantity' => 1, 'unit_price_minor' => 100000]]]);
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+
+        return Invoice::query()->where('public_id', $done['result']['id'])->firstOrFail();
+    }
+
+    public function test_an_action_on_a_record_shows_what_it_changes_and_runs_only_after_confirm(): void
+    {
+        $invoice = $this->assistantDraftInvoice();
+
+        // Found by its number, in the user's branch; the card names it, its status and what confirming does.
+        $card = $this->prepare('erp_invoice_submit', ['number' => $invoice->number]);
+        $this->assertSame('send', $card['risk']);
+        $values = array_column($card['rows'], 'value');
+        $this->assertContains($invoice->number, $values);
+        $this->assertContains('draft', $values);
+        $this->assertContains('The invoice moves from Draft to Submitted and waits for an approver.', $values);
+        $this->assertSame('draft', $invoice->fresh()->status, 'nothing runs before the user confirms');
+
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $this->assertSame('submitted', $invoice->fresh()->status);
+        $this->assertNotEmpty($this->auditRows('assistant.action_executed'));
+    }
+
+    public function test_the_routes_own_rules_still_apply_when_an_action_is_confirmed(): void
+    {
+        $invoice = $this->assistantDraftInvoice();
+        $this->grant('invoices.approve');
+
+        // A draft cannot be approved: the route refuses, the card says so, nothing changes.
+        $card = $this->prepare('erp_invoice_approve', ['id' => $invoice->public_id]);
+        $this->assertSame('approve', $card['risk']);
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+
+        $this->assertSame('failed', $done['status']);
+        $this->assertStringContainsString('Only submitted invoices can be approved', $done['error']['message']);
+        $this->assertSame('draft', $invoice->fresh()->status);
+        $this->assertNotEmpty($this->auditRows('assistant.action_failed'));
+    }
+
+    public function test_record_actions_are_offered_only_for_permissions_the_user_holds_and_need_a_known_record(): void
+    {
+        $this->script([$this->finalReply('ok')]);
+        $this->chat()->assertOk();
+        $names = array_column(array_column($this->sent()[0]['tools'], 'function'), 'name');
+        foreach (['erp_invoice_approve', 'erp_invoice_issue', 'erp_journal_post', 'erp_commission_pay', 'erp_payment_record', 'erp_export_queue'] as $tool) {
+            $this->assertNotContains($tool, $names);
+        }
+
+        $this->grant('invoices.approve');
+        $this->script([$this->toolCallReply([['erp_invoice_approve', ['number' => 'INV-DOES-NOT-EXIST']]]), $this->finalReply('not found')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('No such record in this branch', $this->lastToolMessages()[0]['content']);
+        $this->assertSame(0, AssistantAction::query()->where('tool', 'erp_invoice_approve')->count());
+
+        $this->script([$this->toolCallReply([['erp_invoice_approve', []]]), $this->finalReply('which one?')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('Give the record id or its number', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_recording_a_customer_payment_names_the_account_and_posts_only_after_confirm(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'customers.view');
+        $this->branchCashAccount();
+        $customer = $this->customer();
+        $before = Payment::query()->count();
+
+        $card = $this->prepare('erp_payment_record', ['customer_id' => $customer->public_id, 'payment_account' => 'main cash', 'amount_minor' => 50000]);
+        $this->assertSame('pay', $card['risk']);
+        $this->assertContains('Main cash', array_column($card['rows'], 'value'));
+        $this->assertSame($before, Payment::query()->count());
+
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $this->assertSame($before + 1, Payment::query()->count());
+        $this->assertSame(50000, (int) Payment::query()->where('public_id', $done['result']['id'])->value('amount_minor'));
+    }
+
+    public function test_an_unknown_payment_account_is_reported_with_the_choices_and_no_card_exists(): void
+    {
+        $this->grant('payments.create');
+        $this->branchCashAccount();
+        $this->script([$this->toolCallReply([['erp_payment_record', ['customer_id' => $this->customer()->public_id, 'payment_account' => 'nope', 'amount_minor' => 100]]]), $this->finalReply('which account?')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('Main cash', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_a_report_export_is_a_card_and_queues_nothing_until_confirmed(): void
+    {
+        $this->grant('reports.export');
+        $card = $this->prepare('erp_export_queue', ['report' => 'trial-balance', 'format' => 'csv', 'params' => ['as_of' => now()->toDateString()]]);
+        $this->assertSame('export', $card['risk']);
+        $this->assertSame(0, DB::table('export_jobs')->count());
+
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+        $this->assertSame('confirmed', $done['status'], json_encode($done));
+        $this->assertSame(1, DB::table('export_jobs')->count());
     }
 
     public function test_an_unknown_expense_category_is_reported_to_the_model_with_the_choices(): void

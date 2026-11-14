@@ -19,6 +19,8 @@ export type ActionCard = {
   tool: string
   title: string
   status: 'pending' | 'confirmed' | 'rejected' | 'failed' | 'expired'
+  /** What kind of change this is; post, pay, void and delete ask for a second, explicit confirmation. */
+  risk?: 'create' | 'approve' | 'send' | 'post' | 'pay' | 'void' | 'delete' | 'export'
   rows: Array<{ label: string; value: string }>
   expires_at: string
   result: { entity: string; id: string } | null
