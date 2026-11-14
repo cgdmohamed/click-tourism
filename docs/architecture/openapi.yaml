@@ -2229,6 +2229,8 @@ paths:
       parameters:
         - { name: search, in: query, schema: { type: string } }
         - { name: branch_id, in: query, schema: { type: string } }
+        - { name: is_active, in: query, description: 'Additive filter (2026-11-14). 1 or 0; omitted returns both.', schema: { type: boolean } }
+        - { name: type, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string, enum: [individual, company] } }
       responses:
         '200': { description: Customers }
     post:
@@ -2246,6 +2248,11 @@ paths:
     get:
       tags: [Parties]
       summary: List suppliers
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: is_active, in: query, description: 'Additive filter (2026-11-14). 1 or 0; omitted returns both.', schema: { type: boolean } }
+        - { name: category, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: settlement_currency, in: query, description: 'Additive filter (2026-11-14). ISO code, case-insensitive.', schema: { type: string } }
       responses:
         '200': { description: Suppliers }
     post:
@@ -2460,6 +2467,13 @@ paths:
     get:
       tags: [Payments]
       summary: List customer receipts
+      parameters:
+        - { name: customer_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, description: 'Additive filter (2026-11-14).', schema: { type: string } }
+        - { name: payment_method_id, in: query, description: 'Additive filter (2026-11-14). Public id of the payment method.', schema: { type: string } }
+        - { name: unallocated, in: query, description: 'Additive filter (2026-11-14). 1 returns only receipts with an unallocated balance (advances).', schema: { type: boolean } }
       responses:
         '200': { description: Payments }
     post:
@@ -2567,6 +2581,9 @@ paths:
         - { name: party_id, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: due_from, in: query, description: 'Additive filter (2026-11-14). Due date on or after.', schema: { type: string, format: date } }
+        - { name: due_to, in: query, description: 'Additive filter (2026-11-14). Due date on or before.', schema: { type: string, format: date } }
+        - { name: overdue, in: query, description: 'Additive filter (2026-11-14). 1 returns issued invoices still owing and past their due date (the dashboard rule).', schema: { type: boolean } }
         - { name: search, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1 } }
         - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }

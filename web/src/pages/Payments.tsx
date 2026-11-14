@@ -97,6 +97,14 @@ export default function Payments() {
     setPage(1)
   }, [urlSearch])
 
+  const methodsQuery = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PaymentMethod[] }>('/payment-methods')
+      return data.data
+    },
+  })
+
   const filters = useFilters(
     [
       {
@@ -105,10 +113,31 @@ export default function Payments() {
         type: 'custom',
         render: (value, set) => <PartyFilterField kind="customer" value={value} set={set} />,
       },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['posted', 'cancelled'].map((value) => ({ value, label: statusLabel(value, locale) })),
+        allLabel: locale === 'ar' ? 'كل الحالات' : 'All statuses',
+      },
+      {
+        key: 'payment_method_id',
+        label: t('paymentMethod'),
+        type: 'select',
+        options: (methodsQuery.data ?? []).map((method) => ({ value: method.id, label: locale === 'ar' ? method.name_ar : method.name_en })),
+        allLabel: locale === 'ar' ? 'كل طرق الدفع' : 'All methods',
+      },
+      {
+        key: 'unallocated',
+        label: locale === 'ar' ? 'الرصيد غير المخصص' : 'Unallocated balance',
+        type: 'select',
+        options: [{ value: '1', label: locale === 'ar' ? 'سلف فقط (غير مخصص)' : 'Advances only (unallocated)' }],
+        allLabel: locale === 'ar' ? 'الكل' : 'All',
+      },
       { key: 'from', label: locale === 'ar' ? 'من تاريخ' : 'From date', type: 'date' },
       { key: 'to', label: locale === 'ar' ? 'إلى تاريخ' : 'To date', type: 'date' },
     ],
-    { onApply: () => setPage(1) },
+    { onApply: () => setPage(1), initial: searchParams.get('unallocated') === '1' ? { unallocated: '1' } : undefined },
   )
 
   const paymentsQuery = useQuery({
@@ -117,6 +146,9 @@ export default function Payments() {
       const { data } = await api.get<Paginated<Payment>>('/payments', {
         params: {
           customer_id: filters.applied.customer_id || undefined,
+          status: filters.applied.status || undefined,
+          payment_method_id: filters.applied.payment_method_id || undefined,
+          unallocated: filters.applied.unallocated || undefined,
           from: filters.applied.from || undefined,
           to: filters.applied.to || undefined,
           search: search || undefined,
@@ -134,14 +166,6 @@ export default function Payments() {
     queryKey: ['cash-accounts'],
     queryFn: async () => {
       const { data } = await api.get<{ data: CashAccount[] }>('/cash-accounts')
-      return data.data
-    },
-  })
-
-  const methodsQuery = useQuery({
-    queryKey: ['payment-methods'],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: PaymentMethod[] }>('/payment-methods')
       return data.data
     },
   })
