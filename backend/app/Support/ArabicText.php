@@ -263,6 +263,14 @@ final class ArabicText
             }
         }
 
+        // A sign directly before a number belongs to it (+20 2 3333 4444, -150).
+        for ($i = 0; $i < $n - 1; $i++) {
+            if ($class[$i] === 'N' && in_array($clusters[$i], ['+', '-'], true) && $class[$i + 1] === 'D'
+                && ($i === 0 || $class[$i - 1] !== 'D')) {
+                $class[$i] = 'D';
+            }
+        }
+
         $dir = [];
         foreach ($class as $i => $c) {
             $dir[$i] = match ($c) {

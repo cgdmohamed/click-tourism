@@ -243,8 +243,30 @@ class InvoiceDocumentTest extends TestCase
         // Labels go through the same shaping as names: the renderer would otherwise
         // print them reversed and unjoined.
         $this->assertStringContainsString(ArabicText::visual('فاتورة'), $html);
-        $this->assertStringContainsString(ArabicText::visual('المبلغ المستحق'), $html);
+        // Each Arabic word is its own span (the Arabic face), so check the words.
+        $this->assertStringContainsString(ArabicText::visual('المبلغ'), $html);
+        $this->assertStringContainsString(ArabicText::visual('المستحق'), $html);
+        $this->assertStringContainsString('font-family:"Suisse Intl"', $html);
         $this->assertStringNotContainsString('فاتورة', $html);
+    }
+
+    public function test_letterhead_prints_the_company_details_from_settings(): void
+    {
+        $settings = app(SettingService::class);
+        $settings->set('general', 'company_address', '12 Tahrir St, Giza');
+        $settings->set('general', 'company_phone', '+20 2 3333 4444');
+        $settings->set('general', 'company_tax_id', '123-456-789');
+        $settings->set('general', 'company_commercial_register', '98765');
+
+        $html = app(InvoiceDocument::class)->html($this->createCustomerInvoice(), 'en');
+
+        foreach (['12 Tahrir St, Giza', '+20 2 3333 4444', '123-456-789', '98765', 'Commercial register'] as $expected) {
+            $this->assertStringContainsString($expected, $html);
+        }
+
+        // Nothing is printed for a blank setting.
+        $settings->set('general', 'company_address', '');
+        $this->assertStringNotContainsString('Address:', app(InvoiceDocument::class)->html($this->createCustomerInvoice(), 'en'));
     }
 
     public function test_foreign_currency_document_shows_the_fx_snapshot_and_rate_date(): void

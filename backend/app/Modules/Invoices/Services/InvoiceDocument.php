@@ -57,6 +57,8 @@ class InvoiceDocument
         'received_by' => ['استلمها', 'Received by'],
         'branch' => ['الفرع', 'Branch'],
         'phone' => ['هاتف', 'Phone'],
+        'address' => ['العنوان', 'Address'],
+        'commercial_register' => ['السجل التجاري', 'Commercial register'],
         'email' => ['البريد الإلكتروني', 'Email'],
         'tax_id' => ['الرقم الضريبي', 'Tax ID'],
         'customer_invoice' => ['فاتورة', 'Invoice'],
@@ -85,23 +87,29 @@ class InvoiceDocument
         $dompdf->render();
 
         // Page numbers need the final layout, so they are drawn on the canvas.
+        // Digits use the Latin face; the Arabic word uses the Arabic face, because
+        // neither font covers the other script.
         $canvas = $dompdf->getCanvas();
         $metrics = $dompdf->getFontMetrics();
-        $font = $metrics->getFont('DejaVu Sans');
+        $latin = $metrics->getFont('Suisse Intl');
+        $arabic = $metrics->getFont('Noto Sans Arabic');
         $size = 7.5;
-        $pageText = $rtl
-            ? '{PAGE_NUM} / {PAGE_COUNT} '.ArabicText::visual($this->rawLabel('page', 'ar'), true)
-            : $this->rawLabel('page', 'en').' {PAGE_NUM} / {PAGE_COUNT}';
-        $sample = str_replace(['{PAGE_NUM}', '{PAGE_COUNT}'], '00', $pageText);
-        $width = $metrics->getTextWidth($sample, $font, $size);
-        $canvas->page_text(
-            ($canvas->get_width() - $width) / 2,
-            $canvas->get_height() - 24,
-            $pageText,
-            $font,
-            $size,
-            [0.44, 0.5, 0.56],
-        );
+        $color = [0.44, 0.5, 0.56];
+        $y = $canvas->get_height() - 24;
+        $numbers = '{PAGE_NUM} / {PAGE_COUNT}';
+        $numbersWidth = $metrics->getTextWidth('00 / 00', $latin, $size);
+        if ($rtl) {
+            $word = ArabicText::visual($this->rawLabel('page', 'ar'), true);
+            $wordWidth = $metrics->getTextWidth($word, $arabic, $size);
+            $gap = 4;
+            $x = ($canvas->get_width() - ($numbersWidth + $gap + $wordWidth)) / 2;
+            $canvas->page_text($x, $y, $numbers, $latin, $size, $color);
+            $canvas->page_text($x + $numbersWidth + $gap, $y, $word, $arabic, $size, $color);
+        } else {
+            $word = $this->rawLabel('page', 'en').' ';
+            $wordWidth = $metrics->getTextWidth($word, $latin, $size);
+            $canvas->page_text(($canvas->get_width() - ($wordWidth + $numbersWidth)) / 2, $y, $word.$numbers, $latin, $size, $color);
+        }
 
         return $dompdf->output();
     }
@@ -120,7 +128,7 @@ class InvoiceDocument
         $logo = LogoDataUri::fromValue((string) $this->settings->get('general', 'company_logo', ''));
         $logoCell = $logo !== null ? '<td class="logo"><img src="'.$logo.'" alt=""></td>' : '<td class="logo"></td>';
         $companyLines = array_map($this->text(...), $this->companyLines($language));
-        $companyCell = '<td class="company">'.implode('<br>', $companyLines).'</td>';
+        $companyCell = '<td class="company"><div class="name">'.implode('<br>', $companyLines).'</div>'.$this->companyDetails($language).'</td>';
         $branchName = $this->branchName($invoice, $language);
 
         $title = $this->label((string) $invoice->type, $language);
@@ -129,7 +137,7 @@ class InvoiceDocument
             .'<div class="title">'.$title.'</div>'
             .'<div class="number" dir="ltr">'.$this->escape((string) $invoice->number).'</div>'
             .'<div class="status status-'.$this->escape((string) $invoice->status).'">'.$statusLabel.'</div>'
-            .($branchName !== '' ? '<div class="branch">'.$this->label('branch', $language, false).': '.$this->text($branchName).'</div>' : '')
+            .($branchName !== '' ? '<div class="branch">'.$this->inline('branch', $branchName, $language).'</div>' : '')
             .'</td>';
 
         $headerCells = [$logoCell, $companyCell, $docCell];
@@ -174,13 +182,13 @@ class InvoiceDocument
             $partyHtml .= '<div class="party-name">'.$this->text($this->partyName($party, $language)).'</div>';
             $details = [];
             if (! empty($party->phone)) {
-                $details[] = $this->label('phone', $language, false).': '.$this->text((string) $party->phone);
+                $details[] = $this->inline('phone', (string) $party->phone, $language);
             }
             if (! empty($party->email)) {
-                $details[] = $this->label('email', $language, false).': '.$this->escape((string) $party->email);
+                $details[] = $this->inline('email', (string) $party->email, $language);
             }
             if (! empty($party->tax_id)) {
-                $details[] = $this->label('tax_id', $language, false).': '.$this->escape((string) $party->tax_id);
+                $details[] = $this->inline('tax_id', (string) $party->tax_id, $language);
             }
             if ($details !== []) {
                 $partyHtml .= '<div class="party-details">'.implode('<br>', $details).'</div>';
@@ -281,18 +289,22 @@ class InvoiceDocument
         }
 
         $generated = $this->generatedAt();
-        $footerCompany = $this->text($this->companyLines($language)[0] ?? '');
-        $footer = '<div class="footer">'.$footerCompany.' · '.$this->label('generated', $language, false).' '.$this->escape($generated).'</div>';
+        $footerCompany = $this->companyLines($language)[0] ?? '';
+        $footer = '<div class="footer">'.$this->text($footerCompany.' · '.$this->inlineLabel('generated', $language).' '.$generated).'</div>';
 
         $style = '@page{margin:32px 32px 44px 32px;size:A4 portrait;}'
-            .'body{font-family:"DejaVu Sans",sans-serif;font-size:9px;color:#172033;direction:ltr}'
+            .$this->fontFaces()
+            .'body{font-family:"Suisse Intl",sans-serif;font-size:9px;color:#172033;direction:ltr}'
+            .'.ar{font-family:"Noto Sans Arabic","Suisse Intl",sans-serif;font-size:1.08em}'
             .'table{width:100%;border-collapse:collapse}'
             .'td,th{padding:0;border:0}'
             .'.header{border-bottom:3px solid #1f3a5f;padding-bottom:10px}'
             .'.header td{vertical-align:top;padding:0 6px}'
             .'.sub{font-size:7px;font-weight:normal;color:#718096}'
             .'.header .logo{width:22%}.header .logo img{max-height:54px;max-width:150px}'
-            .'.header .company{width:40%;font-size:15px;color:#1f3a5f;font-weight:bold;text-align:'.$align.'}'
+            .'.header .company{width:40%;text-align:'.$align.'}'
+            .'.header .company .name{font-size:15px;color:#1f3a5f;font-weight:bold}'
+            .'.header .company .details{margin-top:5px;font-size:8px;color:#4a5568;line-height:1.5}'
             .'.header .doc{width:38%;text-align:'.($rtl ? 'left' : 'right').'}'
             .'.header .doc .title{font-size:19px;font-weight:bold;color:#1f3a5f}'
             .'.header .doc .number{font-size:11px;margin-top:2px}'
@@ -479,10 +491,52 @@ class InvoiceDocument
         return ($negative ? '-' : '').$int.(isset($parts[1]) ? '.'.$parts[1] : '');
     }
 
-    /** Arabic text in visual order for the left-to-right PDF renderer. */
+    /**
+     * Arabic text in visual order for the left-to-right PDF renderer, as safe HTML.
+     * Arabic runs are wrapped so they use the Arabic face while digits, Latin text
+     * and punctuation keep the interface face (one font cannot cover both).
+     */
     private function text(string $value): string
     {
-        return $this->escape(ArabicText::visual($value));
+        $html = $this->escape(ArabicText::visual($value));
+
+        return preg_replace(
+            '/[\x{0600}-\x{06FF}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]+/u',
+            '<span class="ar">$0</span>',
+            $html,
+        ) ?? $html;
+    }
+
+    /** "Label: value" as one logical string, so the bidi order is right in Arabic documents. */
+    private function inline(string $key, string $value, string $language): string
+    {
+        return $this->text($this->inlineLabel($key, $language).': '.$value);
+    }
+
+    private function inlineLabel(string $key, string $language): string
+    {
+        [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
+
+        return $language === 'en' ? $en : $ar;
+    }
+
+    /** Address, phone, tax number and commercial register from Settings (all optional). */
+    private function companyDetails(string $language): string
+    {
+        $rows = [];
+        foreach ([
+            'address' => 'company_address',
+            'phone' => 'company_phone',
+            'tax_id' => 'company_tax_id',
+            'commercial_register' => 'company_commercial_register',
+        ] as $label => $setting) {
+            $value = trim((string) $this->settings->get('general', $setting, ''));
+            if ($value !== '') {
+                $rows[] = $this->inline($label, $value, $language);
+            }
+        }
+
+        return $rows === [] ? '' : '<div class="details">'.implode('<br>', $rows).'</div>';
     }
 
     private function escape(string $value): string
@@ -499,6 +553,22 @@ class InvoiceDocument
         return $rtl ? array_reverse($cells) : $cells;
     }
 
+    /** The interface fonts (Suisse Intl for Latin, Noto Sans Arabic for Arabic), as TrueType for Dompdf. */
+    private function fontFaces(): string
+    {
+        $css = '';
+        foreach ([
+            ['Suisse Intl', 'normal', 'SuisseIntl-Regular.ttf'],
+            ['Suisse Intl', 'bold', 'SuisseIntl-Bold.ttf'],
+            ['Noto Sans Arabic', 'normal', 'NotoSansArabic-400.ttf'],
+            ['Noto Sans Arabic', 'bold', 'NotoSansArabic-700.ttf'],
+        ] as [$family, $weight, $file]) {
+            $css .= '@font-face{font-family:"'.$family.'";font-weight:'.$weight.';src:url("file://'.resource_path('fonts/'.$file).'") format("truetype")}';
+        }
+
+        return $css;
+    }
+
     private function dompdfOptions(): Options
     {
         $cache = storage_path('framework/cache/dompdf');
@@ -511,10 +581,13 @@ class InvoiceDocument
         $options->set('isPhpEnabled', false);
         $options->set('isJavascriptEnabled', false);
         $options->set('isFontSubsettingEnabled', true);
-        $options->set('defaultFont', 'DejaVu Sans');
-        $options->set('allowedProtocols', ['data://' => ['rules' => []]]);
+        $options->set('defaultFont', 'Suisse Intl');
+        // The bundled interface fonts are read from disk; nothing else outside data: URIs is.
+        $options->set('allowedProtocols', ['data://' => ['rules' => []], 'file://' => ['rules' => []]]);
+        $options->set('chroot', [resource_path('fonts')]);
         if (is_dir($cache) && is_writable($cache)) {
             $options->set('fontCache', $cache);
+            $options->set('fontDir', $cache);
         }
 
         return $options;

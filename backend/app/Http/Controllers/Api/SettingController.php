@@ -170,6 +170,12 @@ class SettingController extends ApiController
             }
             $value = trim((string) ($item['value'] ?? ''));
 
+            if (in_array($item['key'], ['company_address', 'company_phone', 'company_tax_id', 'company_commercial_register'], true) && mb_strlen($value) > 255) {
+                throw ValidationException::withMessages([
+                    "settings.{$index}.value" => 'Company details must be at most 255 characters.',
+                ]);
+            }
+
             if (in_array($item['key'], ['company_name_ar', 'company_name_en'], true) && ($value === '' || mb_strlen($value) > 120)) {
                 throw ValidationException::withMessages([
                     "settings.{$index}.value" => 'The company name is required and must be at most 120 characters.',
