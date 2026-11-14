@@ -15,6 +15,10 @@ export type SettingField = {
 export const editable: SettingField[] = [
   { group: 'general', key: 'company_name_ar', ar: 'اسم الشركة (عربي)', en: 'Company name (Arabic)' },
   { group: 'general', key: 'company_name_en', ar: 'اسم الشركة (إنجليزي)', en: 'Company name (English)' },
+  { group: 'general', key: 'company_address', ar: 'عنوان الشركة (يظهر على الفاتورة)', en: 'Company address (printed on invoices)' },
+  { group: 'general', key: 'company_phone', ar: 'هاتف الشركة', en: 'Company phone' },
+  { group: 'general', key: 'company_tax_id', ar: 'الرقم الضريبي للشركة', en: 'Company tax number' },
+  { group: 'general', key: 'company_commercial_register', ar: 'رقم السجل التجاري', en: 'Commercial register number' },
   { group: 'general', key: 'locale', ar: 'اللغة الافتراضية', en: 'Default language', type: 'select', options: ['ar', 'en'], optionLabels: { ar: { ar: 'العربية', en: 'العربية' }, en: { ar: 'English', en: 'English' } } },
   { group: 'general', key: 'base_currency', ar: 'العملة الأساسية', en: 'Base currency', type: 'select' },
   { group: 'general', key: 'report_signoff', ar: 'سطور التوقيع في تقارير PDF', en: 'Sign-off lines on PDF reports', type: 'toggle', options: ['true', 'false'] },

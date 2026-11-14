@@ -57,6 +57,8 @@ class InvoiceDocument
         'received_by' => ['استلمها', 'Received by'],
         'branch' => ['الفرع', 'Branch'],
         'phone' => ['هاتف', 'Phone'],
+        'address' => ['العنوان', 'Address'],
+        'commercial_register' => ['السجل التجاري', 'Commercial register'],
         'email' => ['البريد الإلكتروني', 'Email'],
         'tax_id' => ['الرقم الضريبي', 'Tax ID'],
         'customer_invoice' => ['فاتورة', 'Invoice'],
@@ -85,23 +87,29 @@ class InvoiceDocument
         $dompdf->render();
 
         // Page numbers need the final layout, so they are drawn on the canvas.
+        // Digits use the Latin face; the Arabic word uses the Arabic face, because
+        // neither font covers the other script.
         $canvas = $dompdf->getCanvas();
         $metrics = $dompdf->getFontMetrics();
-        $font = $metrics->getFont('DejaVu Sans');
+        $latin = $metrics->getFont('Suisse Intl');
+        $arabic = $metrics->getFont('Noto Sans Arabic');
         $size = 7.5;
-        $pageText = $rtl
-            ? '{PAGE_NUM} / {PAGE_COUNT} '.ArabicText::visual($this->label('page', 'ar'), true)
-            : $this->label('page', 'en').' {PAGE_NUM} / {PAGE_COUNT}';
-        $sample = str_replace(['{PAGE_NUM}', '{PAGE_COUNT}'], '00', $pageText);
-        $width = $metrics->getTextWidth($sample, $font, $size);
-        $canvas->page_text(
-            ($canvas->get_width() - $width) / 2,
-            $canvas->get_height() - 24,
-            $pageText,
-            $font,
-            $size,
-            [0.44, 0.5, 0.56],
-        );
+        $color = [0.44, 0.5, 0.56];
+        $y = $canvas->get_height() - 24;
+        $numbers = '{PAGE_NUM} / {PAGE_COUNT}';
+        $numbersWidth = $metrics->getTextWidth('00 / 00', $latin, $size);
+        if ($rtl) {
+            $word = ArabicText::visual($this->rawLabel('page', 'ar'), true);
+            $wordWidth = $metrics->getTextWidth($word, $arabic, $size);
+            $gap = 4;
+            $x = ($canvas->get_width() - ($numbersWidth + $gap + $wordWidth)) / 2;
+            $canvas->page_text($x, $y, $numbers, $latin, $size, $color);
+            $canvas->page_text($x + $numbersWidth + $gap, $y, $word, $arabic, $size, $color);
+        } else {
+            $word = $this->rawLabel('page', 'en').' ';
+            $wordWidth = $metrics->getTextWidth($word, $latin, $size);
+            $canvas->page_text(($canvas->get_width() - ($wordWidth + $numbersWidth)) / 2, $y, $word.$numbers, $latin, $size, $color);
+        }
 
         return $dompdf->output();
     }
@@ -120,16 +128,16 @@ class InvoiceDocument
         $logo = LogoDataUri::fromValue((string) $this->settings->get('general', 'company_logo', ''));
         $logoCell = $logo !== null ? '<td class="logo"><img src="'.$logo.'" alt=""></td>' : '<td class="logo"></td>';
         $companyLines = array_map($this->text(...), $this->companyLines($language));
-        $companyCell = '<td class="company">'.implode('<br>', $companyLines).'</td>';
+        $companyCell = '<td class="company"><div class="name">'.implode('<br>', $companyLines).'</div>'.$this->companyDetails($language).'</td>';
         $branchName = $this->branchName($invoice, $language);
 
         $title = $this->label((string) $invoice->type, $language);
         $statusLabel = $this->label((string) $invoice->status, $language);
         $docCell = '<td class="doc">'
-            .'<div class="title">'.$this->escape($title).'</div>'
+            .'<div class="title">'.$title.'</div>'
             .'<div class="number" dir="ltr">'.$this->escape((string) $invoice->number).'</div>'
-            .'<div class="status status-'.$this->escape((string) $invoice->status).'">'.$this->escape($statusLabel).'</div>'
-            .($branchName !== '' ? '<div class="branch">'.$this->escape($this->label('branch', $language)).': '.$this->escape($this->text($branchName)).'</div>' : '')
+            .'<div class="status status-'.$this->escape((string) $invoice->status).'">'.$statusLabel.'</div>'
+            .($branchName !== '' ? '<div class="branch">'.$this->inline('branch', $branchName, $language).'</div>' : '')
             .'</td>';
 
         $headerCells = [$logoCell, $companyCell, $docCell];
@@ -140,7 +148,7 @@ class InvoiceDocument
 
         $statusNote = $this->statusNote((string) $invoice->status, $language);
         $band = $statusNote !== ''
-            ? '<div class="status-band status-'.$this->escape((string) $invoice->status).'">'.$this->escape($statusNote).'</div>'
+            ? '<div class="status-band status-'.$this->escape((string) $invoice->status).'">'.$statusNote.'</div>'
             : '';
 
         $meta = [
@@ -162,25 +170,25 @@ class InvoiceDocument
         }
         $metaRows = '';
         foreach ($meta as [$label, $value]) {
-            $metaRows .= '<tr><th>'.$this->escape($label).'</th><td dir="auto">'.$value.'</td></tr>';
+            $metaRows .= '<tr><th>'.$label.'</th><td dir="auto">'.$value.'</td></tr>';
         }
 
         $party = $invoice->party;
         $partyLabels = $invoice->party_type === 'supplier'
             ? [$this->label('supplier', $language)]
             : [$this->label('bill_to', $language)];
-        $partyHtml = '<div class="party-label">'.$this->escape($partyLabels[0]).'</div>';
+        $partyHtml = '<div class="party-label">'.$partyLabels[0].'</div>';
         if ($party !== null) {
-            $partyHtml .= '<div class="party-name">'.$this->escape($this->text($this->partyName($party, $language))).'</div>';
+            $partyHtml .= '<div class="party-name">'.$this->text($this->partyName($party, $language)).'</div>';
             $details = [];
             if (! empty($party->phone)) {
-                $details[] = $this->escape($this->label('phone', $language)).': '.$this->text((string) $party->phone);
+                $details[] = $this->inline('phone', (string) $party->phone, $language);
             }
             if (! empty($party->email)) {
-                $details[] = $this->escape($this->label('email', $language)).': '.$this->escape((string) $party->email);
+                $details[] = $this->inline('email', (string) $party->email, $language);
             }
             if (! empty($party->tax_id)) {
-                $details[] = $this->escape($this->label('tax_id', $language)).': '.$this->escape((string) $party->tax_id);
+                $details[] = $this->inline('tax_id', (string) $party->tax_id, $language);
             }
             if ($details !== []) {
                 $partyHtml .= '<div class="party-details">'.implode('<br>', $details).'</div>';
@@ -209,7 +217,7 @@ class InvoiceDocument
         $widths = ['46%', '8%', '16%', '14%', '16%'];
         $headRow = '';
         foreach ($this->direction($headers, $rtl) as $cell) {
-            $headRow .= '<th>'.$this->escape($cell).'</th>';
+            $headRow .= '<th>'.$cell.'</th>';
         }
         $colgroup = '';
         foreach ($this->direction($widths, $rtl) as $width) {
@@ -218,7 +226,7 @@ class InvoiceDocument
 
         $bodyRows = '';
         $lines = $invoice->lines->sortBy('id')->values();
-        foreach ($lines as $line) {
+        foreach ($lines as $index => $line) {
             /** @var InvoiceLine $line */
             $amount = (int) $line->debit_minor + (int) $line->credit_minor;
             $quantity = $line->quantity !== null ? (string) $line->quantity : '';
@@ -226,13 +234,13 @@ class InvoiceDocument
                 ? $this->amount((int) $line->unit_price_minor, $currency)
                 : '—';
             $cells = [
-                ['html' => '<div class="line-description">'.$this->escape($this->text($line->description ?? $this->label('description', $language))).'</div>', 'num' => false],
+                ['html' => '<div class="line-description">'.$this->text($line->description ?? $this->rawLabel('description', $language)).'</div>', 'num' => false],
                 ['html' => $this->escape($quantity), 'num' => true],
                 ['html' => $unit, 'num' => true],
                 ['html' => $this->amount((int) $line->tax_minor, $currency), 'num' => true],
                 ['html' => $this->amount($amount, $currency), 'num' => true],
             ];
-            $bodyRows .= '<tr>';
+            $bodyRows .= '<tr'.($index % 2 === 1 ? ' class="alt"' : '').'>';
             foreach ($this->direction($cells, $rtl) as $cell) {
                 $bodyRows .= '<td'.($cell['num'] ? ' class="num"' : '').'>'.$cell['html'].'</td>';
             }
@@ -255,16 +263,16 @@ class InvoiceDocument
             $totals[] = [$this->label('remaining_credit', $language), $this->amount($outstanding, $currency), false];
         } else {
             $totals[] = [$this->label('paid', $language), $this->amount($applied, $currency), false];
-            $totals[] = [$this->label('amount_due', $language), $this->amount($outstanding, $currency), true];
+            $totals['due'] = [$this->label('amount_due', $language), $this->amount($outstanding, $currency), true];
         }
         $totalsRows = '';
-        foreach ($totals as [$label, $value, $strong]) {
-            $totalsRows .= '<tr'.($strong ? ' class="strong"' : '').'><th>'.$this->escape($label).'</th><td>'.$value.'</td></tr>';
+        foreach ($totals as $key => [$label, $value, $strong]) {
+            $totalsRows .= '<tr'.($key === 'due' ? ' class="due"' : ($strong ? ' class="strong"' : '')).'><th>'.$label.'</th><td>'.$value.'</td></tr>';
         }
         $notes = '';
         if (! empty($invoice->memo)) {
-            $notes = '<div class="notes"><div class="notes-label">'.$this->escape($this->label('notes', $language)).'</div>'
-                .'<div>'.$this->escape($this->text((string) $invoice->memo)).'</div></div>';
+            $notes = '<div class="notes"><div class="notes-label">'.$this->label('notes', $language).'</div>'
+                .'<div>'.$this->text((string) $invoice->memo).'</div></div>';
         }
         $fxNote = $this->isForeign($invoice)
             ? '<div class="fx-note">'.'1 '.$this->escape($currency).' = '.$this->escape($this->rate((string) $invoice->fx_rate)).' '.$this->escape($this->baseCurrency())
@@ -277,53 +285,67 @@ class InvoiceDocument
         ];
         $signHtml = '';
         foreach ($this->direction($signCells, $rtl) as $cell) {
-            $signHtml .= '<td>'.$this->escape($cell).': ____________________</td>';
+            $signHtml .= '<td>'.$cell.'<div class="line"></div></td>';
         }
 
         $generated = $this->generatedAt();
-        $footerCompany = $this->text($this->companyLines($language)[0] ?? '');
-        $footer = '<div class="footer">'.$this->escape($footerCompany).' · '.$this->escape($this->label('generated', $language)).' '.$this->escape($generated).'</div>';
+        $footerCompany = $this->companyLines($language)[0] ?? '';
+        $footer = '<div class="footer">'.$this->text($footerCompany.' · '.$this->inlineLabel('generated', $language).' '.$generated).'</div>';
 
         $style = '@page{margin:32px 32px 44px 32px;size:A4 portrait;}'
-            .'body{font-family:"DejaVu Sans",sans-serif;font-size:9px;color:#172033;direction:ltr}'
+            .$this->fontFaces()
+            .'body{font-family:"Suisse Intl",sans-serif;font-size:9px;color:#172033;direction:ltr}'
+            .'.ar{font-family:"Noto Sans Arabic","Suisse Intl",sans-serif;font-size:1.08em}'
             .'table{width:100%;border-collapse:collapse}'
             .'td,th{padding:0;border:0}'
+            .'.header{border-bottom:3px solid #1f3a5f;padding-bottom:10px}'
             .'.header td{vertical-align:top;padding:0 6px}'
+            .'.sub{font-size:7px;font-weight:normal;color:#718096}'
             .'.header .logo{width:22%}.header .logo img{max-height:54px;max-width:150px}'
-            .'.header .company{width:40%;font-size:14px;font-weight:bold;text-align:'.$align.'}'
+            .'.header .company{width:40%;text-align:'.$align.'}'
+            .'.header .company .name{font-size:15px;color:#1f3a5f;font-weight:bold}'
+            .'.header .company .details{margin-top:5px;font-size:8px;color:#4a5568;line-height:1.5}'
             .'.header .doc{width:38%;text-align:'.($rtl ? 'left' : 'right').'}'
-            .'.header .doc .title{font-size:15px;font-weight:bold}'
+            .'.header .doc .title{font-size:19px;font-weight:bold;color:#1f3a5f}'
             .'.header .doc .number{font-size:11px;margin-top:2px}'
-            .'.header .doc .status{display:inline-block;margin-top:4px;padding:2px 8px;border:1px solid #172033;font-size:8px}'
+            .'.header .doc .status{display:inline-block;margin-top:5px;padding:3px 10px;border:1px solid #1f3a5f;color:#1f3a5f;font-size:8px;font-weight:bold}'
+            .'.header .doc .status-draft{border-color:#b7791f;color:#b7791f;background:#fffaf0}'
+            .'.header .doc .status-voided{border-color:#c53030;color:#c53030;background:#fff5f5}'
+            .'.header .doc .status-issued,.header .doc .status-approved{border-color:#2f855a;color:#2f855a;background:#f0fff4}'
             .'.header .doc .branch{font-size:8px;color:#4a5568;margin-top:4px}'
             .'.status-band{margin:10px 0 0 0;padding:5px 8px;border:1px solid #b8c0cc;background:#f4f6f9;font-size:9px;font-weight:bold;text-align:'.$align.'}'
             .'.status-band.status-voided{background:#fbe9e9;border-color:#d9a3a3}'
             .'.status-band.status-draft{background:#fff7e0;border-color:#e0c97a}'
             .'.info{margin-top:12px}'
-            .'.info .party-cell,.info .meta-cell{vertical-align:top;padding:8px;border:1px solid #d8dee9}'
-            .'.party-label{font-size:8px;color:#4a5568;margin-bottom:2px}'
-            .'.party-name{font-size:11px;font-weight:bold}'
+            .'.info .party-cell,.info .meta-cell{vertical-align:top;padding:10px;border:1px solid #d8dee9;background:#f8fafc}'
+            .'.party-label{font-size:8px;color:#718096;margin-bottom:3px}'
+            .'.party-name{font-size:12px;font-weight:bold;color:#1f3a5f}'
             .'.party-details{font-size:8px;color:#4a5568;margin-top:3px}'
-            .'.meta th{text-align:'.$align.';font-weight:normal;color:#4a5568;padding:1px 0;white-space:nowrap}'
-            .'.meta td{text-align:'.($rtl ? 'left' : 'right').';padding:1px 0 1px 6px}'
+            .'.meta th{text-align:'.$align.';font-weight:normal;color:#4a5568;padding:3px 0;white-space:nowrap}'
+            .'.meta td{text-align:'.($rtl ? 'left' : 'right').';padding:3px 0 3px 6px;font-weight:bold}'
             .'table.data{margin-top:14px}'
             .'table.data th,table.data td{border:1px solid #d8dee9;padding:4px 5px;vertical-align:top;text-align:'.$align.'}'
-            .'table.data th{background:#eef2f7;font-weight:bold;font-size:8px}'
+            .'table.data th{background:#1f3a5f;color:#ffffff;border-color:#1f3a5f;font-weight:bold;font-size:8px;padding:6px 5px}'
+            .'table.data tbody tr.alt td{background:#f8fafc}'
             .'table.data thead{display:table-header-group}'
             .'table.data tr{page-break-inside:avoid}'
             .'table.data td.num,table.data th.num{text-align:right;white-space:nowrap}'
+            .'table.data td{padding:6px 5px}'
             .'table.data td.empty{text-align:center;color:#718096}'
             .'table.totals{width:52%;margin-top:10px;'.($rtl ? 'margin-left:0;margin-right:auto' : 'margin-left:auto').'}'
             .'table.totals th,table.totals td{border:1px solid #d8dee9;padding:4px 6px;font-weight:normal}'
             .'table.totals th{text-align:'.$align.';color:#4a5568}'
             .'table.totals td{text-align:right;white-space:nowrap}'
-            .'table.totals tr.strong th,table.totals tr.strong td{font-weight:bold;background:#f3f5f9}'
+            .'table.totals tr.strong th,table.totals tr.strong td{font-weight:bold;background:#eef2f7;color:#1f3a5f}'
+            .'table.totals tr.due th,table.totals tr.due td{font-weight:bold;font-size:11px;background:#1f3a5f;color:#ffffff;border-color:#1f3a5f}'
+            .'table.totals tr.due .sub{color:#cbd5e0}'
             .'.notes{margin-top:12px;font-size:8px;border-top:1px solid #d8dee9;padding-top:6px}'
             .'.notes-label{color:#4a5568;margin-bottom:2px}'
             .'.fx-note{margin-top:6px;font-size:8px;color:#4a5568}'
             .'.signoff{margin-top:26px;font-size:9px;page-break-inside:avoid}'
-            .'.signoff td{padding:14px 8px 0 8px;text-align:'.$align.'}'
-            .'.footer{margin-top:18px;font-size:7px;color:#718096;text-align:center}';
+            .'.signoff td{padding:0 14px;text-align:'.$align.';color:#4a5568;width:50%}'
+            .'.signoff .line{border-bottom:1px solid #94a3b8;height:30px}'
+            .'.footer{margin-top:22px;padding-top:6px;border-top:1px solid #d8dee9;font-size:7px;color:#718096;text-align:center}';
 
         return '<!doctype html><html lang="'.$lang.'" dir="'.$dir.'"><head><meta charset="UTF-8"><style>'.$style.'</style></head><body>'
             .$header
@@ -391,7 +413,8 @@ class InvoiceDocument
         };
     }
 
-    private function label(string $key, string $language): string
+    /** Plain logical-order label, for callers that shape the text themselves. */
+    private function rawLabel(string $key, string $language): string
     {
         [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
 
@@ -400,6 +423,25 @@ class InvoiceDocument
             'ar' => $ar,
             default => $ar.' / '.$en,
         };
+    }
+
+    /**
+     * Label as safe HTML: Arabic shaped for the renderer and, in a bilingual
+     * document, the English text on a smaller second line (or, when
+     * $stack is false, Arabic only, for labels that sit inside a sentence).
+     */
+    private function label(string $key, string $language, bool $stack = true): string
+    {
+        if ($language !== 'bilingual') {
+            return $this->text($this->rawLabel($key, $language));
+        }
+        [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
+        if (! $stack) {
+            // Inline labels stay Arabic-only: the values next to them are already bilingual.
+            return $this->text($ar);
+        }
+
+        return $this->text($ar).'<br><span class="sub">'.$this->escape($en).'</span>';
     }
 
     private function amount(int $minor, string $currency): string
@@ -449,10 +491,52 @@ class InvoiceDocument
         return ($negative ? '-' : '').$int.(isset($parts[1]) ? '.'.$parts[1] : '');
     }
 
-    /** Arabic text in visual order for the left-to-right PDF renderer. */
+    /**
+     * Arabic text in visual order for the left-to-right PDF renderer, as safe HTML.
+     * Arabic runs are wrapped so they use the Arabic face while digits, Latin text
+     * and punctuation keep the interface face (one font cannot cover both).
+     */
     private function text(string $value): string
     {
-        return $this->escape(ArabicText::visual($value));
+        $html = $this->escape(ArabicText::visual($value));
+
+        return preg_replace(
+            '/[\x{0600}-\x{06FF}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]+/u',
+            '<span class="ar">$0</span>',
+            $html,
+        ) ?? $html;
+    }
+
+    /** "Label: value" as one logical string, so the bidi order is right in Arabic documents. */
+    private function inline(string $key, string $value, string $language): string
+    {
+        return $this->text($this->inlineLabel($key, $language).': '.$value);
+    }
+
+    private function inlineLabel(string $key, string $language): string
+    {
+        [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
+
+        return $language === 'en' ? $en : $ar;
+    }
+
+    /** Address, phone, tax number and commercial register from Settings (all optional). */
+    private function companyDetails(string $language): string
+    {
+        $rows = [];
+        foreach ([
+            'address' => 'company_address',
+            'phone' => 'company_phone',
+            'tax_id' => 'company_tax_id',
+            'commercial_register' => 'company_commercial_register',
+        ] as $label => $setting) {
+            $value = trim((string) $this->settings->get('general', $setting, ''));
+            if ($value !== '') {
+                $rows[] = $this->inline($label, $value, $language);
+            }
+        }
+
+        return $rows === [] ? '' : '<div class="details">'.implode('<br>', $rows).'</div>';
     }
 
     private function escape(string $value): string
@@ -469,6 +553,22 @@ class InvoiceDocument
         return $rtl ? array_reverse($cells) : $cells;
     }
 
+    /** The interface fonts (Suisse Intl for Latin, Noto Sans Arabic for Arabic), as TrueType for Dompdf. */
+    private function fontFaces(): string
+    {
+        $css = '';
+        foreach ([
+            ['Suisse Intl', 'normal', 'SuisseIntl-Regular.ttf'],
+            ['Suisse Intl', 'bold', 'SuisseIntl-Bold.ttf'],
+            ['Noto Sans Arabic', 'normal', 'NotoSansArabic-400.ttf'],
+            ['Noto Sans Arabic', 'bold', 'NotoSansArabic-700.ttf'],
+        ] as [$family, $weight, $file]) {
+            $css .= '@font-face{font-family:"'.$family.'";font-weight:'.$weight.';src:url("file://'.resource_path('fonts/'.$file).'") format("truetype")}';
+        }
+
+        return $css;
+    }
+
     private function dompdfOptions(): Options
     {
         $cache = storage_path('framework/cache/dompdf');
@@ -481,10 +581,13 @@ class InvoiceDocument
         $options->set('isPhpEnabled', false);
         $options->set('isJavascriptEnabled', false);
         $options->set('isFontSubsettingEnabled', true);
-        $options->set('defaultFont', 'DejaVu Sans');
-        $options->set('allowedProtocols', ['data://' => ['rules' => []]]);
+        $options->set('defaultFont', 'Suisse Intl');
+        // The bundled interface fonts are read from disk; nothing else outside data: URIs is.
+        $options->set('allowedProtocols', ['data://' => ['rules' => []], 'file://' => ['rules' => []]]);
+        $options->set('chroot', [resource_path('fonts')]);
         if (is_dir($cache) && is_writable($cache)) {
             $options->set('fontCache', $cache);
+            $options->set('fontDir', $cache);
         }
 
         return $options;
