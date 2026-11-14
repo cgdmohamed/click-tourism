@@ -1,3 +1,4 @@
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -166,6 +167,39 @@ export default function CostCenters() {
         ) : null}
         {!centersQuery.isLoading && !centersQuery.isError && centers.length === 0 ? <EmptyState /> : null}
         {centers.length > 0 ? (
+          <>
+          <MobileCards items={centers} getKey={(center) => center.id} label={ar ? 'مراكز التكلفة' : 'Cost centers'}>
+            {(center) => {
+              const parent = center.parent_id ? byId.get(center.parent_id) : null
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-medium font-semibold">
+                      <span className="tabular">{center.code}</span> · {localizedName(center, ar ? 'ar' : 'en')}
+                    </span>
+                    <Badge tone={center.status === 'active' ? 'positive' : 'neutral'}>{center.status === 'active' ? (ar ? 'نشط' : 'Active') : (ar ? 'مؤرشف' : 'Archived')}</Badge>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={ar ? 'المركز الأب' : 'Parent'}>{parent ? `${parent.code} — ${localizedName(parent, ar ? 'ar' : 'en')}` : '—'}</CardField>
+                    <CardField label={ar ? 'السريان' : 'Effective'}>
+                      {center.effective_from || center.effective_to
+                        ? `${center.effective_from ? formatDate(center.effective_from, locale) : '…'} → ${center.effective_to ? formatDate(center.effective_to, locale) : '…'}`
+                        : '—'}
+                    </CardField>
+                  </dl>
+                  {canManage ? (
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={() => startEdit(center)}>{t('edit')}</Button>
+                      {center.is_active ? (
+                        <Button variant="secondary" onClick={() => { setError(''); setArchiveTarget(center) }}>{ar ? 'أرشفة' : 'Archive'}</Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              )
+            }}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -208,6 +242,8 @@ export default function CostCenters() {
               })}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
       </Card>
 

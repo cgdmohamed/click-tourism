@@ -5,6 +5,10 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, formatDateTime, toMinor, todayISO } from '../lib/format'
+import { ActionsMenu } from '../components/ActionsMenu'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 import {
   Badge,
   Button,
@@ -325,10 +329,44 @@ export default function FixedAssets() {
     await queryClient.invalidateQueries({ queryKey: [STORAGE_KEY] })
   }
 
+  const [assetSearch, setAssetSearch] = useState('')
+  const assetFilters = useFilters([
+    {
+      key: 'status',
+      label: L('الحالة', 'Status'),
+      type: 'select',
+      options: ['draft', 'active', 'fully_depreciated', 'disposed'].map((value) => ({ value, label: statusLabel(value) })),
+      allLabel: L('كل الحالات', 'All statuses'),
+    },
+    {
+      key: 'category',
+      label: L('التصنيف', 'Category'),
+      type: 'custom',
+      render: (value, set) => (
+        <Select
+          value={value}
+          onChange={(event) => {
+            const picked = (categoriesQuery.data ?? []).find((category) => category.id === event.target.value)
+            set(event.target.value, picked ? categoryLabel(picked) : undefined)
+          }}
+        >
+          <option value="">{L('كل التصنيفات', 'All categories')}</option>
+          {(categoriesQuery.data ?? []).map((category) => (
+            <option key={category.id} value={category.id}>
+              {categoryLabel(category)}
+            </option>
+          ))}
+        </Select>
+      ),
+    },
+  ])
+
   const assetsQuery = useQuery({
-    queryKey: [STORAGE_KEY, 'assets', activeBranch?.id],
+    queryKey: [STORAGE_KEY, 'assets', assetFilters.applied, assetSearch, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Asset[] }>('/fixed-assets')
+      const { data } = await api.get<{ data: Asset[] }>('/fixed-assets', {
+        params: { status: assetFilters.applied.status || undefined, category: assetFilters.applied.category || undefined, search: assetSearch || undefined },
+      })
       return data.data
     },
   })
@@ -394,6 +432,33 @@ export default function FixedAssets() {
       setExportingFormat(null)
     }
   }
+
+  const assetActions = (asset: Asset) => (
+    <div className="flex flex-wrap justify-end gap-2">
+                          <Button variant="ghost" onClick={() => setDetailId(asset.id)}>
+                            {L('عرض', 'View')}
+                          </Button>
+                          {asset.status === 'draft' && approve ? (
+                            <Button variant="secondary" onClick={() => capitalize.mutate(asset)} disabled={capitalize.isPending}>
+                              {L('اعتماد', 'Capitalize')}
+                            </Button>
+                          ) : null}
+                          {asset.status === 'active' || asset.status === 'fully_depreciated' ? (
+                            <>
+                              {manage ? (
+                                <Button variant="secondary" onClick={() => openLifecycle('transfer', asset)}>
+                                  {L('تحويل', 'Transfer')}
+                                </Button>
+                              ) : null}
+                              {approve ? (
+                                <Button variant="danger" onClick={() => openLifecycle('dispose', asset)}>
+                                  {L('استبعاد', 'Dispose')}
+                                </Button>
+                              ) : null}
+                            </>
+                          ) : null}
+    </div>
+  )
 
   const detail = (assetsQuery.data ?? []).find((asset) => asset.id === detailId) ?? null
   const auditAsset = (assetsQuery.data ?? []).find((asset) => asset.id === auditId) ?? null
@@ -721,6 +786,13 @@ export default function FixedAssets() {
       </div>
 
       {tab === 'register' ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Input value={assetSearch} onChange={(event) => setAssetSearch(event.target.value)} placeholder={L('بحث', 'Search')} aria-label={L('بحث', 'Search')} className="max-w-xs" />
+          <FilterControl state={assetFilters} />
+        </div>
+      ) : null}
+
+      {tab === 'register' ? (
         assetsQuery.isLoading ? (
           <Loading />
         ) : assetsQuery.isError ? (
@@ -735,11 +807,37 @@ export default function FixedAssets() {
               )}
             />
             {assets.length === 0 ? (
-              <EmptyState
+              <ListEmpty
+                filters={assetFilters}
+                search={assetSearch}
+                onClearSearch={() => setAssetSearch('')}
                 title={L('لا توجد أصول بعد', 'No assets yet')}
                 hint={L('أنشئ تصنيفاً ثم سجّل أصلاً لبدء الإهلاك.', 'Create a category, then register an asset to start depreciating.')}
               />
             ) : (
+              <>
+              <MobileCards items={assets} getKey={(asset) => asset.id} label={L('الأصول', 'Assets')}>
+                {(asset) => (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-medium font-semibold">{asset.description}</p>
+                        <p className="text-small tabular text-text-subtle">{asset.code}</p>
+                      </div>
+                      <Badge tone={statusTone(asset.status)}>{statusLabel(asset.status)}</Badge>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-3">
+                      <CardField label={L('التصنيف', 'Category')}>{categoryLabel(asset.category)}</CardField>
+                      <CardField label={L('الفرع', 'Branch')}>{asset.branch ? localizedName(asset.branch, locale) : '—'}</CardField>
+                      <CardField label={L('التكلفة', 'Cost')}><Money amountMinor={asset.acquisition_value_base_minor} currency={baseCurrency(asset)} /></CardField>
+                      <CardField label={L('مجمع الإهلاك', 'Accumulated')}><Money amountMinor={asset.total_accumulated_minor} currency={baseCurrency(asset)} /></CardField>
+                      <CardField label={L('القيمة الدفترية', 'Carrying value')}><Money amountMinor={asset.carrying_value_minor} currency={baseCurrency(asset)} /></CardField>
+                    </dl>
+                    {assetActions(asset)}
+                  </>
+                )}
+              </MobileCards>
+              <TableOnly>
               <Table>
                 <thead>
                   <tr>
@@ -747,9 +845,9 @@ export default function FixedAssets() {
                     <Th>{L('البيان', 'Description')}</Th>
                     <Th>{L('التصنيف', 'Category')}</Th>
                     <Th>{L('الفرع', 'Branch')}</Th>
-                    <Th>{L('التكلفة', 'Cost')}</Th>
-                    <Th>{L('مجمع الإهلاك', 'Accumulated')}</Th>
-                    <Th>{L('القيمة الدفترية', 'Carrying value')}</Th>
+                    <Th className="text-end">{L('التكلفة', 'Cost')}</Th>
+                    <Th className="text-end">{L('مجمع الإهلاك', 'Accumulated')}</Th>
+                    <Th className="text-end">{L('القيمة الدفترية', 'Carrying value')}</Th>
                     <Th>{L('الحالة', 'Status')}</Th>
                     <Th />
                   </tr>
@@ -771,48 +869,27 @@ export default function FixedAssets() {
                         <div className="text-small text-text-subtle">{accountLabel(asset.category?.asset_account ?? null)}</div>
                       </Td>
                       <Td>{asset.branch ? (localizedName(asset.branch, locale)) : '—'}</Td>
-                      <Td>
+                      <Td className="text-end">
                         <Money amountMinor={asset.acquisition_value_base_minor} currency={baseCurrency(asset)} />
                       </Td>
-                      <Td>
+                      <Td className="text-end">
                         <Money amountMinor={asset.total_accumulated_minor} currency={baseCurrency(asset)} />
                       </Td>
-                      <Td>
+                      <Td className="text-end">
                         <Money amountMinor={asset.carrying_value_minor} currency={baseCurrency(asset)} />
                       </Td>
                       <Td>
                         <Badge tone={statusTone(asset.status)}>{statusLabel(asset.status)}</Badge>
                       </Td>
                       <Td>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button variant="ghost" onClick={() => setDetailId(asset.id)}>
-                            {L('عرض', 'View')}
-                          </Button>
-                          {asset.status === 'draft' && approve ? (
-                            <Button variant="secondary" onClick={() => capitalize.mutate(asset)} disabled={capitalize.isPending}>
-                              {L('اعتماد', 'Capitalize')}
-                            </Button>
-                          ) : null}
-                          {asset.status === 'active' || asset.status === 'fully_depreciated' ? (
-                            <>
-                              {manage ? (
-                                <Button variant="secondary" onClick={() => openLifecycle('transfer', asset)}>
-                                  {L('تحويل', 'Transfer')}
-                                </Button>
-                              ) : null}
-                              {approve ? (
-                                <Button variant="danger" onClick={() => openLifecycle('dispose', asset)}>
-                                  {L('استبعاد', 'Dispose')}
-                                </Button>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </div>
+                        {assetActions(asset)}
                       </Td>
                     </tr>
                   ))}
                 </tbody>
               </Table>
+              </TableOnly>
+              </>
             )}
           </Card>
         )
@@ -997,19 +1074,18 @@ export default function FixedAssets() {
                 <Button variant="secondary" onClick={() => void reconQuery.refetch()}>
                   {L('تحديث', 'Refresh')}
                 </Button>
-                {can('reports.export')
-                  ? (['csv', 'xlsx', 'pdf'] as const).map((format) => (
-                      <Button
-                        key={format}
-                        variant="secondary"
-                        icon="download"
-                        disabled={exportingFormat !== null}
-                        onClick={() => void downloadReconciliation(format)}
-                      >
-                        {format.toUpperCase()}
-                      </Button>
-                    ))
-                  : null}
+                {can('reports.export') ? (
+                  <ActionsMenu
+                    items={(['csv', 'xlsx', 'pdf'] as const).map((format) => ({
+                      key: format,
+                      label: format.toUpperCase(),
+                      icon: 'download' as const,
+                      busy: exportingFormat === format,
+                      disabled: exportingFormat !== null,
+                      onSelect: () => void downloadReconciliation(format),
+                    }))}
+                  />
+                ) : null}
               </div>
             }
           />
