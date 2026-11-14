@@ -31,7 +31,7 @@ import { localizedName } from '../lib/names'
 import { useFeatureFlags } from '../lib/useSetting'
 import { useTheme } from '../theme'
 import { Icon } from './icons'
-import { Badge, Button, IconButton, InlineNotice, Spinner, cx } from './ui'
+import { Badge, Button, IconButton, InlineNotice, Spinner, cx, Select } from './ui'
 
 type SavedConversation = { id: string; title: string; last_message_at: string | null }
 
@@ -295,9 +295,9 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
             {branches.length > 1 ? (
               <label className="text-small flex items-center gap-2 text-text-subtle">
                 <Icon name="building" className="h-4 w-4" />
-                <select
+                <Select
                   aria-label={t('branch')}
-                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
+                  className="w-44"
                   value={activeBranch?.id ?? ''}
                   onChange={(event) => setActiveBranch(event.target.value)}
                 >
@@ -306,7 +306,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
                       {localizedName(branch, locale)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             ) : null}
             <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label={theme === 'dark' ? t('switchToLight') : t('switchToDark')} onClick={toggleTheme} />

@@ -35,6 +35,7 @@ import { useBaseCurrency, useDefaultTaxRate, useTaxEnabled, useTaxInclusive } fr
 import BookingDetails from './BookingDetails'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
 
 type DepartureOption = { id: string; starts_on: string; ends_on: string | null; available_seats: number | null; status: string }
 type TourOption = { id: string; name: string; currency: string; execution_type: string; base_price_minor: number; estimated_cost_minor: number; departures: DepartureOption[] | null }
@@ -82,7 +83,6 @@ export default function Bookings() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
-  const [statusFilter, setStatusFilter] = useState('')
   const [viewId, setViewId] = useState<string | null>(searchParams.get('booking_id'))
   const [editTarget, setEditTarget] = useState<Booking | null>(null)
   const [form, setForm] = useState({
@@ -117,11 +117,36 @@ export default function Bookings() {
     setPage(1)
   }, [urlSearch])
 
+  const filters = useFilters(
+    [
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['draft', 'quoted', 'confirmed', 'in_progress', 'completed', 'closed', 'cancelled', 'no_show'].map((status) => ({ value: status, label: statusLabel(status, locale) })),
+        allLabel: locale === 'ar' ? 'كل الحالات' : 'All statuses',
+      },
+      {
+        key: 'customer_id',
+        label: t('customer'),
+        type: 'custom',
+        render: (value, set) => <PartyFilterField kind="customer" value={value} set={set} />,
+      },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const bookingsQuery = useQuery({
-    queryKey: ['bookings', statusFilter, search, page, activeBranch?.id],
+    queryKey: ['bookings', filters.applied, search, page, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Booking>>('/bookings', {
-        params: { status: statusFilter || undefined, search: search || undefined, page, per_page: 20 },
+        params: {
+          status: filters.applied.status || undefined,
+          customer_id: filters.applied.customer_id || undefined,
+          search: search || undefined,
+          page,
+          per_page: 20,
+        },
       })
       return data
     },
@@ -350,22 +375,7 @@ export default function Bookings() {
             placeholder={t('search')}
             className="max-w-xs"
           />
-          <Select
-            value={statusFilter}
-            onChange={(event) => {
-              setStatusFilter(event.target.value)
-              setPage(1)
-            }}
-            className="max-w-[180px]"
-            aria-label={t('status')}
-          >
-            <option value="">{locale === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
-            {['draft', 'quoted', 'confirmed', 'in_progress', 'completed', 'closed', 'cancelled', 'no_show'].map((status) => (
-              <option key={status} value={status}>
-                {statusLabel(status, locale)}
-              </option>
-            ))}
-          </Select>
+          <FilterControl state={filters} />
         </div>
 
         {bookingsQuery.isLoading ? <Loading /> : null}

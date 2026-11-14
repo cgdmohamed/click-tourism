@@ -10,7 +10,7 @@ import { NotificationBell } from './NotificationBell'
 import { UserMenu } from './UserMenu'
 import { Icon } from './icons'
 import type { IconName } from './icons'
-import { cx, IconButton, Spinner } from './ui'
+import { cx, IconButton, Spinner, Select } from './ui'
 import { localizedName } from '../lib/names'
 import { showAssistant } from '../lib/assistant'
 import { useFeatureFlags } from '../lib/useSetting'
@@ -228,9 +228,9 @@ export function Layout() {
               <label className="text-small hidden items-center gap-2 text-text-subtle sm:flex">
                 <Icon name="building" className="h-4 w-4" />
                 <span className="hidden md:inline">{t('branch')}</span>
-                <select
+                <Select
                   aria-label={t('branch')}
-                  className="text-medium h-9 max-w-40 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
+                  className="w-44 max-w-40"
                   value={activeBranch?.id ?? ''}
                   onChange={(event) => setActiveBranch(event.target.value)}
                 >
@@ -239,7 +239,7 @@ export function Layout() {
                       {localizedName(branch, locale)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             ) : null}
             <UserMenu />

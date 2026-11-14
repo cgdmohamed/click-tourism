@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  ChangeEvent,
   InputHTMLAttributes,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
@@ -7,7 +8,8 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Children, Fragment, isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useI18n } from '../i18n'
 import { formatMoney } from '../lib/format'
 import { statusToneOf } from '../lib/labels'
@@ -121,30 +123,83 @@ export function Input({
   )
 }
 
-export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select className={cx(controlBase, 'h-9', className)} {...props}>
-      {children}
-    </select>
-  )
-}
-
 export type SelectOption = {
   value: string
   label: string
   hint?: string
   /** Optional account/cost-center style code: shown as secondary monospace text before the label. */
   code?: string
+  disabled?: boolean
 }
 
 const optionText = (option: SelectOption) => (option.code ? `${option.code} — ${option.label}` : option.label)
 
+const textOf = (node: ReactNode): string =>
+  Children.toArray(node)
+    .map((child) => (typeof child === 'string' || typeof child === 'number' ? String(child) : isValidElement<{ children?: ReactNode }>(child) ? textOf(child.props.children) : ''))
+    .join('')
+
+/** `<option>` children (also inside fragments and `<optgroup>`) as options. */
+function optionsFromChildren(children: ReactNode): SelectOption[] {
+  const out: SelectOption[] = []
+  const visit = (nodes: ReactNode) => {
+    Children.forEach(nodes, (child) => {
+      if (!isValidElement<{ value?: string | number; disabled?: boolean; children?: ReactNode }>(child)) return
+      if (child.type === Fragment || child.type === 'optgroup') visit(child.props.children)
+      else if (child.type === 'option') {
+        const label = textOf(child.props.children)
+        out.push({ value: child.props.value !== undefined ? String(child.props.value) : label, label, disabled: child.props.disabled })
+      }
+    })
+  }
+  visit(children)
+  return out
+}
+
+/** Searches only pay off on longer lists; a short list is just a clean list. */
+const SEARCH_THRESHOLD = 8
+
+type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange' | 'value' | 'children'> & {
+  value?: string | number | readonly string[]
+  onChange?: (event: ChangeEvent<HTMLSelectElement>) => void
+  children?: ReactNode
+  /** Force the search box on or off; by default it shows for lists of 8 or more options. */
+  showSearch?: boolean
+}
+
 /**
- * Combobox for API-driven option lists.
- *
- * Native `<select>` stays the right control for short, static lists. Use this
- * when the list is dynamic (customers, suppliers, accounts, bookings) and the
- * user benefits from typing to filter.
+ * The app's dropdown. Same API as the native `<select>` (`<option>` children, `event.target.value`) but
+ * rendered with the app's own list (see SearchableSelect) so every dropdown looks and behaves the same:
+ * keyboard navigation, a search box on longer lists, a panel that is never clipped by a modal or table.
+ */
+export function Select({ className, children, value, onChange, disabled, id, showSearch, dir, ...rest }: SelectProps) {
+  const options = useMemo(() => optionsFromChildren(children), [children])
+  const current = Array.isArray(value) ? String(value[0] ?? '') : String(value ?? '')
+  const extra: Record<string, string | boolean | undefined> = {}
+  for (const [key, val] of Object.entries(rest)) {
+    if ((key.startsWith('aria-') || key.startsWith('data-') || key === 'title') && key !== 'aria-label') extra[key] = val as string
+  }
+  return (
+    <SearchableSelect
+      value={current}
+      options={options}
+      onChange={(next) => onChange?.({ target: { value: next, name: rest.name, id }, currentTarget: { value: next, name: rest.name, id } } as unknown as ChangeEvent<HTMLSelectElement>)}
+      disabled={disabled}
+      className={className}
+      id={id}
+      dir={dir as 'ltr' | 'rtl' | 'auto' | undefined}
+      ariaLabel={rest['aria-label']}
+      showSearch={showSearch ?? options.length >= SEARCH_THRESHOLD}
+      nameFromLabel
+      triggerProps={extra}
+    />
+  )
+}
+
+/**
+ * Combobox for option lists, used directly for API-driven lists (customers, suppliers, accounts) and
+ * through `Select` for every static one. The list opens in a portal positioned from the trigger (flips
+ * above when there is no room below), so it is never clipped by a modal, a drawer or a table wrapper.
  */
 export function SearchableSelect({
   value,
@@ -158,6 +213,10 @@ export function SearchableSelect({
   onSearch,
   hasMore,
   ariaLabel,
+  showSearch = true,
+  nameFromLabel = false,
+  dir,
+  triggerProps,
 }: {
   value: string
   onChange: (value: string) => void
@@ -173,8 +232,15 @@ export function SearchableSelect({
   hasMore?: boolean
   /** Accessible name when no visible <label> wraps the control (e.g. inside a table cell). */
   ariaLabel?: string
+  /** Show the visible search box (otherwise typing still jumps to matches, for keyboard users). */
+  showSearch?: boolean
+  /** The control sits in a <label>: let that label name it instead of the generated "Search: value". */
+  nameFromLabel?: boolean
+  dir?: 'ltr' | 'rtl' | 'auto'
+  triggerProps?: Record<string, string | boolean | undefined>
 }) {
   const { t } = useI18n()
+  const listId = useId()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -183,7 +249,7 @@ export function SearchableSelect({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef(onSearch)
   const panelRef = useRef<HTMLDivElement>(null)
-  const [shift, setShift] = useState(0)
+  const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
 
   useEffect(() => {
     searchRef.current = onSearch
@@ -213,11 +279,13 @@ export function SearchableSelect({
     if (restoreFocus) triggerRef.current?.focus()
   }
 
-  // Close on any press outside, including touch.
+  // Close on any press outside the trigger and the (portaled) panel, including touch.
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: Event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) close()
+      const target = event.target as Node
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      close()
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('touchstart', onPointerDown)
@@ -227,25 +295,46 @@ export function SearchableSelect({
     }
   }, [open])
 
-  // Keep the panel inside the viewport (it can be wider than a narrow trigger near a screen edge).
+  // Position from the trigger: below, or above when there is no room; clamped into the viewport.
   useLayoutEffect(() => {
-    if (!open || !panelRef.current) {
-      setShift(0)
+    if (!open) {
+      setPlace(null)
       return
     }
-    const rect = panelRef.current.getBoundingClientRect()
-    const base = rect.left - shift
-    const margin = 8
-    let next = 0
-    if (base < margin) next = margin - base
-    else if (base + rect.width > window.innerWidth - margin) next = window.innerWidth - margin - (base + rect.width)
-    if (next !== shift) setShift(next)
-  }, [open, rows.length, shift])
+    const measure = () => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const margin = 8
+      const rtl = getComputedStyle(trigger).direction === 'rtl'
+      const width = Math.min(Math.max(rect.width, 224), window.innerWidth - margin * 2)
+      let left = rtl ? rect.right - width : rect.left
+      left = Math.max(margin, Math.min(left, window.innerWidth - margin - width))
+      const below = window.innerHeight - rect.bottom - margin
+      const above = rect.top - margin
+      const wanted = Math.min(320, (panelRef.current?.scrollHeight ?? 320) + 4)
+      if (below >= Math.min(wanted, 200) || below >= above) setPlace({ top: rect.bottom + 4, left, width, maxHeight: Math.max(120, below - 4) })
+      else setPlace({ bottom: window.innerHeight - rect.top + 4, left, width, maxHeight: Math.max(120, above - 4) })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
+  }, [open, rows.length])
 
-  // The search box takes focus when the list opens.
+  // The (visible or screen-reader-only) search input takes focus when the list opens.
   useEffect(() => {
     if (open) searchInputRef.current?.focus()
   }, [open])
+
+  // Keep the active row in view while arrowing.
+  useEffect(() => {
+    if (!open || activeIndex < 0) return
+    panelRef.current?.querySelector<HTMLElement>(`[data-row="${activeIndex}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIndex])
 
   const toggle = () => {
     if (disabled) return
@@ -259,8 +348,19 @@ export function SearchableSelect({
   }
 
   const select = (option: SelectOption) => {
+    if (option.disabled) return
     onChange(option.value)
     close(true)
+  }
+
+  const step = (from: number, delta: 1 | -1) => {
+    let next = from
+    for (let i = 0; i < rows.length; i += 1) {
+      next = Math.min(Math.max(next + delta, 0), rows.length - 1)
+      if (!rows[next]?.disabled) return next
+      if (next === 0 || next === rows.length - 1) break
+    }
+    return from
   }
 
   const onTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -273,10 +373,16 @@ export function SearchableSelect({
   const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActiveIndex((current) => Math.min(current + 1, rows.length - 1))
+      setActiveIndex((current) => step(current, 1))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setActiveIndex((current) => Math.max(current - 1, 0))
+      setActiveIndex((current) => step(current, -1))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setActiveIndex(step(-1, 1))
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setActiveIndex(step(rows.length, -1))
     } else if (event.key === 'Enter') {
       event.preventDefault()
       if (rows[activeIndex]) select(rows[activeIndex])
@@ -289,15 +395,10 @@ export function SearchableSelect({
     }
   }
 
+  const label = ariaLabel ?? (nameFromLabel ? undefined : placeholder ?? t('search'))
+
   return (
-    <div
-      ref={containerRef}
-      className={cx('relative', className)}
-      onBlur={(event) => {
-        // Focus left the whole control (keyboard navigation away): close.
-        if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) close()
-      }}
-    >
+    <div ref={containerRef} className={cx('relative', className)}>
       <button
         ref={triggerRef}
         id={id}
@@ -305,76 +406,89 @@ export function SearchableSelect({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
-        // role=combobox does not take its name from content, so name it explicitly (label/placeholder + current value).
-        aria-label={[ariaLabel ?? placeholder ?? t('search'), selected ? optionText(selected) : undefined].filter(Boolean).join(': ')}
+        aria-controls={open ? listId : undefined}
+        // role=combobox does not take its name from content: a wrapping <label> (nameFromLabel) or an explicit name does.
+        aria-label={label ? [label, selected ? optionText(selected) : undefined].filter(Boolean).join(': ') : undefined}
         disabled={disabled}
+        dir={dir}
         className={cx(controlBase, 'flex h-9 items-center justify-between gap-2 pe-2 text-start')}
         onClick={toggle}
         onKeyDown={onTriggerKeyDown}
+        {...triggerProps}
       >
         <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-subtle')} title={selected ? optionText(selected) : undefined}>
           {selected ? optionText(selected) : placeholder ?? ''}
         </span>
         <Icon name="chevronDown" className={cx('h-4 w-4 shrink-0 text-text-subtle transition', open && 'rotate-180')} />
       </button>
-      {open ? (
-        // preventDefault on click: this panel sits inside a <label> (Field), and a click on its
-        // padding would otherwise be forwarded to the trigger and re-open the list.
-        // Wide enough to read account names (min 20rem or the trigger width), clamped to the viewport and
-        // nudged back on-screen in either direction (LTR/RTL) once measured.
-        <div
-          ref={panelRef}
-          className="absolute start-0 z-50 mt-1 w-max min-w-[max(100%,min(20rem,calc(100vw-2rem)))] max-w-[calc(100vw-2rem)] rounded-12 border border-border-default bg-surface-default shadow-3"
-          style={{ translate: shift ? `${shift}px 0` : undefined }}
-          onClick={(event) => event.preventDefault()}
-        >
-          <div className="border-b border-border-subtle p-2">
-            <input
-              ref={searchInputRef}
-              className={cx(controlBase, 'h-8')}
-              value={query}
-              placeholder={t('search')}
-              autoComplete="off"
-              aria-label={t('search')}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setActiveIndex(0)
-              }}
-              onKeyDown={onSearchKeyDown}
-            />
-          </div>
-          <div className="max-h-60 overflow-y-auto p-1" role="listbox">
-            {rows.length === 0 ? (
-              <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
-            ) : (
-              rows.map((option, index) => (
-                <button
-                  key={`${option.value}-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === value}
-                  className={cx(
-                    'text-medium flex w-full items-start gap-2 rounded-8 px-3 py-2 text-start transition',
-                    option.value === value ? 'bg-surface-selected text-text-default' : 'text-text-default',
-                    index === activeIndex ? 'bg-surface-hovered' : null,
-                  )}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => select(option)}
-                >
-                  {option.code ? (
-                    <span dir="ltr" className="tabular text-small shrink-0 pt-px font-mono text-text-subtle">{option.code}</span>
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words">{option.label}</span>
-                    {option.hint ? <span className="text-small block break-words text-text-subtle">{option.hint}</span> : null}
-                  </span>
-                </button>
-              ))
-            )}
-            {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
-          </div>
-        </div>
-      ) : null}
+      {open
+        ? createPortal(
+            // preventDefault on click: the list is also reachable through a wrapping <label> (Field); keep a click on the
+            // panel's padding from being forwarded to the trigger.
+            <div
+              ref={panelRef}
+              dir={dir}
+              className={cx(
+                'fixed z-[70] flex flex-col overflow-hidden rounded-12 border border-border-default bg-surface-default shadow-3',
+                place ? null : 'invisible',
+              )}
+              style={{ top: place?.top, bottom: place?.bottom, left: place?.left ?? 0, width: place?.width, maxHeight: place?.maxHeight }}
+              onClick={(event) => event.preventDefault()}
+            >
+              <div className={showSearch ? 'border-b border-border-subtle p-2' : 'sr-only'}>
+                <input
+                  ref={searchInputRef}
+                  className={cx(controlBase, 'h-8')}
+                  value={query}
+                  placeholder={t('search')}
+                  autoComplete="off"
+                  aria-label={t('search')}
+                  onChange={(event) => {
+                    setQuery(event.target.value)
+                    setActiveIndex(0)
+                  }}
+                  onKeyDown={onSearchKeyDown}
+                />
+              </div>
+              <div id={listId} className="min-h-0 flex-1 overflow-y-auto p-1" role="listbox">
+                {rows.length === 0 ? (
+                  <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
+                ) : (
+                  rows.map((option, index) => (
+                    <button
+                      key={`${option.value}-${index}`}
+                      data-row={index}
+                      type="button"
+                      role="option"
+                      tabIndex={-1}
+                      aria-selected={option.value === value}
+                      aria-disabled={option.disabled || undefined}
+                      className={cx(
+                        'text-medium flex w-full items-start gap-2 rounded-8 px-3 py-2 text-start transition',
+                        option.value === value ? 'bg-surface-selected font-medium text-text-default' : 'text-text-default',
+                        index === activeIndex ? 'bg-surface-hovered' : null,
+                        option.disabled ? 'cursor-not-allowed text-text-disabled' : null,
+                      )}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => select(option)}
+                    >
+                      {option.code ? (
+                        <span dir="ltr" className="tabular text-small shrink-0 pt-px font-mono text-text-subtle">{option.code}</span>
+                      ) : null}
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words">{option.label}</span>
+                        {option.hint ? <span className="text-small block break-words text-text-subtle">{option.hint}</span> : null}
+                      </span>
+                      {option.value === value ? <Icon name="check" className="mt-1 h-4 w-4 shrink-0 text-brand-1-accent" /> : null}
+                    </button>
+                  ))
+                )}
+                {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }
