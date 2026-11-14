@@ -453,6 +453,12 @@ export default function Reports() {
     ] : []),
   ]
 
+  const tabGroups: Array<{ id: string; ar: string; en: string; tabs: typeof tabs }> = [
+    { id: 'financial', ar: 'القوائم المالية', en: 'Financial statements', keys: ['trial-balance', 'general-ledger', 'income-statement', 'balance-sheet'] },
+    { id: 'parties', ar: 'الذمم المدينة والدائنة', en: 'Receivables and payables', keys: ['aging', 'aging-reconciliation', 'party-statement'] },
+    { id: 'management', ar: 'التقارير الإدارية', en: 'Management', keys: ['profitability', 'sales', 'commissions', 'tax', 'cost-center-pl', 'cost-center-unallocated'] },
+  ].map(({ keys, ...group }) => ({ ...group, tabs: tabs.filter((tab) => keys.includes(tab.key)) })).filter((group) => group.tabs.length > 0)
+
   const label = (line: StatementLine) => (localizedName(line, locale))
 
   const summaryLine = (text: string, amountMinor: number, currency: string, variance?: number, emphasis = false) => (
@@ -526,21 +532,30 @@ export default function Reports() {
         icon="chart"
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setReport(tab.key)}
-            className={cx(
-              'inline-flex items-center gap-2 rounded-12 border px-3 py-2 text-sm font-medium transition',
-              report === tab.key
-                ? 'border-border-selected bg-surface-selected text-text-default'
-                : 'border-border-subtle bg-surface-default text-text-subtle hover:text-text-default',
-            )}
-          >
-            <Icon name={tab.icon} className={cx('h-4 w-4', report === tab.key && 'text-brand-1-accent')} />
-            {locale === 'ar' ? tab.ar : tab.en}
-          </button>
+      <div className="mb-4 flex flex-wrap gap-x-6 gap-y-3">
+        {tabGroups.map((group) => (
+          <div key={group.id} role="group" aria-label={locale === 'ar' ? group.ar : group.en} className="flex flex-col gap-1.5">
+            <span className="text-small font-medium text-text-subtle">{locale === 'ar' ? group.ar : group.en}</span>
+            <div className="flex flex-wrap gap-2">
+              {group.tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  aria-pressed={report === tab.key}
+                  onClick={() => setReport(tab.key)}
+                  className={cx(
+                    'inline-flex items-center gap-2 rounded-12 border px-3 py-2 text-sm font-medium transition',
+                    report === tab.key
+                      ? 'border-border-selected bg-surface-selected text-text-default'
+                      : 'border-border-subtle bg-surface-default text-text-subtle hover:text-text-default',
+                  )}
+                >
+                  <Icon name={tab.icon} className={cx('h-4 w-4', report === tab.key && 'text-brand-1-accent')} />
+                  {locale === 'ar' ? tab.ar : tab.en}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
@@ -775,15 +790,20 @@ export default function Reports() {
           ) : null}
         </div>
 
-        <ScheduledReports />
-
-        {canExport ? (
-          <BackgroundExports
-            report={isLedger ? 'general-ledger' : report}
-            params={Object.fromEntries(Object.entries(isLedger ? ledgerParams : params).filter(([, value]) => value !== undefined && value !== null && value !== '').map(([key, value]) => [key, String(value)]))}
-            disabled={!canExport}
-          />
-        ) : null}
+        <details className="group border-t border-border-subtle">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-medium text-text-subtle hover:text-text-default [&::-webkit-details-marker]:hidden">
+            <Icon name="chevronDown" className="h-4 w-4 transition group-open:rotate-180" />
+            {locale === 'ar' ? 'خيارات التسليم والجدولة' : 'Delivery options and scheduling'}
+          </summary>
+          <ScheduledReports />
+          {canExport ? (
+            <BackgroundExports
+              report={isLedger ? 'general-ledger' : report}
+              params={Object.fromEntries(Object.entries(isLedger ? ledgerParams : params).filter(([, value]) => value !== undefined && value !== null && value !== '').map(([key, value]) => [key, String(value)]))}
+              disabled={!canExport}
+            />
+          ) : null}
+        </details>
 
         {exportError ? <p className="px-5 py-2 text-small text-danger-text">{exportError}</p> : null}
         {currency && (report === 'trial-balance' || isLedger || isStatement) ? (
@@ -998,7 +1018,6 @@ export default function Reports() {
                           <tr key={row.account_id}>
                             <Td className="tabular">
                               {row.code}
-                              {row.level > 1 ? <span className="ms-2 text-small text-text-subtle">L{row.level}</span> : null}
                             </Td>
                             <Td>
                               {localizedName(row, locale)}
@@ -1009,7 +1028,7 @@ export default function Reports() {
                               ) : null}
                             </Td>
                             {[row.opening_debit_minor, row.opening_credit_minor, row.debit_minor, row.credit_minor, row.closing_debit_minor, row.closing_credit_minor].map((amount, index) => (
-                              <Td key={index} className="text-end">
+                              <Td key={index} className={cx('text-end', amount === 0 && 'text-text-subtle')}>
                                 <Money amountMinor={amount} currency={data.currency} />
                               </Td>
                             ))}

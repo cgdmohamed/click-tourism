@@ -65,6 +65,7 @@ test('a background export is queued from the Reports page and listed with its st
   await uiLogin(page, apiSession())
   await page.goto('/reports')
 
+  await page.getByText('Delivery options and scheduling').click()
   const section = page.getByRole('region', { name: 'Background export' })
   await expect(section).toBeVisible()
   await section.getByRole('button', { name: 'Start export' }).click()
@@ -79,6 +80,7 @@ test('a scheduled report is created, says when the mailer is not configured, and
   await uiLogin(page, apiSession())
   await page.goto('/reports')
 
+  await page.getByText('Delivery options and scheduling').click()
   const section = page.getByRole('region', { name: 'Scheduled reports' })
   await expect(section).toBeVisible()
   await section.getByRole('button', { name: 'New schedule' }).click()
