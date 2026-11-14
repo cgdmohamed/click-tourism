@@ -2346,7 +2346,12 @@ paths:
     get:
       tags: [Bookings]
       summary: List bookings
+      description: >-
+        Each row also carries `invoice` (additive, 2026-11-14): `null`, or the booking's live (not voided)
+        customer invoice as `{number, status, currency, total_minor, outstanding_minor}`. It is readable with
+        `bookings.view`, so roles that cannot list invoices still see where a booking stands.
       parameters:
+        - { name: needs_invoice, in: query, description: 'Additive filter (2026-11-14). 1 returns confirmed, in-progress and completed bookings that have no live customer invoice (the accounting worklist).', schema: { type: boolean } }
         - { name: status, in: query, schema: { type: string } }
         - { name: customer_id, in: query, schema: { type: string } }
         - { name: branch_id, in: query, schema: { type: string } }
@@ -2479,6 +2484,24 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /collections/open-invoices:
+    get:
+      tags: [Payments]
+      summary: Open customer invoices of one customer, for the receipt and apply dialogs (requires payments.create)
+      description: >-
+        Additive (2026-11-14). A collection-scoped lookup so a cashier, who holds `payments.create` but not
+        `invoices.view`, can pick the invoice a receipt settles. Returns only issued customer invoices that still owe,
+        in the active branch, with the fields those dialogs show.
+      parameters:
+        - { name: customer_id, in: query, required: true, schema: { type: string }, description: Customer public id }
+        - { name: currency, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string }, description: Invoice number }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: Open invoices }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
   /payments:
     get:
       tags: [Payments]

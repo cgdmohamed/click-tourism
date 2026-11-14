@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -9,7 +9,7 @@ import type { Paginated } from '../lib/types'
 import { ReasonModal } from '../components/ReasonModal'
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, Money, PageHeader } from '../components/ui'
 
-import { REFUND_SOURCE, recordHref, rowAmount, rowDate, visibleSources } from '../lib/approvals'
+import { REFUND_SOURCE, recordHref, rowAmount, rowDate, sourceParams, visibleSources } from '../lib/approvals'
 import type { Row, Source } from '../lib/approvals'
 
 type Pending = { source: Source; row: Row }
@@ -19,6 +19,7 @@ export default function Approvals() {
   const { locale } = useI18n()
   const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const sources = visibleSources(can)
   const showRefunds = can(REFUND_SOURCE.permission)
   const [rejecting, setRejecting] = useState<Pending | null>(null)
@@ -28,7 +29,7 @@ export default function Approvals() {
     queries: sources.map((source) => ({
       queryKey: ['approvals', source.key, activeBranch?.id ?? null],
       queryFn: async () =>
-        (await api.get<Paginated<Row>>(source.list, { params: { status: source.status, per_page: 25 } })).data,
+        (await api.get<Paginated<Row>>(source.list, { params: { ...sourceParams(source), per_page: 25 } })).data,
     })),
   })
   const refundQuery = useQuery({
@@ -45,11 +46,14 @@ export default function Approvals() {
 
   const approve = useMutation({
     mutationFn: async ({ source, row }: Pending) => {
-      await api.post(source.approvePath(row.id), undefined, { headers: { 'Idempotency-Key': idempotencyKey() } })
+      const { data } = await api.post<{ data?: { id?: string } }>(source.approvePath(row.id), undefined, { headers: { 'Idempotency-Key': idempotencyKey() } })
+      return { source, id: data?.data?.id }
     },
-    onSuccess: async () => {
+    onSuccess: async ({ source, id }) => {
       setError('')
       await refresh()
+      // A new draft invoice opens right away, where it is reviewed and sent for approval.
+      if (source.key === 'ready-to-invoice' && id) navigate(`/invoices/${encodeURIComponent(id)}`)
     },
     onError: (err) => setError(errorMessage(err)),
   })
@@ -116,7 +120,7 @@ export default function Approvals() {
                         </Link>
                         <p className="text-small truncate text-text-subtle">
                           {[
-                            locale === 'ar' ? row.party?.name_ar : row.party?.name_en,
+                            locale === 'ar' ? (row.party ?? row.customer)?.name_ar : (row.party ?? row.customer)?.name_en,
                             row.payee_name,
                             row.description ?? row.memo,
                             rowDate(row) ? formatDate(rowDate(row) as string, locale) : null,

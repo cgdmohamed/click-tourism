@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Mail\ScheduledReportMail;
 use App\Modules\Core\Models\AuditEvent;
+use App\Modules\Core\Models\Notification;
 use App\Modules\Core\Models\User;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Reports\Models\ExportJob;
 use App\Modules\Reports\Models\ReportSchedule;
 use App\Modules\Reports\Services\ReportScheduleService;
@@ -113,6 +115,7 @@ class ReportScheduleTest extends TestCase
         $this->assertSame('mail_not_configured', $row['last_status']);
         Mail::assertNothingSent();
         $this->assertTrue($row['is_active'], 'a missing SMTP setting does not count as a failure');
+        $this->assertSame(0, Notification::query()->where('type', 'report_schedule.failed')->count());
         $this->getJson('/api/v1/feature-flags')->assertJsonPath('data.mail_configured', false);
     }
 
@@ -132,7 +135,27 @@ class ReportScheduleTest extends TestCase
         $this->assertNotEmpty($row['last_error']);
         Mail::assertNothingSent();
 
+        // Each failed run tells the owner; the last one says the schedule was switched off.
+        $notices = Notification::query()->where('type', 'report_schedule.failed')->orderBy('id')->get();
+        $this->assertCount(5, $notices);
+        $this->assertSame([$this->user->id], $notices->pluck('user_id')->unique()->values()->all());
+        $this->assertStringContainsString('switched off', (string) $notices->last()->body);
+        $this->assertStringNotContainsString('switched off', (string) $notices->first()->body);
+
         $this->patchJson('/api/v1/report-schedules/'.$id, ['is_active' => true])->assertOk()->assertJsonPath('data.is_active', true);
+    }
+
+    public function test_a_notification_that_cannot_be_saved_does_not_stop_the_run_or_its_audit_event(): void
+    {
+        $this->mock(NotificationService::class, function ($mock) {
+            $mock->shouldReceive('send')->andThrow(new \RuntimeException('notifications table is unavailable'));
+        });
+        $id = $this->create(['report' => 'general-ledger', 'period' => 'previous_month'])->assertCreated()->json('data.id');
+
+        $row = $this->postJson('/api/v1/report-schedules/'.$id.'/run')->assertOk()->json('data');
+
+        $this->assertSame('failed', $row['last_status']);
+        $this->assertNotEmpty(AuditEvent::query()->where('action', 'report_schedule.not_sent')->get());
     }
 
     public function test_due_schedules_are_sent_by_the_command_and_future_ones_are_left(): void

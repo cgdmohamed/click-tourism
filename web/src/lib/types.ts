@@ -209,6 +209,8 @@ export type Booking = {
   status_history?: BookingStatusHistoryRow[]
   payments_count?: number
   invoices_count?: number
+  /** The live customer invoice (read-only, visible with bookings.view); null when the booking has none. */
+  invoice?: { number: string; status: string; currency: string; total_minor: number; outstanding_minor: number } | null
   items?: BookingItem[]
 }
 

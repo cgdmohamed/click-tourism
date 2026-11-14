@@ -382,6 +382,8 @@ Route::prefix('v1')->group(function () {
         Route::post('bookings/{booking}/margin-approval', [BookingController::class, 'requestMarginApproval'])->middleware('permission:bookings.transition');
         Route::post('bookings/{booking}/margin-approval/approve', [BookingController::class, 'approveMargin'])->middleware('permission:bookings.approve_margin');
 
+        // Collection-scoped lookup for the cashier (W3): open invoices of one customer, without the whole invoice list.
+        Route::get('collections/open-invoices', [PaymentController::class, 'openInvoices'])->middleware('permission:payments.create');
         Route::get('payments', [PaymentController::class, 'index'])->middleware('permission:payments.view');
         Route::post('payments', [PaymentController::class, 'store'])->middleware(['permission:payments.create', 'idempotent']);
         Route::get('payments/{payment}', [PaymentController::class, 'show'])->middleware('permission:payments.view');

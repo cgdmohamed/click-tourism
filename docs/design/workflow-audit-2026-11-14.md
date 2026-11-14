@@ -69,3 +69,13 @@ Measured with `web/e2e/workflow-timing.spec.ts` (actions, screens and elapsed ti
 - Receipt for a customer, from the customer page to the receipt saved: 8 actions / 2.4 s via Payments, 5 actions / 1.4 s via the shortcut.
 - Supplier invoice, from the supplier page to the form open with the supplier chosen: 5 actions via Invoices, 1 via the shortcut; elapsed time is about the same because page load dominates. The journey was not measured through to saving.
 - Reaching a waiting expense: 4 actions via Expenses > Filter, 0 via Approvals.
+
+
+## Owner decisions applied (2026-11-14)
+
+| # | Decision | What was built |
+|---|---|---|
+| W2 | A "ready to invoice" worklist and a read-only invoice status on the booking | `GET /bookings?needs_invoice=1` (confirmed, in progress or completed bookings with no live customer invoice); every booking row and detail carries `invoice` (`number`, `status`, `currency`, `total_minor`, `outstanding_minor`) readable with `bookings.view`. The Approvals page lists "Ready to invoice" for `invoices.create` holders with a Create invoice action that opens the new draft. The Bookings filter drawer has "Ready to invoice". No role gained `invoices.view`. |
+| W3 | A limited endpoint for collection | `GET /collections/open-invoices` (needs `payments.create` only): issued customer invoices that still owe, for one customer in the active branch. The receipt and apply dialogs use it for customers; supplier invoices keep the invoice list. |
+| W10 | Notify approvers of a new refund request; notify the owner of a failed scheduled report | `refund.requested` goes to every active user of the branch holding `refunds.approve` (not the requester); `report_schedule.failed` goes to the schedule's owner on each failed run, saying when the schedule was switched off. Both are best-effort and never block the operation. Export-finished and period-closing reminders were not requested and are not built. |
+| W12 | Restrict `reports.view` to the financial roles | Withdrawn from `sales`, `reservations` and `cashier`; kept for `admin`, `finance_manager`, `senior_accountant`, `accountant`, `viewer` and `supervisor` (the supervisor already holds `reports.export`; remove the line in `RolePermissionSeeder` if it should go too). System roles are re-synced by `roles:sync` on upgrade, so no migration is needed. The Reports menu item is hidden without the permission. |

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
+use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Services\PaymentService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -40,6 +42,46 @@ class PaymentController extends ApiController
         $payments->getCollection()->transform(fn (Payment $payment) => $payment->toApiArray());
 
         return $this->paginated($payments);
+    }
+
+    /**
+     * Open (issued, still owing) customer invoices of one customer in the active branch, for the receipt and
+     * apply dialogs (W3). Needs payments.create, not invoices.view, and returns only what those dialogs show.
+     */
+    public function openInvoices(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['required', 'string'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'search' => ['nullable', 'string', 'max:100'],
+        ]);
+        // Fail closed: a user with no branch assignment sees no operational data (ADR-0005).
+        $branch = $this->branchOrFail();
+        $customerId = Customer::query()->where('public_id', $data['customer_id'])->value('id');
+
+        $invoices = Invoice::query()
+            ->where('branch_id', $branch->id)
+            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+            ->where('party_type', 'customer')
+            ->where('party_id', $customerId ?? 0)
+            ->where('status', Invoice::STATUS_ISSUED)
+            ->where('outstanding_minor', '>', 0)
+            ->when($data['currency'] ?? null, fn ($query, $currency) => $query->where('currency_code', strtoupper($currency)))
+            ->when(Like::term($data['search'] ?? null), fn ($query, $search) => Like::contains($query, ['number'], $search))
+            ->orderByDesc('issue_date')->orderByDesc('id')
+            ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
+
+        $invoices->getCollection()->transform(fn (Invoice $invoice) => [
+            'id' => $invoice->public_id,
+            'number' => $invoice->number,
+            'issue_date' => $invoice->issue_date?->toDateString(),
+            'due_date' => $invoice->due_date?->toDateString(),
+            'currency' => $invoice->currency_code,
+            'total_minor' => (int) $invoice->total_minor,
+            'outstanding_minor' => (int) $invoice->outstanding_minor,
+        ]);
+
+        return $this->paginated($invoices);
     }
 
     public function show(Payment $payment): JsonResponse

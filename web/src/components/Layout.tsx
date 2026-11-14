@@ -18,7 +18,7 @@ import { useApprovalCount } from '../lib/useApprovalCount'
 
 type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[]; badge?: number }
 
-const APPROVAL_PERMISSIONS = ['expenses.approve', 'documents.approve', 'invoices.approve', 'commissions.approve', 'refunds.approve']
+const APPROVAL_PERMISSIONS = ['expenses.approve', 'documents.approve', 'invoices.approve', 'invoices.create', 'commissions.approve', 'refunds.approve']
 
 /** Entities the import page can load; the page is useful to anyone holding one of these. */
 const IMPORT_PERMISSIONS = ['customers.create', 'suppliers.create', 'employees.manage', 'bookings.create', 'accounts.update', 'opening_balances.manage']
@@ -95,7 +95,7 @@ export function Layout() {
       items: [
         { to: '/documents', label: t('vouchers'), icon: 'clipboardCheck', permission: 'documents.view' },
         { to: '/journal', label: t('journal'), icon: 'scale' },
-        { to: '/reports', label: t('reports'), icon: 'chart' },
+        { to: '/reports', label: t('reports'), icon: 'chart', permission: 'reports.view' },
         { to: '/reconciliation', label: t('reconciliation'), icon: 'listChecks', permission: 'reconciliation.view' },
         { to: '/periods', label: t('fiscalPeriods'), icon: 'calendar', permission: 'periods.view' },
         { to: '/schedules', label: t('schedules'), icon: 'calendarClock', permission: 'schedules.view' },

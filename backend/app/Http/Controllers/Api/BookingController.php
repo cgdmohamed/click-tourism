@@ -20,9 +20,13 @@ class BookingController extends ApiController
         $branch = $this->branch();
 
         $bookings = Booking::query()
-            ->with(['customer', 'items.supplier', 'items.taxProfile'])
+            ->with(['customer', 'items.supplier', 'items.taxProfile', 'customerInvoice'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            // Worklist for accounting (W2): live bookings that have no customer invoice yet.
+            ->when($request->boolean('needs_invoice'), fn ($query) => $query
+                ->whereIn('status', ['confirmed', 'in_progress', 'completed'])
+                ->whereDoesntHave('customerInvoice'))
             ->when($request->query('customer_id'), function ($query, $customerId) {
                 $customer = Customer::query()->where('public_id', $customerId)->first();
                 $query->where('customer_id', $customer?->id ?? 0);
@@ -44,7 +48,7 @@ class BookingController extends ApiController
     public function show(Booking $booking, BookingCostSummary $costSummary): JsonResponse
     {
         $this->authorizeBranchId($booking->branch_id);
-        $booking->load('customer', 'items.supplier', 'items.taxProfile', 'statusHistory');
+        $booking->load('customer', 'items.supplier', 'items.taxProfile', 'statusHistory', 'customerInvoice');
 
         $payload = $booking->toApiArray(true);
         $payload['payments_count'] = (int) $booking->allocations()->distinct()->count('payment_id');

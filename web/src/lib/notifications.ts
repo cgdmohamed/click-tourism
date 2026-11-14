@@ -22,6 +22,10 @@ export function useNotificationText() {
         return t('notificationExpenseApproved')
       case 'expense.rejected':
         return t('notificationExpenseRejected')
+      case 'refund.requested':
+        return locale === 'ar' ? `طلب استرداد ${String(notification.data.number ?? '')} بانتظار اعتمادك`.trim() : `Refund ${String(notification.data.number ?? '')} is waiting for approval`.trim()
+      case 'report_schedule.failed':
+        return locale === 'ar' ? 'تعذّر إرسال تقرير مجدول' : 'A scheduled report could not be sent'
       default:
         return notification.title
     }
@@ -34,6 +38,8 @@ export function useNotificationText() {
       return typeof id === 'string' ? `/invoices/${id}` : '/invoices'
     }
     if (notification.type.startsWith('expense.')) return '/expenses'
+    if (notification.type === 'refund.requested') return '/approvals'
+    if (notification.type === 'report_schedule.failed') return '/reports'
     return null
   }
 

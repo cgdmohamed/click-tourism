@@ -103,6 +103,8 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<DashboardPeriod>('thisMonth')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  // Financial figures need reports.view; sales, reservations and cashier roles get a landing page without them.
+  const canFinance = can('reports.view')
   const baseNote = locale === 'ar' ? 'بالعملة الأساسية للنظام' : 'In the installation base currency'
 
   const invalidRange = period === 'customRange' && (!from || !to || to < from)
@@ -117,9 +119,9 @@ export default function Dashboard() {
       })
       return data.data
     },
-    enabled: !!activeBranch && !invalidRange,
+    enabled: !!activeBranch && !invalidRange && canFinance,
   })
-  const data = summary.data
+  const data = canFinance ? summary.data : undefined
   const pipeline = useQuery({
     queryKey: ['dashboard-pipeline', activeBranch?.id, period, from, to],
     queryFn: async () => {
@@ -144,6 +146,9 @@ export default function Dashboard() {
   }
   const colors = ['#4273c3', '#23a183', '#e2a549', '#d66a71', '#8c75be']
   const shortcuts: Array<{ label: string; href: string; permission: string }> = [
+    { label: locale === 'ar' ? 'حجز جديد' : 'New booking', href: '/bookings?create=1', permission: 'bookings.create' },
+    { label: locale === 'ar' ? 'الحجوزات' : 'Bookings', href: '/bookings', permission: 'bookings.view' },
+    { label: locale === 'ar' ? 'العملاء المحتملون' : 'Leads', href: '/leads', permission: 'leads.view' },
     { label: locale === 'ar' ? 'فواتير العملاء والموردين' : 'Customer & supplier invoices', href: '/invoices', permission: 'invoices.view' },
     { label: locale === 'ar' ? 'تسجيل تحصيل' : 'Record a receipt', href: '/payments?new=payment', permission: 'payments.create' },
     { label: locale === 'ar' ? 'مدفوعات الموردين' : 'Supplier payments', href: '/supplier-settlements', permission: 'supplier_payments.view' },
@@ -168,7 +173,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={t('financialCommandCenter')}
+        title={canFinance ? t('financialCommandCenter') : t('dashboard')}
         subtitle={activeBranch ? (localizedName(activeBranch, locale)) : undefined}
         icon="dashboard"
         actions={
@@ -190,11 +195,11 @@ export default function Dashboard() {
             )}
             <button
               type="button"
-              onClick={() => void summary.refetch()}
-              disabled={summary.isFetching || invalidRange}
+              onClick={() => void (canFinance ? summary.refetch() : pipeline.refetch())}
+              disabled={(canFinance ? summary.isFetching : pipeline.isFetching) || invalidRange}
               className="rounded-12 border border-border-default bg-surface-default px-4 py-2 text-small text-text-default hover:bg-surface-hovered disabled:opacity-50"
             >
-              {summary.isFetching ? t('loading') : t('refresh')}
+              {(canFinance ? summary.isFetching : pipeline.isFetching) ? t('loading') : t('refresh')}
             </button>
           </>
         }
@@ -202,9 +207,9 @@ export default function Dashboard() {
       {data && !invalidRange && <p className="-mt-3 text-small leading-relaxed text-text-subtle">{formatDate(data.period_from, locale)} – {formatDate(data.period_to, locale)} · {data.currency} · {baseNote}</p>}
       {invalidRange && <p className="-mt-3 text-small text-warning-text">{locale === 'ar' ? 'اختر فترة صحيحة لعرض البيانات' : 'Choose a valid date range'}</p>}
 
-      {summary.isLoading && !invalidRange ? <DashboardSkeleton label={t('loading')} /> : null}
-      {summary.isError ? <Card><ErrorState message={errorMessage(summary.error)} onRetry={() => void summary.refetch()} /></Card> : null}
-      {data && !invalidRange && (
+      {canFinance && summary.isLoading && !invalidRange ? <DashboardSkeleton label={t('loading')} /> : null}
+      {canFinance && summary.isError ? <Card><ErrorState message={errorMessage(summary.error)} onRetry={() => void summary.refetch()} /></Card> : null}
+      {canFinance && data && !invalidRange && (
         <>
           <section aria-label={t('financialKPIs')} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 xl:grid-cols-3">
@@ -221,6 +226,10 @@ export default function Dashboard() {
             </div>
           </section>
 
+        </>
+      )}
+      {!invalidRange && (
+        <>
           <section aria-label={t('quickActions')} className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="heading-small">{t('quickActions')}</h2>
@@ -311,6 +320,10 @@ export default function Dashboard() {
             </Card>
           )}
 
+        </>
+      )}
+      {canFinance && data && !invalidRange && (
+        <>
           <section aria-label={locale === 'ar' ? 'المخططات المالية' : 'Financial charts'} className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader title={t('cashInflowOutflow')} subtitle={locale === 'ar' ? 'حركات التحصيلات ومدفوعات الموردين (آخر 6 أشهر)' : 'Receipts and supplier payments, last 6 months'} />

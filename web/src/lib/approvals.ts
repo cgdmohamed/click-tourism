@@ -4,6 +4,8 @@ export type Source = {
   permission: string
   list: string
   status: string
+  /** Replaces `{status}` as the list filter when the source is not a status (the ready-to-invoice worklist). */
+  query?: Record<string, string>
   /** Collection page, the destination for sources that have no page of their own per record. */
   page: string
   /** The record's own page, when one exists. */
@@ -63,6 +65,20 @@ export const SOURCES: Source[] = [
     action: { ar: 'إصدار', en: 'Issue' },
   },
   {
+    // W2: confirmed or completed bookings with no customer invoice yet. The action creates the draft invoice
+    // from the booking (the same endpoint as "Invoice this booking"); approval still follows on the invoice.
+    key: 'ready-to-invoice',
+    permission: 'invoices.create',
+    list: '/bookings',
+    status: '',
+    query: { needs_invoice: '1' },
+    page: '/bookings',
+    detail: (id) => `/bookings?booking_id=${encodeURIComponent(id)}`,
+    approvePath: (id) => `/bookings/${id}/invoice`,
+    label: { ar: 'حجوزات جاهزة للفوترة', en: 'Ready to invoice' },
+    action: { ar: 'إنشاء فاتورة', en: 'Create invoice' },
+  },
+  {
     key: 'commissions',
     permission: 'commissions.approve',
     list: '/commissions',
@@ -82,12 +98,15 @@ export type Row = {
   id: string
   number?: string
   total_minor?: number
+  total_sell_minor?: number
   amount_minor?: number
   currency?: string
   status?: string
   expense_date?: string
   issue_date?: string
   accrued_on?: string
+  start_date?: string
+  customer?: { name_ar: string; name_en: string } | null
   submitted_at?: string | null
   payee_name?: string | null
   memo?: string | null
@@ -98,17 +117,22 @@ export type Row = {
 
 /** Display amount of a row; sources name it differently. */
 export function rowAmount(row: Row): number {
-  return row.total_minor ?? row.amount_minor ?? 0
+  return row.total_minor ?? row.total_sell_minor ?? row.amount_minor ?? 0
 }
 
 export function rowDate(row: Row): string | null {
-  return row.submitted_at ?? row.expense_date ?? row.issue_date ?? row.accrued_on ?? null
+  return row.submitted_at ?? row.expense_date ?? row.issue_date ?? row.accrued_on ?? row.start_date ?? null
 }
 
 /** Sources the user may act on; the API stays the authority. */
 /** Where the record number leads: its own page when the source has one, else the collection. */
 export function recordHref(source: Pick<Source, 'page' | 'detail'>, id: string): string {
   return source.detail ? source.detail(id) : source.page
+}
+
+/** The list filter of a source. */
+export function sourceParams(source: Pick<Source, 'status' | 'query'>): Record<string, string> {
+  return source.query ?? { status: source.status }
 }
 
 export function visibleSources(can: (permission: string) => boolean): Source[] {
