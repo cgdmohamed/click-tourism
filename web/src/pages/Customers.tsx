@@ -6,7 +6,8 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { toMinor } from '../lib/format'
 import type { Customer, Paginated } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
+import { Badge, Button, Card, ErrorState, Field, Input, Modal, PageHeader, Pagination, Select, Td } from '../components/ui'
+import { ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
 import { localizedName } from '../lib/names'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
@@ -90,9 +91,9 @@ export default function Customers() {
             className="max-w-xs"
           />
         </div>
-        {query.isLoading ? <Loading /> : null}
+        {query.isLoading ? <ListSkeleton columns={4} /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && customers.length === 0 ? <EmptyState /> : null}
+        {query.data && customers.length === 0 ? <ListEmpty filtered={search !== ''} onClear={() => { setSearch(''); setPage(1) }} /> : null}
         {customers.length > 0 ? (
           <>
             <MobileCards items={customers} getKey={(customer) => customer.id} label={t('customers')}>
@@ -122,13 +123,13 @@ export default function Customers() {
               )}
             </MobileCards>
             <TableOnly>
-              <Table>
+              <ListTable label={t('customers')}>
                 <thead>
                   <tr>
-                    <Th>{t('name')}</Th>
-                    <Th>{t('phone')}</Th>
-                    <Th>{t('email')}</Th>
-                    <Th>{t('type')}</Th>
+                    <ListTh>{t('name')}</ListTh>
+                    <ListTh>{t('phone')}</ListTh>
+                    <ListTh>{t('email')}</ListTh>
+                    <ListTh>{t('type')}</ListTh>
                   </tr>
                 </thead>
                 <tbody>
@@ -141,13 +142,13 @@ export default function Customers() {
                         {customer.is_active ? null : <Badge tone="neutral">{inactiveLabel}</Badge>}
                         <AiBadge via={customer.created_via} />
                       </Td>
-                      <Td dir="ltr">{customer.phone ?? '—'}</Td>
+                      <Td dir="ltr" className="whitespace-nowrap tabular">{customer.phone ?? '—'}</Td>
                       <Td dir="ltr">{customer.email ?? '—'}</Td>
                       <Td>{typeLabel(customer.type)}</Td>
                     </tr>
                   ))}
                 </tbody>
-              </Table>
+              </ListTable>
             </TableOnly>
           </>
         ) : null}

@@ -52,13 +52,15 @@ test.describe('payment refund', () => {
     await page.goto('/payments')
     const row = page.getByRole('row').filter({ hasText: payment.number })
     await expect(row).toBeVisible()
-    await row.getByRole('button', { name: 'Refund', exact: true }).click()
+    await row.getByRole('button', { name: /^Actions/ }).click()
+    await page.getByRole('menuitem', { name: 'Refund', exact: true }).click()
 
     await page.getByLabel('Amount').fill('40.00')
     await page.getByLabel('Reason').fill('E2E customer cancelled')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-    await row.getByRole('button', { name: 'Refunds', exact: true }).click()
+    await row.getByRole('button', { name: /^Actions/ }).click()
+    await page.getByRole('menuitem', { name: 'Refunds', exact: true }).click()
     const refunds = page.getByRole('dialog')
     await expect(refunds).toContainText('40.00')
     await expect(refunds).toContainText(/requested/i)

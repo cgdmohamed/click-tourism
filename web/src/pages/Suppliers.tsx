@@ -6,7 +6,8 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { supplierCategories, supplierCategoryLabel } from '../lib/labels'
 import type { Paginated, Supplier } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
+import { Badge, Button, Card, ErrorState, Field, Input, Modal, PageHeader, Pagination, Select, Td } from '../components/ui'
+import { ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
 import { localizedName } from '../lib/names'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
@@ -88,9 +89,9 @@ export default function Suppliers() {
             className="max-w-xs"
           />
         </div>
-        {query.isLoading ? <Loading /> : null}
+        {query.isLoading ? <ListSkeleton columns={4} /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && suppliers.length === 0 ? <EmptyState /> : null}
+        {query.data && suppliers.length === 0 ? <ListEmpty filtered={search !== ''} onClear={() => { setSearch(''); setPage(1) }} /> : null}
         {suppliers.length > 0 ? (
           <>
             <MobileCards items={suppliers} getKey={(supplier) => supplier.id} label={t('suppliers')}>
@@ -116,13 +117,13 @@ export default function Suppliers() {
               )}
             </MobileCards>
             <TableOnly>
-              <Table>
+              <ListTable label={t('suppliers')}>
                 <thead>
                   <tr>
-                    <Th>{t('name')}</Th>
-                    <Th>{t('category')}</Th>
-                    <Th>{t('phone')}</Th>
-                    <Th>{t('currency')}</Th>
+                    <ListTh>{t('name')}</ListTh>
+                    <ListTh>{t('category')}</ListTh>
+                    <ListTh>{t('phone')}</ListTh>
+                    <ListTh>{t('currency')}</ListTh>
                   </tr>
                 </thead>
                 <tbody>
@@ -141,7 +142,7 @@ export default function Suppliers() {
                     </tr>
                   ))}
                 </tbody>
-              </Table>
+              </ListTable>
             </TableOnly>
           </>
         ) : null}
