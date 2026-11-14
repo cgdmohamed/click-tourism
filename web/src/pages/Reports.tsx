@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -616,8 +617,8 @@ export default function Reports() {
           ) : null}
           {report !== 'balance-sheet' && report !== 'aging' && report !== 'aging-reconciliation' ? (
             <Field label={t('from')}>
-              <Input
-                type="date"
+              <DateField
+                
                 value={from}
                 onChange={(event) => {
                   setFrom(event.target.value)
@@ -629,8 +630,8 @@ export default function Reports() {
             </Field>
           ) : null}
           <Field label={report === 'trial-balance' || report === 'income-statement' || isManagementReport(report) || isLedger || isStatement ? t('to') : t('asOf')}>
-            <Input
-              type="date"
+            <DateField
+              
               value={to}
               onChange={(event) => {
                 setTo(event.target.value)

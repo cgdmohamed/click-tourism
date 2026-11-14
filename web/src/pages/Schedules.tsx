@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -609,7 +610,7 @@ export default function Schedules() {
             <Input type="number" min={1} max={120} value={form.periods} onChange={(event) => setForm({ ...form, periods: event.target.value })} />
           </Field>
           <Field label={L('تاريخ البداية', 'Starts on')} required>
-            <Input type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} />
+            <DateField value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} />
           </Field>
           <Field label={L('حساب المصدر', 'Source account code')} hint={L('اتركه فارغاً لاستخدام حساب الإعداد الافتراضي.', 'Leave empty to use the configured default account.')}>
             <Input value={form.source_account_code} onChange={(event) => setForm({ ...form, source_account_code: event.target.value })} maxLength={20} />

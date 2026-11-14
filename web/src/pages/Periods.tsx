@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -381,10 +382,10 @@ export default function Periods() {
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('from')} required>
-            <Input type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} dir="ltr" />
+            <DateField value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('to')} required>
-            <Input type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} dir="ltr" />
+            <DateField value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} dir="ltr" />
           </Field>
         </div>
         {customStart ? (

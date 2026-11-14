@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -1071,7 +1072,7 @@ export default function Reconciliation() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={L('تاريخ السند', 'Voucher date')} hint={L('افتراضيًا أقدم تاريخ حركة', 'Defaults to the oldest bank line date')}>
-              <Input type="date" value={adjustForm.document_date} onChange={(event) => setAdjustForm({ ...adjustForm, document_date: event.target.value })} dir="ltr" />
+              <DateField value={adjustForm.document_date} onChange={(event) => setAdjustForm({ ...adjustForm, document_date: event.target.value })} dir="ltr" />
             </Field>
             <Field label={t('memo')}>
               <Input value={adjustForm.memo} onChange={(event) => setAdjustForm({ ...adjustForm, memo: event.target.value })} />
@@ -1385,10 +1386,10 @@ export default function Reconciliation() {
             <Input value={importForm.closing_balance_minor} onChange={(event) => setImportForm({ ...importForm, closing_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={L('من تاريخ', 'Period from')}>
-            <Input type="date" value={importForm.period_from} onChange={(event) => setImportForm({ ...importForm, period_from: event.target.value })} dir="ltr" />
+            <DateField value={importForm.period_from} onChange={(event) => setImportForm({ ...importForm, period_from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('إلى تاريخ', 'Period to')}>
-            <Input type="date" value={importForm.period_to} onChange={(event) => setImportForm({ ...importForm, period_to: event.target.value })} dir="ltr" />
+            <DateField value={importForm.period_to} onChange={(event) => setImportForm({ ...importForm, period_to: event.target.value })} dir="ltr" />
           </Field>
         </div>
       </Modal>
@@ -1431,10 +1432,10 @@ export default function Reconciliation() {
             </Select>
           </Field>
           <Field label={L('من تاريخ', 'Period from')} required>
-            <Input type="date" value={sessionForm.period_from} onChange={(event) => setSessionForm({ ...sessionForm, period_from: event.target.value })} dir="ltr" />
+            <DateField value={sessionForm.period_from} onChange={(event) => setSessionForm({ ...sessionForm, period_from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('إلى تاريخ', 'Period to')} required>
-            <Input type="date" value={sessionForm.period_to} onChange={(event) => setSessionForm({ ...sessionForm, period_to: event.target.value })} dir="ltr" />
+            <DateField value={sessionForm.period_to} onChange={(event) => setSessionForm({ ...sessionForm, period_to: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('رصيد البنك الافتتاحي', 'Opening bank balance')} hint={L('اتركه فارغًا لاستخدام رصيد الكشف أو ختام المطابقة المعتمدة السابقة', 'Leave blank to use the statement balance or the previous approved reconciliation')}>
             <Input value={sessionForm.opening_bank_balance_minor} onChange={(event) => setSessionForm({ ...sessionForm, opening_bank_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />

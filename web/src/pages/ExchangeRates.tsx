@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -184,7 +185,7 @@ export default function ExchangeRates() {
             <Input value={form.rate} onChange={(event) => setForm({ ...form, rate: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={form.rate_date} onChange={(event) => setForm({ ...form, rate_date: event.target.value })} dir="ltr" />
+            <DateField value={form.rate_date} onChange={(event) => setForm({ ...form, rate_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={ar ? 'المصدر' : 'Source'} hint={ar ? 'مثال: manual أو central_bank' : 'For example manual or central_bank'}>
             <Input value={form.source} maxLength={50} onChange={(event) => setForm({ ...form, source: event.target.value })} dir="ltr" />

@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -428,7 +429,7 @@ export default function Treasury() {
             <SearchableSelect value={transferForm.to} onChange={(value) => setTransferForm({ ...transferForm, to: value })} options={options} placeholder={L('اختر', 'Select')} />
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={transferForm.date} onChange={(event) => setTransferForm({ ...transferForm, date: event.target.value })} dir="ltr" />
+            <DateField value={transferForm.date} onChange={(event) => setTransferForm({ ...transferForm, date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={`${t('amount')}${fromAccount ? ` (${fromAccount.currency})` : ''}`} required>
             <Input value={transferForm.amount} onChange={(event) => setTransferForm({ ...transferForm, amount: event.target.value })} inputMode="decimal" dir="ltr" />

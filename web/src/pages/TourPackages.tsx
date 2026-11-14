@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -214,8 +215,8 @@ export default function TourPackages() {
         </>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={L('تاريخ البداية', 'Start date')} required><Input type="date" dir="ltr" value={departure.starts_on} onChange={(e) => setDeparture({ ...departure, starts_on: e.target.value })}/></Field>
-          <Field label={L('تاريخ النهاية', 'End date')}><Input type="date" dir="ltr" value={departure.ends_on} onChange={(e) => setDeparture({ ...departure, ends_on: e.target.value })}/></Field>
+          <Field label={L('تاريخ البداية', 'Start date')} required><DateField dir="ltr" value={departure.starts_on} onChange={(e) => setDeparture({ ...departure, starts_on: e.target.value })}/></Field>
+          <Field label={L('تاريخ النهاية', 'End date')}><DateField dir="ltr" value={departure.ends_on} onChange={(e) => setDeparture({ ...departure, ends_on: e.target.value })}/></Field>
           <Field label={L('عدد المقاعد', 'Seat capacity')} required><Input type="number" min="1" value={departure.capacity} onChange={(e) => setDeparture({ ...departure, capacity: e.target.value })}/></Field>
         </div>
         {error ? <p className="mt-3 text-small text-danger-text">{error}</p> : null}
