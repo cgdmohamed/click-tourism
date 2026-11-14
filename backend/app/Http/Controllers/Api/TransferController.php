@@ -17,6 +17,12 @@ class TransferController extends ApiController
         $transfers = Transfer::query()
             ->with(['from.account', 'to.account', 'journalEntry'])
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            // Either side of the transfer (public id of the cash or bank account).
+            ->when($request->query('cash_account_id'), fn ($query, $accountId) => $query->where(function ($query) use ($accountId) {
+                $query->whereHas('from', fn ($account) => $account->where('public_id', $accountId))
+                    ->orWhereHas('to', fn ($account) => $account->where('public_id', $accountId));
+            }))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('transfer_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('transfer_date', '<=', $to))
             ->orderByDesc('transfer_date')

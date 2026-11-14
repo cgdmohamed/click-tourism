@@ -38,31 +38,8 @@ import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 import { useDeepLinkNew } from '../lib/useDeepLinkNew'
-import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
+import { FilterControl, PartyKindFilterField, useFilters } from '../components/FilterDrawer'
 import { ACTIONS_COL, ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
-
-/** Party filter: the API needs the party kind and id, so one control carries both as `kind:id`. */
-function InvoicePartyFilter({ value, set }: { value: string; set: (value: string, label?: string) => void }) {
-  const { locale } = useI18n()
-  const [kind, setKind] = useState<'customer' | 'supplier'>(value.startsWith('supplier:') ? 'supplier' : 'customer')
-  const id = value.includes(':') ? value.slice(value.indexOf(':') + 1) : ''
-  return (
-    <div className="flex flex-col gap-2">
-      <Select
-        value={kind}
-        onChange={(event) => {
-          setKind(event.target.value as 'customer' | 'supplier')
-          set('')
-        }}
-        aria-label={locale === 'ar' ? 'نوع الطرف' : 'Party type'}
-      >
-        <option value="customer">{locale === 'ar' ? 'عميل' : 'Customer'}</option>
-        <option value="supplier">{locale === 'ar' ? 'مورد' : 'Supplier'}</option>
-      </Select>
-      <PartyFilterField kind={kind} value={id} set={(next, label) => set(next ? `${kind}:${next}` : '', label)} />
-    </div>
-  )
-}
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -220,7 +197,7 @@ export default function Invoices() {
         key: 'party',
         label: L('الطرف', 'Party'),
         type: 'custom',
-        render: (value, set) => <InvoicePartyFilter value={value} set={set} />,
+        render: (value, set) => <PartyKindFilterField value={value} set={set} />,
       },
       {
         key: 'overdue',

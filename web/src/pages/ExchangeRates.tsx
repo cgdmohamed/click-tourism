@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, todayISO } from '../lib/format'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
 import { useBaseCurrency } from '../lib/useSetting'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Select, Table, Td, Th } from '../components/ui'
 
@@ -34,21 +35,10 @@ export default function ExchangeRates() {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const baseCurrency = useBaseCurrency()
-  const [currencyFilter, setCurrencyFilter] = useState('')
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState(emptyForm)
   const ar = locale === 'ar'
-
-  const ratesQuery = useQuery({
-    queryKey: ['fx-rates', currencyFilter],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: FxRate[] }>('/fx-rates', {
-        params: currencyFilter ? { currency: currencyFilter } : undefined,
-      })
-      return data.data
-    },
-  })
 
   const currenciesQuery = useQuery({
     queryKey: ['currencies'],
@@ -62,6 +52,32 @@ export default function ExchangeRates() {
     () => (currenciesQuery.data ?? []).filter((currency) => currency.is_active && currency.code !== baseCurrency),
     [currenciesQuery.data, baseCurrency],
   )
+
+  const filters = useFilters([
+    {
+      key: 'currency',
+      label: ar ? 'العملة' : 'Currency',
+      type: 'select',
+      options: foreignCurrencies.map((currency) => ({ value: currency.code, label: currency.code })),
+      allLabel: ar ? 'كل العملات' : 'All currencies',
+    },
+    { key: 'from', label: ar ? 'من تاريخ' : 'From date', type: 'date' },
+    { key: 'to', label: ar ? 'إلى تاريخ' : 'To date', type: 'date' },
+  ])
+
+  const ratesQuery = useQuery({
+    queryKey: ['fx-rates', filters.applied],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: FxRate[] }>('/fx-rates', {
+        params: {
+          currency: filters.applied.currency || undefined,
+          from: filters.applied.from || undefined,
+          to: filters.applied.to || undefined,
+        },
+      })
+      return data.data
+    },
+  })
 
   const rates = ratesQuery.data ?? []
   const readOnly = !can('settings.update')
@@ -114,21 +130,14 @@ export default function ExchangeRates() {
         <CardHeader
           title={ar ? 'الأسعار المسجلة' : 'Recorded rates'}
           actions={
-            <div className="w-48">
-              <Select value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)} aria-label={ar ? 'تصفية بالعملة' : 'Filter by currency'}>
-                <option value="">{ar ? 'كل العملات' : 'All currencies'}</option>
-                {foreignCurrencies.map((currency) => (
-                  <option key={currency.code} value={currency.code}>{currency.code}</option>
-                ))}
-              </Select>
-            </div>
+            <FilterControl state={filters} />
           }
         />
         {ratesQuery.isLoading ? <Loading /> : null}
         {ratesQuery.isError ? (
           <ErrorState message={errorMessage(ratesQuery.error)} onRetry={() => void ratesQuery.refetch()} />
         ) : null}
-        {!ratesQuery.isLoading && !ratesQuery.isError && rates.length === 0 ? (currencyFilter ? <EmptyState variant="filtered" onClear={() => setCurrencyFilter('')} /> : <EmptyState />) : null}
+        {!ratesQuery.isLoading && !ratesQuery.isError && rates.length === 0 ? (filters.count > 0 ? <EmptyState variant="filtered" onClear={filters.clearAll} /> : <EmptyState />) : null}
         {rates.length > 0 ? (
           <Table>
             <thead>

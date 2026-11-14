@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
 import axios from 'axios'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
@@ -101,10 +102,47 @@ export default function Accounts() {
   })
   const [importFile, setImportFile] = useState<File | null>(null)
 
+  const filters = useFilters([
+    {
+      key: 'is_active',
+      label: t('status'),
+      type: 'select',
+      options: [
+        { value: '1', label: locale === 'ar' ? 'نشط' : 'Active' },
+        { value: '0', label: locale === 'ar' ? 'موقوف' : 'Inactive' },
+      ],
+      allLabel: locale === 'ar' ? 'الكل' : 'All',
+    },
+    {
+      key: 'is_postable',
+      label: locale === 'ar' ? 'قابلية الترحيل' : 'Posting',
+      type: 'select',
+      options: [
+        { value: '1', label: locale === 'ar' ? 'حسابات ترحيل' : 'Posting accounts' },
+        { value: '0', label: locale === 'ar' ? 'حسابات مجمّعة' : 'Group accounts' },
+      ],
+      allLabel: locale === 'ar' ? 'الكل' : 'All',
+    },
+    {
+      key: 'classification',
+      label: locale === 'ar' ? 'التصنيف' : 'Classification',
+      type: 'select',
+      options: Object.entries(classificationLabels).map(([value, label]) => ({ value, label: label[locale] })),
+      allLabel: locale === 'ar' ? 'كل التصنيفات' : 'All classifications',
+    },
+  ])
+
+  // With a filter on, a matching account whose parent is filtered out simply shows at the top level.
   const query = useQuery({
-    queryKey: ['accounts'],
+    queryKey: ['accounts', filters.applied],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Account[] }>('/accounts')
+      const { data } = await api.get<{ data: Account[] }>('/accounts', {
+        params: {
+          is_active: filters.applied.is_active || undefined,
+          is_postable: filters.applied.is_postable || undefined,
+          classification: filters.applied.classification || undefined,
+        },
+      })
       return data.data
     },
   })
@@ -339,6 +377,7 @@ export default function Accounts() {
             placeholder={t('search')}
             className="max-w-xs"
           />
+          <FilterControl state={filters} />
           <span className="text-xs text-text-subtle">{shownCount}</span>
           {hasGroups ? (
             <div className="ms-auto flex items-center gap-2">
@@ -350,7 +389,7 @@ export default function Accounts() {
 
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && rowsToRender.length === 0 ? (search ? <EmptyState variant="filtered" onClear={() => setSearch('')} /> : <EmptyState />) : null}
+        {query.data && rowsToRender.length === 0 ? (search || filters.count > 0 ? <EmptyState variant="filtered" onClear={() => { setSearch(''); filters.clearAll() }} /> : <EmptyState />) : null}
 
         {rowsToRender.length > 0 ? (
           <>

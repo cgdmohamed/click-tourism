@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Modules\Accounting\Models\AccountingSchedule;
 use App\Modules\Accounting\Models\AccountingScheduleEvent;
 use App\Modules\Accounting\Services\AccountingScheduleService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -27,6 +28,8 @@ class AccountingScheduleController extends ApiController
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->query('kind'), fn ($query, $kind) => $query->where('kind', $kind))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['number', 'description', 'reference'], $search))
             ->orderByDesc('starts_on')
             ->orderByDesc('id')
             ->get();

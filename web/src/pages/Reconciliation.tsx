@@ -312,6 +312,34 @@ export default function Reconciliation() {
     },
   })
 
+  const statementFilters = useFilters([
+    {
+      key: 'cash_account_id',
+      label: L('الحساب البنكي', 'Bank account'),
+      type: 'select',
+      options: bankAccounts.map((account) => ({ value: account.cash_account_id ?? account.id, label: localizedName(account, locale) })),
+      allLabel: L('كل الحسابات', 'All accounts'),
+    },
+    {
+      key: 'period',
+      label: L('الشهر', 'Month'),
+      type: 'custom',
+      render: (value, set) => <Input type="month" value={value} onChange={(event) => set(event.target.value)} aria-label={L('الشهر', 'Month')} />,
+    },
+  ])
+  // The list below shows the filtered statements; `statementsQuery` stays complete for the pickers that use it.
+  const statementsFiltered = statementFilters.count > 0
+  const statementListQuery = useQuery({
+    queryKey: ['bank-statements', 'list', statementFilters.applied, activeBranch?.id],
+    enabled: statementsFiltered,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: Statement[] }>('/bank-statements', {
+        params: { cash_account_id: statementFilters.applied.cash_account_id || undefined, period: statementFilters.applied.period || undefined },
+      })
+      return data.data
+    },
+  })
+
   const statementsQuery = useQuery({
     queryKey: ['bank-statements', activeBranch?.id],
     queryFn: async () => {
@@ -555,6 +583,7 @@ export default function Reconciliation() {
     label: `${name(account)} (${account.currency})`,
   }))
 
+  const shownStatementsQuery = statementsFiltered ? statementListQuery : statementsQuery
   const statementOptions = (statementsQuery.data ?? [])
     .filter((statement) => !sessionForm.cash_account_id || statement.cash_account_id === sessionForm.cash_account_id)
     .map((statement) => ({
@@ -1268,12 +1297,15 @@ export default function Reconciliation() {
         </Card>
       ) : (
         <Card>
-          {statementsQuery.isLoading ? <Loading /> : null}
-          {statementsQuery.isError ? <ErrorState message={errorMessage(statementsQuery.error)} onRetry={() => void statementsQuery.refetch()} /> : null}
-          {statementsQuery.data && statementsQuery.data.length === 0 ? <EmptyState /> : null}
-          {statementsQuery.data && statementsQuery.data.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+            <FilterControl state={statementFilters} />
+          </div>
+          {shownStatementsQuery.isLoading ? <Loading /> : null}
+          {shownStatementsQuery.isError ? <ErrorState message={errorMessage(shownStatementsQuery.error)} onRetry={() => void shownStatementsQuery.refetch()} /> : null}
+          {shownStatementsQuery.data && shownStatementsQuery.data.length === 0 ? (statementsFiltered ? <EmptyState variant="filtered" onClear={statementFilters.clearAll} /> : <EmptyState />) : null}
+          {shownStatementsQuery.data && shownStatementsQuery.data.length > 0 ? (
             <>
-            <MobileCards items={statementsQuery.data} getKey={(statement) => statement.id} label={L('كشوف البنك', 'Bank statements')}>
+            <MobileCards items={shownStatementsQuery.data} getKey={(statement) => statement.id} label={L('كشوف البنك', 'Bank statements')}>
               {(statement) => (
                 <>
                   <p className="text-medium break-all font-semibold">
@@ -1312,7 +1344,7 @@ export default function Reconciliation() {
                 </tr>
               </thead>
               <tbody>
-                {statementsQuery.data.map((statement) => (
+                {shownStatementsQuery.data.map((statement) => (
                   <tr key={statement.id}>
                     <Td>
                       {statement.filename}
