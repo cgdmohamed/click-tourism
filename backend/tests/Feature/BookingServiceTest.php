@@ -130,8 +130,21 @@ class BookingServiceTest extends TestCase
         app(BookingService::class)->transition($booking, 'closed', null, $this->user->id);
     }
 
+    public function test_a_negative_margin_booking_confirms_without_approval_by_default(): void
+    {
+        $booking = $this->createBooking(['items' => [[
+            'service_type' => 'hotel', 'description' => 'Loss-making hotel package', 'quantity' => 1,
+            'unit_cost_minor' => 120000, 'unit_sell_minor' => 100000,
+        ]]]);
+
+        // DEC-025 (owner 2026-11-14): the margin only warns on screen; confirming is allowed.
+        app(BookingService::class)->transition($booking, 'confirmed', null, $this->user->id);
+        $this->assertSame('confirmed', $booking->refresh()->status);
+    }
+
     public function test_negative_margin_requires_segregated_manager_approval_before_confirmation(): void
     {
+        app(SettingService::class)->set('accounting', 'negative_margin_requires_approval', 'true');
         $service = app(BookingService::class);
         $booking = $this->createBooking(['items' => [[
             'service_type' => 'hotel',

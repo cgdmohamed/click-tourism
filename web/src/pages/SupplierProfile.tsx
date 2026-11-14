@@ -11,6 +11,7 @@ import type { SupplierProfile as SupplierProfilePayload } from '../lib/types'
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Input, Loading, Modal, Money, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat, ProfileTabs, StatementView } from '../components/profile'
 import { localizedName } from '../lib/names'
+import { AiBadge } from '../components/AiBadge'
 
 function nameOf(party: { name_ar: string; name_en: string }, locale: 'ar' | 'en') {
   return (localizedName(party, locale)) || party.name_ar || party.name_en
@@ -104,7 +105,12 @@ export default function SupplierProfile() {
         initials={initialsOf(name)}
         backTo="/suppliers"
         backLabel={t('suppliers')}
-        badge={<Badge tone={party.is_active ? 'positive' : 'neutral'}>{party.is_active ? t('active') : t('inactive')}</Badge>}
+        badge={
+          <>
+            <Badge tone={party.is_active ? 'positive' : 'neutral'}>{party.is_active ? t('active') : t('inactive')}</Badge>
+            <AiBadge via={party.created_via} />
+          </>
+        }
         actions={
           <>
             {can('suppliers.update') ? <Button variant="secondary" icon="edit" onClick={openEditor}>{t('edit')}</Button> : null}

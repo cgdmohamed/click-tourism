@@ -221,19 +221,6 @@ export function Layout() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <GlobalSearch />
             <NotificationBell />
-            {assistantVisible ? (
-              <button
-                type="button"
-                className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered hover:text-text-default"
-                onClick={() => setAssistantOpen((open) => !open)}
-                aria-pressed={assistantOpen}
-                aria-label={t('assistantOpen')}
-                title={t('assistantOpen')}
-              >
-                <Icon name="sparkles" className="h-4 w-4" />
-                <span className="hidden sm:inline">{t('assistant')}</span>
-              </button>
-            ) : null}
             {branches.length > 1 ? (
               <label className="text-small flex items-center gap-2 text-text-subtle">
                 <Icon name="building" className="h-4 w-4" />
@@ -274,6 +261,18 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      {assistantVisible ? (
+        // While the assistant is connected and the screen is not in assistant mode it is a chat bubble.
+        <button
+          type="button"
+          className="no-print fixed bottom-6 end-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-action-primary-background text-action-primary-text shadow-4 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2"
+          onClick={() => setAssistantOpen(true)}
+          aria-label={t('assistantOpen')}
+          title={t('assistantOpen')}
+        >
+          <Icon name="sparkles" className="h-6 w-6" />
+        </button>
+      ) : null}
     </div>
   )
 }

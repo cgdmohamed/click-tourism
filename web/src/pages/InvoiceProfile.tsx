@@ -13,6 +13,7 @@ import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, InlineNotice, 
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat } from '../components/profile'
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import { localizedName } from '../lib/names'
+import { AiBadge } from '../components/AiBadge'
 
 function nameOf(party: { name_ar: string; name_en: string }, locale: 'ar' | 'en') {
   return (localizedName(party, locale)) || party.name_ar || party.name_en
@@ -93,7 +94,12 @@ export default function InvoiceProfile() {
         icon="fileText"
         backTo="/invoices"
         backLabel={t('invoices')}
-        badge={<Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge>}
+        badge={
+          <>
+            <Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge>
+            <AiBadge via={invoice.created_via} />
+          </>
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             {invoice.type === 'customer_invoice' && invoice.status === 'issued' && invoice.outstanding_minor > 0 && can('payments.create') ? (

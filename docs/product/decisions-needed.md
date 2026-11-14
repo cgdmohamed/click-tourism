@@ -55,16 +55,16 @@ These records preserve the original options above while recording the product-ow
 
 | ID | Recorded selection | Status | Remaining constraint |
 |---|---|---|---|
-| **DEC-004** | Configurable commission triggers; default fully collected | `PENDING_ACCOUNTANT_APPROVAL` | No commission accrual/posting until treatment, accounts, reversals, and precedence are approved |
-| **DEC-008** | FX revaluation infrastructure with next-period reversal | `PENDING_ACCOUNTANT_APPROVAL` | Posting disabled until eligible balances, rates, accounts, and reversal policy are approved |
-| **DEC-014** | One ledger with branch dimension and controlled clearing | `PENDING_ACCOUNTANT_APPROVAL` | Existing branch separation remains; inter-branch posting is not activated |
+| **DEC-004** | Configurable commission triggers; default fully collected | `OWNER_DECIDED 2026-11-14` (owner accepted the recommendation: default fully collected, configurable) | Accountant sign-off on treatment, accounts and reversals is not recorded here; see `decisions-closed-2026-11-14.md` |
+| **DEC-008** | No automatic revaluation: realized differences only, no rate source (owner 2026-11-14) | `OWNER_DECIDED 2026-11-14` | The revaluation feature stays available but unused; no rate source is configured |
+| **DEC-014** | Each branch is independent; no inter-branch posting (owner 2026-11-14) | `OWNER_DECIDED 2026-11-14` | A payment from another branch's account stays refused; no clearing account |
 | **DEC-015** | Configurable business-hour inactivity, meaningful activities, bounded retries, queue escalation | `DECIDED` | None for the operational policy |
 | **DEC-016** | Prioritized branch/source/service rules, availability, workload, manual owner, fallback queue | `DECIDED` | Application management UI remains a follow-up |
 | **DEC-018** | Atomic sequence by branch, fiscal year, and document type; gaps allowed and preserved | `DECIDED` | Statutory country-specific numbering remains subject to legal review |
 | **DEC-020** | One legal entity per independently deployed installation | `DECIDED` | None |
 | **DEC-022** | No external customer/supplier portals in MVP | `DECIDED` | None |
-| **DEC-025** | Negative margin requires segregated manager approval; zero margin configurable | `PENDING_ACCOUNTANT_APPROVAL` | Operational approval guard active; accounting/commission interpretation remains blocked |
-| **DEC-028** | Unified booking/invoice only where legally permitted | `PENDING_ACCOUNTANT_APPROVAL` | Separate identity is the guarded default; unified tax posting remains disabled |
+| **DEC-025** | Negative margin warns only (owner 2026-11-14); the approval flow remains available via `accounting.negative_margin_requires_approval` | `OWNER_DECIDED 2026-11-14` | Implemented: default `false`, warning in the booking form and list |
+| **DEC-028** | Booking and invoice stay separate documents (owner 2026-11-14) | `OWNER_DECIDED 2026-11-14` | None; no unified document is planned |
 | **DEC-029** | Arabic, English, or bilingual document output | `DECIDED` | Statutory template wording/layout requires approval where applicable |
 | **DEC-040** | Native PDF, real XLSX, and browser print (resolved by ADR-0014) | `DECIDED` | Statutory signed layouts still require accountant/legal approval |
 

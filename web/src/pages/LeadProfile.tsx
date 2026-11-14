@@ -26,6 +26,7 @@ import {
 import { DetailGrid, DetailItem, MetaItem, ProfileHeader, ProfileStat } from '../components/profile'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
+import { AiBadge } from '../components/AiBadge'
 
 const stageLabels: Record<string, [string, string]> = {
   new: ['جديد', 'New'],
@@ -152,7 +153,12 @@ export default function LeadProfile() {
         icon="target"
         backTo="/leads"
         backLabel={t('crm')}
-        badge={<Badge tone={statusTone(lead.status)}>{statusLabel(lead.status, locale)}</Badge>}
+        badge={
+          <>
+            <Badge tone={statusTone(lead.status)}>{statusLabel(lead.status, locale)}</Badge>
+            <AiBadge via={lead.created_via} />
+          </>
+        }
         actions={
           lead.status === 'open' && can('leads.convert') ? (
             <Button icon="checkCircle" disabled={convert.isPending} onClick={() => convert.mutate()}>

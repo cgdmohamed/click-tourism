@@ -401,7 +401,7 @@ export default function Bookings() {
                   <Td className="text-end tabular">
                     {toDecimal(booking.total_sell_minor, booking.currency)} {booking.currency}
                   </Td>
-                  <Td className="text-end tabular">
+                  <Td className={`text-end tabular${booking.margin_minor < 0 ? ' text-warning-text' : ''}`}>
                     {toDecimal(booking.margin_minor, booking.currency)} {booking.currency}
                   </Td>
                   <Td className="text-end">
@@ -440,6 +440,11 @@ export default function Bookings() {
           <>
             <span className="me-auto text-sm text-text-subtle">
               {t('total')}: {toDecimal(totals.sell, draftCurrency)} · {t('tax')}: {toDecimal(totals.tax, draftCurrency)} · {t('margin')}: {toDecimal(totals.margin, draftCurrency)}
+              {totals.margin < 0 ? (
+                <strong role="alert" className="ms-2 text-warning-text">
+                  {locale === 'ar' ? 'تنبيه: الهامش سالب (سعر البيع أقل من التكلفة).' : 'Warning: negative margin (selling below cost).'}
+                </strong>
+              ) : null}
             </span>
             <Button variant="secondary" onClick={() => { setOpen(false); setEditTarget(null) }}>
               {t('cancel')}
