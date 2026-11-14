@@ -751,6 +751,39 @@ export function Tabs({
   idPrefix: string
 }) {
   const listRef = useRef<HTMLDivElement>(null)
+  const [overflow, setOverflow] = useState({ start: false, end: false })
+
+  // Edge cues: show a fade + chevron on a side only while more tabs are hidden there.
+  useEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const update = () => {
+      const max = list.scrollWidth - list.clientWidth
+      const offset = Math.abs(list.scrollLeft) // negative in RTL
+      setOverflow((prev) => {
+        const next = { start: offset > 2, end: offset < max - 2 }
+        return prev.start === next.start && prev.end === next.end ? prev : next
+      })
+    }
+    update()
+    list.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      list.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [tabs.length])
+
+  // Keep the active tab visible (scrolls only the tab strip, never the page).
+  useEffect(() => {
+    const list = listRef.current
+    const button = document.getElementById(`${idPrefix}-tab-${active}`)
+    if (!list || !button) return
+    const listRect = list.getBoundingClientRect()
+    const rect = button.getBoundingClientRect()
+    const delta = rect.left + rect.width / 2 - (listRect.left + listRect.width / 2)
+    if (rect.left < listRect.left || rect.right > listRect.right) list.scrollBy({ left: delta })
+  }, [active, idPrefix])
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const current = tabs.findIndex((tab) => tab.id === active)
@@ -762,13 +795,25 @@ export function Tabs({
     window.requestAnimationFrame(() => document.getElementById(`${idPrefix}-tab-${tabs[next].id}`)?.focus())
   }
 
+  const fade = 'pointer-events-none absolute inset-y-px z-10 flex w-9 items-center from-surface-default via-surface-default/80 to-transparent text-text-subtle'
   return (
+    <div className="no-print relative mb-6">
+    {overflow.start ? (
+      <span aria-hidden="true" className={cx(fade, 'start-px justify-start rounded-s-16 bg-gradient-to-r ps-1 rtl:bg-gradient-to-l')}>
+        <Icon name="chevronLeft" className="h-4 w-4 rtl:rotate-180" />
+      </span>
+    ) : null}
+    {overflow.end ? (
+      <span aria-hidden="true" className={cx(fade, 'end-px justify-end rounded-e-16 bg-gradient-to-l pe-1 rtl:bg-gradient-to-r')}>
+        <Icon name="chevronRight" className="h-4 w-4 rtl:rotate-180" />
+      </span>
+    ) : null}
     <div
       ref={listRef}
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className="no-print mb-6 flex gap-1 overflow-x-auto rounded-16 border border-border-subtle bg-surface-default p-1 shadow-1"
+      className="flex gap-1 overflow-x-auto rounded-16 border border-border-subtle bg-surface-default p-1 shadow-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((tab) => {
         const selected = tab.id === active
@@ -792,6 +837,7 @@ export function Tabs({
           </button>
         )
       })}
+    </div>
     </div>
   )
 }
