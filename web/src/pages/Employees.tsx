@@ -10,6 +10,8 @@ import { Badge, Button, Card, EmptyState, ErrorState, Field, InlineNotice, Input
 import { Icon } from '../components/icons'
 import { localizedName } from '../lib/names'
 import { autoCodeNote, createdWithCode } from '../lib/codes'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { ListEmpty } from '../components/ListEmpty'
 
 const CATEGORIES = ['staff', 'executive', 'driver', 'other'] as const
 const emptyForm = { name_ar: '', name_en: '', category: 'staff', phone: '', email: '' }
@@ -109,8 +111,33 @@ export default function Employees() {
         </div>
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && employees.length === 0 ? <EmptyState icon="userCheck" title={t('noData')} /> : null}
+        {query.data && employees.length === 0 ? (
+          search || includeInactive ? (
+            <EmptyState variant="filtered" onClear={() => { setSearch(''); setIncludeInactive(false) }} />
+          ) : (
+            <ListEmpty title={t('noData')} />
+          )
+        ) : null}
         {employees.length > 0 ? (
+          <>
+          <MobileCards items={employees} getKey={(employee) => employee.id} label={t('employees')}>
+            {(employee) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <Link to={`/employees/${employee.id}`} className="text-medium font-semibold text-brand-1-accent underline">
+                    {localizedName(employee, locale)}
+                  </Link>
+                  <Badge tone={employee.is_active ? 'positive' : 'neutral'}>{employee.is_active ? t('active') : t('inactive')}</Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('code')}><span dir="ltr">{employee.internal_code}</span></CardField>
+                  <CardField label={t('category')}>{employeeCategoryLabel(employee.category, locale)}</CardField>
+                  <CardField label={t('phone')}><span dir="ltr">{employee.phone ?? '—'}</span></CardField>
+                </dl>
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -151,6 +178,8 @@ export default function Employees() {
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
       </Card>
 

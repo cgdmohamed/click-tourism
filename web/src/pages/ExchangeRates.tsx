@@ -128,7 +128,7 @@ export default function ExchangeRates() {
         {ratesQuery.isError ? (
           <ErrorState message={errorMessage(ratesQuery.error)} onRetry={() => void ratesQuery.refetch()} />
         ) : null}
-        {!ratesQuery.isLoading && !ratesQuery.isError && rates.length === 0 ? <EmptyState /> : null}
+        {!ratesQuery.isLoading && !ratesQuery.isError && rates.length === 0 ? (currencyFilter ? <EmptyState variant="filtered" onClear={() => setCurrencyFilter('')} /> : <EmptyState />) : null}
         {rates.length > 0 ? (
           <Table>
             <thead>

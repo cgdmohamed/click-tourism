@@ -554,13 +554,13 @@ export default function SupplierSettlements() {
                       <Badge tone={statusTone(obligation.status)}>{statusLabel(obligation.status)}</Badge>
                       <div className="mt-1 text-small text-text-subtle">{obligation.accounting_status === 'recognized' ? L('مُعترف به محاسبيًا', 'Recognized in GL') : L('غير مُرحّل', 'Not posted')}</div>
                     </Td>
-                    <Td className="text-end tabular">
+                    <Td className="whitespace-nowrap text-end tabular">
                       {formatMoney(obligation.amount_minor, obligation.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
+                    <Td className="whitespace-nowrap text-end tabular">
                       {formatMoney(obligation.paid_minor, obligation.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
+                    <Td className="whitespace-nowrap text-end tabular">
                       {formatMoney(obligation.balance_minor, obligation.currency, locale)}
                     </Td>
                     <Td>{obligationActions(obligation)}</Td>
@@ -627,13 +627,13 @@ export default function SupplierSettlements() {
                     <Td>
                       <Badge tone={statusTone(payment.status)}>{statusLabelOf(payment.status, locale)}</Badge>
                     </Td>
-                    <Td className="text-end tabular">
+                    <Td className="whitespace-nowrap text-end tabular">
                       {formatMoney(payment.amount_minor, payment.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
+                    <Td className="whitespace-nowrap text-end tabular">
                       {formatMoney(payment.applied_minor, payment.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
+                    <Td className="whitespace-nowrap text-end tabular">
                       {formatMoney(payment.unallocated_minor, payment.currency, locale)}
                     </Td>
                     <Td>{paymentActions(payment)}</Td>

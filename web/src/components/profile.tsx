@@ -1,3 +1,4 @@
+import { DateField } from './DateField'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PartyStatement, StatementLine } from '../lib/types'
@@ -212,21 +213,11 @@ export function StatementView({
             >
               <label className="text-small flex flex-col gap-1 text-text-subtle">
                 {t('from')}
-                <input
-                  type="date"
-                  value={draftFrom}
-                  onChange={(event) => setDraftFrom(event.target.value)}
-                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
-                />
+                <DateField value={draftFrom} onChange={(event) => setDraftFrom(event.target.value)} dir="ltr" />
               </label>
               <label className="text-small flex flex-col gap-1 text-text-subtle">
                 {t('to')}
-                <input
-                  type="date"
-                  value={draftTo}
-                  onChange={(event) => setDraftTo(event.target.value)}
-                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
-                />
+                <DateField value={draftTo} onChange={(event) => setDraftTo(event.target.value)} dir="ltr" />
               </label>
               <Button type="submit" variant="secondary" icon="filter" className="h-9">
                 {t('apply')}

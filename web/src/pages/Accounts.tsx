@@ -26,6 +26,8 @@ import {
 } from '../components/ui'
 import { Icon } from '../components/icons'
 import { createdWithCode } from '../lib/codes'
+import { ActionsMenu } from '../components/ActionsMenu'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 
 const accountTypes: Account['type'][] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
@@ -313,12 +315,12 @@ export default function Accounts() {
         actions={
           <>
             <Button icon="plus" onClick={openNew}>{t('newAccount')}</Button>
-            <Button variant="secondary" icon="download" onClick={exportAccounts}>
-              {t('exportAccounts')}
-            </Button>
-            <Button variant="secondary" icon="upload" onClick={() => setShowImport(true)}>
-              {t('importAccounts')}
-            </Button>
+            <ActionsMenu
+              items={[
+                { key: 'export', label: t('exportAccounts'), icon: 'download', onSelect: () => void exportAccounts() },
+                { key: 'import', label: t('importAccounts'), icon: 'upload', onSelect: () => setShowImport(true) },
+              ]}
+            />
           </>
         }
       />
@@ -348,9 +350,46 @@ export default function Accounts() {
 
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && rowsToRender.length === 0 ? <EmptyState /> : null}
+        {query.data && rowsToRender.length === 0 ? (search ? <EmptyState variant="filtered" onClear={() => setSearch('')} /> : <EmptyState />) : null}
 
         {rowsToRender.length > 0 ? (
+          <>
+          <MobileCards items={rowsToRender} getKey={(row) => row.account.id} label={t('accounts')}>
+            {({ account, depth, childCount, expanded }) => (
+              <div style={{ marginInlineStart: `${Math.min(depth, 4) * 0.75}rem` }} className="flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    {childCount > 0 ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-6 text-text-subtle hover:bg-surface-hovered"
+                        aria-expanded={expanded}
+                        aria-label={`${expanded ? (ar ? 'طي' : 'Collapse') : ar ? 'توسيع' : 'Expand'} ${account.code}`}
+                        onClick={() => toggleNode(account, expanded)}
+                      >
+                        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                    <div className="min-w-0">
+                      <p className="text-medium font-semibold">{localizedName(account, locale)}</p>
+                      <p className="text-small tabular text-text-subtle" dir="ltr">{account.code}</p>
+                    </div>
+                  </div>
+                  <Badge tone={account.is_active ? 'positive' : 'neutral'}>
+                    {account.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
+                  </Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('accountType')}>{typeLabel(account.type)}</CardField>
+                  <CardField label={t('postable')}>{account.is_postable ? (locale === 'ar' ? 'نعم' : 'Yes') : '—'}</CardField>
+                </dl>
+                <div className="flex gap-2">
+                  <Button variant="secondary" icon="edit" onClick={() => openEdit(account)}>{t('edit')}</Button>
+                </div>
+              </div>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -432,6 +471,8 @@ export default function Accounts() {
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
       </Card>
 

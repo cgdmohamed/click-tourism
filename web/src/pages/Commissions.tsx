@@ -509,9 +509,9 @@ export default function Commissions() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist">
+      <div className="mb-4 flex flex-wrap gap-2" role="group">
         {tabs.map((item) => (
-          <Button key={item.id} variant={tab === item.id ? 'primary' : 'secondary'} onClick={() => { setTab(item.id); setError('') }}>
+          <Button key={item.id} aria-pressed={tab === item.id} variant={tab === item.id ? 'primary' : 'secondary'} onClick={() => { setTab(item.id); setError('') }}>
             {item.label}
           </Button>
         ))}

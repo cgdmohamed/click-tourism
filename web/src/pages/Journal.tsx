@@ -455,7 +455,7 @@ export default function Journal() {
                   <Td>
                     <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status, locale)}</Badge>
                   </Td>
-                  <Td className="text-end tabular">
+                  <Td className="whitespace-nowrap text-end tabular">
                     {formatMoney(entry.total_minor, entry.currency, locale)}
                   </Td>
                   <Td className="text-end">
@@ -704,8 +704,8 @@ export default function Journal() {
                       {line.account ? `${line.account.code} — ${localizedName(line.account, locale)}` : '—'}
                     </Td>
                     <Td>{line.description ?? '—'}</Td>
-                    <Td className="text-end tabular">{line.debit_minor ? toDecimal(line.debit_minor, detail.currency) : '—'}</Td>
-                    <Td className="text-end tabular">{line.credit_minor ? toDecimal(line.credit_minor, detail.currency) : '—'}</Td>
+                    <Td className="whitespace-nowrap text-end tabular">{line.debit_minor ? toDecimal(line.debit_minor, detail.currency) : '—'}</Td>
+                    <Td className="whitespace-nowrap text-end tabular">{line.credit_minor ? toDecimal(line.credit_minor, detail.currency) : '—'}</Td>
                   </tr>
                 ))}
               </tbody>
