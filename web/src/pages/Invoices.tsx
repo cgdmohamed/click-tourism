@@ -38,6 +38,7 @@ import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 import { useDeepLinkNew } from '../lib/useDeepLinkNew'
+import QuickCreateCustomer from '../components/QuickCreateCustomer'
 import { FilterControl, PartyKindFilterField, useFilters } from '../components/FilterDrawer'
 import { ACTIONS_COL, ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
 
@@ -113,6 +114,7 @@ export default function Invoices() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState(urlSearch)
   const [error, setError] = useState('')
+  const [quickParty, setQuickParty] = useState(false)
   const [open, setOpen] = useState(false)
 
   // A confirmed document extraction opens the form pre-filled; the user still picks the party and saves it
@@ -587,7 +589,7 @@ export default function Invoices() {
       <Modal
         open={open}
         title={L('فاتورة جديدة', 'New invoice')}
-        onClose={() => setOpen(false)}
+        onClose={() => { if (!quickParty) setOpen(false) }}
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)}>{t('cancel')}</Button>
@@ -629,6 +631,11 @@ export default function Invoices() {
               onSearch={partyPicker.setSearch}
               hasMore={partyPicker.hasMore}
             />
+            {can(isCustomer ? 'customers.create' : 'suppliers.create') ? (
+              <Button variant="ghost" icon="plus" className="mt-2 px-2" onClick={() => setQuickParty(true)}>
+                {isCustomer ? L('إضافة عميل جديد', 'Add new customer') : L('إضافة مورد جديد', 'Add new supplier')}
+              </Button>
+            ) : null}
           </Field>
           {form.type === 'supplier_invoice' ? (
             <Field label={L('الحجز المرتبط (اختياري)', 'Linked booking (optional)')}>
@@ -738,11 +745,7 @@ export default function Invoices() {
                           <span className={line.tax_applied ? 'font-semibold text-text-default' : 'font-semibold text-text-subtle'}>
                             {line.tax_applied ? L('مفعّلة', 'On') : L('غير مفعّلة', 'Off')}
                           </span>
-                          <span className="whitespace-nowrap text-text-subtle">
-                            {L('ضريبة', 'VAT')} <bdi dir="ltr">{defaultTaxRate}%</bdi>
-                            {taxInclusive ? ` ${L('(شاملة)', '(inclusive)')}` : ''}
-                          </span>
-                          <span className="whitespace-nowrap text-text-subtlest">{L('تلقائي', 'Automatic')}</span>
+                          {taxInclusive ? <span className="whitespace-nowrap text-text-subtle">{L('(شاملة)', '(inclusive)')}</span> : null}
                         </label>
                       </Field> : null}
                     </div>
@@ -789,7 +792,7 @@ export default function Invoices() {
                           <span className="absolute inset-0 rounded-full bg-text-subtlest transition-colors peer-checked:bg-brand-1-background peer-focus-visible:ring-2 peer-focus-visible:ring-border-focus peer-focus-visible:ring-offset-1 peer-disabled:opacity-40" />
                           <span className="pointer-events-none absolute start-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4" />
                         </span>
-                        {defaultTaxRate}%
+                        {L('ضريبة', 'Tax')}
                       </label> : null}
                     </div>
                   </>
@@ -818,19 +821,30 @@ export default function Invoices() {
           <div className="mt-2 flex justify-end">
             <Button variant="secondary" onClick={addLine}>{L('إضافة بند', 'Add line')}</Button>
           </div>
-          <div className="mt-3 flex justify-end text-medium tabular">
-            <div className="space-y-1">
-              <span>
-                {L('المجموع الفرعي', 'Subtotal')}: <Money amountMinor={formSubtotal} currency={form.currency} />
-              </span>
-              {taxEnabled ? <span>{L('الضريبة', 'Tax')}: <Money amountMinor={formTax} currency={form.currency} /></span> : null}
-              <span className="font-semibold">
-                {L('المجموع', 'Total')}: <Money amountMinor={formTotal} currency={form.currency} />
-              </span>
+          <dl className="mt-3 ms-auto w-full max-w-xs space-y-1 text-medium tabular">
+            <div className="flex items-center justify-between gap-6">
+              <dt className="text-text-subtle">{L('المجموع الفرعي', 'Subtotal')}</dt>
+              <dd><Money amountMinor={formSubtotal} currency={form.currency} /></dd>
             </div>
-          </div>
+            {taxEnabled ? (
+              <div className="flex items-center justify-between gap-6">
+                <dt className="text-text-subtle">{L('الضريبة', 'Tax')}</dt>
+                <dd><Money amountMinor={formTax} currency={form.currency} /></dd>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-6 border-t border-border-subtle pt-2 font-semibold">
+              <dt>{L('المجموع', 'Total')}</dt>
+              <dd><Money amountMinor={formTotal} currency={form.currency} /></dd>
+            </div>
+          </dl>
         </div>
       </Modal>
+      <QuickCreateCustomer
+        kind={isCustomer ? 'customer' : 'supplier'}
+        open={quickParty}
+        onClose={() => setQuickParty(false)}
+        onCreated={(party) => { setForm((current) => ({ ...current, party_id: party.id })); setQuickParty(false) }}
+      />
 
       <Modal
         open={detailId !== null}
