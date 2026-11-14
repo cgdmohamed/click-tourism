@@ -4,8 +4,10 @@ export type Source = {
   permission: string
   list: string
   status: string
-  /** Page that shows the full record. */
+  /** Collection page, the destination for sources that have no page of their own per record. */
   page: string
+  /** The record's own page, when one exists. */
+  detail?: (id: string) => string
   approvePath: (id: string) => string
   /** Present only where the API takes a rejection reason. */
   rejectPath?: (id: string) => string
@@ -20,6 +22,7 @@ export const SOURCES: Source[] = [
     list: '/expenses',
     status: 'submitted',
     page: '/expenses',
+    detail: (id) => `/expenses/${encodeURIComponent(id)}`,
     approvePath: (id) => `/expenses/${id}/approve`,
     rejectPath: (id) => `/expenses/${id}/reject`,
     label: { ar: 'مصروفات', en: 'Expenses' },
@@ -31,6 +34,7 @@ export const SOURCES: Source[] = [
     list: '/accounting-documents',
     status: 'submitted',
     page: '/documents',
+    detail: (id) => `/documents/${encodeURIComponent(id)}`,
     approvePath: (id) => `/accounting-documents/${id}/approve`,
     rejectPath: (id) => `/accounting-documents/${id}/reject`,
     label: { ar: 'سندات', en: 'Vouchers' },
@@ -42,6 +46,7 @@ export const SOURCES: Source[] = [
     list: '/invoices',
     status: 'submitted',
     page: '/invoices',
+    detail: (id) => `/invoices/${encodeURIComponent(id)}`,
     approvePath: (id) => `/invoices/${id}/approve`,
     label: { ar: 'فواتير بانتظار الاعتماد', en: 'Invoices to approve' },
     action: { ar: 'اعتماد', en: 'Approve' },
@@ -52,6 +57,7 @@ export const SOURCES: Source[] = [
     list: '/invoices',
     status: 'approved',
     page: '/invoices',
+    detail: (id) => `/invoices/${encodeURIComponent(id)}`,
     approvePath: (id) => `/invoices/${id}/issue`,
     label: { ar: 'فواتير بانتظار الإصدار', en: 'Invoices to issue' },
     action: { ar: 'إصدار', en: 'Issue' },
@@ -100,6 +106,11 @@ export function rowDate(row: Row): string | null {
 }
 
 /** Sources the user may act on; the API stays the authority. */
+/** Where the record number leads: its own page when the source has one, else the collection. */
+export function recordHref(source: Pick<Source, 'page' | 'detail'>, id: string): string {
+  return source.detail ? source.detail(id) : source.page
+}
+
 export function visibleSources(can: (permission: string) => boolean): Source[] {
   return SOURCES.filter((source) => can(source.permission))
 }
