@@ -62,8 +62,8 @@ use App\Http\Controllers\Api\WebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
-    Route::get('demo/status', [DemoStatusController::class, 'show'])->middleware('throttle:120,1');
-    Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::get('demo/status', [DemoStatusController::class, 'show'])->middleware('throttle:120,1,demo-status');
+    Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1,auth-login');
 
     // Public branding for the login page: company names and the logo image only.
     Route::get('branding', [BrandingController::class, 'show'])->middleware('throttle:branding');
@@ -74,9 +74,9 @@ Route::prefix('v1')->group(function () {
 
     // Webhooks are public but signature-verified inside the controller.
     Route::get('webhooks/meta', [WebhookController::class, 'verifyMeta']);
-    Route::post('webhooks/meta', [WebhookController::class, 'receiveMeta'])->middleware('throttle:120,1');
+    Route::post('webhooks/meta', [WebhookController::class, 'receiveMeta'])->middleware('throttle:120,1,webhooks-meta');
     Route::get('webhooks/whatsapp', [WebhookController::class, 'verifyWhatsApp']);
-    Route::post('webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp'])->middleware('throttle:120,1');
+    Route::post('webhooks/whatsapp', [WebhookController::class, 'receiveWhatsApp'])->middleware('throttle:120,1,webhooks-whatsapp');
 
     Route::middleware(['auth:sanctum', 'active', 'mcp.readonly', 'throttle:mcp-read'])->group(function () {
         Route::get('auth/me', [AuthController::class, 'me']);
@@ -103,25 +103,25 @@ Route::prefix('v1')->group(function () {
         // ADR-0022: live progress as NDJSON, and the user's own saved conversations.
         Route::post('assistant/chat/stream', [AssistantController::class, 'stream'])->middleware(['permission:assistant.use', 'throttle:assistant-chat']);
         // ADR-0023: the user confirms or rejects an action the assistant prepared.
-        Route::post('assistant/actions/{id}/confirm', [AssistantController::class, 'confirmAction'])->middleware(['permission:assistant.use', 'throttle:30,1']);
+        Route::post('assistant/actions/{id}/confirm', [AssistantController::class, 'confirmAction'])->middleware(['permission:assistant.use', 'throttle:30,1,assistant-actions-id-confirm']);
         Route::post('assistant/actions/{id}/reject', [AssistantController::class, 'rejectAction'])->middleware('permission:assistant.use');
         Route::get('assistant/conversations', [AssistantController::class, 'conversations'])->middleware('permission:assistant.use');
         Route::delete('assistant/conversations', [AssistantController::class, 'deleteConversations'])->middleware('permission:assistant.use');
         Route::get('assistant/conversations/{id}', [AssistantController::class, 'conversation'])->middleware('permission:assistant.use');
         Route::delete('assistant/conversations/{id}', [AssistantController::class, 'deleteConversation'])->middleware('permission:assistant.use');
         // Model discovery for the Settings model picker (ADR-0018). Read-only: saving needs settings.update.
-        Route::put('assistant/key', [AssistantController::class, 'storeKey'])->middleware(['permission:settings.update', 'throttle:10,1']);
+        Route::put('assistant/key', [AssistantController::class, 'storeKey'])->middleware(['permission:settings.update', 'throttle:10,1,assistant-key']);
         Route::delete('assistant/key', [AssistantController::class, 'destroyKey'])->middleware('permission:settings.update');
         // Private document attachments (ADR-0021). Each route re-checks the record the document belongs to.
         Route::get('attachments', [AttachmentController::class, 'index'])->middleware('permission:attachments.view');
-        Route::post('attachments', [AttachmentController::class, 'store'])->middleware(['permission:attachments.upload', 'throttle:30,1']);
+        Route::post('attachments', [AttachmentController::class, 'store'])->middleware(['permission:attachments.upload', 'throttle:30,1,attachments']);
         Route::get('attachments/{attachment}', [AttachmentController::class, 'show'])->middleware('permission:attachments.view');
         Route::patch('attachments/{attachment}', [AttachmentController::class, 'update'])->middleware('permission:attachments.upload');
         Route::delete('attachments/{attachment}', [AttachmentController::class, 'destroy'])->middleware('permission:attachments.delete');
-        Route::get('attachments/{attachment}/download', [AttachmentController::class, 'download'])->middleware(['permission:attachments.view', 'throttle:60,1']);
-        Route::get('attachments/{attachment}/preview', [AttachmentController::class, 'preview'])->middleware(['permission:attachments.view', 'throttle:120,1']);
+        Route::get('attachments/{attachment}/download', [AttachmentController::class, 'download'])->middleware(['permission:attachments.view', 'throttle:60,1,attachments-attachment-download']);
+        Route::get('attachments/{attachment}/preview', [AttachmentController::class, 'preview'])->middleware(['permission:attachments.view', 'throttle:120,1,attachments-attachment-preview']);
         Route::get('attachments/{attachment}/extraction', [AttachmentExtractionController::class, 'show'])->middleware('permission:attachments.view');
-        Route::post('attachments/{attachment}/extraction', [AttachmentExtractionController::class, 'store'])->middleware(['permission:attachments.extract', 'throttle:10,1']);
+        Route::post('attachments/{attachment}/extraction', [AttachmentExtractionController::class, 'store'])->middleware(['permission:attachments.extract', 'throttle:10,1,attachments-attachment-extraction']);
         Route::post('attachment-extractions/{extraction}/confirm', [AttachmentExtractionController::class, 'confirm'])->middleware('permission:attachments.extract');
         Route::post('attachment-extractions/{extraction}/reject', [AttachmentExtractionController::class, 'reject'])->middleware('permission:attachments.extract');
         Route::get('assistant/models', [AssistantController::class, 'models'])->middleware('permission:settings.view');
@@ -131,7 +131,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('settings', [SettingController::class, 'index'])->middleware('permission:settings.view');
         Route::put('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
-        Route::post('settings/logo', [BrandingController::class, 'upload'])->middleware(['permission:settings.update', 'throttle:30,1']);
+        Route::post('settings/logo', [BrandingController::class, 'upload'])->middleware(['permission:settings.update', 'throttle:30,1,settings-logo']);
         Route::delete('settings/logo', [BrandingController::class, 'destroy'])->middleware('permission:settings.update');
         Route::get('decisions', [SettingController::class, 'decisions'])->middleware('permission:settings.view');
         Route::post('decisions/{id}/resolve', [SettingController::class, 'resolveDecision'])->middleware('permission:settings.update');
@@ -338,7 +338,7 @@ Route::prefix('v1')->group(function () {
         Route::get('imports/templates', [ImportController::class, 'templates']);
         Route::get('imports/templates/{entity}', [ImportController::class, 'template']);
         Route::get('imports', [ImportController::class, 'index']);
-        Route::post('imports', [ImportController::class, 'store'])->middleware('throttle:30,1');
+        Route::post('imports', [ImportController::class, 'store'])->middleware('throttle:30,1,imports');
         Route::get('imports/{job}', [ImportController::class, 'show']);
         Route::post('imports/{job}/confirm', [ImportController::class, 'confirm']);
         Route::get('imports/{job}/errors', [ImportController::class, 'errors']);
@@ -447,7 +447,7 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/tax/export', [ManagementReportController::class, 'exportTax'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('dashboard/summary', [ReportController::class, 'dashboard'])->middleware('permission:reports.view');
 
-        Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('search', [SearchController::class, 'index'])->middleware('throttle:60,1,search');
 
         Route::get('leads', [LeadController::class, 'index'])->middleware('permission:leads.view');
         Route::get('leads/{lead}', [LeadController::class, 'show'])->middleware('permission:leads.view');
