@@ -2,6 +2,7 @@
 
 namespace App\Modules\Assistant\Services;
 
+use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Assistant\Actions\ActionCatalogue;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Support\Redactor;
@@ -343,9 +344,18 @@ class ActionService
         $record = $records->first();
 
         $payload = ['__tool' => $tool, '__id' => $record->public_id, '__record' => (string) ($record->number ?? $record->public_id), '__status' => (string) $record->status];
-        $minor = $record->total_minor ?? $record->amount_minor ?? null;
+        // The amount the user is asked to approve: a journal entry has none stored, it is the sum of its debit lines.
+        if ($record instanceof JournalEntry) {
+            $record->loadMissing('lines');
+            $mixed = $record->lines->pluck('currency_code')->unique()->count() > 1;
+            $minor = $record->totalMinor();
+            $currency = $mixed ? $this->settings->baseCurrency() : (string) ($record->currency_code ?: $this->settings->baseCurrency());
+        } else {
+            $minor = $record->total_minor ?? $record->amount_minor ?? null;
+            $currency = (string) ($record->currency_code ?? '');
+        }
         if ($minor !== null) {
-            $payload['__total'] = ActionLabels::moneyText((int) $minor, (string) ($record->currency_code ?? ''));
+            $payload['__total'] = ActionLabels::moneyText((int) $minor, $currency);
         }
         $note = $record->memo ?? $record->description ?? null;
         if (! empty($note)) {
@@ -353,8 +363,20 @@ class ActionService
         }
 
         if ($tool === 'erp_commission_pay') {
+            // The route pays what is outstanding when no amount is sent; state it and send it, so
+            // confirming authorises exactly the amount the card shows.
+            $outstanding = (int) $record->amount_minor - (int) $record->paid_minor;
+            if ($outstanding <= 0) {
+                throw new \DomainException('Nothing is outstanding on this commission.');
+            }
             $account = $this->cashAccount((string) ($args['payment_account'] ?? ''), $branch);
-            $payload += ['cash_account_id' => $account->public_id, '__payment' => $account->name_en ?: $account->name_ar];
+            $payload += [
+                'cash_account_id' => $account->public_id, '__payment' => $account->name_en ?: $account->name_ar,
+                'amount_minor' => $outstanding, 'currency' => (string) $record->currency_code,
+            ];
+            if ((int) $record->paid_minor > 0) {
+                $payload['__paid'] = ActionLabels::moneyText((int) $record->paid_minor, (string) $record->currency_code);
+            }
             if (! empty($args['reference'])) {
                 $payload['reference'] = $args['reference'];
             }
@@ -372,11 +394,26 @@ class ActionService
         $account = $this->cashAccount($args['payment_account'], $branch);
         $currency = strtoupper($args['currency'] ?? $base);
 
+        // With a booking and no explicit allocations the route puts the WHOLE receipt on that booking,
+        // so the card must name it; without one the receipt is an unallocated advance.
+        $booking = null;
+        if (! empty($args['booking_id'])) {
+            $booking = Booking::query()->where('public_id', $args['booking_id'])->orWhere('number', $args['booking_id'])->first();
+            if ($booking === null || $booking->branch_id !== $branch->id) {
+                throw new \DomainException('Booking not found in this branch.');
+            }
+            if ($booking->customer_id !== $customer->id) {
+                throw new \DomainException('That booking belongs to another customer.');
+            }
+        }
+
         return array_filter([
             '__tool' => 'erp_payment_record',
+            '__allocation' => $booking !== null ? 'booking' : 'advance',
+            '__booking' => $booking?->number,
             'customer_id' => $customer->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
             'method' => $args['method'] ?? 'cash', 'amount_minor' => $args['amount_minor'], 'currency' => $currency,
-            'booking_id' => $args['booking_id'] ?? null, 'paid_at' => $args['paid_at'] ?? null,
+            'booking_id' => $booking?->public_id, 'paid_at' => $args['paid_at'] ?? null,
             '__customer' => $customer->name_en ?: $customer->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
     }

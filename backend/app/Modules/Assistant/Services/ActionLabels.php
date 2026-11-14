@@ -68,7 +68,7 @@ final class ActionLabels
         'payee_name' => ['ar' => 'المستفيد', 'en' => 'Payee'], 'start_date' => ['ar' => 'تاريخ البدء', 'en' => 'Start date'], 'end_date' => ['ar' => 'تاريخ الانتهاء', 'en' => 'End date'],
         'pax_adults' => ['ar' => 'عدد البالغين', 'en' => 'Adults'], 'pax_children' => ['ar' => 'عدد الأطفال', 'en' => 'Children'],
         '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__booking' => ['ar' => 'الحجز المرتبط', 'en' => 'Linked booking'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
-        '__record' => ['ar' => 'السجل', 'en' => 'Record'], '__status' => ['ar' => 'حالته الآن', 'en' => 'Current status'], '__total' => ['ar' => 'المبلغ', 'en' => 'Amount'], '__note' => ['ar' => 'البيان', 'en' => 'Note'],
+        '__record' => ['ar' => 'السجل', 'en' => 'Record'], '__status' => ['ar' => 'حالته الآن', 'en' => 'Current status'], '__total' => ['ar' => 'إجمالي المبلغ', 'en' => 'Total amount'], '__paid' => ['ar' => 'المصروف سابقاً', 'en' => 'Already paid'], '__note' => ['ar' => 'البيان', 'en' => 'Note'],
         'report' => ['ar' => 'التقرير', 'en' => 'Report'], 'format' => ['ar' => 'الصيغة', 'en' => 'Format'], 'language' => ['ar' => 'اللغة', 'en' => 'Language'], 'method' => ['ar' => 'طريقة الدفع', 'en' => 'Method'],
         'paid_at' => ['ar' => 'تاريخ الدفع', 'en' => 'Paid on'], 'params' => ['ar' => 'عوامل التصفية', 'en' => 'Filters'],
         'amount_minor' => ['ar' => 'المبلغ', 'en' => 'Amount'], 'lines' => ['ar' => 'البنود', 'en' => 'Lines'], 'items' => ['ar' => 'البنود', 'en' => 'Items'],
@@ -92,7 +92,7 @@ final class ActionLabels
         $l = $locale === 'en' ? 'en' : 'ar';
         $currency = strtoupper((string) ($payload['currency'] ?? ''));
         $rows = [];
-        foreach (['__record', '__status', '__total', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment'] as $key) {
+        foreach (['__record', '__status', '__total', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment'] as $key) {
             if (isset($payload[$key])) {
                 $rows[] = ['label' => self::FIELDS[$key][$l], 'value' => (string) $payload[$key]];
             }
@@ -106,6 +106,11 @@ final class ActionLabels
                 $value = collect($value)->map(fn ($v, $k) => $k.' = '.$v)->implode('، ');
             }
             $rows[] = ['label' => $label, 'value' => $key === 'amount_minor' ? self::money((int) $value, $currency) : (string) (is_bool($value) ? ($value ? 'yes' : 'no') : $value)];
+        }
+        if (isset($payload['__allocation'])) {
+            $rows[] = ['label' => $l === 'ar' ? 'التخصيص' : 'Allocation', 'value' => $payload['__allocation'] === 'booking'
+                ? ($l === 'ar' ? 'سيُخصَّص كامل المبلغ على الحجز '.($payload['__booking'] ?? '') : 'The whole amount is allocated to booking '.($payload['__booking'] ?? ''))
+                : ($l === 'ar' ? 'دفعة مقدمة غير مخصصة لأي حجز أو فاتورة' : 'An unallocated advance, not tied to any booking or invoice')];
         }
         if (isset($payload['__tool'], self::EFFECTS[$payload['__tool']])) {
             $rows[] = ['label' => $l === 'ar' ? 'ما سيحدث' : 'What happens', 'value' => self::EFFECTS[$payload['__tool']][$l]];

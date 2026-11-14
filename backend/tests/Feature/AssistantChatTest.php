@@ -4,10 +4,16 @@ namespace Tests\Feature;
 
 use App\Modules\Accounting\Models\Account;
 use App\Modules\Accounting\Models\JournalEntry;
+use App\Modules\Accounting\Services\PostingLine;
+use App\Modules\Accounting\Services\PostingRequest;
+use App\Modules\Accounting\Services\PostingService;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Models\AssistantConversation;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Commissions\Models\Commission;
+use App\Modules\Commissions\Services\CommissionRuleService;
 use App\Modules\Core\Models\AuditEvent;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
@@ -524,6 +530,92 @@ class AssistantChatTest extends TestCase
         $this->assertSame('confirmed', $done['status'], json_encode($done));
         $this->assertSame($before + 1, Payment::query()->count());
         $this->assertSame(50000, (int) Payment::query()->where('public_id', $done['result']['id'])->value('amount_minor'));
+    }
+
+    private function paymentBooking(?Customer $customer = null): Booking
+    {
+        $booking = app(BookingService::class)->create([
+            'branch_id' => $this->user->branches()->first()->public_id ?? Branch::query()->first()->public_id,
+            'customer_id' => ($customer ?? $this->customer())->public_id,
+            'start_date' => now()->addDays(5)->toDateString(), 'currency' => 'EGP', 'fx_rate' => '1',
+            'items' => [['service_type' => 'hotel', 'description' => 'Hotel nights', 'quantity' => 1, 'unit_cost_minor' => 0, 'unit_sell_minor' => 200000]],
+        ], $this->user->id);
+
+        return app(BookingService::class)->transition($booking, 'confirmed', null, $this->user->id);
+    }
+
+    public function test_a_payment_card_names_the_booking_it_will_be_allocated_to_or_says_it_is_an_advance(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'customers.view');
+        $this->branchCashAccount();
+        $customer = $this->customer();
+        $booking = $this->paymentBooking();
+
+        $withBooking = $this->prepare('erp_payment_record', ['customer_id' => $customer->public_id, 'payment_account' => 'main cash', 'amount_minor' => 50000, 'booking_id' => $booking->public_id]);
+        $values = array_column($withBooking['rows'], 'value');
+        $this->assertContains($booking->number, $values);
+        $this->assertContains('The whole amount is allocated to booking '.$booking->number, $values);
+
+        $advance = $this->prepare('erp_payment_record', ['customer_id' => $customer->public_id, 'payment_account' => 'main cash', 'amount_minor' => 50000]);
+        $this->assertContains('An unallocated advance, not tied to any booking or invoice', array_column($advance['rows'], 'value'));
+        $this->assertNotEquals(array_column($withBooking['rows'], 'value'), array_column($advance['rows'], 'value'));
+    }
+
+    public function test_a_payment_for_a_booking_of_another_customer_or_an_unknown_booking_is_refused_before_a_card(): void
+    {
+        $this->grant('payments.create');
+        $this->branchCashAccount();
+        $this->script([$this->toolCallReply([['erp_payment_record', ['customer_id' => $this->customer()->public_id, 'payment_account' => 'main cash', 'amount_minor' => 100, 'booking_id' => 'BK-NOPE-0001']]]), $this->finalReply('which booking?')]);
+        $this->assertSame([], $this->chat()->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('Booking not found in this branch', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_a_partly_paid_commission_card_shows_and_submits_the_outstanding_amount(): void
+    {
+        $this->grant('commissions.pay', 'commissions.view');
+        $this->branchCashAccount();
+        $rule = app(CommissionRuleService::class)->create([
+            'code' => 'R-T', 'name_ar' => 'عمولة', 'name_en' => 'Commission', 'beneficiary_type' => 'employee', 'basis' => 'percent_revenue', 'rate_bp' => 1000,
+            'effective_from' => now()->subMonth()->toDateString(),
+        ], $this->user->id);
+        $booking = $this->paymentBooking();
+        $commission = Commission::query()->create([
+            'number' => 'CM-T-1', 'booking_id' => $booking->id, 'branch_id' => $this->user->branches()->first()->id ?? Branch::query()->first()->id, 'commission_rule_id' => $rule->id,
+            'rule_code' => 'R', 'rule_version' => 1, 'beneficiary_type' => 'employee', 'beneficiary_id' => 1, 'basis' => 'sell', 'calculated_minor' => 100000,
+            'amount_minor' => 100000, 'paid_minor' => 40000, 'currency_code' => 'EGP', 'status' => 'posted', 'accrued_on' => now()->toDateString(),
+        ]);
+
+        $card = $this->prepare('erp_commission_pay', ['number' => 'CM-T-1', 'payment_account' => 'main cash']);
+
+        $values = array_column($card['rows'], 'value');
+        $this->assertContains('1,000.00 EGP', $values, 'the full commission');
+        $this->assertContains('400.00 EGP', $values, 'already paid');
+        $this->assertContains('600.00 EGP', $values, 'what this confirmation pays');
+        $stored = AssistantAction::query()->where('public_id', $card['id'])->firstOrFail()->payload;
+        $this->assertSame(60000, $stored['amount_minor'], 'the amount is submitted explicitly, not left to the route default');
+        $this->assertSame($commission->public_id, $stored['__id']);
+    }
+
+    public function test_a_journal_card_shows_the_entry_total(): void
+    {
+        $this->grant('journal.create', 'journal.delete_drafts');
+        $entry = app(PostingService::class)->post(PostingRequest::make(
+            entryDate: now()->toDateString(),
+            branch: $this->branch,
+            currency: 'EGP',
+            lines: [
+                PostingLine::debit($this->account('1110'), 70000),
+                PostingLine::credit($this->account('4100'), 70000),
+            ],
+            memo: 'Manual',
+            sourceType: 'test_manual',
+            actorId: $this->user->id,
+        ));
+
+        foreach (['erp_journal_post', 'erp_journal_draft_delete'] as $tool) {
+            $card = $this->prepare($tool, ['number' => $entry->number]);
+            $this->assertContains('700.00 EGP', array_column($card['rows'], 'value'), $tool.' shows the amount');
+        }
     }
 
     public function test_an_unknown_payment_account_is_reported_with_the_choices_and_no_card_exists(): void
