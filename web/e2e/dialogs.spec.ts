@@ -60,3 +60,17 @@ test('the documents card and its preview dialog are accessible', async ({ page }
   await expect(page.getByRole('dialog')).toBeVisible()
   await noBlockingViolations(page, '[role="dialog"]')
 })
+
+test('a background export is queued from the Reports page and listed with its status', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  await page.goto('/reports')
+
+  const section = page.getByRole('region', { name: 'Background export' })
+  await expect(section).toBeVisible()
+  await section.getByRole('button', { name: 'Start export' }).click()
+
+  // With a queue worker it is Ready at once; without one (a bare dev server) it stays Queued. Either way it is listed.
+  const list = section.getByRole('list', { name: 'Exports' })
+  await expect(list.getByRole('status').first()).toContainText(/Queued|Running|Ready|Failed/)
+  await noBlockingViolations(page, '[aria-label="Background export"]')
+})

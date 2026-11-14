@@ -23,6 +23,12 @@ class ReportController extends ApiController
     /** Hard cap for one synchronous export; narrow the filters when exceeded. */
     private const EXPORT_MAX_ROWS = 50000;
 
+    /** The synchronous cap; a background export job (ADR-0025) gets the configured higher one. */
+    private function maxRows(): int
+    {
+        return request()->attributes->get('export_job') === true ? (int) config('exports.async_max_rows') : self::EXPORT_MAX_ROWS;
+    }
+
     public function trialBalance(Request $request, ReportService $reports): JsonResponse
     {
         $data = $this->validateTrialBalance($request);
@@ -89,12 +95,12 @@ class ReportController extends ApiController
         $data = $this->validateGeneralLedger($request, paginated: false);
 
         $result = $reports->generalLedger(
-            $data['account'], $data['from'], $data['to'], $this->branch(), 1, self::EXPORT_MAX_ROWS, $data['currency'], $data['party'],
+            $data['account'], $data['from'], $data['to'], $this->branch(), 1, $this->maxRows(), $data['currency'], $data['party'],
         );
 
-        if ($result['total'] > self::EXPORT_MAX_ROWS) {
+        if ($result['total'] > $this->maxRows()) {
             throw ValidationException::withMessages([
-                'from' => ['Too many rows to export ('.$result['total'].'). Narrow the date range or filters.'],
+                'from' => ['Too many rows to export ('.$result['total'].'). Narrow the date range or filters, or export it in the background.'],
             ]);
         }
 
@@ -262,13 +268,13 @@ class ReportController extends ApiController
             $data['to'],
             $this->branch(),
             1,
-            self::EXPORT_MAX_ROWS,
+            $this->maxRows(),
             $data['currency'],
         );
 
-        if ($report['total'] > self::EXPORT_MAX_ROWS) {
+        if ($report['total'] > $this->maxRows()) {
             throw ValidationException::withMessages([
-                'from' => ['Too many rows to export ('.$report['total'].'). Narrow the date range or filters.'],
+                'from' => ['Too many rows to export ('.$report['total'].'). Narrow the date range or filters, or export it in the background.'],
             ]);
         }
 

@@ -64,6 +64,12 @@ Schedule::command('assistant:prune-history')
     ->dailyAt('02:10')
     ->withoutOverlapping();
 
+// Background report exports (ADR-0025): remove finished files after `exports.ttl_days`.
+Schedule::command('exports:prune')
+    ->name('exports-prune')
+    ->dailyAt('02:20')
+    ->withoutOverlapping();
+
 // Optional Meta / WhatsApp integrations: publish queued outbox rows and re-queue
 // lost jobs. No-op while the integrations are disabled or idle.
 Schedule::command('integrations:dispatch-outbox')

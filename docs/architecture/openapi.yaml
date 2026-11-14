@@ -290,6 +290,88 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /exports:
+    get:
+      tags: [Reports]
+      summary: The signed-in user's recent background exports in the active branch (ADR-0025, GAP-RPT-02)
+      responses:
+        '200':
+          description: Newest first, at most 20
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExportJob' }
+    post:
+      tags: [Reports]
+      summary: Queue a report export that runs in the background (permission `reports.export`)
+      description: |
+        Re-runs the normal `/reports/{report}/export` route as the caller when a queue worker picks the job up, so permissions, branch scope, filters and the `report.exported` audit row are those of the synchronous export; only the row cap is higher (`EXPORTS_ASYNC_MAX_ROWS`, default 200000). `params` are the report's own filters, validated by that route when the job runs, so a bad filter makes the job `failed` with the route's message. The file exists only when the job `succeeded`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report, format]
+              properties:
+                report: { type: string, enum: [trial-balance, general-ledger, income-statement, balance-sheet, aging, aging-reconciliation, party-statement, profitability, sales, commissions, tax, cost-center-pl, cost-center-unallocated] }
+                format: { type: string, enum: [csv, xlsx, pdf] }
+                language: { type: string, enum: [ar, en, bilingual] }
+                params: { type: object, additionalProperties: { type: string }, description: 'The report filters (from, to, account, currency, ...)' }
+      responses:
+        '201':
+          description: The queued job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ExportJob' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 'Unknown report or format' }
+
+  /exports/{export}:
+    get:
+      tags: [Reports]
+      summary: Status of one of my exports (404 for anyone else's)
+      parameters:
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ExportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Reports]
+      summary: Remove a finished export and its file (409 while it is queued or running)
+      parameters:
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Still running' }
+
+  /exports/{export}/download:
+    get:
+      tags: [Reports]
+      summary: Download the file of a succeeded export (audited as `export.downloaded`)
+      parameters:
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'The complete file (CSV, XLSX or PDF)' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Not ready (code export_not_ready)' }
+        '410': { description: 'Expired (code export_expired); run the export again' }
+
   /assistant/chat:
     post:
       tags: [Auth]
@@ -6019,6 +6101,21 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    ExportJob:
+      type: object
+      description: 'A background report export (ADR-0025)'
+      properties:
+        id: { type: string }
+        report: { type: string }
+        format: { type: string, enum: [csv, xlsx, pdf] }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        file_name: { type: [string, 'null'] }
+        size_bytes: { type: [integer, 'null'] }
+        error: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
     AssistantActionCard:
       type: object
       description: 'An action the assistant prepared (ADR-0023)'

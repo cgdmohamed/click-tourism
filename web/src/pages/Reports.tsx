@@ -17,6 +17,7 @@ import { isManagementReport } from '../lib/managementReports'
 import type { ManagementReportKey } from '../lib/managementReports'
 import type { IconName } from '../components/icons'
 import { localizedName } from '../lib/names'
+import { BackgroundExports } from '../components/BackgroundExports'
 
 type CurrencyRow = { code: string; is_active: boolean }
 type PartyType = 'customer' | 'supplier' | 'employee'
@@ -772,6 +773,14 @@ export default function Reports() {
             </Button>
           ) : null}
         </div>
+
+        {canExport ? (
+          <BackgroundExports
+            report={isLedger ? 'general-ledger' : report}
+            params={Object.fromEntries(Object.entries(isLedger ? ledgerParams : params).filter(([, value]) => value !== undefined && value !== null && value !== '').map(([key, value]) => [key, String(value)]))}
+            disabled={!canExport}
+          />
+        ) : null}
 
         {exportError ? <p className="px-5 py-2 text-small text-danger-text">{exportError}</p> : null}
         {currency && (report === 'trial-balance' || isLedger || isStatement) ? (
