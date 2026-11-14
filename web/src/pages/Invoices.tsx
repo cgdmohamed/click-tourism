@@ -115,6 +115,7 @@ export default function Invoices() {
   const [search, setSearch] = useState(urlSearch)
   const [error, setError] = useState('')
   const [quickParty, setQuickParty] = useState(false)
+  const [createdParty, setCreatedParty] = useState<Party | null>(null)
   const [open, setOpen] = useState(false)
 
   // A confirmed document extraction opens the form pre-filled; the user still picks the party and saves it
@@ -297,6 +298,7 @@ export default function Invoices() {
     enabled: open,
     value: form.party_id,
     locale,
+    known: createdParty ? [createdParty] : undefined,
   })
   const partyOptions = partyPicker.options
 
@@ -847,7 +849,7 @@ export default function Invoices() {
         kind={isCustomer ? 'customer' : 'supplier'}
         open={quickParty}
         onClose={() => setQuickParty(false)}
-        onCreated={(party) => { setForm((current) => ({ ...current, party_id: party.id })); setQuickParty(false) }}
+        onCreated={(party) => { setCreatedParty(party); setForm((current) => ({ ...current, party_id: party.id })); setQuickParty(false) }}
       />
 
       <Modal
