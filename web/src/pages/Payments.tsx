@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
-import { DocumentsButton } from '../components/AttachmentsCard'
+import AttachmentsCard from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
@@ -18,16 +18,15 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   Input,
-  Loading,
   Modal,
   PageHeader,
   Pagination,
   SearchableSelect,
   Select,
+  Money,
   Table,
   Td,
   Th,
@@ -38,6 +37,10 @@ import { localizedName } from '../lib/names'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
 import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
+import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
+import { ACTIONS_COL, ListEmpty, ListSkeleton, ListTable, ListTh, RowActions } from '../components/ListKit'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import type { ActionItem } from '../components/ActionsMenu'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 type OpenCustomerInvoice = { id: string; number: string; currency: string; outstanding_minor: number; issue_date: string }
@@ -59,6 +62,7 @@ export default function Payments() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [applyTarget, setApplyTarget] = useState<ApplyTarget | null>(null)
+  const [documentsFor, setDocumentsFor] = useState<Payment | null>(null)
   const [cancelTarget, setCancelTarget] = useState<Payment | null>(null)
   const [cancelError, setCancelError] = useState('')
   const [refundTarget, setRefundTarget] = useState<Payment | null>(null)
@@ -86,11 +90,32 @@ export default function Payments() {
     setPage(1)
   }, [urlSearch])
 
+  const filters = useFilters(
+    [
+      {
+        key: 'customer_id',
+        label: t('customer'),
+        type: 'custom',
+        render: (value, set) => <PartyFilterField kind="customer" value={value} set={set} />,
+      },
+      { key: 'from', label: locale === 'ar' ? 'من تاريخ' : 'From date', type: 'date' },
+      { key: 'to', label: locale === 'ar' ? 'إلى تاريخ' : 'To date', type: 'date' },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const paymentsQuery = useQuery({
-    queryKey: ['payments', search, page, activeBranch?.id],
+    queryKey: ['payments', filters.applied, search, page, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Payment>>('/payments', {
-        params: { search: search || undefined, page, per_page: 20 },
+        params: {
+          customer_id: filters.applied.customer_id || undefined,
+          from: filters.applied.from || undefined,
+          to: filters.applied.to || undefined,
+          search: search || undefined,
+          page,
+          per_page: 20,
+        },
       })
       return data
     },
@@ -304,6 +329,59 @@ export default function Payments() {
     }))
   }
 
+  const methodText = (payment: Payment) =>
+    payment.payment_method ? localizedName(payment.payment_method, locale) || payment.payment_method.name_ar : paymentMethodLabel(payment.method, locale)
+
+  /** Every row action in one menu, only the ones the receipt's state and the user's permissions allow. */
+  const rowActions = (payment: Payment): ActionItem[] => {
+    const items: ActionItem[] = []
+    const ar = locale === 'ar'
+    if (can('attachments.view')) items.push({ key: 'documents', label: ar ? 'المستندات' : 'Documents', icon: 'folder', onSelect: () => setDocumentsFor(payment) })
+    if (payment.status === 'posted' && payment.unallocated_minor > 0 && can('payments.create')) {
+      items.push({
+        key: 'apply',
+        label: ar ? 'تطبيق على فاتورة' : 'Apply to invoice',
+        icon: 'fileText',
+        onSelect: () =>
+          setApplyTarget({
+            kind: 'customer',
+            paymentId: payment.id,
+            paymentLabel: payment.number,
+            partyId: payment.customer_id,
+            currency: payment.currency,
+            availableMinor: payment.unallocated_minor,
+          }),
+      })
+    }
+    if (payment.status === 'posted' && can('refunds.create') && refundableMinor(payment) > 0) {
+      items.push({
+        key: 'refund',
+        label: ar ? 'استرداد' : 'Refund',
+        icon: 'refresh',
+        onSelect: () => {
+          setRefundError('')
+          setRefundForm({ amount: toDecimal(refundableMinor(payment), payment.currency), reason: '' })
+          setRefundTarget(payment)
+        },
+      })
+    }
+    if (refunds.some((refund) => refund.payment_id === payment.id)) {
+      items.push({ key: 'refunds', label: ar ? 'الاستردادات' : 'Refunds', icon: 'receipt', onSelect: () => setRefundsFor(payment) })
+    }
+    if (payment.status === 'posted' && can('payments.reverse')) {
+      items.push({
+        key: 'cancel',
+        label: ar ? 'إلغاء السند' : 'Cancel receipt',
+        icon: 'x',
+        onSelect: () => {
+          setCancelError('')
+          setCancelTarget(payment)
+        },
+      })
+    }
+    return items
+  }
+
   return (
     <div>
       <PageHeader
@@ -314,7 +392,7 @@ export default function Payments() {
       />
 
       <Card>
-        <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
           <Input
             value={search}
             onChange={(event) => {
@@ -322,103 +400,118 @@ export default function Payments() {
               setPage(1)
             }}
             placeholder={t('search')}
+            aria-label={t('search')}
             className="max-w-xs"
           />
+          <FilterControl state={filters} />
         </div>
-        {paymentsQuery.isLoading ? <Loading /> : null}
+        {paymentsQuery.isLoading ? <ListSkeleton columns={7} /> : null}
         {paymentsQuery.isError ? (
           <ErrorState message={errorMessage(paymentsQuery.error)} onRetry={() => void paymentsQuery.refetch()} />
         ) : null}
-        {paymentsQuery.data && payments.length === 0 ? <EmptyState /> : null}
+        {paymentsQuery.data && payments.length === 0 ? (
+          <ListEmpty
+            filtered={filters.count > 0 || search !== ''}
+            onClear={() => {
+              filters.clearAll()
+              setSearch('')
+              setPage(1)
+            }}
+          />
+        ) : null}
         {payments.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>{t('code')}</Th>
-                <Th>{t('date')}</Th>
-                <Th>{t('customer')}</Th>
-                <Th>{t('paymentMethod')}</Th>
-                <Th>{t('status')}</Th>
-                <Th className="text-end">{t('amount')}</Th>
-                <Th className="text-end">{locale === 'ar' ? 'غير مخصص' : 'Unallocated'}</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((payment) => (
-                <tr key={payment.id}>
-                  <Td className="font-medium">{payment.number}</Td>
-                  <Td>{formatDate(payment.paid_at, locale)}</Td>
-                  <Td>{payment.customer ? (localizedName(payment.customer, locale)) : payment.customer_id}</Td>
-                  <Td>{payment.payment_method ? (localizedName(payment.payment_method, locale) || payment.payment_method.name_ar) : paymentMethodLabel(payment.method, locale)}</Td>
-                  <Td>
+          <>
+            <MobileCards items={payments} getKey={(payment) => payment.id} label={locale === 'ar' ? 'التحصيلات' : 'Collections'}>
+              {(payment) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-medium tabular font-semibold">{payment.number}</span>
                     <Badge tone={statusTone(payment.status)}>{statusLabel(payment.status, locale)}</Badge>
-                  </Td>
-                  <Td className="text-end tabular">
-                    {formatMoney(payment.amount_minor, payment.currency, locale)}
-                  </Td>
-                  <Td className="text-end tabular">
-                    {formatMoney(payment.unallocated_minor, payment.currency, locale)}
-                  </Td>
-                  <Td className="text-end">
-                    <DocumentsButton type="payment" recordId={payment.id} />
-                    {payment.status === 'posted' && payment.unallocated_minor > 0 && can('payments.create') ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          setApplyTarget({
-                            kind: 'customer',
-                            paymentId: payment.id,
-                            paymentLabel: payment.number,
-                            partyId: payment.customer_id,
-                            currency: payment.currency,
-                            availableMinor: payment.unallocated_minor,
-                          })
-                        }
-                      >
-                        {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
-                      </Button>
-                    ) : null}
-                    {payment.status === 'posted' && can('refunds.create') && refundableMinor(payment) > 0 ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setRefundError('')
-                          setRefundForm({ amount: toDecimal(refundableMinor(payment), payment.currency), reason: '' })
-                          setRefundTarget(payment)
-                        }}
-                      >
-                        {locale === 'ar' ? 'استرداد' : 'Refund'}
-                      </Button>
-                    ) : null}
-                    {refunds.some((refund) => refund.payment_id === payment.id) ? (
-                      <Button variant="ghost" onClick={() => setRefundsFor(payment)}>
-                        {locale === 'ar' ? 'الاستردادات' : 'Refunds'}
-                      </Button>
-                    ) : null}
-                    {payment.status === 'posted' && can('payments.reverse') ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setCancelError('')
-                          setCancelTarget(payment)
-                        }}
-                      >
-                        {locale === 'ar' ? 'إلغاء السند' : 'Cancel receipt'}
-                      </Button>
-                    ) : null}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+                  </div>
+                  <p className="text-medium font-medium">
+                    {payment.customer ? (
+                      <Link to={`/customers/${payment.customer_id}`} className="text-brand-1-accent hover:underline">{localizedName(payment.customer, locale)}</Link>
+                    ) : (
+                      '—'
+                    )}
+                  </p>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('date')}>{formatDate(payment.paid_at, locale)}</CardField>
+                    <CardField label={t('paymentMethod')}>{methodText(payment)}</CardField>
+                    <CardField label={t('amount')}>
+                      <Money amountMinor={payment.amount_minor} currency={payment.currency} />
+                    </CardField>
+                    <CardField label={locale === 'ar' ? 'غير مخصص' : 'Unallocated'}>
+                      <Money amountMinor={payment.unallocated_minor} currency={payment.currency} />
+                    </CardField>
+                  </dl>
+                  <div>
+                    <RowActions items={rowActions(payment)} label={`${locale === 'ar' ? 'إجراءات' : 'Actions'} ${payment.number}`} />
+                  </div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
+              <ListTable label={locale === 'ar' ? 'التحصيلات' : 'Collections'}>
+                <thead>
+                  <tr>
+                    <ListTh>{t('code')}</ListTh>
+                    <ListTh>{t('date')}</ListTh>
+                    <ListTh>{t('customer')}</ListTh>
+                    <ListTh className="hidden lg:table-cell">{t('paymentMethod')}</ListTh>
+                    <ListTh>{t('status')}</ListTh>
+                    <ListTh className="text-end">{t('amount')}</ListTh>
+                    <ListTh className="text-end">{locale === 'ar' ? 'غير مخصص' : 'Unallocated'}</ListTh>
+                    <ListTh className={ACTIONS_COL}>
+                      <span className="sr-only">{t('actions')}</span>
+                    </ListTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((payment) => (
+                    <tr key={payment.id}>
+                      <Td className="tabular whitespace-nowrap font-medium">{payment.number}</Td>
+                      <Td className="tabular whitespace-nowrap">{formatDate(payment.paid_at, locale)}</Td>
+                      <Td>
+                        {payment.customer ? (
+                          <Link to={`/customers/${payment.customer_id}`} className="font-medium text-brand-1-accent hover:underline">{localizedName(payment.customer, locale)}</Link>
+                        ) : (
+                          '—'
+                        )}
+                      </Td>
+                      <Td className="hidden lg:table-cell">{methodText(payment)}</Td>
+                      <Td>
+                        <Badge tone={statusTone(payment.status)}>{statusLabel(payment.status, locale)}</Badge>
+                      </Td>
+                      <Td className="whitespace-nowrap text-end"><Money amountMinor={payment.amount_minor} currency={payment.currency} /></Td>
+                      <Td className="whitespace-nowrap text-end"><Money amountMinor={payment.unallocated_minor} currency={payment.currency} /></Td>
+                      <Td className={ACTIONS_COL}>
+                        <RowActions items={rowActions(payment)} label={`${locale === 'ar' ? 'إجراءات' : 'Actions'} ${payment.number}`} />
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ListTable>
+            </TableOnly>
+          </>
         ) : null}
         <Pagination
           page={paymentsQuery.data?.meta.current_page ?? 1}
           lastPage={paymentsQuery.data?.meta.last_page ?? 1}
           onChange={setPage}
+          total={paymentsQuery.data?.meta.total}
+          perPage={paymentsQuery.data?.meta.per_page}
         />
       </Card>
+
+      <Modal
+        open={documentsFor !== null}
+        title={locale === 'ar' ? `مستندات ${documentsFor?.number ?? ''}` : `Documents of ${documentsFor?.number ?? ''}`}
+        onClose={() => setDocumentsFor(null)}
+        footer={<Button variant="secondary" onClick={() => setDocumentsFor(null)}>{locale === 'ar' ? 'إغلاق' : 'Close'}</Button>}
+      >
+        {documentsFor ? <AttachmentsCard type="payment" recordId={documentsFor.id} bare /> : null}
+      </Modal>
 
       <Modal
         open={open}
