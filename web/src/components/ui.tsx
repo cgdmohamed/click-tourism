@@ -946,7 +946,7 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="anim-fade fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" role="presentation" onMouseDown={onClose}>
+    <div className="anim-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" role="presentation" onMouseDown={onClose}>
       <div
         className="anim-sheet max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-24 bg-surface-default shadow-4 sm:rounded-16"
         role="dialog"
