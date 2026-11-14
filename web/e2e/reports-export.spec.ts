@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { apiSession, uiLogin } from './support/session'
 
 /**
- * Reports module critical flow: run the trial balance and export it as CSV,
+ * Reports module critical flow: open the trial balance and export it as CSV,
  * XLSX and PDF. The assertions are on real downloads and their file signatures.
  */
 test.describe('report export', () => {
@@ -11,13 +11,19 @@ test.describe('report export', () => {
     await uiLogin(page, apiSession())
     await page.goto('/reports')
 
-    await page.getByRole('button', { name: 'Run', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
+    // The trial balance runs as soon as the page opens (no Run button): wait for its table, then use the Actions menu.
+    await expect(page.locator('table').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await expect(page.getByRole('menuitem', { name: 'Export CSV' })).toBeEnabled()
+    await page.keyboard.press('Escape')
 
     const exportAs = async (button: string) => {
       const [download] = await Promise.all([
         page.waitForEvent('download'),
-        page.getByRole('button', { name: button }).click(),
+        (async () => {
+          await page.getByRole('button', { name: 'Actions' }).click()
+          await page.getByRole('menuitem', { name: button }).click()
+        })(),
       ])
       expect(await download.failure()).toBeNull()
       const path = await download.path()

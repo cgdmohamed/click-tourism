@@ -1,4 +1,6 @@
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -152,6 +154,13 @@ export default function Periods() {
   const customStart = suggestion !== null && form.starts_on !== '' && form.starts_on.slice(5) !== suggestion.fiscal_year_start
 
   const years = yearsQuery.data ?? []
+  // The oldest period of an open year that is not closed yet: where month-end work happens next.
+  const target =
+    years
+      .filter((year) => year.status === 'open')
+      .flatMap((year) => year.periods)
+      .filter((period) => period.status !== 'closed')
+      .sort((a, b) => a.starts_on.localeCompare(b.starts_on))[0] ?? null
 
   return (
     <div>
@@ -173,6 +182,61 @@ export default function Periods() {
       {yearsQuery.isLoading ? <Loading /> : null}
       {yearsQuery.isError ? <ErrorState message={errorMessage(yearsQuery.error)} onRetry={() => void yearsQuery.refetch()} /> : null}
       {!yearsQuery.isLoading && years.length === 0 ? <EmptyState /> : null}
+
+
+      {target && can('periods.manage') ? (
+        <Card className="mb-6 p-4 sm:p-5">
+          <CardHeader
+            title={`${L('إقفال الشهر', 'Month-end close')} · ${target.name}`}
+            subtitle={L('الخطوات بالترتيب لأقدم فترة غير مقفلة', 'Steps in order for the oldest period that is not closed')}
+            icon="listChecks"
+          />
+          <ol className="mt-3 flex flex-col divide-y divide-border-subtle">
+            {[
+              {
+                key: 'accrual',
+                label: L('1. استحقاق التكاليف', '1. Cost accruals'),
+                action: can('periods.view') ? <Button variant="secondary" onClick={() => setAccrualPeriod(target)}>{L('فتح', 'Open')}</Button> : null,
+              },
+              {
+                key: 'reval',
+                label: L('2. إعادة تقييم العملات الأجنبية (عند وجود عملات أجنبية)', '2. Foreign-currency revaluation (if you hold foreign currency)'),
+                action: can('periods.view') ? <Button variant="secondary" onClick={() => setRevalPeriod(target)}>{L('فتح', 'Open')}</Button> : null,
+              },
+              {
+                key: 'review',
+                label: L('3. مراجعة ميزان المراجعة والتسويات البنكية', '3. Review the trial balance and bank reconciliation'),
+                action: (
+                  <Link to="/reports" className="text-small font-medium text-brand-1-accent hover:underline">{L('التقارير', 'Reports')}</Link>
+                ),
+              },
+              {
+                key: 'soft',
+                label: L('4. إقفال مبدئي (يمنع الترحيل العادي)', '4. Soft close (blocks normal posting)'),
+                done: target.status !== 'open',
+                action:
+                  target.status === 'open' ? (
+                    <Button variant="secondary" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ period: target, status: 'soft_closed' })}>{L('إقفال مبدئي', 'Soft close')}</Button>
+                  ) : null,
+              },
+              {
+                key: 'close',
+                label: L('5. إقفال نهائي', '5. Close'),
+                done: target.status === 'closed',
+                action:
+                  target.status === 'soft_closed' ? (
+                    <Button variant="secondary" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ period: target, status: 'closed' })}>{L('إقفال نهائي', 'Close')}</Button>
+                  ) : null,
+              },
+            ].map((step) => (
+              <li key={step.key} className="flex items-center justify-between gap-3 py-2">
+                <span className={`label ${'done' in step && step.done ? 'text-text-subtle line-through' : ''}`}>{step.label}</span>
+                {step.action}
+              </li>
+            ))}
+          </ol>
+        </Card>
+      ) : null}
 
       <div className="flex flex-col gap-6">
         {years.map((year) => (
@@ -381,10 +445,10 @@ export default function Periods() {
             <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('from')} required>
-            <Input type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} dir="ltr" />
+            <DateField value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('to')} required>
-            <Input type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} dir="ltr" />
+            <DateField value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} dir="ltr" />
           </Field>
         </div>
         {customStart ? (

@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -27,6 +28,9 @@ import {
 } from '../components/ui'
 import { localizedName } from '../lib/names'
 import { paymentMethodLabel, statusLabel } from '../lib/labels'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 type CashAccount = {
   id: string
@@ -92,10 +96,18 @@ export default function Treasury() {
     },
   })
 
+  const transferFilters = useFilters(
+    [
+      { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
+      { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const transfersQuery = useQuery({
-    queryKey: ['transfers', page, activeBranch?.id],
+    queryKey: ['transfers', page, transferFilters.applied, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<Paginated<Transfer>>('/transfers', { params: { page, per_page: 20 } })
+      const { data } = await api.get<Paginated<Transfer>>('/transfers', { params: { page, per_page: 20, from: transferFilters.applied.from || undefined, to: transferFilters.applied.to || undefined } })
       return data
     },
     enabled: can('transfers.view'),
@@ -114,6 +126,25 @@ export default function Treasury() {
   const fromAccount = registered.find((account) => account.cash_account_id === transferForm.from)
   const toAccount = registered.find((account) => account.cash_account_id === transferForm.to)
   const crossCurrency = Boolean(fromAccount && toAccount && fromAccount.currency !== toAccount.currency)
+  const accountBalance = (account: CashAccount) => (
+    <>
+      {account.balance_minor !== null && account.balance_minor !== undefined ? (
+        account.balance_currency && account.currency !== account.balance_currency && account.native_balance_minor != null ? (
+          <>
+            <Money amountMinor={account.native_balance_minor} currency={account.currency} />
+            <span className="block text-small text-text-subtle">
+              ≈ <Money amountMinor={account.balance_minor} currency={account.balance_currency} />
+            </span>
+          </>
+        ) : (
+          <Money amountMinor={account.balance_minor} currency={account.balance_currency ?? account.currency} />
+        )
+      ) : (
+        '—'
+      )}
+    </>
+  )
+
   const name = (account?: CashAccount | null) => (account ? (localizedName(account, locale)) : '—')
 
   const refresh = async () => {
@@ -242,6 +273,40 @@ export default function Treasury() {
           {accountsQuery.isError ? <ErrorState message={errorMessage(accountsQuery.error)} onRetry={() => void accountsQuery.refetch()} /> : null}
           {accounts.length === 0 && !accountsQuery.isLoading ? <EmptyState /> : null}
           {accounts.length > 0 ? (
+            <>
+            <MobileCards items={accounts} getKey={(account) => account.id} label={L('الحسابات', 'Accounts')}>
+              {(account) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-medium font-semibold">
+                      {name(account)}
+                      {account.account_last4 ? <span className="tabular font-normal text-text-subtle"> ····{account.account_last4}</span> : null}
+                    </span>
+                    {account.registered ? (
+                      <Badge tone={account.is_active === false ? 'neutral' : 'positive'}>
+                        {account.is_active === false ? L('موقوف', 'Inactive') : L('نشط', 'Active')}
+                      </Badge>
+                    ) : (
+                      <Badge tone="warning">{L('غير مسجل', 'Not registered')}</Badge>
+                    )}
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('code')}>{account.code}</CardField>
+                    <CardField label={t('type')}>{paymentMethodLabel(account.kind ?? account.type, locale)}</CardField>
+                    <CardField label={t('currency')}>{account.currency}</CardField>
+                    <CardField label={L('الرصيد', 'Balance')}>{accountBalance(account)}</CardField>
+                  </dl>
+                  {account.registered && can('cash_accounts.manage') ? (
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={() => toggleActive.mutate(account)}>
+                        {account.is_active === false ? L('تفعيل', 'Activate') : L('إيقاف', 'Deactivate')}
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -265,20 +330,7 @@ export default function Treasury() {
                     <Td>{paymentMethodLabel(account.kind ?? account.type, locale)}</Td>
                     <Td>{account.currency}</Td>
                     <Td className="text-end">
-                      {account.balance_minor !== null && account.balance_minor !== undefined ? (
-                        account.balance_currency && account.currency !== account.balance_currency && account.native_balance_minor != null ? (
-                          <>
-                            <Money amountMinor={account.native_balance_minor} currency={account.currency} />
-                            <span className="block text-small text-text-subtle">
-                              ≈ <Money amountMinor={account.balance_minor} currency={account.balance_currency} />
-                            </span>
-                          </>
-                        ) : (
-                          <Money amountMinor={account.balance_minor} currency={account.balance_currency ?? account.currency} />
-                        )
-                      ) : (
-                        '—'
-                      )}
+                      {accountBalance(account)}
                     </Td>
                     <Td>
                       {account.registered ? (
@@ -300,15 +352,56 @@ export default function Treasury() {
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
+            </>
           ) : null}
         </Card>
       ) : (
         <Card>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+            <FilterControl state={transferFilters} />
+          </div>
           {transfersQuery.isLoading ? <Loading /> : null}
           {transfersQuery.isError ? <ErrorState message={errorMessage(transfersQuery.error)} onRetry={() => void transfersQuery.refetch()} /> : null}
-          {transfersQuery.data && transfersQuery.data.data.length === 0 ? <EmptyState /> : null}
+          {transfersQuery.data && transfersQuery.data.data.length === 0 ? <ListEmpty filters={transferFilters} /> : null}
           {transfersQuery.data && transfersQuery.data.data.length > 0 ? (
             <>
+              <MobileCards items={transfersQuery.data.data} getKey={(transfer) => transfer.id} label={L('التحويلات', 'Transfers')}>
+                {(transfer) => (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-medium tabular font-semibold">{transfer.number}</span>
+                      <Badge tone={statusTone(transfer.status)}>{statusLabel(transfer.status, locale)}</Badge>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-3">
+                      <CardField label={t('date')}>{formatDate(transfer.transfer_date, locale)}</CardField>
+                      <CardField label={t('amount')}>
+                        <Money amountMinor={transfer.from_amount_minor} currency={transfer.from_currency} />
+                      </CardField>
+                      <CardField label={L('من', 'From')}>{name(transfer.from)}</CardField>
+                      <CardField label={L('إلى', 'To')}>{name(transfer.to)}</CardField>
+                      {transfer.from_currency !== transfer.to_currency ? (
+                        <CardField label={L('المستلم', 'Received')}>
+                          <Money amountMinor={transfer.to_amount_minor} currency={transfer.to_currency} />
+                        </CardField>
+                      ) : null}
+                      {transfer.fee_minor > 0 ? (
+                        <CardField label={L('الرسوم', 'Fee')}>
+                          <Money amountMinor={transfer.fee_minor} currency={transfer.from_currency} />
+                        </CardField>
+                      ) : null}
+                    </dl>
+                    {transfer.status === 'posted' && can('transfers.reverse') ? (
+                      <div className="flex gap-2">
+                        <Button variant="secondary" onClick={() => { setError(''); setReversing(transfer) }}>
+                          {L('عكس', 'Reverse')}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </MobileCards>
+              <TableOnly>
               <Table>
                 <thead>
                   <tr>
@@ -354,6 +447,7 @@ export default function Treasury() {
                   ))}
                 </tbody>
               </Table>
+              </TableOnly>
               <Pagination page={transfersQuery.data.meta.current_page} lastPage={transfersQuery.data.meta.last_page} onChange={setPage} />
             </>
           ) : null}
@@ -428,7 +522,7 @@ export default function Treasury() {
             <SearchableSelect value={transferForm.to} onChange={(value) => setTransferForm({ ...transferForm, to: value })} options={options} placeholder={L('اختر', 'Select')} />
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={transferForm.date} onChange={(event) => setTransferForm({ ...transferForm, date: event.target.value })} dir="ltr" />
+            <DateField value={transferForm.date} onChange={(event) => setTransferForm({ ...transferForm, date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={`${t('amount')}${fromAccount ? ` (${fromAccount.currency})` : ''}`} required>
             <Input value={transferForm.amount} onChange={(event) => setTransferForm({ ...transferForm, amount: event.target.value })} inputMode="decimal" dir="ltr" />

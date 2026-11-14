@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -12,31 +11,20 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
-  Field,
-  Input,
   Loading,
   Modal,
   PageHeader,
   Pagination,
-  Select,
   Spinner,
   Table,
   Td,
   Th,
 } from '../components/ui'
 import { localizedName } from '../lib/names'
-
-const emptyFilters: AuditFilters = {
-  actor: '',
-  action: '',
-  entity_type: '',
-  entity_id: '',
-  branch: '',
-  from: '',
-  to: '',
-}
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 const entityTypes = [
   'Lead',
@@ -57,12 +45,30 @@ const entityTypes = [
 export default function AuditLog() {
   const { t, locale } = useI18n()
   const { branches, can } = useAuth()
-  const [draft, setDraft] = useState<AuditFilters>(emptyFilters)
-  const [filters, setFilters] = useState<AuditFilters>(emptyFilters)
   const [page, setPage] = useState(1)
   const [detail, setDetail] = useState<AuditEvent | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
+
+  const filterState = useFilters(
+    [
+      { key: 'actor', label: t('auditActor'), type: 'text', placeholder: t('auditActorPlaceholder') },
+      { key: 'action', label: t('auditAction'), type: 'text', placeholder: 'lead.created' },
+      { key: 'entity_type', label: t('auditEntityType'), type: 'select', options: entityTypes.map((type) => ({ value: type, label: type })), allLabel: t('all') },
+      { key: 'entity_id', label: t('auditEntityId'), type: 'text', placeholder: '42' },
+      {
+        key: 'branch',
+        label: t('auditBranch'),
+        type: 'select',
+        options: branches.map((branch) => ({ value: branch.id, label: localizedName(branch, locale) })),
+        allLabel: t('allBranches'),
+      },
+      { key: 'from', label: t('auditFrom'), type: 'date' },
+      { key: 'to', label: t('auditTo'), type: 'date' },
+    ],
+    { onApply: () => setPage(1) },
+  )
+  const filters = filterState.applied as AuditFilters
 
   const query = useQuery({
     queryKey: ['audit-events', filters, page],
@@ -73,22 +79,6 @@ export default function AuditLog() {
       return data
     },
   })
-
-  const update = (key: keyof AuditFilters, value: string) => {
-    setDraft((current) => ({ ...current, [key]: value }))
-  }
-
-  const apply = (event: FormEvent) => {
-    event.preventDefault()
-    setFilters({ ...draft })
-    setPage(1)
-  }
-
-  const reset = () => {
-    setDraft(emptyFilters)
-    setFilters(emptyFilters)
-    setPage(1)
-  }
 
   const exportTrail = async () => {
     setExporting(true)
@@ -124,85 +114,44 @@ export default function AuditLog() {
         }
       />
 
-      <Card className="mb-4">
-        <form className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4" onSubmit={apply}>
-          <Field label={t('auditActor')}>
-            <Input
-              id="audit-actor"
-              value={draft.actor}
-              onChange={(event) => update('actor', event.target.value)}
-              placeholder={t('auditActorPlaceholder')}
-            />
-          </Field>
-          <Field label={t('auditAction')}>
-            <Input
-              id="audit-action"
-              value={draft.action}
-              onChange={(event) => update('action', event.target.value)}
-              placeholder="lead.created"
-            />
-          </Field>
-          <Field label={t('auditEntityType')}>
-            <Select
-              id="audit-entity-type"
-              value={draft.entity_type}
-              onChange={(event) => update('entity_type', event.target.value)}
-            >
-              <option value="">{t('all')}</option>
-              {entityTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('auditEntityId')}>
-            <Input
-              id="audit-entity-id"
-              type="number"
-              min={1}
-              value={draft.entity_id}
-              onChange={(event) => update('entity_id', event.target.value)}
-              placeholder="42"
-            />
-          </Field>
-          <Field label={t('auditBranch')}>
-            <Select id="audit-branch" value={draft.branch} onChange={(event) => update('branch', event.target.value)}>
-              <option value="">{t('allBranches')}</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {localizedName(branch, locale)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('auditFrom')}>
-            <Input id="audit-from" type="date" value={draft.from} onChange={(event) => update('from', event.target.value)} />
-          </Field>
-          <Field label={t('auditTo')}>
-            <Input id="audit-to" type="date" value={draft.to} onChange={(event) => update('to', event.target.value)} />
-          </Field>
-          <div className="flex items-end gap-2">
-            <Button type="submit" icon="filter">
-              {t('applyFilters')}
-            </Button>
-            <Button type="button" variant="secondary" onClick={reset}>
-              {t('resetFilters')}
-            </Button>
-          </div>
-        </form>
-      </Card>
-
       {exportError ? <p className="mb-3 text-small text-danger-text">{exportError}</p> : null}
 
       <Card>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <FilterControl state={filterState} />
+        </div>
         {query.isLoading ? (
           <Loading />
         ) : query.isError ? (
           <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} />
         ) : events.length === 0 ? (
-          <EmptyState title={t('noAuditEvents')} hint={t('noAuditEventsHint')} icon="shield" />
+          <ListEmpty filters={filterState} title={t('noAuditEvents')} hint={t('noAuditEventsHint')} />
         ) : (
+          <>
+          <MobileCards items={events} getKey={(event) => String(event.id)} label={t('auditLog')}>
+            {(event) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <Badge tone="neutral">{event.action}</Badge>
+                  <span className="text-small text-text-subtle">{formatDateTime(event.created_at, locale)}</span>
+                </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('auditActor')}>{event.actor ? event.actor.name : t('systemActor')}</CardField>
+                  <CardField label={t('auditEntity')}>{auditEntityLabel(event)}</CardField>
+                  <CardField label={t('auditBranch')}>{auditBranchLabel(event.branch, locale)}</CardField>
+                  <CardField label={t('auditIp')}>
+                    <span dir="ltr">{event.ip ?? '—'}</span>
+                  </CardField>
+                </dl>
+                <div className="flex gap-2">
+                  <Button variant="secondary" icon="eye" onClick={() => setDetail(event)}>
+                    {t('viewDetails')}
+                  </Button>
+                </div>
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -244,6 +193,8 @@ export default function AuditLog() {
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         )}
         {meta ? <Pagination page={meta.current_page} lastPage={meta.last_page} onChange={setPage} /> : null}
       </Card>

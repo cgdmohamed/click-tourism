@@ -26,7 +26,7 @@ const groupIcons: Record<SearchGroup['type'], IconName> = {
   leads: 'target',
 }
 
-export function GlobalSearch() {
+export function GlobalSearch({ autoFocus = false, fullWidth = false }: { autoFocus?: boolean; fullWidth?: boolean }) {
   const { t, locale } = useI18n()
   const { activeBranch } = useAuth()
   const navigate = useNavigate()
@@ -35,6 +35,10 @@ export function GlobalSearch() {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+  }, [autoFocus])
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebounced(term.trim()), 250)
@@ -105,7 +109,7 @@ export function GlobalSearch() {
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className={fullWidth ? 'relative w-full' : 'relative'}>
       <Icon
         name="search"
         className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle"
@@ -122,7 +126,7 @@ export function GlobalSearch() {
         onKeyDown={onKeyDown}
         placeholder={t('searchPlaceholder')}
         aria-label={t('globalSearch')}
-        className="text-medium h-9 w-44 rounded-12 border border-border-default bg-surface-default ps-9 pe-3 text-text-default shadow-1 outline-none transition placeholder:text-text-placeholder focus:border-border-focus focus:ring-2 focus:ring-border-focus/25 sm:w-64"
+        className={`text-medium h-9 ${fullWidth ? 'w-full' : 'w-44 sm:w-64'} rounded-12 border border-border-default bg-surface-default ps-9 pe-3 text-text-default shadow-1 outline-none transition placeholder:text-text-placeholder focus:border-border-focus focus:ring-2 focus:ring-border-focus/25`}
       />
       <kbd className="text-small pointer-events-none absolute end-2 top-1/2 hidden -translate-y-1/2 rounded-6 border border-border-subtle bg-surface-subtle px-1.5 py-0.5 font-medium text-text-subtle sm:block">
         Ctrl K

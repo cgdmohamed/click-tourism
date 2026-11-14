@@ -1,3 +1,5 @@
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { DateField } from '../components/DateField'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -7,7 +9,7 @@ import { api, errorMessage } from '../lib/api'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
 import { useBaseCurrency } from '../lib/useSetting'
-import { toDecimal, toMinor, todayISO } from '../lib/format'
+import { toMinor, todayISO, formatMoney } from '../lib/format'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading,
   Modal, PageHeader, Select, Table, Td, Th,
@@ -62,6 +64,41 @@ export default function TourPackages() {
     },
   })
   const packages = packagesQuery.data ?? []
+  const departuresList = (item: TourPackage) => (
+    <>
+      {(item.departures ?? []).length === 0 ? <span>—</span> : (
+                      <div className="space-y-1">
+                        {(item.departures ?? []).map((d) => (
+                          <div key={d.id} className="text-small">
+                            {d.starts_on} · {d.status === 'open' ? (
+                              <>
+                                <Badge tone="positive">{d.available_seats ?? '∞'} {L('متاح', 'left')}</Badge>
+                                {can('bookings.create') && (d.available_seats === null || d.available_seats > 0) ? (
+                                  <Link className="ms-2 font-semibold text-brand-1-accent underline" to={`/bookings?departure_id=${d.id}`}>
+                                    {L('احجز هذا الموعد', 'Book this departure')}
+                                  </Link>
+                                ) : null}
+                              </>
+                            ) : <Badge tone="neutral">{L('مغلق', 'Closed')}</Badge>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+    </>
+  )
+
+  const addDepartureButton = (item: TourPackage) => (
+    <>
+      {item.execution_type === 'fixed' && can('bookings.create') ? (
+                    <Button variant="secondary" onClick={() => {
+                      setDepartureFor(item)
+                      setError('')
+                      setDeparture({ starts_on: todayISO(), ends_on: '', capacity: '40' })
+                    }}>{L('إضافة موعد', 'Add departure')}</Button>
+                  ) : null}
+    </>
+  )
+
   const save = useMutation({
     mutationFn: async () => {
       await api.post('/tour-packages', {
@@ -112,6 +149,28 @@ export default function TourPackages() {
         {packagesQuery.isError ? <ErrorState message={errorMessage(packagesQuery.error)} onRetry={() => void packagesQuery.refetch()} /> : null}
         {!packagesQuery.isLoading && packages.length === 0 ? <EmptyState /> : null}
         {packages.length > 0 ? (
+          <>
+          <MobileCards items={packages} getKey={(item) => item.id} label={L('البرامج', 'Programs')}>
+            {(item) => (
+              <>
+                <div>
+                  <p className="text-medium font-semibold">{item.name}</p>
+                  <p className="text-small text-text-subtle">{item.code}</p>
+                </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={L('النوع', 'Type')}>{categories.find((category) => category[0] === item.category)?.[locale === 'ar' ? 1 : 2] ?? item.category}</CardField>
+                  <CardField label={L('الوجهة', 'Destination')}>{item.destination ?? '—'}</CardField>
+                  <CardField label={L('السعر المبدئي', 'Base price')}>{formatMoney(item.base_price_minor, item.currency, locale)}</CardField>
+                </dl>
+                <div>
+                  <p className="text-small text-text-subtle">{L('المواعيد والسعة', 'Departures / seats')}</p>
+                  {departuresList(item)}
+                </div>
+                {addDepartureButton(item)}
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -132,38 +191,15 @@ export default function TourPackages() {
                     <div className="text-small text-text-subtle">{item.execution_type}</div>
                   </Td>
                   <Td>{item.destination ?? '—'}</Td>
-                  <Td className="text-end">{toDecimal(item.base_price_minor, item.currency)} {item.currency}</Td>
-                  <Td>
-                    {(item.departures ?? []).length === 0 ? <span>—</span> : (
-                      <div className="space-y-1">
-                        {(item.departures ?? []).map((d) => (
-                          <div key={d.id} className="text-small">
-                            {d.starts_on} · {d.status === 'open' ? (
-                              <>
-                                <Badge tone="positive">{d.available_seats ?? '∞'} {L('متاح', 'left')}</Badge>
-                                {can('bookings.create') && (d.available_seats === null || d.available_seats > 0) ? (
-                                  <Link className="ms-2 font-semibold text-brand-1-accent underline" to={`/bookings?departure_id=${d.id}`}>
-                                    {L('احجز هذا الموعد', 'Book this departure')}
-                                  </Link>
-                                ) : null}
-                              </>
-                            ) : <Badge tone="neutral">{L('مغلق', 'Closed')}</Badge>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Td>
-                  <Td>{item.execution_type === 'fixed' && can('bookings.create') ? (
-                    <Button variant="secondary" onClick={() => {
-                      setDepartureFor(item)
-                      setError('')
-                      setDeparture({ starts_on: todayISO(), ends_on: '', capacity: '40' })
-                    }}>{L('إضافة موعد', 'Add departure')}</Button>
-                  ) : null}</Td>
+                  <Td className="whitespace-nowrap text-end">{formatMoney(item.base_price_minor, item.currency, locale)}</Td>
+                  <Td>{departuresList(item)}</Td>
+                  <Td>{addDepartureButton(item)}</Td>
                 </tr>
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
       </Card>
       <p className="mt-3 text-small text-text-subtle">
@@ -214,8 +250,8 @@ export default function TourPackages() {
         </>}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={L('تاريخ البداية', 'Start date')} required><Input type="date" dir="ltr" value={departure.starts_on} onChange={(e) => setDeparture({ ...departure, starts_on: e.target.value })}/></Field>
-          <Field label={L('تاريخ النهاية', 'End date')}><Input type="date" dir="ltr" value={departure.ends_on} onChange={(e) => setDeparture({ ...departure, ends_on: e.target.value })}/></Field>
+          <Field label={L('تاريخ البداية', 'Start date')} required><DateField dir="ltr" value={departure.starts_on} onChange={(e) => setDeparture({ ...departure, starts_on: e.target.value })}/></Field>
+          <Field label={L('تاريخ النهاية', 'End date')}><DateField dir="ltr" value={departure.ends_on} onChange={(e) => setDeparture({ ...departure, ends_on: e.target.value })}/></Field>
           <Field label={L('عدد المقاعد', 'Seat capacity')} required><Input type="number" min="1" value={departure.capacity} onChange={(e) => setDeparture({ ...departure, capacity: e.target.value })}/></Field>
         </div>
         {error ? <p className="mt-3 text-small text-danger-text">{error}</p> : null}

@@ -34,6 +34,7 @@ import Profile from './pages/Profile'
 import Treasury from './pages/Treasury'
 import Commissions from './pages/Commissions'
 import Expenses from './pages/Expenses'
+import Approvals from './pages/Approvals'
 import ExpenseProfile from './pages/ExpenseProfile'
 import DocumentProfile from './pages/DocumentProfile'
 import OpeningBalances from './pages/OpeningBalances'
@@ -71,6 +72,7 @@ export default function App() {
                   <Route path="accounts" element={<Accounts />} />
                   <Route path="journal" element={<Journal />} />
                   <Route path="treasury" element={<Treasury />} />
+                  <Route path="approvals" element={<Approvals />} />
                   <Route path="expenses" element={<Expenses />} />
                   <Route path="expenses/:id" element={<ExpenseProfile />} />
                   <Route path="commissions" element={<Commissions />} />

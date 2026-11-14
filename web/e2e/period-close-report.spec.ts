@@ -18,17 +18,18 @@ test('closing a period keeps the reports available, then it is reopened', async 
   // The last period of the first (open) fiscal year: never the current one, so other specs are unaffected.
   const lastRow = page.locator('table').first().locator('tbody tr').last()
   const status = lastRow.getByRole('combobox')
-  await expect(status).toHaveValue('open')
+  await expect(status).toContainText('open')
   const periods = (await (await api.get(`${API}/fiscal-periods`)).json()).data as Array<{ periods?: Array<{ id: string; status: string }> }>
   const target = periods[0].periods!.at(-1)!
 
   try {
-    await status.selectOption('closed')
-    await expect(status).toHaveValue('closed')
+    await status.click()
+    await page.getByRole('option', { name: 'closed', exact: true }).click()
+    await expect(status).toContainText('closed')
 
     await page.goto('/reports')
-    // Reports still run for the year whose last period is closed (an empty install shows "No data").
-    await page.getByRole('button', { name: /^(Run|تشغيل)$/ }).click()
+    // Reports still run for the year whose last period is closed (an empty install shows "No data"): the trial
+    // balance runs on its own when the page opens.
     await expect(page.getByText(/Trial balance|ميزان المراجعة/).first()).toBeVisible()
     await expect(page.getByText(/No data|لا توجد بيانات/).or(page.locator('table').first()).first()).toBeVisible()
     await expect(page.getByRole('alert')).toHaveCount(0)

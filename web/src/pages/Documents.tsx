@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -9,7 +10,6 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   IconButton,
@@ -29,6 +29,9 @@ import {
 import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
 import { usePartyOptions } from '../lib/usePartyOptions'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 type DocType = 'receipt_voucher' | 'payment_voucher' | 'transfer_voucher' | 'adjustment_voucher' | 'refund_voucher'
 type PartyType = 'customer' | 'supplier' | 'employee'
@@ -131,8 +134,7 @@ export default function Documents() {
   const partyLabel = (ar: string, en: string) => (locale === 'ar' ? ar : en)
 
   const [page, setPage] = useState(1)
-  const [typeFilter, setTypeFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ ...emptyForm, party_type: 'customer' as '' | PartyType })
@@ -141,15 +143,40 @@ export default function Documents() {
   const [correctId, setCorrectId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
 
+  const filters = useFilters(
+    [
+      {
+        key: 'type',
+        label: L('النوع', 'Type'),
+        type: 'select',
+        options: DOC_TYPES.map((value) => ({ value, label: L(typeLabels[value].ar, typeLabels[value].en) })),
+        allLabel: L('كل الأنواع', 'All types'),
+      },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['draft', 'submitted', 'approved', 'posted', 'rejected', 'cancelled'].map((value) => ({ value, label: statusLabel(value, locale) })),
+        allLabel: L('كل الحالات', 'All statuses'),
+      },
+      { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
+      { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const documentsQuery = useQuery({
-    queryKey: ['accounting-documents', page, typeFilter, statusFilter, activeBranch?.id],
+    queryKey: ['accounting-documents', page, filters.applied, search, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<{ data: Document[]; meta: { current_page: number; last_page: number; total: number } }>('/accounting-documents', {
         params: {
           page,
           per_page: 20,
-          ...(typeFilter ? { type: typeFilter } : {}),
-          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(filters.applied.type ? { type: filters.applied.type } : {}),
+          ...(filters.applied.status ? { status: filters.applied.status } : {}),
+          ...(filters.applied.from ? { from: filters.applied.from } : {}),
+          ...(filters.applied.to ? { to: filters.applied.to } : {}),
+          ...(search ? { search } : {}),
         },
       })
       return data
@@ -343,30 +370,47 @@ export default function Documents() {
       ) : null}
 
       <Card>
-        <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-5 py-4">
-          <Field label={L('النوع', 'Type')}>
-            <Select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setPage(1) }}>
-              <option value="">{L('الكل', 'All')}</option>
-              {DOC_TYPES.map((value) => (
-                <option key={value} value={value}>{L(typeLabels[value].ar, typeLabels[value].en)}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('status')}>
-            <Select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }}>
-              <option value="">{L('الكل', 'All')}</option>
-              {['draft', 'submitted', 'approved', 'posted', 'rejected', 'cancelled'].map((value) => (
-                <option key={value} value={value}>{value}</option>
-              ))}
-            </Select>
-          </Field>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input
+            value={search}
+            onChange={(event) => { setSearch(event.target.value); setPage(1) }}
+            placeholder={t('search')}
+            aria-label={t('search')}
+            className="max-w-xs"
+          />
+          <FilterControl state={filters} />
         </div>
 
         {documentsQuery.isLoading ? <Loading /> : null}
         {documentsQuery.isError ? <ErrorState message={errorMessage(documentsQuery.error)} onRetry={() => void documentsQuery.refetch()} /> : null}
-        {data && data.data.length === 0 ? <EmptyState /> : null}
+        {data && data.data.length === 0 ? <ListEmpty filters={filters} search={search} onClearSearch={() => setSearch('')} /> : null}
         {data && data.data.length > 0 ? (
           <>
+            <MobileCards items={data.data} getKey={(document) => document.id} label={L('السندات', 'Vouchers')}>
+              {(document) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <Link to={`/documents/${document.id}`} className="text-medium whitespace-nowrap font-semibold text-brand-1-accent underline">
+                      {document.number}
+                    </Link>
+                    <Badge tone={statusTone(document.status)}>{statusLabel(document.status, locale)}</Badge>
+                  </div>
+                  <Badge tone="brand">{L(typeLabels[document.type].ar, typeLabels[document.type].en)}</Badge>
+                  {document.memo ? <p className="text-medium break-words">{document.memo}</p> : null}
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('date')}>{formatDate(document.fx_rate_date, locale)}</CardField>
+                    <CardField label={L('الطرف', 'Party')}>{document.party ? partyLabel(document.party.name_ar, document.party.name_en) : '—'}</CardField>
+                    <CardField label={t('total')}>
+                      <Money amountMinor={document.total_minor} currency={document.currency} />
+                    </CardField>
+                  </dl>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setDetailId(document.id)}>{L('تفاصيل', 'Details')}</Button>
+                  </div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -413,6 +457,7 @@ export default function Documents() {
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
             <Pagination page={data.meta.current_page} lastPage={data.meta.last_page} onChange={setPage} />
           </>
         ) : null}
@@ -492,7 +537,7 @@ export default function Documents() {
             </Field>
           ) : null}
           <Field label={t('date')} required>
-            <Input type="date" value={form.document_date} onChange={(event) => setForm({ ...form, document_date: event.target.value })} dir="ltr" />
+            <DateField value={form.document_date} onChange={(event) => setForm({ ...form, document_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
             <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>

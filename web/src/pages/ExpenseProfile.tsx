@@ -4,6 +4,7 @@ import { AiBadge } from '../components/AiBadge'
 import AttachmentsCard from '../components/AttachmentsCard'
 import { DetailGrid, DetailItem, ProfileHeader, ProfileStat } from '../components/profile'
 import { Badge, Card, CardHeader, ErrorState, Loading, Money, statusTone } from '../components/ui'
+import { RecordActions } from '../components/RecordActions'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, formatDateTime } from '../lib/format'
@@ -55,6 +56,7 @@ export default function ExpenseProfile() {
         icon="receipt"
         backTo="/expenses"
         backLabel={t('expenses')}
+        actions={<RecordActions apiBase="/expenses" page="/expenses" id={expense.id} status={expense.status} submitPermission="expenses.create" approvePermission="expenses.approve" detailKey={['expense', id]} />}
         badge={
           <>
             <Badge tone={statusTone(expense.status)}>{statusLabel(expense.status, locale)}</Badge>

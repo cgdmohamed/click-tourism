@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
+import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
 import { useAuth } from '../auth/AuthProvider'
 import { DocumentsButton } from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
@@ -13,7 +15,6 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   Input,
@@ -32,6 +33,9 @@ import {
 import { localizedName } from '../lib/names'
 import { statusLabel } from '../lib/labels'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 type Category = { id: string; code: string; name_ar: string; name_en: string; account_code: string }
 type CashAccount = { id: string; cash_account_id?: string; name_ar: string; name_en: string; currency: string; registered: boolean; is_active?: boolean }
@@ -76,18 +80,41 @@ export default function Expenses() {
   const { enabled: taxEnabled } = useTaxEnabled()
 
   const [page, setPage] = useState(1)
-  const [status, setStatus] = useState('')
+  const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  useDeepLinkNew(can('expenses.create'), (value) => value === 'expense' && setOpen(true))
   const [form, setForm] = useState(emptyForm)
   const [action, setAction] = useState<Action | null>(null)
   const [reason, setReason] = useState('')
 
+  const filters = useFilters(
+    [
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['draft', 'submitted', 'approved', 'rejected', 'cancelled', 'reversed'].map((value) => ({ value, label: statusLabel(value, locale) })),
+        allLabel: L('كل الحالات', 'All statuses'),
+      },
+      { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
+      { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const expensesQuery = useQuery({
-    queryKey: ['expenses', page, status, activeBranch?.id],
+    queryKey: ['expenses', page, filters.applied, search, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Expense>>('/expenses', {
-        params: { page, per_page: 20, ...(status ? { status } : {}) },
+        params: {
+          page,
+          per_page: 20,
+          status: filters.applied.status || undefined,
+          from: filters.applied.from || undefined,
+          to: filters.applied.to || undefined,
+          search: search || undefined,
+        },
       })
       return data
     },
@@ -183,6 +210,30 @@ export default function Expenses() {
 
   const data = expensesQuery.data
 
+  const rowActions = (expense: Expense) => (
+    <div className="flex flex-wrap justify-end gap-1">
+                        <DocumentsButton type="expense" recordId={expense.id} />
+                        {expense.status === 'draft' && can('expenses.create') ? (
+                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
+                        ) : null}
+                        {expense.status === 'rejected' && can('expenses.create') ? (
+                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'reopen' })}>{L('إعادة فتح', 'Reopen')}</Button>
+                        ) : null}
+                        {expense.status === 'submitted' && can('expenses.approve') ? (
+                          <>
+                            <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
+                            <Button variant="ghost" onClick={() => { setError(''); setAction({ expense, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
+                          </>
+                        ) : null}
+                        {['draft', 'submitted', 'rejected'].includes(expense.status) && can('expenses.create') ? (
+                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'cancel' })}>{L('إلغاء', 'Cancel')}</Button>
+                        ) : null}
+                        {expense.status === 'approved' && can('expenses.approve') ? (
+                          <Button variant="ghost" onClick={() => { setError(''); setAction({ expense, kind: 'reverse' }) }}>{L('عكس', 'Reverse')}</Button>
+                        ) : null}
+    </div>
+  )
+
   return (
     <div>
       <PageHeader
@@ -201,22 +252,54 @@ export default function Expenses() {
       ) : null}
 
       <Card>
-        <div className="flex flex-wrap items-end gap-3 border-b border-border-subtle px-5 py-4">
-          <Field label={t('status')}>
-            <Select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}>
-              <option value="">{L('الكل', 'All')}</option>
-              {['draft', 'submitted', 'approved', 'rejected', 'cancelled', 'reversed'].map((value) => (
-                <option key={value} value={value}>{value}</option>
-              ))}
-            </Select>
-          </Field>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input
+            value={search}
+            onChange={(event) => { setSearch(event.target.value); setPage(1) }}
+            placeholder={t('search')}
+            aria-label={t('search')}
+            className="max-w-xs"
+          />
+          <FilterControl state={filters} />
         </div>
 
         {expensesQuery.isLoading ? <Loading /> : null}
         {expensesQuery.isError ? <ErrorState message={errorMessage(expensesQuery.error)} onRetry={() => void expensesQuery.refetch()} /> : null}
-        {data && data.data.length === 0 ? <EmptyState /> : null}
+        {data && data.data.length === 0 ? <ListEmpty filters={filters} search={search} onClearSearch={() => setSearch('')} /> : null}
         {data && data.data.length > 0 ? (
           <>
+            <MobileCards items={data.data} getKey={(expense) => expense.id} label={L('المصروفات', 'Expenses')}>
+              {(expense) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span>
+                      <Link to={`/expenses/${expense.id}`} className="text-medium whitespace-nowrap font-semibold text-brand-1-accent underline">
+                        {expense.number}
+                      </Link>
+                      <AiBadge via={expense.created_via} />
+                    </span>
+                    <Badge tone={statusTone(expense.status)}>{statusLabel(expense.status, locale)}</Badge>
+                  </div>
+                  <p className="text-medium font-medium break-words">{expense.description}</p>
+                  {expense.payee_name ? <p className="text-small text-text-subtle">{expense.payee_name}</p> : null}
+                  {expense.rejection_reason ? <p className="text-small text-danger-text">{expense.rejection_reason}</p> : null}
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('date')}>{formatDate(expense.expense_date, locale)}</CardField>
+                    <CardField label={L('التصنيف', 'Category')}>{catName(expense.category)}</CardField>
+                    <CardField label={t('amount')}>
+                      <Money amountMinor={expense.amount_minor} currency={expense.currency} />
+                    </CardField>
+                    {expense.tax_minor > 0 ? (
+                      <CardField label={L('ضريبة', 'Tax')}>
+                        <Money amountMinor={expense.tax_minor} currency={expense.currency} />
+                      </CardField>
+                    ) : null}
+                  </dl>
+                  {rowActions(expense)}
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -257,32 +340,13 @@ export default function Expenses() {
                       <Badge tone={statusTone(expense.status)}>{statusLabel(expense.status, locale)}</Badge>
                     </Td>
                     <Td className="text-end">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <DocumentsButton type="expense" recordId={expense.id} />
-                        {expense.status === 'draft' && can('expenses.create') ? (
-                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
-                        ) : null}
-                        {expense.status === 'rejected' && can('expenses.create') ? (
-                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'reopen' })}>{L('إعادة فتح', 'Reopen')}</Button>
-                        ) : null}
-                        {expense.status === 'submitted' && can('expenses.approve') ? (
-                          <>
-                            <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
-                            <Button variant="ghost" onClick={() => { setError(''); setAction({ expense, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
-                          </>
-                        ) : null}
-                        {['draft', 'submitted', 'rejected'].includes(expense.status) && can('expenses.create') ? (
-                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'cancel' })}>{L('إلغاء', 'Cancel')}</Button>
-                        ) : null}
-                        {expense.status === 'approved' && can('expenses.approve') ? (
-                          <Button variant="ghost" onClick={() => { setError(''); setAction({ expense, kind: 'reverse' }) }}>{L('عكس', 'Reverse')}</Button>
-                        ) : null}
-                      </div>
+                      {rowActions(expense)}
                     </Td>
                   </tr>
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
             <Pagination page={data.meta.current_page} lastPage={data.meta.last_page} onChange={setPage} />
           </>
         ) : null}
@@ -311,7 +375,7 @@ export default function Expenses() {
             />
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={form.expense_date} onChange={(event) => setForm({ ...form, expense_date: event.target.value })} dir="ltr" />
+            <DateField value={form.expense_date} onChange={(event) => setForm({ ...form, expense_date: event.target.value })} dir="ltr" />
           </Field>
           <Field label={t('currency')} required>
             <Select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value, cash_account_id: '' })}>

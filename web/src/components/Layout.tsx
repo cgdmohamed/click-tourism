@@ -1,30 +1,33 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
-import { useTheme } from '../theme'
 import { BrandMark, useBrandName } from './Brand'
 import { useSyncCurrencyExponents } from '../lib/useCurrencies'
 import { AssistantChat } from './AssistantChat'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationBell } from './NotificationBell'
+import { UserMenu } from './UserMenu'
 import { Icon } from './icons'
 import type { IconName } from './icons'
-import { cx, IconButton, Spinner } from './ui'
+import { cx, IconButton, Spinner, Select } from './ui'
 import { localizedName } from '../lib/names'
 import { showAssistant } from '../lib/assistant'
 import { useFeatureFlags } from '../lib/useSetting'
+import { useApprovalCount } from '../lib/useApprovalCount'
 
-type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[] }
+type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[]; badge?: number }
+
+const APPROVAL_PERMISSIONS = ['expenses.approve', 'documents.approve', 'invoices.approve', 'commissions.approve', 'refunds.approve']
 
 /** Entities the import page can load; the page is useful to anyone holding one of these. */
 const IMPORT_PERMISSIONS = ['customers.create', 'suppliers.create', 'employees.manage', 'bookings.create', 'accounts.update', 'opening_balances.manage']
 type NavGroup = { label?: string; items: NavItem[] }
 
 export function Layout() {
-  const { user, loading, logout, branches, activeBranch, setActiveBranch, can } = useAuth()
-  const { t, locale, toggleLocale } = useI18n()
-  const { theme, toggleTheme } = useTheme()
+  const { user, loading, branches, activeBranch, setActiveBranch, can } = useAuth()
+  const approvalCount = useApprovalCount()
+  const { t, locale } = useI18n()
   const brand = useBrandName()
   useSyncCurrencyExponents(Boolean(user))
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -33,6 +36,8 @@ export function Layout() {
   const assistantVisible = showAssistant(can('assistant.use'), flags)
   const closeAssistant = useCallback(() => setAssistantOpen(false), [])
   const location = useLocation()
+  const [searchOpen, setSearchOpen] = useState(false)
+  useEffect(() => setSearchOpen(false), [location.pathname, location.search])
 
   if (loading) {
     return (
@@ -72,6 +77,7 @@ export function Layout() {
       label: t('operations'),
       items: [
         { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
+        { to: '/approvals', label: locale === 'ar' ? 'الاعتمادات' : 'Approvals', icon: 'clipboardCheck', anyPermission: APPROVAL_PERMISSIONS, badge: approvalCount },
         { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
         { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
         { to: '/commissions', label: locale === 'ar' ? 'العمولات' : 'Commissions', icon: 'coins', permission: 'commissions.view' },
@@ -142,6 +148,7 @@ export function Layout() {
                     ) : null}
                     <Icon name={item.icon} className={cx('h-5 w-5', isActive && 'text-brand-1-accent')} />
                     <span className="truncate">{item.label}</span>
+                    {item.badge ? <span className="text-small ms-auto rounded-full bg-surface-selected px-2 tabular" aria-label={`${item.badge}`}>{item.badge}</span> : null}
                   </>
                 )}
               </NavLink>
@@ -189,7 +196,6 @@ export function Layout() {
               <p className="text-small truncate text-text-subtle">{user.roles[0] ?? '—'}</p>
             </div>
           </NavLink>
-          <IconButton icon="logOut" label={t('logout')} onClick={() => void logout()} />
         </div>
       </aside>
 
@@ -209,25 +215,28 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-default/95 px-4 py-3 backdrop-blur lg:px-6">
-          <div className="flex items-center gap-3">
-            <IconButton icon="menu" label={t('openMenu')} variant="secondary" className="lg:hidden" onClick={() => setMobileOpen(true)} />
-            <div className="hidden sm:block">
-              <p className="label text-text-default">{brand}</p>
-              <p className="text-small text-text-subtle">{t('appTagline')}</p>
+        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-default/95 px-4 py-2.5 backdrop-blur sm:gap-3 sm:py-3 lg:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <IconButton icon="menu" label={t('openMenu')} variant="secondary" className="shrink-0 lg:hidden" onClick={() => setMobileOpen(true)} />
+            <div className="min-w-0">
+              <p className="label truncate text-text-default">{brand}</p>
+              <p className="text-small hidden truncate text-text-subtle sm:block">{t('appTagline')}</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <GlobalSearch />
+          <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+            <div className="hidden sm:block">
+              <GlobalSearch />
+            </div>
+            <IconButton icon="search" label={t('globalSearch')} variant="secondary" className="sm:hidden" onClick={() => setSearchOpen(true)} />
             <NotificationBell />
             {branches.length > 1 ? (
-              <label className="text-small flex items-center gap-2 text-text-subtle">
+              <label className="text-small hidden items-center gap-2 text-text-subtle sm:flex">
                 <Icon name="building" className="h-4 w-4" />
-                <span className="hidden sm:inline">{t('branch')}</span>
-                <select
+                <span className="hidden md:inline">{t('branch')}</span>
+                <Select
                   aria-label={t('branch')}
-                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
+                  className="w-44 max-w-40"
                   value={activeBranch?.id ?? ''}
                   onChange={(event) => setActiveBranch(event.target.value)}
                 >
@@ -236,26 +245,26 @@ export function Layout() {
                       {localizedName(branch, locale)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             ) : null}
-            <IconButton
-              icon={theme === 'dark' ? 'sun' : 'moon'}
-              label={theme === 'dark' ? t('switchToLight') : t('switchToDark')}
-              onClick={toggleTheme}
-            />
-            <button
-              className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered hover:text-text-default"
-              onClick={toggleLocale}
-              title={t('language')}
-              aria-label={t('language')}
-            >
-              <Icon name="globe" className="h-4 w-4" />
-              {locale === 'ar' ? 'EN' : 'عربي'}
-            </button>
-            <IconButton icon="logOut" label={t('logout')} onClick={() => void logout()} />
+            <UserMenu />
           </div>
         </header>
+
+        {searchOpen ? (
+          <div
+            className="no-print fixed inset-0 z-40 bg-black/40 sm:hidden"
+            onClick={() => setSearchOpen(false)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setSearchOpen(false)
+            }}
+          >
+            <div className="bg-surface-default p-3 shadow-4" onClick={(event) => event.stopPropagation()}>
+              <GlobalSearch autoFocus fullWidth />
+            </div>
+          </div>
+        ) : null}
 
         <main className="min-w-0 flex-1 px-4 py-6 lg:px-8">
           <Outlet />

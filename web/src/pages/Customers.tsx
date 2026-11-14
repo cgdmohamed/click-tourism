@@ -6,10 +6,11 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { toMinor } from '../lib/format'
 import type { Customer, Paginated } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th } from '../components/ui'
-import { Icon } from '../components/icons'
+import { Badge, Button, Card, ErrorState, Field, Input, Modal, PageHeader, Pagination, Select, Td } from '../components/ui'
+import { ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
 import { localizedName } from '../lib/names'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
 
 export default function Customers() {
   const { t, locale } = useI18n()
@@ -47,6 +48,8 @@ export default function Customers() {
   })
 
   const customers = query.data?.data ?? []
+  const inactiveLabel = locale === 'ar' ? 'موقوف' : 'Inactive'
+  const typeLabel = (type: Customer['type']) => (type === 'company' ? (locale === 'ar' ? 'شركة' : 'Company') : locale === 'ar' ? 'فرد' : 'Individual')
 
   const create = useMutation({
     mutationFn: async () => {
@@ -71,7 +74,7 @@ export default function Customers() {
     <div>
       <PageHeader
         title={t('customers')}
-        subtitle={locale === 'ar' ? 'بيانات العملاء وأرصدتهم' : 'Customer records and balances'}
+        subtitle={locale === 'ar' ? 'بيانات العملاء وجهات الاتصال' : 'Customer records and contact details'}
         icon="users"
         actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newCustomer')}</Button>}
       />
@@ -88,50 +91,68 @@ export default function Customers() {
             className="max-w-xs"
           />
         </div>
-        {query.isLoading ? <Loading /> : null}
+        {query.isLoading ? <ListSkeleton columns={4} /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && customers.length === 0 ? <EmptyState /> : null}
+        {query.data && customers.length === 0 ? <ListEmpty filtered={search !== ''} onClear={() => { setSearch(''); setPage(1) }} /> : null}
         {customers.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>{t('name')}</Th>
-                <Th>{t('phone')}</Th>
-                <Th>{t('email')}</Th>
-                <Th>{t('type')}</Th>
-                <Th>{t('status')}</Th>
-                <Th className="text-end">{t('actions')}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((customer) => (
-                <tr key={customer.id}>
-                  <Td>
-                    <Link to={`/customers/${customer.id}`} className="font-medium text-brand-1-accent hover:underline">
+          <>
+            <MobileCards items={customers} getKey={(customer) => customer.id} label={t('customers')}>
+              {(customer) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <Link to={`/customers/${customer.id}`} className="text-medium font-semibold text-brand-1-accent underline">
                       {localizedName(customer, locale)}
                     </Link>
-                    <AiBadge via={customer.created_via} />
-                  </Td>
-                  <Td dir="ltr">{customer.phone ?? '—'}</Td>
-                  <Td dir="ltr">{customer.email ?? '—'}</Td>
-                  <Td>{customer.type === 'company' ? (locale === 'ar' ? 'شركة' : 'Company') : locale === 'ar' ? 'فرد' : 'Individual'}</Td>
-                  <Td>
-                    <Badge tone={customer.is_active ? 'positive' : 'neutral'}>
-                      {customer.is_active ? (locale === 'ar' ? 'نشط' : 'Active') : locale === 'ar' ? 'موقوف' : 'Inactive'}
-                    </Badge>
-                  </Td>
-                  <Td className="text-end">
-                    <Link to={`/customers/${customer.id}`} className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
-                      {t('viewProfile')}
-                      <Icon name="chevronRight" className="h-3.5 w-3.5" directional />
-                    </Link>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+                    <span>
+                      {customer.is_active ? null : <Badge tone="neutral">{inactiveLabel}</Badge>}
+                      <AiBadge via={customer.created_via} />
+                    </span>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('type')}>{typeLabel(customer.type)}</CardField>
+                    <CardField label={t('phone')}>
+                      <span dir="ltr">{customer.phone ?? '—'}</span>
+                    </CardField>
+                    <div className="col-span-2">
+                      <CardField label={t('email')}>
+                        <span dir="ltr">{customer.email ?? '—'}</span>
+                      </CardField>
+                    </div>
+                  </dl>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
+              <ListTable label={t('customers')}>
+                <thead>
+                  <tr>
+                    <ListTh>{t('name')}</ListTh>
+                    <ListTh>{t('phone')}</ListTh>
+                    <ListTh>{t('email')}</ListTh>
+                    <ListTh>{t('type')}</ListTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customers.map((customer) => (
+                    <tr key={customer.id}>
+                      <Td>
+                        <Link to={`/customers/${customer.id}`} className="font-medium text-brand-1-accent hover:underline">
+                          {localizedName(customer, locale)}
+                        </Link>
+                        {customer.is_active ? null : <Badge tone="neutral">{inactiveLabel}</Badge>}
+                        <AiBadge via={customer.created_via} />
+                      </Td>
+                      <Td dir="ltr" className="whitespace-nowrap tabular">{customer.phone ?? '—'}</Td>
+                      <Td dir="ltr">{customer.email ?? '—'}</Td>
+                      <Td>{typeLabel(customer.type)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ListTable>
+            </TableOnly>
+          </>
         ) : null}
-        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} total={query.data?.meta.total} perPage={query.data?.meta.per_page} />
       </Card>
 
       <Modal

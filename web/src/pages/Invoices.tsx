@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,7 +14,6 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   IconButton,
@@ -36,6 +36,33 @@ import { usePartyOptions } from '../lib/usePartyOptions'
 import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimitNotice'
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
+import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
+import { ACTIONS_COL, ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
+
+/** Party filter: the API needs the party kind and id, so one control carries both as `kind:id`. */
+function InvoicePartyFilter({ value, set }: { value: string; set: (value: string, label?: string) => void }) {
+  const { locale } = useI18n()
+  const [kind, setKind] = useState<'customer' | 'supplier'>(value.startsWith('supplier:') ? 'supplier' : 'customer')
+  const id = value.includes(':') ? value.slice(value.indexOf(':') + 1) : ''
+  return (
+    <div className="flex flex-col gap-2">
+      <Select
+        value={kind}
+        onChange={(event) => {
+          setKind(event.target.value as 'customer' | 'supplier')
+          set('')
+        }}
+        aria-label={locale === 'ar' ? 'نوع الطرف' : 'Party type'}
+      >
+        <option value="customer">{locale === 'ar' ? 'عميل' : 'Customer'}</option>
+        <option value="supplier">{locale === 'ar' ? 'مورد' : 'Supplier'}</option>
+      </Select>
+      <PartyFilterField kind={kind} value={id} set={(next, label) => set(next ? `${kind}:${next}` : '', label)} />
+    </div>
+  )
+}
 
 type Party = { id: string; name_ar: string; name_en: string }
 type InvoiceLine = {
@@ -98,13 +125,16 @@ export default function Invoices() {
   const { activeBranch, can } = useAuth()
   const [searchParams] = useSearchParams()
   const bookingFilter = searchParams.get('booking_id') ?? ''
+  const urlSearch = searchParams.get('search') ?? ''
+  const urlPartyType = searchParams.get('party_type')
+  const urlPartyId = searchParams.get('party_id')
+  const urlParty = (urlPartyType === 'customer' || urlPartyType === 'supplier') && urlPartyId ? `${urlPartyType}:${urlPartyId}` : ''
   const queryClient = useQueryClient()
   const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
   const partyLabel = (ar: string, en: string) => (locale === 'ar' ? ar : en)
 
   const [page, setPage] = useState(1)
-  const [typeFilter, setTypeFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState(urlSearch)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
 
@@ -131,6 +161,16 @@ export default function Invoices() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill])
   const [simpleMode, setSimpleMode] = useState(true)
+  useDeepLinkNew(can('invoices.create'), (value, params) => {
+    if (value !== 'invoice') return
+    const supplier = params.get('party_type') === 'supplier' && params.get('party_id')
+    setForm((current) => ({
+      ...current,
+      ...(supplier ? { type: 'supplier_invoice' as const, party_type: 'supplier' as const, party_id: params.get('party_id') as string } : {}),
+    }))
+    setError('')
+    setOpen(true)
+  })
   const [detailId, setDetailId] = useState<string | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -152,15 +192,60 @@ export default function Invoices() {
     enabled: open && form.type === 'supplier_invoice' && form.booking_id !== '',
   })
 
+  useEffect(() => {
+    setSearch(urlSearch)
+    setPage(1)
+  }, [urlSearch])
+
+  const typeLabel = (type: Invoice['type']) =>
+    type === 'credit_note' ? L('إشعار دائن', 'Credit note') : type === 'customer_invoice' ? L('عميل', 'Customer') : L('مورد', 'Supplier')
+
+  const filters = useFilters(
+    [
+      {
+        key: 'type',
+        label: L('النوع', 'Type'),
+        type: 'select',
+        options: (['customer_invoice', 'supplier_invoice', 'credit_note'] as const).map((type) => ({ value: type, label: typeLabel(type) })),
+        allLabel: L('كل الأنواع', 'All types'),
+      },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['draft', 'submitted', 'approved', 'issued', 'voided'].map((status) => ({ value: status, label: statusLabel(status, locale) })),
+        allLabel: L('كل الحالات', 'All statuses'),
+      },
+      {
+        key: 'party',
+        label: L('الطرف', 'Party'),
+        type: 'custom',
+        render: (value, set) => <InvoicePartyFilter value={value} set={set} />,
+      },
+      { key: 'from', label: L('من تاريخ الإصدار', 'Issued from'), type: 'date' },
+      { key: 'to', label: L('إلى تاريخ الإصدار', 'Issued to'), type: 'date' },
+    ],
+    {
+      onApply: () => setPage(1),
+      initial: urlParty ? { party: urlParty } : undefined,
+      initialLabels: urlParty && searchParams.get('party_name') ? { party: searchParams.get('party_name') as string } : undefined,
+    },
+  )
+  const [partyKind, partyId] = filters.applied.party ? (filters.applied.party.split(':') as [string, string]) : ['', '']
+
   const invoicesQuery = useQuery({
-    queryKey: ['invoices', page, typeFilter, statusFilter, bookingFilter, activeBranch?.id],
+    queryKey: ['invoices', page, filters.applied, search, bookingFilter, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<{ data: Invoice[]; meta: { current_page: number; last_page: number; total: number; per_page: number } }>('/invoices', {
         params: {
           page,
           per_page: 20,
-          ...(typeFilter ? { type: typeFilter } : {}),
-          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(filters.applied.type ? { type: filters.applied.type } : {}),
+          ...(filters.applied.status ? { status: filters.applied.status } : {}),
+          ...(partyId ? { party_type: partyKind, party_id: partyId } : {}),
+          ...(filters.applied.from ? { from: filters.applied.from } : {}),
+          ...(filters.applied.to ? { to: filters.applied.to } : {}),
+          ...(search ? { search } : {}),
           ...(bookingFilter ? { booking_id: bookingFilter } : {}),
         },
       })
@@ -372,12 +457,12 @@ export default function Invoices() {
     onError: (cause) => setError(errorMessage(cause)),
   })
 
-  const baseCls = 'rounded-12 border px-4 py-2 text-sm font-medium transition'
-  const activeCls = 'border-border-selected bg-surface-selected text-text-default'
-  const inactiveCls = 'border-border-subtle bg-surface-default text-text-subtle hover:bg-surface-hovered'
-  const tabButton = (label: string, active: boolean) => (
-    <button className={`${baseCls} ${active ? activeCls : inactiveCls}`}>{label}</button>
-  )
+  const openDetails = (id: string) => {
+    setError('')
+    setCreditWarnings([])
+    setOverrideReason('')
+    setDetailId(id)
+  }
 
   return (
     <div>
@@ -403,60 +488,105 @@ export default function Invoices() {
         <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {tabButton(L('الكل', 'All'), !typeFilter && !statusFilter)}
-        <button
-          onClick={() => { setTypeFilter(''); setStatusFilter(''); setPage(1) }}
-          className="text-small text-text-subtle underline underline-offset-4 hover:text-text-default"
-        >
-          {t('reset')}
-        </button>
-      </div>
-
       <Card>
-        {invoicesQuery.isLoading ? <Loading /> : null}
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder={t('search')}
+            aria-label={t('search')}
+            className="max-w-xs"
+          />
+          <FilterControl state={filters} />
+        </div>
+        {invoicesQuery.isLoading ? <ListSkeleton columns={7} /> : null}
         {invoicesQuery.isError ? <ErrorState message={errorMessage(invoicesQuery.error)} onRetry={() => void invoicesQuery.refetch()} /> : null}
-        {data && data.data.length === 0 ? <EmptyState /> : null}
+        {data && data.data.length === 0 ? (
+          <ListEmpty
+            filtered={filters.count > 0 || search !== ''}
+            onClear={() => {
+              filters.clearAll()
+              setSearch('')
+              setPage(1)
+            }}
+          />
+        ) : null}
         {data && data.data.length > 0 ? (
           <>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>{t('date')}</Th>
-                  <Th>{L('الرقم', 'No.')}</Th>
-                  <Th>{L('النوع', 'Type')}</Th>
-                  <Th>{L('الطرف', 'Party')}</Th>
-                  <Th className="text-end">{t('total')}</Th>
-                  <Th>{t('status')}</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {data.data.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <Td className="tabular">{formatDate(invoice.issue_date, locale)}</Td>
-                    <Td className="tabular">
-                      <Link to={`/invoices/${invoice.id}`} className="font-medium text-brand-1-accent hover:underline">
-                        {invoice.number}
-                      </Link>
+            <MobileCards items={data.data} getKey={(invoice) => invoice.id} label={L('الفواتير', 'Invoices')}>
+              {(invoice) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <Link to={`/invoices/${invoice.id}`} className="text-medium font-semibold text-brand-1-accent underline">
+                      {invoice.number}
+                    </Link>
+                    <span>
+                      <Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge>
                       <AiBadge via={invoice.created_via} />
-                    </Td>
-                    <Td>
-                      <Badge tone="brand">
-                        {invoice.type === 'credit_note' ? L('إشعار دائن', 'Credit note') : invoice.type === 'customer_invoice' ? L('عميل', 'Customer') : L('مورد', 'Supplier')}
-                      </Badge>
-                    </Td>
-                    <Td>{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '')}</Td>
-                    <Td className="text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
-                    <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
-                    <Td className="text-end">
-                      <Button variant="ghost" onClick={() => { setError(''); setCreditWarnings([]); setOverrideReason(''); setDetailId(invoice.id) }}>{L('تفاصيل', 'Details')}</Button>
-                    </Td>
+                    </span>
+                  </div>
+                  <p className="text-medium font-medium">{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '') || '—'}</p>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('date')}>{formatDate(invoice.issue_date, locale)}</CardField>
+                    <CardField label={L('النوع', 'Type')}>{typeLabel(invoice.type)}</CardField>
+                    <CardField label={t('total')}>
+                      <Money amountMinor={invoice.total_minor} currency={invoice.currency} />
+                    </CardField>
+                    <CardField label={L('المستحق', 'Outstanding')}>
+                      {invoice.status === 'issued' ? <Money amountMinor={invoice.outstanding_minor} currency={invoice.currency} /> : '—'}
+                    </CardField>
+                  </dl>
+                  <div>
+                    <Button variant="secondary" icon="eye" onClick={() => openDetails(invoice.id)}>{L('تفاصيل', 'Details')}</Button>
+                  </div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
+              <ListTable label={L('الفواتير', 'Invoices')}>
+                <thead>
+                  <tr>
+                    <ListTh>{L('الرقم', 'No.')}</ListTh>
+                    <ListTh>{t('date')}</ListTh>
+                    <ListTh>{L('النوع', 'Type')}</ListTh>
+                    <ListTh>{L('الطرف', 'Party')}</ListTh>
+                    <ListTh className="text-end">{t('total')}</ListTh>
+                    <ListTh className="text-end">{L('المستحق', 'Outstanding')}</ListTh>
+                    <ListTh>{t('status')}</ListTh>
+                    <ListTh className={ACTIONS_COL}>
+                      <span className="sr-only">{t('actions')}</span>
+                    </ListTh>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
-            <Pagination page={data.meta.current_page} lastPage={data.meta.last_page} onChange={setPage} />
+                </thead>
+                <tbody>
+                  {data.data.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <Td className="tabular whitespace-nowrap">
+                        <Link to={`/invoices/${invoice.id}`} className="font-medium text-brand-1-accent hover:underline">
+                          {invoice.number}
+                        </Link>
+                        <AiBadge via={invoice.created_via} />
+                      </Td>
+                      <Td className="tabular whitespace-nowrap">{formatDate(invoice.issue_date, locale)}</Td>
+                      <Td className="whitespace-nowrap">{typeLabel(invoice.type)}</Td>
+                      <Td>{partyLabel(invoice.party?.name_ar ?? '', invoice.party?.name_en ?? '') || '—'}</Td>
+                      <Td className="whitespace-nowrap text-end"><Money amountMinor={invoice.total_minor} currency={invoice.currency} /></Td>
+                      <Td className="whitespace-nowrap text-end">
+                        {invoice.status === 'issued' ? <Money amountMinor={invoice.outstanding_minor} currency={invoice.currency} /> : '—'}
+                      </Td>
+                      <Td><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status, locale)}</Badge></Td>
+                      <Td className={ACTIONS_COL}>
+                        <IconButton icon="eye" label={`${L('تفاصيل', 'Details')} ${invoice.number}`} onClick={() => openDetails(invoice.id)} />
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ListTable>
+            </TableOnly>
+            <Pagination page={data.meta.current_page} lastPage={data.meta.last_page} onChange={setPage} total={data.meta.total} perPage={data.meta.per_page} />
           </>
         ) : null}
       </Card>
@@ -519,16 +649,16 @@ export default function Invoices() {
             </Field>
           ) : null}
           <Field label={t('date')} required>
-            <Input
-              type="date"
+            <DateField
+              
               value={form.issue_date}
               onChange={(event) => setForm({ ...form, issue_date: event.target.value })}
               dir="ltr"
             />
           </Field>
           <Field label={L('تاريخ الاستحقاق', 'Due date')}>
-            <Input
-              type="date"
+            <DateField
+              
               value={form.due_date}
               onChange={(event) => setForm({ ...form, due_date: event.target.value })}
               dir="ltr"

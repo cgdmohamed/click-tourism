@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
-import { formatDate, toDecimal, toMinor } from '../lib/format'
+import { formatDate, toDecimal, toMinor, formatMoney } from '../lib/format'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
 import { Button, Field, Input, Modal, SearchableSelect } from './ui'
 
@@ -130,7 +130,7 @@ export function ApplyToInvoiceModal({ target, onClose }: { target: ApplyTarget |
           <p className="text-medium text-text-subtle">
             {target.paymentLabel} · {L('المتاح للتطبيق', 'Available')}:{' '}
             <span className="tabular font-medium text-text-default">
-              {toDecimal(target.availableMinor, target.currency)} {target.currency}
+              {formatMoney(target.availableMinor, target.currency, locale)}
             </span>
           </p>
           <Field label={L('الفاتورة', 'Invoice')} required>

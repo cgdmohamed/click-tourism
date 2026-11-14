@@ -1,3 +1,4 @@
+import { DateField } from '../components/DateField'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -26,6 +27,9 @@ import {
   statusTone,
 } from '../components/ui'
 import { localizedName } from '../lib/names'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 type BankAccount = {
   id: string
@@ -271,10 +275,39 @@ export default function Reconciliation() {
     [accountsQuery.data],
   )
 
+  const sessionFilters = useFilters([
+    {
+      key: 'cash_account_id',
+      label: L('الحساب البنكي', 'Bank account'),
+      type: 'select',
+      options: bankAccounts.map((account) => ({ value: account.cash_account_id ?? account.id, label: localizedName(account, locale) })),
+      allLabel: L('كل الحسابات', 'All accounts'),
+    },
+    {
+      key: 'status',
+      label: t('status'),
+      type: 'select',
+      options: [
+        { value: 'open', label: L('مفتوحة', 'Open') },
+        { value: 'approved', label: L('معتمدة', 'Approved') },
+      ],
+      allLabel: L('كل الحالات', 'All statuses'),
+    },
+    { key: 'period_from', label: L('الفترة من', 'Period from'), type: 'date' },
+    { key: 'period_to', label: L('الفترة إلى', 'Period to'), type: 'date' },
+  ])
+
   const sessionsQuery = useQuery({
-    queryKey: ['reconciliations', activeBranch?.id],
+    queryKey: ['reconciliations', sessionFilters.applied, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Session[] }>('/reconciliations')
+      const { data } = await api.get<{ data: Session[] }>('/reconciliations', {
+        params: {
+          cash_account_id: sessionFilters.applied.cash_account_id || undefined,
+          status: sessionFilters.applied.status || undefined,
+          period_from: sessionFilters.applied.period_from || undefined,
+          period_to: sessionFilters.applied.period_to || undefined,
+        },
+      })
       return data.data
     },
   })
@@ -1071,7 +1104,7 @@ export default function Reconciliation() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={L('تاريخ السند', 'Voucher date')} hint={L('افتراضيًا أقدم تاريخ حركة', 'Defaults to the oldest bank line date')}>
-              <Input type="date" value={adjustForm.document_date} onChange={(event) => setAdjustForm({ ...adjustForm, document_date: event.target.value })} dir="ltr" />
+              <DateField value={adjustForm.document_date} onChange={(event) => setAdjustForm({ ...adjustForm, document_date: event.target.value })} dir="ltr" />
             </Field>
             <Field label={t('memo')}>
               <Input value={adjustForm.memo} onChange={(event) => setAdjustForm({ ...adjustForm, memo: event.target.value })} />
@@ -1172,10 +1205,35 @@ export default function Reconciliation() {
 
       {tab === 'sessions' ? (
         <Card>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+            <FilterControl state={sessionFilters} />
+          </div>
           {sessionsQuery.isLoading ? <Loading /> : null}
           {sessionsQuery.isError ? <ErrorState message={errorMessage(sessionsQuery.error)} onRetry={() => void sessionsQuery.refetch()} /> : null}
-          {sessionsQuery.data && sessionsQuery.data.length === 0 ? <EmptyState /> : null}
+          {sessionsQuery.data && sessionsQuery.data.length === 0 ? <ListEmpty filters={sessionFilters} /> : null}
           {sessionsQuery.data && sessionsQuery.data.length > 0 ? (
+            <>
+            <MobileCards items={sessionsQuery.data} getKey={(session) => session.id} label={L('الجلسات', 'Sessions')}>
+              {(session) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-medium tabular font-semibold">
+                      {formatDate(session.period_from, locale)} → {formatDate(session.period_to, locale)}
+                    </span>
+                    <Badge tone={statusTone(session.status)}>{session.status === 'approved' ? L('معتمدة', 'Approved') : L('مفتوحة', 'Open')}</Badge>
+                  </div>
+                  <p className="text-medium">{name(session.cash_account)}</p>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={L('رصيد البنك', 'Bank closing')}><Money amountMinor={session.closing_bank_balance_minor} currency={session.currency} /></CardField>
+                    <CardField label={L('رصيد الدفاتر', 'Book closing')}><Money amountMinor={session.closing_book_balance_minor} currency={session.currency} /></CardField>
+                  </dl>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setSelectedId(session.id)}>{L('فتح', 'Open')}</Button>
+                  </div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -1204,6 +1262,8 @@ export default function Reconciliation() {
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
+            </>
           ) : null}
         </Card>
       ) : (
@@ -1212,6 +1272,33 @@ export default function Reconciliation() {
           {statementsQuery.isError ? <ErrorState message={errorMessage(statementsQuery.error)} onRetry={() => void statementsQuery.refetch()} /> : null}
           {statementsQuery.data && statementsQuery.data.length === 0 ? <EmptyState /> : null}
           {statementsQuery.data && statementsQuery.data.length > 0 ? (
+            <>
+            <MobileCards items={statementsQuery.data} getKey={(statement) => statement.id} label={L('كشوف البنك', 'Bank statements')}>
+              {(statement) => (
+                <>
+                  <p className="text-medium break-all font-semibold">
+                    {statement.filename} <span className="text-small font-normal text-text-subtle">{statement.format.toUpperCase()}</span>
+                  </p>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={L('الفترة', 'Period')}>
+                      {statement.period_from ? formatDate(statement.period_from, locale) : '—'} → {statement.period_to ? formatDate(statement.period_to, locale) : '—'}
+                    </CardField>
+                    <CardField label={L('عدد السطور', 'Lines')}>{statement.line_count}</CardField>
+                    <CardField label={L('افتتاحي', 'Opening')}>
+                      {statement.opening_balance_minor !== null ? <Money amountMinor={statement.opening_balance_minor} currency={statement.currency} /> : '—'}
+                    </CardField>
+                    <CardField label={L('ختامي', 'Closing')}>
+                      {statement.closing_balance_minor !== null ? <Money amountMinor={statement.closing_balance_minor} currency={statement.currency} /> : '—'}
+                    </CardField>
+                    <CardField label={L('استُورد في', 'Imported')}>{formatDateTime(statement.imported_at, locale)}</CardField>
+                  </dl>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setPreviewId(statement.id)}>{L('معاينة', 'Preview')}</Button>
+                  </div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -1266,6 +1353,8 @@ export default function Reconciliation() {
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
+            </>
           ) : null}
         </Card>
       )}
@@ -1385,10 +1474,10 @@ export default function Reconciliation() {
             <Input value={importForm.closing_balance_minor} onChange={(event) => setImportForm({ ...importForm, closing_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />
           </Field>
           <Field label={L('من تاريخ', 'Period from')}>
-            <Input type="date" value={importForm.period_from} onChange={(event) => setImportForm({ ...importForm, period_from: event.target.value })} dir="ltr" />
+            <DateField value={importForm.period_from} onChange={(event) => setImportForm({ ...importForm, period_from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('إلى تاريخ', 'Period to')}>
-            <Input type="date" value={importForm.period_to} onChange={(event) => setImportForm({ ...importForm, period_to: event.target.value })} dir="ltr" />
+            <DateField value={importForm.period_to} onChange={(event) => setImportForm({ ...importForm, period_to: event.target.value })} dir="ltr" />
           </Field>
         </div>
       </Modal>
@@ -1431,10 +1520,10 @@ export default function Reconciliation() {
             </Select>
           </Field>
           <Field label={L('من تاريخ', 'Period from')} required>
-            <Input type="date" value={sessionForm.period_from} onChange={(event) => setSessionForm({ ...sessionForm, period_from: event.target.value })} dir="ltr" />
+            <DateField value={sessionForm.period_from} onChange={(event) => setSessionForm({ ...sessionForm, period_from: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('إلى تاريخ', 'Period to')} required>
-            <Input type="date" value={sessionForm.period_to} onChange={(event) => setSessionForm({ ...sessionForm, period_to: event.target.value })} dir="ltr" />
+            <DateField value={sessionForm.period_to} onChange={(event) => setSessionForm({ ...sessionForm, period_to: event.target.value })} dir="ltr" />
           </Field>
           <Field label={L('رصيد البنك الافتتاحي', 'Opening bank balance')} hint={L('اتركه فارغًا لاستخدام رصيد الكشف أو ختام المطابقة المعتمدة السابقة', 'Leave blank to use the statement balance or the previous approved reconciliation')}>
             <Input value={sessionForm.opening_bank_balance_minor} onChange={(event) => setSessionForm({ ...sessionForm, opening_bank_balance_minor: event.target.value })} inputMode="decimal" dir="ltr" />

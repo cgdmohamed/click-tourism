@@ -6,9 +6,12 @@ import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
 import type { Lead, LeadSourceConfig, LeadStageConfig, Paginated } from '../lib/types'
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th, statusTone } from '../components/ui'
+import { Badge, Button, Card, ErrorState, Field, Input, Loading, Modal, PageHeader, Pagination, Select, Table, Td, Th, statusTone } from '../components/ui'
 import { statusLabel } from '../lib/labels'
 import { AiBadge } from '../components/AiBadge'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 export default function Leads() {
   const { t, locale } = useI18n()
@@ -18,7 +21,6 @@ export default function Leads() {
   const urlSearch = searchParams.get('search') ?? ''
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
-  const [stageFilter, setStageFilter] = useState('')
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [duplicateNotice, setDuplicateNotice] = useState<Lead | null>(null)
@@ -55,11 +57,36 @@ export default function Leads() {
     }
   }, [sources, form.source])
 
+  const stageLabelOf = (value: string) => {
+    const found = stages.find((stage) => stage.code === value)
+    return found ? (locale === 'ar' ? found.name_ar : found.name_en) : value
+  }
+
+  const filters = useFilters(
+    [
+      {
+        key: 'stage',
+        label: t('stage'),
+        type: 'select',
+        options: stages.map((stage) => ({ value: stage.code, label: stageLabelOf(stage.code) })),
+        allLabel: locale === 'ar' ? 'كل المراحل' : 'All stages',
+      },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['open', 'won', 'lost'].map((value) => ({ value, label: statusLabel(value, locale) })),
+        allLabel: locale === 'ar' ? 'كل الحالات' : 'All statuses',
+      },
+    ],
+    { onApply: () => setPage(1) },
+  )
+
   const query = useQuery({
-    queryKey: ['leads', stageFilter, search, page, activeBranch?.id],
+    queryKey: ['leads', filters.applied, search, page, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Lead>>('/leads', {
-        params: { stage: stageFilter || undefined, search: search || undefined, page, per_page: 20 },
+        params: { stage: filters.applied.stage || undefined, status: filters.applied.status || undefined, search: search || undefined, page, per_page: 20 },
       })
       return data
     },
@@ -155,28 +182,46 @@ export default function Leads() {
             placeholder={t('search')}
             className="max-w-xs"
           />
-          <Select
-            value={stageFilter}
-            onChange={(event) => {
-              setStageFilter(event.target.value)
-              setPage(1)
-            }}
-            className="max-w-[180px]"
-            aria-label={t('stage')}
-          >
-            <option value="">{locale === 'ar' ? 'كل المراحل' : 'All stages'}</option>
-            {stages.map((stage) => (
-              <option key={stage.code} value={stage.code}>
-                {stageLabel(stage.code)}
-              </option>
-            ))}
-          </Select>
+          <FilterControl state={filters} />
         </div>
 
         {query.isLoading ? <Loading /> : null}
         {query.isError ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
-        {query.data && leads.length === 0 ? <EmptyState /> : null}
+        {query.data && leads.length === 0 ? <ListEmpty filters={filters} search={search} onClearSearch={() => setSearch('')} /> : null}
         {leads.length > 0 ? (
+          <>
+          <MobileCards items={leads} getKey={(lead) => lead.id} label={t('crm')}>
+            {(lead) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    <Link to={`/leads/${lead.id}`} className="text-medium font-semibold text-brand-1-accent underline">
+                      {lead.name}
+                    </Link>
+                    <AiBadge via={lead.created_via} />
+                    {lead.duplicate_of ? <Badge tone="warning">{locale === 'ar' ? 'تكرار محتمل' : 'Possible duplicate'}</Badge> : null}
+                  </span>
+                  <Badge tone={statusTone(lead.status)}>{statusLabel(lead.status, locale)}</Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('phone')}>
+                    <span dir="ltr">{lead.phone ?? '—'}</span>
+                  </CardField>
+                  <CardField label={t('source')}>{sourceLabel(lead.source)}</CardField>
+                  <CardField label={t('stage')}>{stageLabel(lead.stage)}</CardField>
+                  <CardField label={t('lastActivity')}>{formatDateTime(lead.last_activity_at ?? lead.created_at, locale)}</CardField>
+                </dl>
+                {lead.status === 'open' ? (
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => convert.mutate(lead)}>
+                      {locale === 'ar' ? 'تحويل لعميل' : 'Convert'}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -223,8 +268,10 @@ export default function Leads() {
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
-        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} />
+        <Pagination page={query.data?.meta.current_page ?? 1} lastPage={query.data?.meta.last_page ?? 1} onChange={setPage} total={query.data?.meta.total} perPage={query.data?.meta.per_page} />
         {error && !open ? <p className="px-5 py-3 text-sm text-danger-text">{error}</p> : null}
       </Card>
 

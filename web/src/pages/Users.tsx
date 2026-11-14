@@ -16,11 +16,13 @@ import {
 import { localizedName } from '../lib/names'
 import type { Branch, Paginated, RoleRecord, UserAccount } from '../lib/types'
 import { ReasonModal } from '../components/ReasonModal'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   IconButton,
@@ -37,7 +39,6 @@ import {
   cx,
 } from '../components/ui'
 
-type StatusFilter = 'all' | 'active' | 'inactive'
 type RoleOption = { name: string; assignable: boolean }
 type BranchOption = { branch: Branch; assignable: boolean }
 
@@ -71,9 +72,6 @@ export default function Users() {
   const canViewBranches = can('branches.view')
 
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<StatusFilter>('all')
-  const [roleFilter, setRoleFilter] = useState('')
-  const [branchFilter, setBranchFilter] = useState('')
   const [page, setPage] = useState(1)
 
   const [open, setOpen] = useState(false)
@@ -83,6 +81,61 @@ export default function Users() {
   const [saveError, setSaveError] = useState('')
   const [actionError, setActionError] = useState('')
   const [deactivateTarget, setDeactivateTarget] = useState<UserAccount | null>(null)
+
+  const filters = useFilters(
+    [
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: [
+          { value: 'active', label: t('active') },
+          { value: 'inactive', label: t('inactive') },
+        ],
+        allLabel: t('allStatuses'),
+      },
+      {
+        key: 'role',
+        label: t('roles'),
+        type: 'custom',
+        render: (value, set) => (
+          <Select value={value} onChange={(event) => set(event.target.value)}>
+            <option value="">{t('allRoles')}</option>
+            {roleFilterOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </Select>
+        ),
+      },
+      {
+        key: 'branch_id',
+        label: t('branches'),
+        type: 'custom',
+        render: (value, set) => (
+          <Select
+            value={value}
+            onChange={(event) => {
+              const picked = assignableBranchList.find((branch) => branch.id === event.target.value)
+              set(event.target.value, picked ? branchName(picked) : undefined)
+            }}
+          >
+            <option value="">{t('allBranches')}</option>
+            {assignableBranchList.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branchName(branch)}
+              </option>
+            ))}
+          </Select>
+        ),
+      },
+    ],
+    { onApply: () => setPage(1) },
+  )
+  const roleFilter = filters.applied.role
+  const branchFilter = filters.applied.branch_id
+  const status = filters.applied.status || 'all'
 
   const usersQuery = useQuery({
     queryKey: ['users', search, status, roleFilter, branchFilter, page, activeBranch?.id ?? null],
@@ -282,6 +335,34 @@ export default function Users() {
 
   const branchName = (branch: Branch) => (localizedName(branch, locale))
 
+  const userActions = (account: UserAccount) =>
+    canManage ? (
+                      <div className="flex justify-end gap-1">
+                        <IconButton icon="edit" label={t('edit')} onClick={() => openEdit(account)} />
+                        {account.is_active ? (
+                          <IconButton
+                            icon="xCircle"
+                            label={t('deactivateUser')}
+                            disabled={account.id === user?.id}
+                            title={account.id === user?.id ? t('cannotDeactivateSelf') : t('deactivateUser')}
+                            onClick={() => {
+                              setActionError('')
+                              setDeactivateTarget(account)
+                            }}
+                          />
+                        ) : (
+                          <IconButton
+                            icon="checkCircle"
+                            label={t('activateUser')}
+                            onClick={() => {
+                              if (window.confirm(t('confirmActivate'))) activateUser.mutate(account.id)
+                            }}
+                          />
+                        )}
+                      </div>
+    ) : null
+
+
   return (
     <div>
       <PageHeader
@@ -314,50 +395,7 @@ export default function Users() {
             icon="search"
             className="max-w-xs"
           />
-          <Select
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as StatusFilter)
-              setPage(1)
-            }}
-            className="w-44"
-          >
-            <option value="all">{t('allStatuses')}</option>
-            <option value="active">{t('active')}</option>
-            <option value="inactive">{t('inactive')}</option>
-          </Select>
-          <Select
-            value={roleFilter}
-            onChange={(event) => {
-              setRoleFilter(event.target.value)
-              setPage(1)
-            }}
-            className="w-48"
-          >
-            <option value="">{t('allRoles')}</option>
-            {roleFilterOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </Select>
-          {assignableBranchList.length > 1 ? (
-            <Select
-              value={branchFilter}
-              onChange={(event) => {
-                setBranchFilter(event.target.value)
-                setPage(1)
-              }}
-              className="w-48"
-            >
-              <option value="">{t('allBranches')}</option>
-              {assignableBranchList.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branchName(branch)}
-                </option>
-              ))}
-            </Select>
-          ) : null}
+          <FilterControl state={filters} />
           <span className="text-small ms-auto text-text-subtle">
             {usersQuery.data?.meta.total ?? users.length} {t('users')}
           </span>
@@ -367,9 +405,28 @@ export default function Users() {
         {usersQuery.isError ? (
           <ErrorState message={errorMessage(usersQuery.error)} onRetry={() => void usersQuery.refetch()} />
         ) : null}
-        {usersQuery.data && users.length === 0 ? <EmptyState icon="users" title={t('noData')} /> : null}
+        {usersQuery.data && users.length === 0 ? <ListEmpty filters={filters} search={search} onClearSearch={() => setSearch('')} title={t('noData')} /> : null}
 
         {users.length > 0 ? (
+          <>
+          <MobileCards items={users} getKey={(account) => account.id} label={t('users')}>
+            {(account) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-medium font-semibold">{account.name}</span>
+                  <Badge tone={account.is_active ? 'positive' : 'negative'}>{account.is_active ? t('active') : t('inactive')}</Badge>
+                </div>
+                <p className="text-small break-all text-text-subtle" dir="ltr">{account.email}</p>
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('roles')}>{account.roles.length ? account.roles.join(', ') : '—'}</CardField>
+                  <CardField label={t('branches')}>{account.branches.length ? account.branches.map((branch) => branchName(branch)).join(', ') : '—'}</CardField>
+                  <CardField label={t('lastLogin')}>{formatDateTime(account.last_login_at, locale)}</CardField>
+                </dl>
+                {userActions(account)}
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
           <Table>
             <thead>
               <tr>
@@ -430,37 +487,13 @@ export default function Users() {
                   <Td dir="ltr" className="whitespace-nowrap">
                     {formatDateTime(account.last_login_at, locale)}
                   </Td>
-                  <Td className="text-end">
-                    {canManage ? (
-                      <div className="flex justify-end gap-1">
-                        <IconButton icon="edit" label={t('edit')} onClick={() => openEdit(account)} />
-                        {account.is_active ? (
-                          <IconButton
-                            icon="xCircle"
-                            label={t('deactivateUser')}
-                            disabled={account.id === user?.id}
-                            title={account.id === user?.id ? t('cannotDeactivateSelf') : t('deactivateUser')}
-                            onClick={() => {
-                              setActionError('')
-                              setDeactivateTarget(account)
-                            }}
-                          />
-                        ) : (
-                          <IconButton
-                            icon="checkCircle"
-                            label={t('activateUser')}
-                            onClick={() => {
-                              if (window.confirm(t('confirmActivate'))) activateUser.mutate(account.id)
-                            }}
-                          />
-                        )}
-                      </div>
-                    ) : null}
-                  </Td>
+                  <Td className="text-end">{userActions(account)}</Td>
                 </tr>
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
         <Pagination
           page={usersQuery.data?.meta.current_page ?? 1}

@@ -1,3 +1,4 @@
+import { DateField } from './DateField'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PartyStatement, StatementLine } from '../lib/types'
@@ -114,9 +115,9 @@ export function ProfileStat({
       >
         <Icon name={icon} size={18} />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-small text-text-subtle">{label}</p>
-        <p className="heading-small mt-0.5 tabular text-text-default">{value}</p>
+        <div className="money-fit heading-small mt-0.5 tabular text-text-default">{value}</div>
         {hint ? <p className="text-small mt-1 text-text-subtlest">{hint}</p> : null}
       </div>
     </div>
@@ -212,21 +213,11 @@ export function StatementView({
             >
               <label className="text-small flex flex-col gap-1 text-text-subtle">
                 {t('from')}
-                <input
-                  type="date"
-                  value={draftFrom}
-                  onChange={(event) => setDraftFrom(event.target.value)}
-                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
-                />
+                <DateField value={draftFrom} onChange={(event) => setDraftFrom(event.target.value)} dir="ltr" />
               </label>
               <label className="text-small flex flex-col gap-1 text-text-subtle">
                 {t('to')}
-                <input
-                  type="date"
-                  value={draftTo}
-                  onChange={(event) => setDraftTo(event.target.value)}
-                  className="text-medium h-9 rounded-12 border border-border-default bg-surface-default px-2 text-text-default"
-                />
+                <DateField value={draftTo} onChange={(event) => setDraftTo(event.target.value)} dir="ltr" />
               </label>
               <Button type="submit" variant="secondary" icon="filter" className="h-9">
                 {t('apply')}

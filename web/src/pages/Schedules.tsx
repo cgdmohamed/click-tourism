@@ -1,9 +1,13 @@
+import { DateField } from '../components/DateField'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, toMinor, todayISO } from '../lib/format'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 import {
   Badge,
   Button,
@@ -171,10 +175,29 @@ export default function Schedules() {
     await queryClient.invalidateQueries({ queryKey: ['period-checklist'] })
   }
 
+  const scheduleFilters = useFilters([
+    {
+      key: 'kind',
+      label: L('النوع', 'Kind'),
+      type: 'select',
+      options: (['prepaid_expense', 'deferred_revenue', 'accrued_expense', 'accrued_revenue'] as const).map((value) => ({ value, label: kindLabel(value) })),
+      allLabel: L('كل الأنواع', 'All kinds'),
+    },
+    {
+      key: 'status',
+      label: L('الحالة', 'Status'),
+      type: 'select',
+      options: ['draft', 'active', 'completed', 'cancelled'].map((value) => ({ value, label: statusLabel(value) })),
+      allLabel: L('كل الحالات', 'All statuses'),
+    },
+  ])
+
   const schedulesQuery = useQuery({
-    queryKey: ['accounting-schedules', activeBranch?.id],
+    queryKey: ['accounting-schedules', scheduleFilters.applied, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<{ data: Schedule[] }>('/accounting-schedules')
+      const { data } = await api.get<{ data: Schedule[] }>('/accounting-schedules', {
+        params: { kind: scheduleFilters.applied.kind || undefined, status: scheduleFilters.applied.status || undefined },
+      })
       return data.data
     },
   })
@@ -318,10 +341,62 @@ export default function Schedules() {
     </button>
   )
 
+  const scheduleActions = (schedule: Schedule) => (
+    <div className="flex flex-wrap justify-end gap-2">
+                          <Button variant="ghost" onClick={() => setDetailId(schedule.id)}>
+                            {L('عرض', 'View')}
+                          </Button>
+                          {schedule.status === 'draft' && approve ? (
+                            <Button variant="secondary" onClick={() => activateSchedule.mutate(schedule)} disabled={activateSchedule.isPending}>
+                              {L('اعتماد', 'Activate')}
+                            </Button>
+                          ) : null}
+                          {(schedule.status === 'draft' || schedule.status === 'active') && approve ? (
+                            <Button
+                              variant="danger"
+                              onClick={() => {
+                                setError('')
+                                setCancelForm({ ...emptyCancel, id: schedule.id })
+                              }}
+                            >
+                              {L('إلغاء', 'Cancel')}
+                            </Button>
+                          ) : null}
+    </div>
+  )
+
   const eventRows = (rows: EventRow[]) =>
     rows.length === 0 ? (
       <EmptyState title={L('لا توجد بنود', 'Nothing here')} hint={L('ستظهر البنود المستحقة هنا.', 'Due items will appear here.')} />
     ) : (
+      <>
+      <MobileCards items={rows} getKey={(row) => row.id} label={L('البنود', 'Items')}>
+        {(row) => (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-medium tabular font-semibold">{row.schedule_number}</span>
+              <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge>
+            </div>
+            {row.description ? <p className="text-medium break-words">{row.description}</p> : null}
+            {row.failure_reason ? <p className="text-small text-text-subtle">{row.failure_reason}</p> : null}
+            <dl className="grid grid-cols-2 gap-3">
+              <CardField label={L('النوع', 'Kind')}>{row.kind === 'reversal' ? L('عكس', 'Reversal') : L('اعتراف', 'Recognition')}</CardField>
+              <CardField label={L('تاريخ الاستحقاق', 'Due date')}>{formatDate(row.due_date, locale)}</CardField>
+              <CardField label={L('المبلغ', 'Amount')}>
+                <Money amountMinor={row.amount_minor} currency={row.currency ?? 'EGP'} />
+              </CardField>
+            </dl>
+            {tab === 'exceptions' && manage ? (
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => retryEvent.mutate(row)} disabled={retryEvent.isPending}>
+                  {L('إعادة المحاولة', 'Retry')}
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </MobileCards>
+      <TableOnly>
       <Table>
         <thead>
           <tr>
@@ -329,7 +404,7 @@ export default function Schedules() {
             <Th>{L('البيان', 'Description')}</Th>
             <Th>{L('النوع', 'Kind')}</Th>
             <Th>{L('تاريخ الاستحقاق', 'Due date')}</Th>
-            <Th>{L('المبلغ', 'Amount')}</Th>
+            <Th className="text-end">{L('المبلغ', 'Amount')}</Th>
             <Th>{L('الحالة', 'Status')}</Th>
             <Th>{L('ملاحظة', 'Note')}</Th>
             {tab === 'exceptions' && manage ? <Th /> : null}
@@ -344,7 +419,7 @@ export default function Schedules() {
               <Td>{row.description ?? '—'}</Td>
               <Td>{row.kind === 'reversal' ? L('عكس', 'Reversal') : L('اعتراف', 'Recognition')}</Td>
               <Td>{formatDate(row.due_date, locale)}</Td>
-              <Td>
+              <Td className="text-end">
                 <Money amountMinor={row.amount_minor} currency={row.currency ?? 'EGP'} />
               </Td>
               <Td>
@@ -362,6 +437,8 @@ export default function Schedules() {
           ))}
         </tbody>
       </Table>
+      </TableOnly>
+      </>
     )
 
   return (
@@ -414,21 +491,46 @@ export default function Schedules() {
               title={L('جداول الاستحقاق والمقدمات', 'Accrual & prepayment schedules')}
               subtitle={L('المسودات قابلة للتعديل، وبعد الاعتماد تصبح القيود المرحّلة غير قابلة للتغيير.', 'Drafts are editable; posted events are immutable after activation.')}
             />
+            <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+              <FilterControl state={scheduleFilters} />
+            </div>
             {(schedulesQuery.data ?? []).length === 0 ? (
-              <EmptyState
+              <ListEmpty
+                filters={scheduleFilters}
                 title={L('لا توجد جداول بعد', 'No schedules yet')}
                 hint={L('أنشئ جدولاً لمصروف مدفوع مقدماً أو إيراد مؤجل أو مستحق.', 'Create a prepaid, deferred revenue or accrual schedule.')}
               />
             ) : (
+              <>
+              <MobileCards items={schedulesQuery.data ?? []} getKey={(schedule) => schedule.id} label={L('الجداول', 'Schedules')}>
+                {(schedule) => (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-medium tabular font-semibold">{schedule.number}</span>
+                      <Badge tone={statusTone(schedule.status)}>{statusLabel(schedule.status)}</Badge>
+                    </div>
+                    <p className="text-medium break-words">{schedule.description}</p>
+                    <p className="text-small text-text-subtle">{kindLabel(schedule.kind)}</p>
+                    <dl className="grid grid-cols-2 gap-3">
+                      <CardField label={L('الإجمالي', 'Total')}><Money amountMinor={schedule.total_minor} currency={schedule.currency} /></CardField>
+                      <CardField label={L('المعترف به', 'Recognized')}><Money amountMinor={schedule.recognized_minor} currency={schedule.currency} /></CardField>
+                      <CardField label={L('المتبقي', 'Remaining')}><Money amountMinor={schedule.remaining_minor} currency={schedule.currency} /></CardField>
+                      <CardField label={L('الاستحقاق القادم', 'Next due')}>{formatDate(schedule.next_due_date, locale)}</CardField>
+                    </dl>
+                    {scheduleActions(schedule)}
+                  </>
+                )}
+              </MobileCards>
+              <TableOnly>
               <Table>
                 <thead>
                   <tr>
                     <Th>{L('الرقم', 'Number')}</Th>
                     <Th>{L('النوع', 'Kind')}</Th>
                     <Th>{L('البيان', 'Description')}</Th>
-                    <Th>{L('الإجمالي', 'Total')}</Th>
-                    <Th>{L('المعترف به', 'Recognized')}</Th>
-                    <Th>{L('المتبقي', 'Remaining')}</Th>
+                    <Th className="text-end">{L('الإجمالي', 'Total')}</Th>
+                    <Th className="text-end">{L('المعترف به', 'Recognized')}</Th>
+                    <Th className="text-end">{L('المتبقي', 'Remaining')}</Th>
                     <Th>{L('الحالة', 'Status')}</Th>
                     <Th>{L('الاستحقاق القادم', 'Next due')}</Th>
                     <Th />
@@ -448,13 +550,13 @@ export default function Schedules() {
                         </div>
                         {schedule.cancel_reason ? <div className="text-small text-danger-text">{schedule.cancel_reason}</div> : null}
                       </Td>
-                      <Td>
+                      <Td className="text-end">
                         <Money amountMinor={schedule.total_minor} currency={schedule.currency} />
                       </Td>
-                      <Td>
+                      <Td className="text-end">
                         <Money amountMinor={schedule.recognized_minor} currency={schedule.currency} />
                       </Td>
-                      <Td>
+                      <Td className="text-end">
                         <Money amountMinor={schedule.remaining_minor} currency={schedule.currency} />
                       </Td>
                       <Td>
@@ -462,32 +564,14 @@ export default function Schedules() {
                       </Td>
                       <Td>{formatDate(schedule.next_due_date, locale)}</Td>
                       <Td>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button variant="ghost" onClick={() => setDetailId(schedule.id)}>
-                            {L('عرض', 'View')}
-                          </Button>
-                          {schedule.status === 'draft' && approve ? (
-                            <Button variant="secondary" onClick={() => activateSchedule.mutate(schedule)} disabled={activateSchedule.isPending}>
-                              {L('اعتماد', 'Activate')}
-                            </Button>
-                          ) : null}
-                          {(schedule.status === 'draft' || schedule.status === 'active') && approve ? (
-                            <Button
-                              variant="danger"
-                              onClick={() => {
-                                setError('')
-                                setCancelForm({ ...emptyCancel, id: schedule.id })
-                              }}
-                            >
-                              {L('إلغاء', 'Cancel')}
-                            </Button>
-                          ) : null}
-                        </div>
+                        {scheduleActions(schedule)}
                       </Td>
                     </tr>
                   ))}
                 </tbody>
               </Table>
+              </TableOnly>
+              </>
             )}
           </Card>
         )
@@ -609,7 +693,7 @@ export default function Schedules() {
             <Input type="number" min={1} max={120} value={form.periods} onChange={(event) => setForm({ ...form, periods: event.target.value })} />
           </Field>
           <Field label={L('تاريخ البداية', 'Starts on')} required>
-            <Input type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} />
+            <DateField value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} />
           </Field>
           <Field label={L('حساب المصدر', 'Source account code')} hint={L('اتركه فارغاً لاستخدام حساب الإعداد الافتراضي.', 'Leave empty to use the configured default account.')}>
             <Input value={form.source_account_code} onChange={(event) => setForm({ ...form, source_account_code: event.target.value })} maxLength={20} />

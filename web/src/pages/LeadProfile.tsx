@@ -164,6 +164,13 @@ export default function LeadProfile() {
             <Button icon="checkCircle" disabled={convert.isPending} onClick={() => convert.mutate()}>
               {convert.isPending ? t('saving') : L('تحويل إلى عميل', 'Convert to customer')}
             </Button>
+          ) : lead.status === 'converted' && lead.converted_customer_id && !lead.converted_booking_id && can('bookings.create') ? (
+            <Link
+              to={`/bookings?customer_id=${lead.converted_customer_id}&create=1`}
+              className="inline-flex items-center rounded-8 bg-brand-1 px-3 py-2 text-small font-semibold text-white"
+            >
+              {L('إنشاء حجز لهذا العميل', 'Create a booking for this customer')}
+            </Link>
           ) : null
         }
         meta={

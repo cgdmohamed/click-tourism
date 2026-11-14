@@ -25,14 +25,14 @@ Severity is about product risk, not effort.
 | Module | State | Open gaps | Next action |
 |---|---|---|---|
 | Invoices (AR/AP) | **Complete** — API, documents, PDF, AP flow, E2E, CI | 0 | none |
-| Reports | Core ledger + statements + aging/statements + management pack + cost-center exports + CSV/XLSX/PDF done | 3 | close RPT-02, RPT-05, then browser E2E |
+| Reports | Core ledger + statements + aging/statements + management pack + cost-center exports + CSV/XLSX/PDF + background exports + scheduled e-mail done | 0 | none (RPT-02, 05, 06 closed) |
 | CRM | Lead capture, configurable sources/stages, rules, lead profile + timeline, duplicate flagging, pipeline metrics, conversion, WhatsApp consent, 24-hour reassignment scheduled, notifications done | 0 | none |
-| Core / auth | Users, roles, branches, settings, audit browsing, notifications, health, install | 2 | attachments decision (CORE-03), self-service sessions (CORE-04) |
-| Frontend / UX | 38 pages, design tokens from `DESIGN.md`, RTL/AR | 4 | E2E per module, a11y checks |
-| QA / release | 886 backend tests, 93 unit tests, 9 CI jobs, E2E + axe a11y gate | 4 | backend coverage gate, close→report E2E, performance seed |
+| Core / auth | Users, roles, branches, settings, audit browsing, notifications, health, install, attachments, self-service sessions | 0 | none (CORE-03, CORE-04 closed) |
+| Frontend / UX | 40 pages, design tokens from `DESIGN.md`, RTL/AR | 1 | component tests (QA-05) |
+| QA / release | 1205 backend tests, 186 unit tests, CI jobs incl. a blocking Accounting coverage gate, E2E + axe a11y gate | 3 | refund-approval E2E (QA-01), performance seed (QA-04), component tests (QA-05) |
 | Documentation | ADRs, OpenAPI, indexes and per-issue statuses current | 0 | none (DOC-01..05 closed) |
 
-Counts include only tracked gaps below (open: RPT-02, RPT-05, RPT-06, CORE-03, CORE-04, QA-01, QA-03..05, DEC items; no P0 or P1 CRM/Core/Reports gaps remain).
+Counts include only tracked gaps below. Open as of 2026-11-14: QA-01 (refund-approval E2E), QA-04, QA-05, and the decision items GAP-DEC-01, 02, 03, 05, 06 (owner decisions are recorded in `decisions-closed-2026-11-14.md`; accountant sign-off is not recorded). No P0 or P1 gaps remain.
 
 ## 3. Reports module
 
@@ -102,10 +102,10 @@ Tracked here so they are never silently implemented or silently assumed "done".
 | ID | Ref | What is blocked | Current safe behaviour |
 |---|---|---|---|
 | GAP-DEC-01 | DEC-002 | Supplier cost recognition point; blocks GAP-RPT-05 | Booking costs post without a supplier party |
-| GAP-DEC-02 | DEC-004 | Commission trigger/posting for production | Posted only when `accounting_policy_approved` and `commission_auto_post` are enabled |
-| GAP-DEC-03 | DEC-008 | FX revaluation policy | Scheduled command is a no-op unless explicitly enabled |
-| GAP-DEC-04 | DEC-014 | Inter-branch clearing model | Only fixed-asset transfers post inter-branch |
-| GAP-DEC-05 | DEC-028 | Statutory tax-invoice wording | Invoices are standard commercial invoices titled "Invoice" / "فاتورة"; no tax-invoice or certification wording. Not a statement about legal obligations. |
+| GAP-DEC-02 | DEC-004 | Commission trigger/posting for production. **Owner accepted the recommendation 2026-11-14** (default fully collected, configurable); accountant sign-off on accounts and reversals still to be recorded | Posted only when `accounting_policy_approved` and `commission_auto_post` are enabled |
+| GAP-DEC-03 | DEC-008 | FX revaluation policy. **Owner decided 2026-11-14: no automatic revaluation and no exchange-rate source** (realized differences only); the feature stays available but unused | Scheduled command is a no-op unless explicitly enabled |
+| ~~GAP-DEC-04~~ | DEC-014 | **Closed by owner decision 2026-11-14: each branch is independent, no inter-branch posting and no clearing account.** | A supplier payment from another branch's cash or bank account is refused; only fixed-asset transfers post between branches (existing behaviour) |
+| GAP-DEC-05 | DEC-028 | Statutory tax-invoice wording. **Owner decided 2026-11-14: booking and invoice stay separate documents** (the wording question below stays open) | Invoices are standard commercial invoices titled "Invoice" / "فاتورة"; no tax-invoice or certification wording. Not a statement about legal obligations. |
 | GAP-DEC-06 | DEC-025 | Statutory report formats | Management-grade statements only |
 
 ## 9. Deliberately out of scope (do not "fix")
@@ -156,3 +156,4 @@ git grep -n "notifications" -- backend/database/migrations
 - A gap is removed only when its "Done when" condition is demonstrably true on `main` **and** covered by a test.
 - New gaps get a new ID; never renumber.
 - Any change that contradicts this document must update it in the same PR.
+| ~~GAP-DEC-07~~ | DEC-025 / DEC-036 | **Closed by owner decisions 2026-11-14:** a negative-margin booking only warns (setting `accounting.negative_margin_requires_approval` defaults to `false`); voucher tax stays document metadata with no automatic posting, corrections by a linked reversal voucher, no in-transit account (option A). Accountant sign-off is not recorded. | Warning in the booking form and list; vouchers behave as before |

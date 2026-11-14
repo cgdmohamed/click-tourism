@@ -5,7 +5,8 @@ import { Chart as ChartJS, ArcElement, CategoryScale, Legend, LineElement, Linea
 import { Doughnut, Line } from 'react-chartjs-2'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
-import { Badge, Card, CardHeader, EmptyState, ErrorState, Input, Loading, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { Badge, Card, CardHeader, EmptyState, ErrorState, Input, Loading, Money, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { SetupChecklist } from '../components/SetupChecklist'
 import { AssistantToggleCard } from '../components/AssistantToggleCard'
 import { Icon, type IconName } from '../components/icons'
 import { api, errorMessage } from '../lib/api'
@@ -17,10 +18,13 @@ ChartJS.register(ArcElement, CategoryScale, Legend, LineElement, LinearScale, Po
 
 type DashboardPeriod = 'today' | 'thisMonth' | 'lastMonth' | 'customRange'
 
+type MetricSize = 'primary' | 'secondary'
+
 /**
- * Dashboard-only metric card: keep the exact amount accessible on hover/focus
- * while compacting large amounts to avoid overflow at narrow breakpoints.
- * Backend still returns integer minor units; no financial precision is lost.
+ * Dashboard KPI card. Amounts go through the shared `Money` rule (one nowrap,
+ * bidi-isolated run whose font steps down to fit the card, full value in the
+ * tooltip); counts use the same card with a plain number. Integer minor units
+ * come from the backend untouched, so no precision is lost.
  */
 function FinancialMetric({
   label,
@@ -29,8 +33,10 @@ function FinancialMetric({
   locale,
   icon,
   hint,
-  negative = false,
+  warn = false,
   href,
+  size = 'secondary',
+  className,
 }: {
   label: string
   value: number | null | undefined
@@ -38,39 +44,57 @@ function FinancialMetric({
   locale: 'ar' | 'en'
   icon: IconName
   hint?: string
-  negative?: boolean
+  /** Highlights a non-zero value that needs attention (overdue, unmatched). */
+  warn?: boolean
   href?: string
+  size?: MetricSize
+  className?: string
 }) {
-  const isMoney = !!currency
-  const original = isMoney ? formatMoney(value, currency ?? 'EGP', locale) : value === null || value === undefined ? '—' : new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US').format(value)
-  const whole = value === null || value === undefined ? null : value / 10 ** (isMoney ? exponent(currency ?? 'EGP') : 0)
-  const compact = whole === null ? '—' : new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-    notation: Math.abs(whole) >= 100000 ? 'compact' : 'standard',
-    maximumFractionDigits: Math.abs(whole) >= 100000 ? 2 : isMoney ? 2 : 0,
-    minimumFractionDigits: 0,
-  }).format(whole)
+  const isZero = value === 0
+  const tone = warn && !isZero && value !== null && value !== undefined ? (currency ? 'text-danger-text' : 'text-warning-text') : isZero ? 'text-text-subtle' : 'text-text-default'
+  const primary = size === 'primary'
+  const count = value === null || value === undefined ? '—' : new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US').format(value)
   const body = (
-    <div className="flex h-full min-w-0 flex-col gap-3 rounded-16 border border-border-subtle bg-surface-default p-4 shadow-2 sm:p-5">
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <span className="min-w-0 text-small font-medium leading-relaxed text-text-subtle">{label}</span>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-12 bg-surface-selected text-brand-1-accent">
-          <Icon name={icon} size={18} />
+    <div className={`flex h-full min-w-0 flex-col gap-1.5 rounded-16 border border-border-subtle bg-surface-default shadow-1 ${primary ? 'px-5 py-4' : 'px-4 py-3'}`}>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={`flex shrink-0 items-center justify-center rounded-12 bg-surface-selected text-brand-1-accent ${primary ? 'h-8 w-8' : 'h-7 w-7'}`}>
+          <Icon name={icon} size={primary ? 18 : 16} />
         </span>
+        <span className="min-w-0 text-small font-medium leading-snug text-text-subtle">{label}</span>
       </div>
-      <div className="mt-auto min-w-0" title={original} aria-label={original}>
-        <div className={`flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 ${negative ? 'text-danger-text' : 'text-text-default'}`}>
-          <span dir="auto" className="min-w-0 max-w-full break-words text-[clamp(1.25rem,1.7vw,1.85rem)] font-bold leading-tight tabular-nums">
-            {compact}
-          </span>
-          {isMoney && value !== null && value !== undefined && (
-            <span className="shrink-0 text-small font-medium opacity-75">{currency}</span>
-          )}
-        </div>
-        {hint && <p className="mt-2 text-small leading-relaxed text-text-subtle">{hint}</p>}
+      <div className={`money-fit leading-tight ${primary ? 'text-[1.875rem]' : 'text-[1.375rem]'} ${isZero ? 'font-medium' : 'font-bold'} ${tone}`}>
+        {currency ? (
+          <Money amountMinor={value} currency={currency} className={value !== null && value !== undefined && value < 0 ? undefined : tone} />
+        ) : (
+          <span className="tabular" dir="ltr" title={count}>{count}</span>
+        )}
+      </div>
+      <p className="min-h-[1.25rem] text-small leading-snug text-text-subtle">{hint ?? '\u00a0'}</p>
+    </div>
+  )
+  return href ? <Link to={href} className={`block h-full min-w-0 rounded-16 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-1-accent ${className ?? ''}`}>{body}</Link> : <div className={className}>{body}</div>
+}
+
+/** Placeholder with the same grid and card shapes as the loaded KPIs. */
+function DashboardSkeleton({ label }: { label: string }) {
+  const card = (key: string, className: string, tall: boolean) => (
+    <div key={key} className={`flex flex-col gap-3 rounded-16 border border-border-subtle bg-surface-default shadow-1 ${tall ? 'px-5 py-4' : 'px-4 py-3'} ${className}`}>
+      <div className="h-4 w-1/2 animate-pulse rounded-12 bg-surface-hovered" />
+      <div className={`animate-pulse rounded-12 bg-surface-hovered ${tall ? 'h-9 w-4/5' : 'h-7 w-3/5'}`} />
+      <div className="h-3 w-2/3 animate-pulse rounded-12 bg-surface-hovered" />
+    </div>
+  )
+  return (
+    <div role="status" aria-live="polite" aria-busy="true" className="space-y-3">
+      <span className="sr-only">{label}</span>
+      <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((i) => card(`p${i}`, i === 2 ? 'min-[560px]:col-span-2 xl:col-span-1' : '', true))}
+      </div>
+      <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 xl:grid-cols-6">
+        {[0, 1, 2, 3, 4].map((i) => card(`s${i}`, i < 3 ? 'xl:col-span-2' : i === 3 ? 'xl:col-span-3' : 'min-[560px]:col-span-2 xl:col-span-3', false))}
       </div>
     </div>
   )
-  return href ? <Link to={href} className="block h-full min-w-0 rounded-16 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-1-accent">{body}</Link> : body
 }
 
 export default function Dashboard() {
@@ -121,10 +145,10 @@ export default function Dashboard() {
   const colors = ['#4273c3', '#23a183', '#e2a549', '#d66a71', '#8c75be']
   const shortcuts: Array<{ label: string; href: string; permission: string }> = [
     { label: locale === 'ar' ? 'فواتير العملاء والموردين' : 'Customer & supplier invoices', href: '/invoices', permission: 'invoices.view' },
-    { label: locale === 'ar' ? 'تسجيل تحصيل' : 'Record a receipt', href: '/payments', permission: 'payments.create' },
+    { label: locale === 'ar' ? 'تسجيل تحصيل' : 'Record a receipt', href: '/payments?new=payment', permission: 'payments.create' },
     { label: locale === 'ar' ? 'مدفوعات الموردين' : 'Supplier payments', href: '/supplier-settlements', permission: 'supplier_payments.view' },
     { label: locale === 'ar' ? 'القيود اليومية' : 'Journal entries', href: '/journal', permission: 'journal.view' },
-    { label: locale === 'ar' ? 'تسجيل مصروف' : 'Expenses', href: '/expenses', permission: 'expenses.create' },
+    { label: locale === 'ar' ? 'تسجيل مصروف' : 'Expenses', href: '/expenses?new=expense', permission: 'expenses.create' },
     { label: locale === 'ar' ? 'كشوف حساب العملاء' : 'Customer statements', href: '/customers', permission: 'customers.view' },
     { label: locale === 'ar' ? 'التسوية البنكية' : 'Bank reconciliation', href: '/reconciliation', permission: 'reconciliation.view' },
     { label: locale === 'ar' ? 'التقارير وميزان المراجعة' : 'Reports & trial balance', href: '/reports', permission: 'reports.view' },
@@ -148,70 +172,76 @@ export default function Dashboard() {
         subtitle={activeBranch ? (localizedName(activeBranch, locale)) : undefined}
         icon="dashboard"
         actions={
-          <button
-            type="button"
-            onClick={() => void summary.refetch()}
-            disabled={summary.isFetching || invalidRange}
-            className="rounded-12 border border-border-default bg-surface-default px-4 py-2 text-small text-text-default hover:bg-surface-hovered disabled:opacity-50"
-          >
-            {summary.isFetching ? t('loading') : t('refresh')}
-          </button>
+          <>
+            <label className="sr-only" htmlFor="dashboard-period">
+              {locale === 'ar' ? 'الفترة' : 'Period'}
+            </label>
+            <Select id="dashboard-period" className="!w-auto min-w-32 max-w-full" value={period} onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}>
+              <option value="today">{t('today')}</option>
+              <option value="thisMonth">{t('thisMonth')}</option>
+              <option value="lastMonth">{t('lastMonth')}</option>
+              <option value="customRange">{t('customRange')}</option>
+            </Select>
+            {period === 'customRange' && (
+              <>
+                <Input className="!w-auto min-w-0 max-w-40" aria-label={locale === 'ar' ? 'من تاريخ' : 'From date'} type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                <Input className="!w-auto min-w-0 max-w-40" aria-label={locale === 'ar' ? 'إلى تاريخ' : 'To date'} type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => void summary.refetch()}
+              disabled={summary.isFetching || invalidRange}
+              className="rounded-12 border border-border-default bg-surface-default px-4 py-2 text-small text-text-default hover:bg-surface-hovered disabled:opacity-50"
+            >
+              {summary.isFetching ? t('loading') : t('refresh')}
+            </button>
+          </>
         }
       />
+      {data && !invalidRange && <p className="-mt-3 text-small leading-relaxed text-text-subtle">{formatDate(data.period_from, locale)} – {formatDate(data.period_to, locale)} · {data.currency} · {baseNote}</p>}
+      {invalidRange && <p className="-mt-3 text-small text-warning-text">{locale === 'ar' ? 'اختر فترة صحيحة لعرض البيانات' : 'Choose a valid date range'}</p>}
 
-      <AssistantToggleCard />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-16 border border-border-subtle bg-surface-default px-4 py-3 shadow-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <label className="shrink-0 text-small font-medium text-text-default" htmlFor="dashboard-period">
-            {locale === 'ar' ? 'الفترة' : 'Period'}
-          </label>
-          <Select id="dashboard-period" className="!w-auto min-w-36 max-w-full" value={period} onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}>
-            <option value="today">{t('today')}</option>
-            <option value="thisMonth">{t('thisMonth')}</option>
-            <option value="lastMonth">{t('lastMonth')}</option>
-            <option value="customRange">{t('customRange')}</option>
-          </Select>
-          {period === 'customRange' && (
-            <>
-              <Input className="!w-auto min-w-0 max-w-40" aria-label={locale === 'ar' ? 'من تاريخ' : 'From date'} type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-              <Input className="!w-auto min-w-0 max-w-40" aria-label={locale === 'ar' ? 'إلى تاريخ' : 'To date'} type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-            </>
-          )}
-        </div>
-        {data && <p className="text-small leading-relaxed text-text-subtle">{formatDate(data.period_from, locale)} – {formatDate(data.period_to, locale)} · {data.currency} · {baseNote}</p>}
-        {invalidRange && <p className="w-full text-small text-warning-text">{locale === 'ar' ? 'اختر فترة صحيحة لعرض البيانات' : 'Choose a valid date range'}</p>}
-      </div>
-
-      {summary.isLoading ? <Loading /> : null}
-      {summary.isError ? <ErrorState message={errorMessage(summary.error)} onRetry={() => void summary.refetch()} /> : null}
+      {summary.isLoading && !invalidRange ? <DashboardSkeleton label={t('loading')} /> : null}
+      {summary.isError ? <Card><ErrorState message={errorMessage(summary.error)} onRetry={() => void summary.refetch()} /></Card> : null}
       {data && !invalidRange && (
         <>
-          <section aria-label={t('quickActions')} className="rounded-16 border border-border-subtle bg-surface-default p-4 shadow-1">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <section aria-label={t('financialKPIs')} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 xl:grid-cols-3">
+              <FinancialMetric size="primary" icon="wallet" label={t('cashBankBalances')} value={data.cash_balance_minor} currency={data.currency} locale={locale} href="/treasury" hint={data.cash_balance_mixed_currency ? (locale === 'ar' ? 'عملات مختلطة: راجع أرصدة الحسابات' : 'Mixed currencies: review account balances') : baseNote} />
+              <FinancialMetric size="primary" icon="users" label={t('outstandingReceivables')} value={data.ar_outstanding_minor} currency={data.currency} locale={locale} href="/invoices" hint={locale === 'ar' ? 'فواتير العملاء الصادرة وغير المسددة' : 'Open issued customer invoices'} />
+              <FinancialMetric size="primary" className="min-[560px]:col-span-2 xl:col-span-1" icon="truck" label={t('outstandingPayables')} value={data.ap_outstanding_minor} currency={data.currency} locale={locale} href="/invoices" hint={locale === 'ar' ? 'فواتير الموردين غير المسددة' : 'Open supplier invoices'} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 xl:grid-cols-6">
+              <FinancialMetric className="xl:col-span-2" icon="alertTriangle" label={t('overdueReceivables')} value={data.overdue_ar_minor} currency={data.currency} locale={locale} href="/invoices" warn={data.overdue_ar_minor > 0} hint={locale === 'ar' ? 'فواتير عملاء تجاوزت تاريخ الاستحقاق' : 'Customer invoices past due'} />
+              <FinancialMetric className="xl:col-span-2" icon="alertTriangle" label={t('overduePayables')} value={data.overdue_ap_minor} currency={data.currency} locale={locale} href="/invoices" warn={data.overdue_ap_minor > 0} hint={locale === 'ar' ? 'فواتير موردين تجاوزت تاريخ الاستحقاق' : 'Supplier invoices past due'} />
+              <FinancialMetric className="xl:col-span-2" icon="coins" label={t('customerAdvances')} value={data.customer_advances_minor} currency={data.currency} locale={locale} href="/payments" hint={locale === 'ar' ? 'تحصيلات لم تُخصص' : 'Unallocated receipts'} />
+              <FinancialMetric className="xl:col-span-3" icon="trendUp" label={t('netProfitLoss')} value={data.net_profit_minor} currency={data.currency} locale={locale} href="/reports" hint={locale === 'ar' ? 'نتيجة القيود المرحلة خلال الفترة' : 'Posted GL result for selected period'} />
+              <FinancialMetric className="min-[560px]:col-span-2 xl:col-span-3" icon="ledger" label={t('unreconciledBank')} value={data.unreconciled_bank_count} locale={locale} href="/reconciliation" warn={data.unreconciled_bank_count > 0} hint={locale === 'ar' ? 'حركات بنكية لم تُطابق بعد' : 'Bank lines not matched yet'} />
+            </div>
+          </section>
+
+          <section aria-label={t('quickActions')} className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="heading-small">{t('quickActions')}</h2>
               <span className="text-small text-text-subtle">{locale === 'ar' ? 'اختصارات العمليات اليومية' : 'Daily shortcuts'}</span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {actions.map((action) => (
-                <Link key={action.href} to={action.href} className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-12 border border-border-default bg-surface-subtle px-3 py-2 text-small font-medium text-text-default hover:border-border-focus hover:bg-surface-hovered focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-1-accent">
-                  <span className="min-w-0">{action.label}</span><span aria-hidden="true" className="shrink-0 text-brand-1-accent">↗</span>
-                </Link>
-              ))}
-              {actions.length === 0 && <p className="text-small text-text-subtle">{t('noAvailableActions')}</p>}
+            <div className="relative">
+              <div className="flex gap-2 overflow-x-auto pb-2 pe-8 [scrollbar-width:thin]" tabIndex={0} role="group" aria-label={t('quickActions')}>
+                {actions.map((action) => (
+                  <Link key={action.href} to={action.href} className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-12 border border-border-default bg-surface-default px-3 py-2 text-small font-medium text-text-default hover:border-border-focus hover:bg-surface-hovered focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-1-accent">
+                    <span>{action.label}</span><span aria-hidden="true" className="shrink-0 text-brand-1-accent">↗</span>
+                  </Link>
+                ))}
+                {actions.length === 0 && <p className="text-small text-text-subtle">{t('noAvailableActions')}</p>}
+              </div>
+              <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 end-0 w-10 bg-gradient-to-l from-surface-canvas to-transparent rtl:bg-gradient-to-r sm:hidden" />
             </div>
           </section>
 
-          <section aria-label={t('financialKPIs')} className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 2xl:grid-cols-3">
-            <FinancialMetric icon="wallet" label={t('cashBankBalances')} value={data.cash_balance_minor} currency={data.currency} locale={locale} href="/treasury" hint={data.cash_balance_mixed_currency ? (locale === 'ar' ? 'عملات مختلطة: راجع أرصدة الحسابات' : 'Mixed currencies: review account balances') : baseNote} />
-            <FinancialMetric icon="users" label={t('outstandingReceivables')} value={data.ar_outstanding_minor} currency={data.currency} locale={locale} href="/invoices" hint={locale === 'ar' ? 'فواتير العملاء الصادرة وغير المسددة' : 'Open issued customer invoices'} />
-            <FinancialMetric icon="truck" label={t('outstandingPayables')} value={data.ap_outstanding_minor} currency={data.currency} locale={locale} href="/invoices" hint={locale === 'ar' ? 'فواتير الموردين غير المسددة' : 'Open supplier invoices'} />
-            <FinancialMetric icon="alertTriangle" label={t('overdueReceivables')} value={data.overdue_ar_minor} currency={data.currency} locale={locale} href="/invoices" negative={data.overdue_ar_minor > 0} />
-            <FinancialMetric icon="alertTriangle" label={t('overduePayables')} value={data.overdue_ap_minor} currency={data.currency} locale={locale} href="/invoices" negative={data.overdue_ap_minor > 0} />
-            <FinancialMetric icon="coins" label={t('customerAdvances')} value={data.customer_advances_minor} currency={data.currency} locale={locale} href="/payments" hint={locale === 'ar' ? 'تحصيلات لم تُخصص' : 'Unallocated receipts'} />
-            <FinancialMetric icon="ledger" label={t('unreconciledBank')} value={data.unreconciled_bank_count} locale={locale} href="/reconciliation" negative={data.unreconciled_bank_count > 0} />
-            <FinancialMetric icon="trendUp" label={t('netProfitLoss')} value={data.net_profit_minor} currency={data.currency} locale={locale} href="/reports" negative={data.net_profit_minor < 0} hint={locale === 'ar' ? 'نتيجة القيود المرحلة خلال الفترة' : 'Posted GL result for selected period'} />
-          </section>
+          <SetupChecklist />
+          <AssistantToggleCard mode="banner" />
+
 
           {can('leads.view') && (
             <Card>
@@ -389,6 +419,8 @@ export default function Dashboard() {
           </Card>
         </>
       )}
+
+      <AssistantToggleCard mode="row" />
     </div>
   )
 }

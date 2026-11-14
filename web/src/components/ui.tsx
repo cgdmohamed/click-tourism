@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  ChangeEvent,
   InputHTMLAttributes,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
@@ -7,9 +8,12 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Children, Fragment, isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useI18n } from '../i18n'
-import { formatMoney } from '../lib/format'
+import { describeError, recallError } from '../lib/errors'
+import { formatMoneyParts, moneyFitStyle } from '../lib/format'
+import { statusToneOf } from '../lib/labels'
 import { nextTabIndex } from '../lib/tabs'
 import { Icon } from './icons'
 import type { IconName } from './icons'
@@ -120,30 +124,83 @@ export function Input({
   )
 }
 
-export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select className={cx(controlBase, 'h-9', className)} {...props}>
-      {children}
-    </select>
-  )
-}
-
 export type SelectOption = {
   value: string
   label: string
   hint?: string
   /** Optional account/cost-center style code: shown as secondary monospace text before the label. */
   code?: string
+  disabled?: boolean
 }
 
 const optionText = (option: SelectOption) => (option.code ? `${option.code} — ${option.label}` : option.label)
 
+const textOf = (node: ReactNode): string =>
+  Children.toArray(node)
+    .map((child) => (typeof child === 'string' || typeof child === 'number' ? String(child) : isValidElement<{ children?: ReactNode }>(child) ? textOf(child.props.children) : ''))
+    .join('')
+
+/** `<option>` children (also inside fragments and `<optgroup>`) as options. */
+function optionsFromChildren(children: ReactNode): SelectOption[] {
+  const out: SelectOption[] = []
+  const visit = (nodes: ReactNode) => {
+    Children.forEach(nodes, (child) => {
+      if (!isValidElement<{ value?: string | number; disabled?: boolean; children?: ReactNode }>(child)) return
+      if (child.type === Fragment || child.type === 'optgroup') visit(child.props.children)
+      else if (child.type === 'option') {
+        const label = textOf(child.props.children)
+        out.push({ value: child.props.value !== undefined ? String(child.props.value) : label, label, disabled: child.props.disabled })
+      }
+    })
+  }
+  visit(children)
+  return out
+}
+
+/** Searches only pay off on longer lists; a short list is just a clean list. */
+const SEARCH_THRESHOLD = 8
+
+type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange' | 'value' | 'children'> & {
+  value?: string | number | readonly string[]
+  onChange?: (event: ChangeEvent<HTMLSelectElement>) => void
+  children?: ReactNode
+  /** Force the search box on or off; by default it shows for lists of 8 or more options. */
+  showSearch?: boolean
+}
+
 /**
- * Combobox for API-driven option lists.
- *
- * Native `<select>` stays the right control for short, static lists. Use this
- * when the list is dynamic (customers, suppliers, accounts, bookings) and the
- * user benefits from typing to filter.
+ * The app's dropdown. Same API as the native `<select>` (`<option>` children, `event.target.value`) but
+ * rendered with the app's own list (see SearchableSelect) so every dropdown looks and behaves the same:
+ * keyboard navigation, a search box on longer lists, a panel that is never clipped by a modal or table.
+ */
+export function Select({ className, children, value, onChange, disabled, id, showSearch, dir, ...rest }: SelectProps) {
+  const options = useMemo(() => optionsFromChildren(children), [children])
+  const current = Array.isArray(value) ? String(value[0] ?? '') : String(value ?? '')
+  const extra: Record<string, string | boolean | undefined> = {}
+  for (const [key, val] of Object.entries(rest)) {
+    if ((key.startsWith('aria-') || key.startsWith('data-') || key === 'title') && key !== 'aria-label') extra[key] = val as string
+  }
+  return (
+    <SearchableSelect
+      value={current}
+      options={options}
+      onChange={(next) => onChange?.({ target: { value: next, name: rest.name, id }, currentTarget: { value: next, name: rest.name, id } } as unknown as ChangeEvent<HTMLSelectElement>)}
+      disabled={disabled}
+      className={className}
+      id={id}
+      dir={dir as 'ltr' | 'rtl' | 'auto' | undefined}
+      ariaLabel={rest['aria-label']}
+      showSearch={showSearch ?? options.length >= SEARCH_THRESHOLD}
+      nameFromLabel
+      triggerProps={extra}
+    />
+  )
+}
+
+/**
+ * Combobox for option lists, used directly for API-driven lists (customers, suppliers, accounts) and
+ * through `Select` for every static one. The list opens in a portal positioned from the trigger (flips
+ * above when there is no room below), so it is never clipped by a modal, a drawer or a table wrapper.
  */
 export function SearchableSelect({
   value,
@@ -157,6 +214,10 @@ export function SearchableSelect({
   onSearch,
   hasMore,
   ariaLabel,
+  showSearch = true,
+  nameFromLabel = false,
+  dir,
+  triggerProps,
 }: {
   value: string
   onChange: (value: string) => void
@@ -172,8 +233,15 @@ export function SearchableSelect({
   hasMore?: boolean
   /** Accessible name when no visible <label> wraps the control (e.g. inside a table cell). */
   ariaLabel?: string
+  /** Show the visible search box (otherwise typing still jumps to matches, for keyboard users). */
+  showSearch?: boolean
+  /** The control sits in a <label>: let that label name it instead of the generated "Search: value". */
+  nameFromLabel?: boolean
+  dir?: 'ltr' | 'rtl' | 'auto'
+  triggerProps?: Record<string, string | boolean | undefined>
 }) {
   const { t } = useI18n()
+  const listId = useId()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -182,7 +250,7 @@ export function SearchableSelect({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef(onSearch)
   const panelRef = useRef<HTMLDivElement>(null)
-  const [shift, setShift] = useState(0)
+  const [place, setPlace] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
 
   useEffect(() => {
     searchRef.current = onSearch
@@ -212,11 +280,13 @@ export function SearchableSelect({
     if (restoreFocus) triggerRef.current?.focus()
   }
 
-  // Close on any press outside, including touch.
+  // Close on any press outside the trigger and the (portaled) panel, including touch.
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: Event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) close()
+      const target = event.target as Node
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      close()
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('touchstart', onPointerDown)
@@ -226,25 +296,46 @@ export function SearchableSelect({
     }
   }, [open])
 
-  // Keep the panel inside the viewport (it can be wider than a narrow trigger near a screen edge).
+  // Position from the trigger: below, or above when there is no room; clamped into the viewport.
   useLayoutEffect(() => {
-    if (!open || !panelRef.current) {
-      setShift(0)
+    if (!open) {
+      setPlace(null)
       return
     }
-    const rect = panelRef.current.getBoundingClientRect()
-    const base = rect.left - shift
-    const margin = 8
-    let next = 0
-    if (base < margin) next = margin - base
-    else if (base + rect.width > window.innerWidth - margin) next = window.innerWidth - margin - (base + rect.width)
-    if (next !== shift) setShift(next)
-  }, [open, rows.length, shift])
+    const measure = () => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const margin = 8
+      const rtl = getComputedStyle(trigger).direction === 'rtl'
+      const width = Math.min(Math.max(rect.width, 224), window.innerWidth - margin * 2)
+      let left = rtl ? rect.right - width : rect.left
+      left = Math.max(margin, Math.min(left, window.innerWidth - margin - width))
+      const below = window.innerHeight - rect.bottom - margin
+      const above = rect.top - margin
+      const wanted = Math.min(320, (panelRef.current?.scrollHeight ?? 320) + 4)
+      if (below >= Math.min(wanted, 200) || below >= above) setPlace({ top: rect.bottom + 4, left, width, maxHeight: Math.max(120, below - 4) })
+      else setPlace({ bottom: window.innerHeight - rect.top + 4, left, width, maxHeight: Math.max(120, above - 4) })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
+  }, [open, rows.length])
 
-  // The search box takes focus when the list opens.
+  // The (visible or screen-reader-only) search input takes focus when the list opens.
   useEffect(() => {
     if (open) searchInputRef.current?.focus()
   }, [open])
+
+  // Keep the active row in view while arrowing.
+  useEffect(() => {
+    if (!open || activeIndex < 0) return
+    panelRef.current?.querySelector<HTMLElement>(`[data-row="${activeIndex}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIndex])
 
   const toggle = () => {
     if (disabled) return
@@ -258,8 +349,19 @@ export function SearchableSelect({
   }
 
   const select = (option: SelectOption) => {
+    if (option.disabled) return
     onChange(option.value)
     close(true)
+  }
+
+  const step = (from: number, delta: 1 | -1) => {
+    let next = from
+    for (let i = 0; i < rows.length; i += 1) {
+      next = Math.min(Math.max(next + delta, 0), rows.length - 1)
+      if (!rows[next]?.disabled) return next
+      if (next === 0 || next === rows.length - 1) break
+    }
+    return from
   }
 
   const onTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -272,12 +374,21 @@ export function SearchableSelect({
   const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActiveIndex((current) => Math.min(current + 1, rows.length - 1))
+      setActiveIndex((current) => step(current, 1))
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setActiveIndex((current) => Math.max(current - 1, 0))
+      setActiveIndex((current) => step(current, -1))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setActiveIndex(step(-1, 1))
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setActiveIndex(step(rows.length, -1))
     } else if (event.key === 'Enter') {
       event.preventDefault()
+      // The list is portaled, but React still bubbles the event to the picker's ancestors (a drawer or form
+      // that submits on Enter); choosing an option must not also submit them.
+      event.stopPropagation()
       if (rows[activeIndex]) select(rows[activeIndex])
     } else if (event.key === 'Escape') {
       event.preventDefault()
@@ -288,15 +399,10 @@ export function SearchableSelect({
     }
   }
 
+  const label = ariaLabel ?? (nameFromLabel ? undefined : placeholder ?? t('search'))
+
   return (
-    <div
-      ref={containerRef}
-      className={cx('relative', className)}
-      onBlur={(event) => {
-        // Focus left the whole control (keyboard navigation away): close.
-        if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) close()
-      }}
-    >
+    <div ref={containerRef} className={cx('relative', className)}>
       <button
         ref={triggerRef}
         id={id}
@@ -304,76 +410,90 @@ export function SearchableSelect({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
-        // role=combobox does not take its name from content, so name it explicitly (label/placeholder + current value).
-        aria-label={[ariaLabel ?? placeholder ?? t('search'), selected ? optionText(selected) : undefined].filter(Boolean).join(': ')}
+        aria-controls={open ? listId : undefined}
+        // role=combobox does not take its name from content: a wrapping <label> (nameFromLabel) or an explicit name does.
+        aria-label={label ? [label, selected ? optionText(selected) : undefined].filter(Boolean).join(': ') : undefined}
         disabled={disabled}
+        dir={dir}
         className={cx(controlBase, 'flex h-9 items-center justify-between gap-2 pe-2 text-start')}
         onClick={toggle}
         onKeyDown={onTriggerKeyDown}
+        {...triggerProps}
       >
-        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-placeholder')} title={selected ? optionText(selected) : undefined}>
+        <span className={cx('truncate', selected ? 'text-text-default' : 'text-text-subtle')} title={selected ? optionText(selected) : undefined}>
           {selected ? optionText(selected) : placeholder ?? ''}
         </span>
         <Icon name="chevronDown" className={cx('h-4 w-4 shrink-0 text-text-subtle transition', open && 'rotate-180')} />
       </button>
-      {open ? (
-        // preventDefault on click: this panel sits inside a <label> (Field), and a click on its
-        // padding would otherwise be forwarded to the trigger and re-open the list.
-        // Wide enough to read account names (min 20rem or the trigger width), clamped to the viewport and
-        // nudged back on-screen in either direction (LTR/RTL) once measured.
-        <div
-          ref={panelRef}
-          className="absolute start-0 z-50 mt-1 w-max min-w-[max(100%,min(20rem,calc(100vw-2rem)))] max-w-[calc(100vw-2rem)] rounded-12 border border-border-default bg-surface-default shadow-3"
-          style={{ translate: shift ? `${shift}px 0` : undefined }}
-          onClick={(event) => event.preventDefault()}
-        >
-          <div className="border-b border-border-subtle p-2">
-            <input
-              ref={searchInputRef}
-              className={cx(controlBase, 'h-8')}
-              value={query}
-              placeholder={t('search')}
-              autoComplete="off"
-              aria-label={t('search')}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setActiveIndex(0)
-              }}
-              onKeyDown={onSearchKeyDown}
-            />
-          </div>
-          <div className="max-h-60 overflow-y-auto p-1" role="listbox">
-            {rows.length === 0 ? (
-              <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
-            ) : (
-              rows.map((option, index) => (
-                <button
-                  key={`${option.value}-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === value}
-                  className={cx(
-                    'text-medium flex w-full items-start gap-2 rounded-8 px-3 py-2 text-start transition',
-                    option.value === value ? 'bg-surface-selected text-text-default' : 'text-text-default',
-                    index === activeIndex ? 'bg-surface-hovered' : null,
-                  )}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => select(option)}
-                >
-                  {option.code ? (
-                    <span dir="ltr" className="tabular text-small shrink-0 pt-px font-mono text-text-subtle">{option.code}</span>
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words">{option.label}</span>
-                    {option.hint ? <span className="text-small block break-words text-text-subtle">{option.hint}</span> : null}
-                  </span>
-                </button>
-              ))
-            )}
-            {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
-          </div>
-        </div>
-      ) : null}
+      {open
+        ? createPortal(
+            // preventDefault on click: the list is also reachable through a wrapping <label> (Field); keep a click on the
+            // panel's padding from being forwarded to the trigger.
+            <div
+              ref={panelRef}
+              dir={dir}
+              className={cx(
+                'fixed z-[70] flex flex-col overflow-hidden rounded-12 border border-border-default bg-surface-default shadow-3',
+                place ? null : 'invisible',
+              )}
+              style={{ top: place?.top, bottom: place?.bottom, left: place?.left ?? 0, width: place?.width, maxHeight: place?.maxHeight }}
+              onClick={(event) => event.preventDefault()}
+            >
+              <div className={showSearch ? 'border-b border-border-subtle p-2' : 'sr-only'}>
+                <input
+                  ref={searchInputRef}
+                  className={cx(controlBase, 'h-8')}
+                  value={query}
+                  placeholder={t('search')}
+                  autoComplete="off"
+                  aria-label={t('search')}
+                  onChange={(event) => {
+                    setQuery(event.target.value)
+                    // With a query, the first match is active: Enter must not pick the leading "All" row.
+                    setActiveIndex(clearLabel && event.target.value.trim() !== '' ? 1 : 0)
+                  }}
+                  onKeyDown={onSearchKeyDown}
+                />
+              </div>
+              <div id={listId} className="min-h-0 flex-1 overflow-y-auto p-1" role="listbox">
+                {rows.length === 0 ? (
+                  <p className="text-medium px-3 py-2 text-text-subtle">{t('noResults')}</p>
+                ) : (
+                  rows.map((option, index) => (
+                    <button
+                      key={`${option.value}-${index}`}
+                      data-row={index}
+                      type="button"
+                      role="option"
+                      tabIndex={-1}
+                      aria-selected={option.value === value}
+                      aria-disabled={option.disabled || undefined}
+                      className={cx(
+                        'text-medium flex w-full items-start gap-2 rounded-8 px-3 py-2 text-start transition',
+                        option.value === value ? 'bg-surface-selected font-medium text-text-default' : 'text-text-default',
+                        index === activeIndex ? 'bg-surface-hovered' : null,
+                        option.disabled ? 'cursor-not-allowed text-text-disabled' : null,
+                      )}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => select(option)}
+                    >
+                      {option.code ? (
+                        <span dir="ltr" className="tabular text-small shrink-0 pt-px font-mono text-text-subtle">{option.code}</span>
+                      ) : null}
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words">{option.label}</span>
+                        {option.hint ? <span className="text-small block break-words text-text-subtle">{option.hint}</span> : null}
+                      </span>
+                      {option.value === value ? <Icon name="check" className="mt-1 h-4 w-4 shrink-0 text-brand-1-accent" /> : null}
+                    </button>
+                  ))
+                )}
+                {hasMore ? <p className="text-small border-t border-border-subtle px-3 py-2 text-text-subtle">{t('moreResults')}</p> : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }
@@ -448,11 +568,12 @@ export function PageHeader({
   )
 }
 
-type BadgeTone = 'neutral' | 'positive' | 'warning' | 'negative' | 'brand'
+type BadgeTone = 'neutral' | 'info' | 'positive' | 'warning' | 'negative' | 'brand'
 
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: BadgeTone }) {
   const tones: Record<BadgeTone, string> = {
     neutral: 'border-border-subtle bg-surface-subtle text-text-subtle',
+    info: 'border-info-border bg-info-background text-info-text',
     positive: 'border-success-border bg-success-background text-success-text',
     warning: 'border-warning-border bg-warning-background text-warning-text',
     negative: 'border-danger-border bg-danger-background text-danger-text',
@@ -465,32 +586,9 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
   )
 }
 
+/** Semantic tone for a status code; the map lives in lib/labels.ts. */
 export function statusTone(status: string): BadgeTone {
-  switch (status) {
-    case 'confirmed':
-    case 'completed':
-    case 'posted':
-    case 'paid':
-    case 'approved':
-      return 'positive'
-    case 'draft':
-    case 'quoted':
-    case 'accrued':
-    case 'partially_paid':
-      return 'warning'
-    case 'cancelled':
-    case 'no_show':
-    case 'void':
-    case 'rejected':
-    case 'reversed':
-      return 'negative'
-    case 'open':
-      return 'positive'
-    case 'submitted':
-      return 'warning'
-    default:
-      return 'brand'
-  }
+  return statusToneOf(status)
 }
 
 export function Table({ children }: { children: ReactNode }) {
@@ -530,22 +628,39 @@ export function Td({
 export function EmptyState({
   title,
   hint,
+  description,
   action,
-  icon = 'inbox',
+  icon,
+  variant = 'default',
+  onClear,
 }: {
   title?: string
   hint?: string
+  /** Alias of `hint`. */
+  description?: string
   action?: ReactNode
   icon?: IconName
+  /** `filtered`: the list is empty because of the active filters/search; offers a clear-filters action when `onClear` is passed. */
+  variant?: 'default' | 'filtered'
+  onClear?: () => void
 }) {
   const { t } = useI18n()
+  const filtered = variant === 'filtered'
+  const body = description ?? hint ?? (filtered ? t('noResultsHint') : undefined)
+  const clear =
+    filtered && onClear ? (
+      <Button variant="secondary" icon="x" onClick={onClear}>
+        {t('clearFilters')}
+      </Button>
+    ) : null
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
       <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-surface-subtle text-text-subtle">
-        <Icon name={icon} size={22} />
+        <Icon name={icon ?? (filtered ? 'search' : 'inbox')} size={22} />
       </span>
-      <p className="text-medium font-medium text-text-default">{title ?? t('noData')}</p>
-      {hint ? <p className="text-medium max-w-sm text-text-subtle">{hint}</p> : null}
+      <p className="text-medium font-medium text-text-default">{title ?? (filtered ? t('noResults') : t('noData'))}</p>
+      {body ? <p className="text-medium max-w-sm text-text-subtle">{body}</p> : null}
+      {clear}
       {action}
     </div>
   )
@@ -556,36 +671,153 @@ export function Spinner({ className }: { className?: string }) {
     <span
       aria-hidden="true"
       className={cx(
-        'inline-block h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-action-primary-background',
+        'inline-block h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-action-primary-background motion-reduce:animate-none',
         className,
       )}
     />
   )
 }
 
-export function Loading({ className }: { className?: string }) {
-  const { t } = useI18n()
+/** One grey placeholder bar. Pulses unless the user prefers reduced motion. */
+export function Skeleton({ className }: { className?: string }) {
+  return <span aria-hidden="true" className={cx('block rounded-md bg-surface-subtlest motion-safe:animate-pulse', className)} />
+}
+
+const LINE_WIDTHS = ['w-full', 'w-11/12', 'w-3/4', 'w-5/6', 'w-2/3']
+
+/** Placeholder `<tr>` rows for a `<tbody>`; keeps the table header and column count while data loads. */
+export function SkeletonRows({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div className={cx('flex items-center justify-center px-6 py-16', className)} role="status" aria-live="polite">
-      <span className="sr-only">{t('loading')}</span>
-      <Spinner />
+    <>
+      {Array.from({ length: rows }, (_, row) => (
+        <tr key={row} aria-hidden="true">
+          {Array.from({ length: columns }, (_, col) => (
+            <td key={col} className="border-b border-border-subtle px-4 py-3.5">
+              <Skeleton className={cx('h-4', LINE_WIDTHS[(row + col) % LINE_WIDTHS.length])} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
+/** Placeholder cards for a grid of summary tiles or record cards. */
+export function SkeletonCards({ count = 4, className }: { count?: number; className?: string }) {
+  return (
+    <div aria-hidden="true" className={cx('grid gap-3 sm:grid-cols-2 lg:grid-cols-4', className)}>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-default p-4">
+          <Skeleton className="h-3 w-1/3" />
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      ))}
     </div>
   )
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+type LoadingVariant = 'block' | 'table' | 'cards' | 'form' | 'spinner'
+
+/**
+ * Loading placeholder. The default `block` is a neutral stack of text lines; pass the
+ * variant that matches what is being replaced (`table`, `cards`, `form`) so the layout
+ * does not jump when data arrives. `spinner` keeps the old centred spinner.
+ */
+export function Loading({ className, variant = 'block', rows }: { className?: string; variant?: LoadingVariant; rows?: number }) {
   const { t } = useI18n()
+  let body: ReactNode
+  if (variant === 'spinner') {
+    body = <Spinner />
+  } else if (variant === 'table') {
+    body = (
+      <div aria-hidden="true" className="overflow-hidden rounded-lg border border-border-subtle">
+        <div className="bg-surface-subtle px-4 py-3">
+          <Skeleton className="h-3 w-1/4" />
+        </div>
+        <table className="w-full border-collapse">
+          <tbody>
+            <SkeletonRows rows={rows ?? 5} columns={4} />
+          </tbody>
+        </table>
+      </div>
+    )
+  } else if (variant === 'cards') {
+    body = <SkeletonCards count={rows ?? 4} />
+  } else if (variant === 'form') {
+    body = (
+      <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2">
+        {Array.from({ length: rows ?? 4 }, (_, i) => (
+          <div key={i} className="flex flex-col gap-2">
+            <Skeleton className="h-3 w-1/4" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ))}
+      </div>
+    )
+  } else {
+    body = (
+      <div aria-hidden="true" className="flex flex-col gap-3">
+        {Array.from({ length: rows ?? 3 }, (_, i) => (
+          <Skeleton key={i} className={cx('h-4', LINE_WIDTHS[i % LINE_WIDTHS.length])} />
+        ))}
+      </div>
+    )
+  }
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+    <div
+      className={cx(variant === 'spinner' ? 'flex items-center justify-center px-6 py-16' : 'px-4 py-6', className)}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">{t('loading')}</span>
+      {body}
+    </div>
+  )
+}
+
+/**
+ * Friendly failure panel. Existing callers pass only `message` (from `errorMessage()`); the
+ * original error is recovered from the registry in lib/errors so the headline can be a
+ * translated sentence chosen by HTTP status, with the server's own text under "details".
+ * Callers may also pass `error` directly.
+ */
+export function ErrorState({ message, onRetry, error }: { message: string; onRetry?: () => void; error?: unknown }) {
+  const { t, locale } = useI18n()
+  const source = error ?? recallError(message)
+  const info = source ? describeError(source, locale) : null
+  const title = info ? info.title : t('error')
+  const hint = info ? info.hint : message
+  const detailParts = info
+    ? [info.detail && info.detail !== info.title ? info.detail : null, info.status ? `HTTP ${info.status}` : null, info.code ?? null].filter(Boolean)
+    : []
+  return (
+    <div role="alert" className="flex flex-col items-center gap-3 px-6 py-12 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-danger-background text-danger-text">
         <Icon name="alertTriangle" size={22} />
       </span>
-      <p className="text-medium font-medium text-danger-text">{t('error')}</p>
-      <p className="text-medium max-w-md text-text-subtle">{message}</p>
+      <p className="text-medium font-medium text-danger-text">{title}</p>
+      <p className="text-medium max-w-md text-text-subtle">{hint}</p>
       {onRetry ? (
         <Button variant="secondary" icon="refresh" onClick={onRetry}>
           {t('retry')}
         </Button>
+      ) : null}
+      {info && (detailParts.length > 0 || info.requestId) ? (
+        <details className="text-small max-w-md text-text-subtle">
+          <summary className="cursor-pointer select-none rounded-md px-1 py-0.5 hover:text-text-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus">
+            {t('errorDetails')}
+          </summary>
+          <div className="mt-2 flex flex-col gap-1 text-start" dir="auto">
+            {detailParts.length > 0 ? <p className="break-words">{detailParts.join(' · ')}</p> : null}
+            {info.requestId ? (
+              <p>
+                {t('errorRequestId')}: <bdi dir="ltr" className="font-mono select-all">{info.requestId}</bdi>
+              </p>
+            ) : null}
+          </div>
+        </details>
       ) : null}
     </div>
   )
@@ -658,9 +890,30 @@ export function StatCard({
   )
 }
 
-export function Money({ amountMinor, currency }: { amountMinor?: number | null; currency: string }) {
+/**
+ * The one amount rule: a single nowrap, left-to-right, bidi-isolated run with
+ * the minus sign first (and the danger colour), tabular digits and the full
+ * value in `title`. Inside a `.money-fit` container the font steps down so a
+ * 15-digit value still fits on one line.
+ */
+export function Money({
+  amountMinor,
+  currency,
+  className,
+}: {
+  amountMinor?: number | null
+  currency: string
+  className?: string
+}) {
   const { locale } = useI18n()
-  return <span className="tabular">{formatMoney(amountMinor, currency, locale)}</span>
+  const { negative, segments, text } = formatMoneyParts(amountMinor, currency, locale)
+  return (
+    <span dir="ltr" title={text} style={moneyFitStyle(text)} className={cx('money-run', negative && 'text-danger-text', className)}>
+      {segments.map((segment, index) =>
+        segment.kind === 'currency' ? <bdi key={index} dir="auto">{segment.value}</bdi> : <span key={index}>{segment.value}</span>,
+      )}
+    </span>
+  )
 }
 
 export function Modal({
@@ -716,20 +969,36 @@ export function Pagination({
   page,
   lastPage,
   onChange,
+  total,
+  perPage,
 }: {
   page: number
   lastPage: number
   onChange: (page: number) => void
+  /** Optional: when given with `perPage`, shows a "1-20 of 120" range next to the pager. */
+  total?: number
+  perPage?: number
 }) {
-  const { t } = useI18n()
-  if (lastPage <= 1) return null
+  const { t, locale } = useI18n()
+  const hasRange = total !== undefined && perPage !== undefined && total > 0
+  if (lastPage <= 1 && !hasRange) return null
+  const from = hasRange ? (page - 1) * perPage + 1 : 0
+  const to = hasRange ? Math.min(page * perPage, total) : 0
+  const fmt = (value: number) => new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US').format(value)
   return (
-    <div className="text-medium flex items-center justify-end gap-2 px-4 py-3">
+    <div className="text-medium flex items-center justify-between gap-2 px-4 py-3">
+      <span className="tabular text-small text-text-subtle">
+        {hasRange ? (locale === 'ar' ? `${fmt(from)}-${fmt(to)} من ${fmt(total)}` : `${fmt(from)}-${fmt(to)} of ${fmt(total)}`) : null}
+      </span>
+      {lastPage > 1 ? (
+      <div className="flex items-center gap-2">
       <IconButton icon="chevronLeft" label={t('previousPage')} variant="secondary" disabled={page <= 1} onClick={() => onChange(page - 1)} />
       <span className="tabular px-1 text-text-subtle">
         {page} / {lastPage}
       </span>
       <IconButton icon="chevronRight" label={t('nextPage')} variant="secondary" disabled={page >= lastPage} onClick={() => onChange(page + 1)} />
+      </div>
+      ) : null}
     </div>
   )
 }
@@ -756,6 +1025,39 @@ export function Tabs({
   idPrefix: string
 }) {
   const listRef = useRef<HTMLDivElement>(null)
+  const [overflow, setOverflow] = useState({ start: false, end: false })
+
+  // Edge cues: show a fade + chevron on a side only while more tabs are hidden there.
+  useEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const update = () => {
+      const max = list.scrollWidth - list.clientWidth
+      const offset = Math.abs(list.scrollLeft) // negative in RTL
+      setOverflow((prev) => {
+        const next = { start: offset > 2, end: offset < max - 2 }
+        return prev.start === next.start && prev.end === next.end ? prev : next
+      })
+    }
+    update()
+    list.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      list.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [tabs.length])
+
+  // Keep the active tab visible (scrolls only the tab strip, never the page).
+  useEffect(() => {
+    const list = listRef.current
+    const button = document.getElementById(`${idPrefix}-tab-${active}`)
+    if (!list || !button) return
+    const listRect = list.getBoundingClientRect()
+    const rect = button.getBoundingClientRect()
+    const delta = rect.left + rect.width / 2 - (listRect.left + listRect.width / 2)
+    if (rect.left < listRect.left || rect.right > listRect.right) list.scrollBy({ left: delta })
+  }, [active, idPrefix])
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const current = tabs.findIndex((tab) => tab.id === active)
@@ -767,13 +1069,25 @@ export function Tabs({
     window.requestAnimationFrame(() => document.getElementById(`${idPrefix}-tab-${tabs[next].id}`)?.focus())
   }
 
+  const fade = 'pointer-events-none absolute inset-y-px z-10 flex w-9 items-center from-surface-default via-surface-default/80 to-transparent text-text-subtle'
   return (
+    <div className="no-print relative mb-6">
+    {overflow.start ? (
+      <span aria-hidden="true" className={cx(fade, 'start-px justify-start rounded-s-16 bg-gradient-to-r ps-1 rtl:bg-gradient-to-l')}>
+        <Icon name="chevronLeft" className="h-4 w-4 rtl:rotate-180" />
+      </span>
+    ) : null}
+    {overflow.end ? (
+      <span aria-hidden="true" className={cx(fade, 'end-px justify-end rounded-e-16 bg-gradient-to-l pe-1 rtl:bg-gradient-to-r')}>
+        <Icon name="chevronRight" className="h-4 w-4 rtl:rotate-180" />
+      </span>
+    ) : null}
     <div
       ref={listRef}
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className="no-print mb-6 flex gap-1 overflow-x-auto rounded-16 border border-border-subtle bg-surface-default p-1 shadow-1"
+      className="flex gap-1 overflow-x-auto rounded-16 border border-border-subtle bg-surface-default p-1 shadow-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((tab) => {
         const selected = tab.id === active
@@ -797,6 +1111,7 @@ export function Tabs({
           </button>
         )
       })}
+    </div>
     </div>
   )
 }

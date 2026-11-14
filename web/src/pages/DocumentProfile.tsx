@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { DetailGrid, DetailItem, ProfileHeader, ProfileStat } from '../components/profile'
 import { Badge, Card, CardHeader, ErrorState, Loading, Money, Table, Td, Th, statusTone } from '../components/ui'
+import { RecordActions } from '../components/RecordActions'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDate, formatDateTime } from '../lib/format'
@@ -63,6 +64,7 @@ export default function DocumentProfile() {
         icon="clipboardCheck"
         backTo="/documents"
         backLabel={t('vouchers')}
+        actions={<RecordActions apiBase="/accounting-documents" page="/documents" id={doc.id} status={doc.status} submitPermission="documents.create" approvePermission="documents.approve" detailKey={['accounting-document', id]} />}
         badge={<Badge tone={statusTone(doc.status)}>{statusLabel(doc.status, locale)}</Badge>}
       />
 

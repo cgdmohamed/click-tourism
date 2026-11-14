@@ -1,9 +1,12 @@
+import { DateField } from '../components/DateField'
 import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
-import { formatDate, toDecimal, toMinor, todayISO } from '../lib/format'
+import { formatDate, formatMoney, toDecimal, toMinor, todayISO } from '../lib/format'
 import { usePartyOptions } from '../lib/usePartyOptions'
 import { useRemoteOptions } from '../lib/useRemoteOptions'
 import type { Paginated, Supplier, SupplierObligation, SupplierPayment } from '../lib/types'
@@ -12,7 +15,6 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   Input,
@@ -31,6 +33,10 @@ import { localizedName } from '../lib/names'
 import { statusLabel as statusLabelOf } from '../lib/labels'
 import { ReasonModal } from '../components/ReasonModal'
 import { ApplyToInvoiceModal, type ApplyTarget } from '../components/ApplyToInvoiceModal'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
+import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 
 type CashAccount = { id: string; name_ar: string; name_en: string; currency: string; type: 'cash' | 'bank' }
 
@@ -40,9 +46,9 @@ type IssuedInvoice = { id: string; number: string; currency: string; total_minor
 
 const invoiceToOption = (invoice: IssuedInvoice): SelectOption => ({ value: invoice.id, label: invoice.number })
 
-const obligationToOption = (obligation: SupplierObligation): SelectOption => ({
+const obligationToOption = (locale: 'ar' | 'en') => (obligation: SupplierObligation): SelectOption => ({
   value: obligation.id,
-  label: `${obligation.invoice_reference ?? obligation.id} — ${toDecimal(obligation.balance_minor, obligation.currency)} ${obligation.currency}`,
+  label: `${obligation.invoice_reference ?? obligation.id} — ${formatMoney(obligation.balance_minor, obligation.currency, locale)}`,
 })
 
 const emptyObligationForm = {
@@ -87,22 +93,75 @@ export default function SupplierSettlements() {
 
   const [obligationPage, setObligationPage] = useState(1)
   const [paymentPage, setPaymentPage] = useState(1)
+  const [obligationSearch, setObligationSearch] = useState('')
+  const currencyCodes = useActiveCurrencyCodes()
+  const [searchParams] = useSearchParams()
+  const urlSupplier = searchParams.get('supplier_id') ?? ''
+  const urlName = searchParams.get('party_name') ?? ''
+  useDeepLinkNew(can('supplier_payments.create'), (value, params) => {
+    if (value !== 'payment') return
+    setPaymentForm((current) => ({ ...current, supplier_id: params.get('supplier_id') ?? '' }))
+    setPaymentOpen(true)
+  })
+
+  const obligationFilters = useFilters(
+    [
+      { key: 'supplier_id', label: t('supplier'), type: 'custom', render: (value, set) => <PartyFilterField kind="supplier" value={value} set={set} /> },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['open', 'partially_paid', 'paid'].map((value) => ({ value, label: statusLabelOf(value, locale) })),
+        allLabel: L('كل الحالات', 'All statuses'),
+      },
+      {
+        key: 'currency',
+        label: t('currency'),
+        type: 'select',
+        options: currencyCodes.map((code) => ({ value: code, label: code })),
+        allLabel: L('كل العملات', 'All currencies'),
+      },
+    ],
+    { onApply: () => setObligationPage(1), initial: urlSupplier ? { supplier_id: urlSupplier } : undefined, initialLabels: urlSupplier && urlName ? { supplier_id: urlName } : undefined },
+  )
+
+  const paymentFilters = useFilters(
+    [
+      { key: 'supplier_id', label: t('supplier'), type: 'custom', render: (value, set) => <PartyFilterField kind="supplier" value={value} set={set} /> },
+      { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
+      { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
+    ],
+    { onApply: () => setPaymentPage(1), initial: urlSupplier ? { supplier_id: urlSupplier } : undefined, initialLabels: urlSupplier && urlName ? { supplier_id: urlName } : undefined },
+  )
 
   const obligationsQuery = useQuery({
-    queryKey: ['supplier-obligations', 'list', obligationPage, activeBranch?.id],
+    queryKey: ['supplier-obligations', 'list', obligationPage, obligationFilters.applied, obligationSearch, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<SupplierObligation>>('/supplier-obligations', {
-        params: { page: obligationPage, per_page: 20 },
+        params: {
+          page: obligationPage,
+          per_page: 20,
+          supplier_id: obligationFilters.applied.supplier_id || undefined,
+          status: obligationFilters.applied.status || undefined,
+          currency: obligationFilters.applied.currency || undefined,
+          search: obligationSearch || undefined,
+        },
       })
       return data
     },
   })
 
   const paymentsQuery = useQuery({
-    queryKey: ['supplier-payments', 'list', paymentPage, activeBranch?.id],
+    queryKey: ['supplier-payments', 'list', paymentPage, paymentFilters.applied, activeBranch?.id],
     queryFn: async () => {
       const { data } = await api.get<Paginated<SupplierPayment>>('/supplier-payments', {
-        params: { page: paymentPage, per_page: 20 },
+        params: {
+          page: paymentPage,
+          per_page: 20,
+          supplier_id: paymentFilters.applied.supplier_id || undefined,
+          from: paymentFilters.applied.from || undefined,
+          to: paymentFilters.applied.to || undefined,
+        },
       })
       return data
     },
@@ -173,7 +232,7 @@ export default function SupplierSettlements() {
     endpoint: '/supplier-obligations',
     keyPrefix: 'supplier-obligations',
     params: paymentObligationParams,
-    toOption: obligationToOption,
+    toOption: obligationToOption(locale),
     value: paymentForm.supplier_obligation_id,
     enabled: paymentForm.supplier_id !== '',
   })
@@ -187,11 +246,64 @@ export default function SupplierSettlements() {
     endpoint: '/supplier-obligations',
     keyPrefix: 'supplier-obligations',
     params: applyObligationParams,
-    toOption: obligationToOption,
+    toOption: obligationToOption(locale),
     value: applyForm.supplier_obligation_id,
     enabled: Boolean(applyPayment?.supplier_id),
   })
   const openObligations = applyObligationPicker.rows
+
+  const obligationActions = (obligation: SupplierObligation) => (
+    <>
+                      {obligation.accounting_status !== 'recognized' && obligation.paid_minor === 0 && can('supplier_obligations.create') ? (
+                        <Button variant="secondary" onClick={() => { setError(''); setRecognizeTarget(obligation); setRecognizeInvoiceId('') }}>
+                          {L('ربط فاتورة مُرحّلة', 'Link posted invoice')}
+                        </Button>
+                      ) : null}
+                      {obligation.accounting_status === 'recognized' && obligation.balance_minor > 0 && can('supplier_payments.create') ? (
+                        <Button variant="secondary" onClick={() => startPayment(obligation)}>
+                          {t('pay')}
+                        </Button>
+                      ) : null}
+    </>
+  )
+
+  const paymentActions = (payment: SupplierPayment) => (
+    <>
+                      {payment.unallocated_minor > 0 && can('supplier_payments.create') ? (
+                        <Button variant="secondary" onClick={() => startApply(payment)}>
+                          {t('applyAdvance')}
+                        </Button>
+                      ) : null}
+                      {payment.unallocated_minor > 0 && can('supplier_payments.create') && payment.supplier?.id ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() =>
+                            setInvoiceTarget({
+                              kind: 'supplier',
+                              paymentId: payment.id,
+                              paymentLabel: supplierName(payment.supplier),
+                              partyId: payment.supplier?.id ?? '',
+                              currency: payment.currency,
+                              availableMinor: payment.unallocated_minor,
+                            })
+                          }
+                        >
+                          {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
+                        </Button>
+                      ) : null}
+                      {payment.status === 'posted' && can('supplier_payments.reverse') ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setCancelError('')
+                            setCancelPayment(payment)
+                          }}
+                        >
+                          {locale === 'ar' ? 'إلغاء الدفعة' : 'Cancel payment'}
+                        </Button>
+                      ) : null}
+    </>
+  )
 
   const supplierName = (supplier?: Supplier | null) =>
     supplier ? (localizedName(supplier, locale)) : '—'
@@ -394,12 +506,43 @@ export default function SupplierSettlements() {
           <div className="border-b border-border-subtle px-5 py-3 text-small text-text-subtle">
             {L('الالتزام يبدأ كسجل تشغيلي. يُعترف بالدين فقط عند ربطه بفاتورة مورد صادرة ومُرحّلة؛ لن ينشئ الربط قيدًا محاسبيًا ثانيًا.', 'Obligations start operational. AP is recognized only after linking an issued, posted supplier invoice; linking never posts a second journal.')}
           </div>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+            <Input
+              value={obligationSearch}
+              onChange={(event) => { setObligationSearch(event.target.value); setObligationPage(1) }}
+              placeholder={t('search')}
+              aria-label={t('search')}
+              className="max-w-xs"
+            />
+            <FilterControl state={obligationFilters} />
+          </div>
           {obligationsQuery.isLoading ? <Loading /> : null}
           {obligationsQuery.isError ? (
             <ErrorState message={errorMessage(obligationsQuery.error)} onRetry={() => void obligationsQuery.refetch()} />
           ) : null}
-          {obligationsQuery.data && obligations.length === 0 ? <EmptyState /> : null}
+          {obligationsQuery.data && obligations.length === 0 ? <ListEmpty filters={obligationFilters} search={obligationSearch} onClearSearch={() => setObligationSearch('')} /> : null}
           {obligations.length > 0 ? (
+            <>
+            <MobileCards items={obligations} getKey={(obligation) => obligation.id} label={L('التزامات الموردين', 'Supplier obligations')}>
+              {(obligation) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-medium font-semibold">{supplierName(obligation.supplier)}</span>
+                    <Badge tone={statusTone(obligation.status)}>{statusLabel(obligation.status)}</Badge>
+                  </div>
+                  <p className="text-small text-text-subtle">
+                    <span dir="ltr">{obligation.invoice_reference ?? '—'}</span> · {obligation.accounting_status === 'recognized' ? L('مُعترف به محاسبيًا', 'Recognized in GL') : L('غير مُرحّل', 'Not posted')}
+                  </p>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('amount')}>{formatMoney(obligation.amount_minor, obligation.currency, locale)}</CardField>
+                    <CardField label={t('paidAmount')}>{formatMoney(obligation.paid_minor, obligation.currency, locale)}</CardField>
+                    <CardField label={t('remaining')}>{formatMoney(obligation.balance_minor, obligation.currency, locale)}</CardField>
+                  </dl>
+                  <div className="flex flex-wrap gap-2">{obligationActions(obligation)}</div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -421,31 +564,22 @@ export default function SupplierSettlements() {
                       <Badge tone={statusTone(obligation.status)}>{statusLabel(obligation.status)}</Badge>
                       <div className="mt-1 text-small text-text-subtle">{obligation.accounting_status === 'recognized' ? L('مُعترف به محاسبيًا', 'Recognized in GL') : L('غير مُرحّل', 'Not posted')}</div>
                     </Td>
-                    <Td className="text-end tabular">
-                      {toDecimal(obligation.amount_minor, obligation.currency)} {obligation.currency}
+                    <Td className="whitespace-nowrap text-end tabular">
+                      {formatMoney(obligation.amount_minor, obligation.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
-                      {toDecimal(obligation.paid_minor, obligation.currency)} {obligation.currency}
+                    <Td className="whitespace-nowrap text-end tabular">
+                      {formatMoney(obligation.paid_minor, obligation.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
-                      {toDecimal(obligation.balance_minor, obligation.currency)} {obligation.currency}
+                    <Td className="whitespace-nowrap text-end tabular">
+                      {formatMoney(obligation.balance_minor, obligation.currency, locale)}
                     </Td>
-                    <Td>
-                      {obligation.accounting_status !== 'recognized' && obligation.paid_minor === 0 && can('supplier_obligations.create') ? (
-                        <Button variant="secondary" onClick={() => { setError(''); setRecognizeTarget(obligation); setRecognizeInvoiceId('') }}>
-                          {L('ربط فاتورة مُرحّلة', 'Link posted invoice')}
-                        </Button>
-                      ) : null}
-                      {obligation.accounting_status === 'recognized' && obligation.balance_minor > 0 && can('supplier_payments.create') ? (
-                        <Button variant="secondary" onClick={() => startPayment(obligation)}>
-                          {t('pay')}
-                        </Button>
-                      ) : null}
-                    </Td>
+                    <Td>{obligationActions(obligation)}</Td>
                   </tr>
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
+            </>
           ) : null}
           <Pagination
             page={obligationsQuery.data?.meta.current_page ?? 1}
@@ -455,12 +589,34 @@ export default function SupplierSettlements() {
         </Card>
       ) : (
         <Card>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+            <FilterControl state={paymentFilters} />
+          </div>
           {paymentsQuery.isLoading ? <Loading /> : null}
           {paymentsQuery.isError ? (
             <ErrorState message={errorMessage(paymentsQuery.error)} onRetry={() => void paymentsQuery.refetch()} />
           ) : null}
-          {paymentsQuery.data && payments.length === 0 ? <EmptyState /> : null}
+          {paymentsQuery.data && payments.length === 0 ? <ListEmpty filters={paymentFilters} /> : null}
           {payments.length > 0 ? (
+            <>
+            <MobileCards items={payments} getKey={(payment) => payment.id} label={t('supplierPayments')}>
+              {(payment) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-medium font-semibold">{supplierName(payment.supplier)}</span>
+                    <Badge tone={statusTone(payment.status)}>{statusLabelOf(payment.status, locale)}</Badge>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3">
+                    <CardField label={t('date')}>{formatDate(payment.paid_at, locale)}</CardField>
+                    <CardField label={t('amount')}>{formatMoney(payment.amount_minor, payment.currency, locale)}</CardField>
+                    <CardField label={t('applied')}>{formatMoney(payment.applied_minor, payment.currency, locale)}</CardField>
+                    <CardField label={t('unapplied')}>{formatMoney(payment.unallocated_minor, payment.currency, locale)}</CardField>
+                  </dl>
+                  <div className="flex flex-wrap gap-2">{paymentActions(payment)}</div>
+                </>
+              )}
+            </MobileCards>
+            <TableOnly>
             <Table>
               <thead>
                 <tr>
@@ -481,54 +637,22 @@ export default function SupplierSettlements() {
                     <Td>
                       <Badge tone={statusTone(payment.status)}>{statusLabelOf(payment.status, locale)}</Badge>
                     </Td>
-                    <Td className="text-end tabular">
-                      {toDecimal(payment.amount_minor, payment.currency)} {payment.currency}
+                    <Td className="whitespace-nowrap text-end tabular">
+                      {formatMoney(payment.amount_minor, payment.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
-                      {toDecimal(payment.applied_minor, payment.currency)} {payment.currency}
+                    <Td className="whitespace-nowrap text-end tabular">
+                      {formatMoney(payment.applied_minor, payment.currency, locale)}
                     </Td>
-                    <Td className="text-end tabular">
-                      {toDecimal(payment.unallocated_minor, payment.currency)} {payment.currency}
+                    <Td className="whitespace-nowrap text-end tabular">
+                      {formatMoney(payment.unallocated_minor, payment.currency, locale)}
                     </Td>
-                    <Td>
-                      {payment.unallocated_minor > 0 && can('supplier_payments.create') ? (
-                        <Button variant="secondary" onClick={() => startApply(payment)}>
-                          {t('applyAdvance')}
-                        </Button>
-                      ) : null}
-                      {payment.unallocated_minor > 0 && can('supplier_payments.create') && payment.supplier?.id ? (
-                        <Button
-                          variant="ghost"
-                          onClick={() =>
-                            setInvoiceTarget({
-                              kind: 'supplier',
-                              paymentId: payment.id,
-                              paymentLabel: supplierName(payment.supplier),
-                              partyId: payment.supplier?.id ?? '',
-                              currency: payment.currency,
-                              availableMinor: payment.unallocated_minor,
-                            })
-                          }
-                        >
-                          {locale === 'ar' ? 'تطبيق على فاتورة' : 'Apply to invoice'}
-                        </Button>
-                      ) : null}
-                      {payment.status === 'posted' && can('supplier_payments.reverse') ? (
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            setCancelError('')
-                            setCancelPayment(payment)
-                          }}
-                        >
-                          {locale === 'ar' ? 'إلغاء الدفعة' : 'Cancel payment'}
-                        </Button>
-                      ) : null}
-                    </Td>
+                    <Td>{paymentActions(payment)}</Td>
                   </tr>
                 ))}
               </tbody>
             </Table>
+            </TableOnly>
+            </>
           ) : null}
           <Pagination
             page={paymentsQuery.data?.meta.current_page ?? 1}
@@ -694,7 +818,7 @@ export default function SupplierSettlements() {
             </Select>
           </Field>
           <Field label={t('date')} required>
-            <Input type="date" value={paymentForm.paid_at} onChange={(event) => setPaymentForm({ ...paymentForm, paid_at: event.target.value })} dir="ltr" />
+            <DateField value={paymentForm.paid_at} onChange={(event) => setPaymentForm({ ...paymentForm, paid_at: event.target.value })} dir="ltr" />
           </Field>
         </div>
         {error ? <p className="mt-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
@@ -724,7 +848,7 @@ export default function SupplierSettlements() {
               <Input value={supplierName(applyPayment.supplier)} readOnly />
             </Field>
             <Field label={t('unapplied')}>
-              <Input value={`${toDecimal(applyPayment.unallocated_minor, applyPayment.currency)} ${applyPayment.currency}`} readOnly dir="ltr" />
+              <Input value={`${formatMoney(applyPayment.unallocated_minor, applyPayment.currency, locale)}`} readOnly dir="ltr" />
             </Field>
             <Field label={t('obligation')} required hint={openObligations.length === 0 ? t('noOpenObligations') : undefined}>
               <SearchableSelect
