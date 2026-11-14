@@ -77,4 +77,19 @@ class CollectionOpenInvoicesTest extends TestCase
         Sanctum::actingAs($nobody);
         $this->fetch('/api/v1/collections/open-invoices?customer_id='.$this->customer()->public_id)->assertForbidden();
     }
+
+    public function test_a_user_without_a_branch_assignment_gets_nothing_from_any_branch(): void
+    {
+        $customer = $this->customer();
+        $this->invoice($customer, 'issued', 700);
+
+        $unassigned = User::factory()->create();
+        $unassigned->givePermissionTo('payments.create');
+        Sanctum::actingAs($unassigned);
+
+        // With and without a branch header, an unassigned user is refused rather than shown every branch.
+        $this->getJson('/api/v1/collections/open-invoices?customer_id='.$customer->public_id)->assertForbidden();
+        $this->withHeaders(['X-Branch-Id' => $this->branch->public_id])
+            ->getJson('/api/v1/collections/open-invoices?customer_id='.$customer->public_id)->assertForbidden();
+    }
 }

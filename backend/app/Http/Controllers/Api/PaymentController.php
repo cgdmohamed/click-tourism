@@ -52,11 +52,12 @@ class PaymentController extends ApiController
             'currency' => ['nullable', 'string', 'size:3'],
             'search' => ['nullable', 'string', 'max:100'],
         ]);
-        $branch = $this->branch();
+        // Fail closed: a user with no branch assignment sees no operational data (ADR-0005).
+        $branch = $this->branchOrFail();
         $customerId = Customer::query()->where('public_id', $data['customer_id'])->value('id');
 
         $invoices = Invoice::query()
-            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+            ->where('branch_id', $branch->id)
             ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
             ->where('party_type', 'customer')
             ->where('party_id', $customerId ?? 0)
