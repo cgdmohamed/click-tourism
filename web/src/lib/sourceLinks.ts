@@ -28,9 +28,9 @@ export function sourceDocumentLink(line: SourceLinkInput): SourceLink | null {
     case 'supplier_payment':
       return { href: '/supplier-settlements' }
     case 'expense':
-      return { href: '/expenses', permission: 'expenses.view' }
+      return { href: publicId ? `/expenses/${publicId}` : '/expenses', permission: 'expenses.view' }
     case 'accounting_document':
-      return { href: '/documents', permission: 'documents.view' }
+      return { href: publicId ? `/documents/${publicId}` : '/documents', permission: 'documents.view' }
     case 'accounting_schedule':
       return { href: '/schedules', permission: 'schedules.view' }
     case 'fixed_asset':

@@ -247,6 +247,214 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /auth/sessions:
+    get:
+      tags: [Auth]
+      summary: The signed-in user's own devices (login tokens), newest use first (GAP-CORE-04)
+      description: Only the caller's own login tokens (not MCP tokens, never another user's). No token value or hash is returned.
+      responses:
+        '200':
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        device: { type: string }
+                        created_at: { type: string, format: date-time }
+                        last_used_at: { type: [string, 'null'], format: date-time }
+                        expires_at: { type: [string, 'null'], format: date-time }
+                        current: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Auth]
+      summary: Sign every other device out; this session and MCP tokens stay (audited)
+      responses:
+        '200': { description: 'data.revoked = number of devices signed out' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/sessions/{session}:
+    delete:
+      tags: [Auth]
+      summary: Sign one of my own devices out (audited); 404 for anyone else's or an MCP token
+      parameters:
+        - { name: session, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'data.revoked = 1, data.current = whether it was this session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /exports:
+    get:
+      tags: [Reports]
+      summary: The signed-in user's recent background exports in the active branch (ADR-0025, GAP-RPT-02)
+      responses:
+        '200':
+          description: Newest first, at most 20
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExportJob' }
+    post:
+      tags: [Reports]
+      summary: Queue a report export that runs in the background (permission `reports.export`)
+      description: |
+        Re-runs the normal `/reports/{report}/export` route as the caller when a queue worker picks the job up, so permissions, branch scope, filters and the `report.exported` audit row are those of the synchronous export; only the row cap is higher (`EXPORTS_ASYNC_MAX_ROWS`, default 200000). `params` are the report's own filters, validated by that route when the job runs, so a bad filter makes the job `failed` with the route's message. The file exists only when the job `succeeded`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report, format]
+              properties:
+                report: { type: string, enum: [trial-balance, general-ledger, income-statement, balance-sheet, aging, aging-reconciliation, party-statement, profitability, sales, commissions, tax, cost-center-pl, cost-center-unallocated] }
+                format: { type: string, enum: [csv, xlsx, pdf] }
+                language: { type: string, enum: [ar, en, bilingual] }
+                params: { type: object, additionalProperties: { type: string }, description: 'The report filters (from, to, account, currency, ...)' }
+      responses:
+        '201':
+          description: The queued job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ExportJob' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 'Unknown report or format' }
+
+  /exports/{export}:
+    get:
+      tags: [Reports]
+      summary: Status of one of my exports (404 for anyone else's)
+      parameters:
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ExportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Reports]
+      summary: Remove a finished export and its file (409 while it is queued or running)
+      parameters:
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Still running' }
+
+  /exports/{export}/download:
+    get:
+      tags: [Reports]
+      summary: Download the file of a succeeded export (audited as `export.downloaded`)
+      parameters:
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'The complete file (CSV, XLSX or PDF)' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Not ready (code export_not_ready)' }
+        '410': { description: 'Expired (code export_expired); run the export again' }
+
+  /report-schedules:
+    get:
+      tags: [Reports]
+      summary: The signed-in user's scheduled report e-mails in the active branch (ADR-0026, permission `reports.schedule`)
+      responses:
+        '200':
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReportSchedule' }
+    post:
+      tags: [Reports]
+      summary: Create a schedule that e-mails a report file to up to 10 addresses
+      description: |
+        Runs as the creator (their permissions and branch) at 06:00 server time through the SMTP settings of the environment. A `period` preset (`yesterday`, `previous_week`, `previous_month`, `month_to_date`, `year_to_date`, `last_30_days`) sets `from`, `to` and `as_of` at each run; fixed filters go in `params`. Nothing is mailed when the export fails or while the mailer is `log`, `array` or `null` (`GET /feature-flags` exposes `mail_configured`). Five consecutive failures pause the schedule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report, format, frequency, recipients]
+              properties:
+                name: { type: string, maxLength: 100 }
+                report: { type: string }
+                format: { type: string, enum: [csv, xlsx, pdf] }
+                frequency: { type: string, enum: [daily, weekly, monthly] }
+                day: { type: integer, minimum: 1, maximum: 28, description: 'weekly: 1 (Monday) to 7; monthly: 1 to 28' }
+                period: { type: string, enum: [yesterday, previous_week, previous_month, month_to_date, year_to_date, last_30_days] }
+                params: { type: object, additionalProperties: { type: string } }
+                recipients: { type: array, minItems: 1, maxItems: 10, items: { type: string, format: email } }
+      responses:
+        '201':
+          description: The schedule
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ReportSchedule' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 'Invalid report, period, frequency or e-mail address' }
+
+  /report-schedules/{schedule}:
+    patch:
+      tags: [Reports]
+      summary: Change or pause one of my schedules (re-activating resets the failure count)
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'The schedule' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Reports]
+      summary: Delete one of my schedules
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /report-schedules/{schedule}/run:
+    post:
+      tags: [Reports]
+      summary: Send the report now; the outcome is in `last_status` (sent, failed, mail_not_configured)
+      parameters:
+        - { name: schedule, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The schedule after the run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ReportSchedule' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /assistant/chat:
     post:
       tags: [Auth]
@@ -5976,6 +6184,39 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    ReportSchedule:
+      type: object
+      description: 'A report e-mailed on a schedule (ADR-0026)'
+      properties:
+        id: { type: string }
+        name: { type: [string, 'null'] }
+        report: { type: string }
+        format: { type: string, enum: [csv, xlsx, pdf] }
+        params: { type: object, additionalProperties: { type: string } }
+        period: { type: [string, 'null'] }
+        frequency: { type: string, enum: [daily, weekly, monthly] }
+        day: { type: [integer, 'null'] }
+        recipients: { type: array, items: { type: string } }
+        is_active: { type: boolean }
+        next_run_at: { type: [string, 'null'], format: date-time }
+        last_run_at: { type: [string, 'null'], format: date-time }
+        last_status: { type: [string, 'null'], enum: [sent, failed, mail_not_configured, null] }
+        last_error: { type: [string, 'null'] }
+    ExportJob:
+      type: object
+      description: 'A background report export (ADR-0025)'
+      properties:
+        id: { type: string }
+        report: { type: string }
+        format: { type: string, enum: [csv, xlsx, pdf] }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        file_name: { type: [string, 'null'] }
+        size_bytes: { type: [integer, 'null'] }
+        error: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, 'null'], format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
     AssistantActionCard:
       type: object
       description: 'An action the assistant prepared (ADR-0023)'

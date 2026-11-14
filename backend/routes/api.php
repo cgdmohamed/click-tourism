@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\DemoStatusController;
 use App\Http\Controllers\Api\DepreciationRunController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\ExportJobController;
 use App\Http\Controllers\Api\FeatureFlagController;
 use App\Http\Controllers\Api\FiscalPeriodController;
 use App\Http\Controllers\Api\FixedAssetCategoryController;
@@ -47,8 +48,10 @@ use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\PipelineReportController;
 use App\Http\Controllers\Api\RefundController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\ReportScheduleController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SearchController;
+use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierSettlementController;
@@ -79,6 +82,10 @@ Route::prefix('v1')->group(function () {
         Route::get('auth/me', [AuthController::class, 'me']);
         Route::patch('auth/me', [AuthController::class, 'update']);
         Route::post('auth/logout', [AuthController::class, 'logout']);
+        // GAP-CORE-04: the user's own devices (login tokens).
+        Route::get('auth/sessions', [SessionController::class, 'index']);
+        Route::delete('auth/sessions', [SessionController::class, 'destroyOthers']);
+        Route::delete('auth/sessions/{session}', [SessionController::class, 'destroy'])->whereNumber('session');
         Route::get('feature-flags', [FeatureFlagController::class, 'show']);
 
         // MCP gateway tokens (ADR-0016). Listing/revoking need no `mcp.use` so a user who lost it
@@ -405,6 +412,18 @@ Route::prefix('v1')->group(function () {
         Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->middleware(['permission:invoices.view', 'throttle:report-exports']);
 
         Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])->middleware('permission:reports.view');
+        // ADR-0025 (GAP-RPT-02): background exports, owner-only.
+        Route::get('exports', [ExportJobController::class, 'index'])->middleware('permission:reports.export');
+        Route::post('exports', [ExportJobController::class, 'store'])->middleware(['permission:reports.export', 'throttle:report-exports', 'idempotent']);
+        Route::get('exports/{export}', [ExportJobController::class, 'show'])->middleware('permission:reports.export');
+        Route::get('exports/{export}/download', [ExportJobController::class, 'download'])->middleware(['permission:reports.export', 'throttle:report-exports']);
+        Route::delete('exports/{export}', [ExportJobController::class, 'destroy'])->middleware('permission:reports.export');
+        // ADR-0026 (GAP-RPT-06): reports e-mailed on a schedule, owner-only.
+        Route::get('report-schedules', [ReportScheduleController::class, 'index'])->middleware('permission:reports.schedule');
+        Route::post('report-schedules', [ReportScheduleController::class, 'store'])->middleware('permission:reports.schedule');
+        Route::patch('report-schedules/{schedule}', [ReportScheduleController::class, 'update'])->middleware('permission:reports.schedule');
+        Route::delete('report-schedules/{schedule}', [ReportScheduleController::class, 'destroy'])->middleware('permission:reports.schedule');
+        Route::post('report-schedules/{schedule}/run', [ReportScheduleController::class, 'run'])->middleware(['permission:reports.schedule', 'throttle:report-exports']);
         Route::get('reports/trial-balance/export', [ReportController::class, 'exportTrialBalance'])->middleware(['permission:reports.export', 'throttle:report-exports']);
         Route::get('reports/general-ledger', [ReportController::class, 'generalLedger'])->middleware('permission:reports.view');
         Route::get('reports/general-ledger/export', [ReportController::class, 'exportGeneralLedger'])->middleware(['permission:reports.export', 'throttle:report-exports']);

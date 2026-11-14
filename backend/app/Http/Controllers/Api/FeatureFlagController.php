@@ -33,6 +33,8 @@ class FeatureFlagController extends ApiController
             'assistant_key_configured' => $assistant->keyConfigured(),
             'attachments_extraction_enabled' => app(ExtractionService::class)->available(),
             'assistant_key_source' => $assistant->keySource(),
+            // ADR-0026: scheduled reports are mailed only when the server environment has a real mailer.
+            'mail_configured' => ! in_array((string) config('mail.default'), ['log', 'array', 'null', ''], true),
             'assistant_accepted' => $assistant->accepted(),
             'assistant_model' => $assistant->model(),
             'assistant_redact_pii' => $settings->bool('assistant', 'redact_pii', true),

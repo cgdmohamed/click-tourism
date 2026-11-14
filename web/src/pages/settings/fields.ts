@@ -40,7 +40,7 @@ export function pendingChanges(
 }
 
 /** Settings tabs in display order, with the settings groups each one edits. */
-export const SETTINGS_TABS = ['general', 'currencies', 'accounting', 'tax', 'crm', 'branches', 'integrations', 'assistant', 'decisions'] as const
+export const SETTINGS_TABS = ['general', 'currencies', 'accounting', 'tax', 'crm', 'branches', 'integrations', 'assistant', 'mcp', 'decisions'] as const
 export type SettingsTab = (typeof SETTINGS_TABS)[number]
 
 /** Tabs that edit settings key/values through the shared draft and Save button. */

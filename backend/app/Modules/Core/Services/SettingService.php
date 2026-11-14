@@ -132,7 +132,8 @@ class SettingService
             'fx_revaluation_auto_reverse' => 'true',
             // PENDING ACCOUNTANT APPROVAL (DEC-025): manager approval is the
             // guarded product policy; zero margin warns but does not auto-post.
-            'negative_margin_requires_approval' => 'true',
+            // DEC-025 (owner 2026-11-14): a negative margin only warns; set 'true' to require manager approval again.
+            'negative_margin_requires_approval' => 'false',
             'zero_margin_policy' => 'warn',
             // PENDING ACCOUNTANT APPROVAL: customer credit limit enforcement.
             // off = ignore, warn = allow + audit + warning, block = refuse

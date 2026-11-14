@@ -34,6 +34,8 @@ import Profile from './pages/Profile'
 import Treasury from './pages/Treasury'
 import Commissions from './pages/Commissions'
 import Expenses from './pages/Expenses'
+import ExpenseProfile from './pages/ExpenseProfile'
+import DocumentProfile from './pages/DocumentProfile'
 import OpeningBalances from './pages/OpeningBalances'
 import Periods from './pages/Periods'
 import Invoices from './pages/Invoices'
@@ -70,12 +72,14 @@ export default function App() {
                   <Route path="journal" element={<Journal />} />
                   <Route path="treasury" element={<Treasury />} />
                   <Route path="expenses" element={<Expenses />} />
+                  <Route path="expenses/:id" element={<ExpenseProfile />} />
                   <Route path="commissions" element={<Commissions />} />
                   <Route path="opening-balances" element={<OpeningBalances />} />
                   <Route path="periods" element={<Periods />} />
                   <Route path="invoices" element={<Invoices />} />
                   <Route path="invoices/:id" element={<InvoiceProfile />} />
                   <Route path="documents" element={<Documents />} />
+                  <Route path="documents/:id" element={<DocumentProfile />} />
                   <Route path="reconciliation" element={<Reconciliation />} />
                   <Route path="schedules" element={<Schedules />} />
                   <Route path="fixed-assets" element={<FixedAssets />} />

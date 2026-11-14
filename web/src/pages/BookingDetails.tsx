@@ -25,6 +25,7 @@ import {
   ErrorState,
   statusTone,
 } from '../components/ui'
+import { AiBadge } from '../components/AiBadge'
 
 const CANCELLABLE = ['draft', 'quoted', 'confirmed', 'in_progress', 'completed']
 
@@ -263,6 +264,7 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
               <Info label={ar ? 'العميل' : 'Customer'}>{(ar ? booking.customer?.name_ar : booking.customer?.name_en) ?? booking.customer?.name_ar ?? '—'}</Info>
               <Info label={ar ? 'الحالة' : 'Status'}>
                 <Badge tone={statusTone(booking.status)}>{statusLabel(booking.status, locale)}</Badge>
+                <AiBadge via={booking.created_via} />
               </Info>
               <Info label={ar ? 'العملة / سعر الصرف' : 'Currency / FX rate'}>
                 <span dir="ltr" className="tabular">

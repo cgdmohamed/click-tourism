@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
@@ -233,7 +234,9 @@ export default function Expenses() {
                   <tr key={expense.id}>
                     <Td className="tabular">{formatDate(expense.expense_date, locale)}</Td>
                     <Td className="tabular">
-                      {expense.number}
+                      <Link to={`/expenses/${expense.id}`} className="font-medium text-brand-1-accent hover:underline">
+                        {expense.number}
+                      </Link>
                       <AiBadge via={expense.created_via} />
                     </Td>
                     <Td>{catName(expense.category)}</Td>

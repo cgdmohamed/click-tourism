@@ -609,6 +609,7 @@ export type InvoiceApplicationRecord = {
 export type InvoiceRecord = {
   applications?: InvoiceApplicationRecord[]
   id: string
+  created_via?: string | null
   type: 'customer_invoice' | 'supplier_invoice' | 'credit_note'
   series: string
   number: string

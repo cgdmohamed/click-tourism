@@ -95,3 +95,8 @@ credentials and externally connected services in demo. The demo compose uses
 
 A GitHub Actions success is not a substitute for a real Coolify deployment
 and reset drill.
+
+## Report exports and scheduled report e-mail (ADR-0025, ADR-0026)
+
+- **Background exports** run on the queue worker already in this compose (`queue:work`); without a worker a job stays `queued`. Files are written to `EXPORTS_DISK` (default `local`) and deleted after `EXPORTS_TTL_DAYS` (7) by `exports:prune`. Optional: `EXPORTS_ASYNC_MAX_ROWS` (200000), `EXPORTS_TIMEOUT` (600).
+- **Scheduled report e-mail** needs the scheduler (already in this compose: `schedule:work`) and a real mailer: set `MAIL_MAILER=smtp`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS` and `MAIL_FROM_NAME` in the environment (secrets in Coolify, never in the repository). While `MAIL_MAILER` is `log`, `array` or `null` the Reports screen warns and nothing is sent. Schedules run at 06:00 server time as the user who created them.

@@ -384,7 +384,11 @@ export default function Documents() {
                 {data.data.map((document) => (
                   <tr key={document.id}>
                     <Td className="tabular">{formatDate(document.fx_rate_date, locale)}</Td>
-                    <Td className="tabular">{document.number}</Td>
+                    <Td className="tabular">
+                      <Link to={`/documents/${document.id}`} className="font-medium text-brand-1-accent hover:underline">
+                        {document.number}
+                      </Link>
+                    </Td>
                     <Td>
                       <Badge tone="brand">{L(typeLabels[document.type].ar, typeLabels[document.type].en)}</Badge>
                     </Td>

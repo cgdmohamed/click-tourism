@@ -10,6 +10,8 @@ describe('sourceDocumentLink', () => {
   it('falls back to a filtered list for payments and to the module list for expenses', () => {
     expect(sourceDocumentLink({ source_type: 'payment', source_reference: 'PAY 1' })?.href).toBe('/payments?search=PAY%201')
     expect(sourceDocumentLink({ source_type: 'expense' })).toEqual({ href: '/expenses', permission: 'expenses.view' })
+    expect(sourceDocumentLink({ source_type: 'expense', source_public_id: 'exp12345678' })).toEqual({ href: '/expenses/exp12345678', permission: 'expenses.view' })
+    expect(sourceDocumentLink({ source_type: 'accounting_document', source_public_id: 'doc12345678' })).toEqual({ href: '/documents/doc12345678', permission: 'documents.view' })
   })
 
   it('returns null for manual or unknown sources', () => {

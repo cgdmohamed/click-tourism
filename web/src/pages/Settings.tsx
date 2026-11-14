@@ -10,7 +10,7 @@ import { DecisionsPanel } from '../components/DecisionsPanel'
 import AccountingPolicyPanel from '../components/AccountingPolicyPanel'
 import IntegrationsPanel from '../components/IntegrationsPanel'
 import ExtractionSwitchCard from '../components/ExtractionSwitchCard'
-import McpStatusCard from '../components/McpStatusCard'
+import { McpTab } from './settings/McpTab'
 import { Button, Card, CardHeader, ErrorState, Loading, PageHeader, TabPanel, Tabs, type TabItem } from '../components/ui'
 import { AssistantTab } from './settings/AssistantTab'
 import { BranchesTab } from './settings/BranchesTab'
@@ -43,6 +43,7 @@ export default function Settings() {
       ? [
           { id: 'integrations' as const, label: L('التكاملات', 'Integrations') },
           { id: 'assistant' as const, label: t('assistant') },
+          { id: 'mcp' as const, label: 'MCP' },
         ]
       : []),
     { id: 'decisions', label: L('القرارات', 'Decisions') },
@@ -216,9 +217,10 @@ export default function Settings() {
         {active === 'integrations' && can('settings.view') ? (
           <>
             <IntegrationsPanel />
-            <McpStatusCard />
           </>
         ) : null}
+
+        {active === 'mcp' && can('settings.view') ? <McpTab /> : null}
 
         {active === 'assistant' && can('settings.view') ? (
           <>
