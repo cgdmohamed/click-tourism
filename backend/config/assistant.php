@@ -10,7 +10,7 @@
  */
 return [
     // File under resources/assistant/ sent as the system prompt. Bump the version when it changes.
-    'system_prompt' => 'system-prompt.v3.md',
+    'system_prompt' => 'system-prompt.v4.md',
 
     // Model used when the setting assistant.model is blank. UNVERIFIED: model names were not
     // checked against the provider (no internet access when this was written); set the setting.
@@ -28,6 +28,8 @@ return [
     // Conversation limits (the client holds the conversation; the server is stateless).
     'max_messages' => 40,
     'max_message_chars' => 4000,
+    // Hours a file attached to an assistant message is kept before it is removed (ADR-0028).
+    'upload_ttl_hours' => (int) env('ASSISTANT_UPLOAD_TTL_HOURS', 6),
 
     // Seconds to wait for the provider before the turn fails with assistant_provider_error.
     'provider_timeout' => (int) env('ASSISTANT_PROVIDER_TIMEOUT', 60),

@@ -4,6 +4,8 @@ import {
   addAssistantError,
   addAssistantReply,
   addUserMessage,
+  lastUserAttachmentIds,
+  withoutFileNote,
   assistantErrorKey,
   canSend,
   citationLink,
@@ -153,5 +155,35 @@ describe('misc', () => {
     expect(assistantErrorKey(502, 'assistant_provider_error')).toBe('assistantErrProvider')
     expect(assistantErrorKey(403, 'forbidden')).toBe('assistantErrForbidden')
     expect(assistantErrorKey(500, undefined)).toBeNull()
+  })
+})
+
+describe('files attached to a user turn (ADR-0028)', () => {
+  const files = [{ id: '01HFILE000000000000000000A', name: 'transfer.png' }]
+
+  it('keeps the files with the turn so a retry or a resubmit sends them again', () => {
+    const asked = addUserMessage([], 'record this payment\n[transfer.png]', files)
+    const failed = addAssistantError(asked, 'network')
+    // A retry drops the error turn and asks again with the same user turn.
+    const retried = failed.filter((message) => !message.error)
+    expect(lastUserAttachmentIds(retried)).toEqual(['01HFILE000000000000000000A'])
+  })
+
+  it('sends only the files of the newest user turn, not those of an older one', () => {
+    let turns = addUserMessage([], 'first\n[transfer.png]', files)
+    turns = addAssistantReply(turns, { answer: 'ok', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false })
+    turns = addUserMessage(turns, 'and the totals?')
+    expect(lastUserAttachmentIds(turns)).toEqual([])
+  })
+
+  it('gives the typed text back without the display line when a turn is stopped', () => {
+    const [turn] = addUserMessage([], 'record this payment\n[transfer.png]', files)
+    expect(withoutFileNote(turn)).toBe('record this payment')
+    expect(withoutFileNote({ key: 1, role: 'user', content: 'plain' })).toBe('plain')
+  })
+
+  it('never puts file ids into the text history sent to the model', () => {
+    const turns = addUserMessage([], 'hello', files)
+    expect(JSON.stringify(toApiMessages(turns))).not.toContain('01HFILE')
   })
 })

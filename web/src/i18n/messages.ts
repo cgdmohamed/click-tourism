@@ -1,10 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
-import { getStoredLocale, setStoredLocale } from '../lib/api'
-
 export type Locale = 'ar' | 'en'
 
-const messages = {
+export const messages = {
   ar: {
     appName: 'نظام إدارة السياحة',
     appTagline: 'محاسبة • حجوزات • عملاء',
@@ -384,6 +380,11 @@ const messages = {
     assistantPlaceholder: 'اكتب سؤالك عن بياناتك…',
     assistantInputLabel: 'سؤالك للمساعد',
     assistantSend: 'إرسال',
+    assistantAttach: 'إرفاق ملف (إيصال، تحويل، فاتورة)',
+    assistantAttachRemove: 'إزالة الملف',
+    assistantAttachUploading: 'جارِ رفع الملف…',
+    assistantAttachDefault: 'اقرأ هذا الملف وجهّز الإجراء المناسب.',
+    assistantAttachNote: 'الملف يُقرأ بواسطة مزوّد الذكاء الاصطناعي كما هو (لا يمكن حجب بياناته)، ولا يُحفظ مع أي سجل ويُحذف بعد ساعات.',
     assistantStop: 'إيقاف',
     assistantClear: 'مسح الحوار',
     assistantThinking: 'المساعد يعمل على سؤالك…',
@@ -956,6 +957,11 @@ const messages = {
     assistantPlaceholder: 'Ask about your data…',
     assistantInputLabel: 'Your question for the assistant',
     assistantSend: 'Send',
+    assistantAttach: 'Attach a file (receipt, transfer, invoice)',
+    assistantAttachRemove: 'Remove the file',
+    assistantAttachUploading: 'Uploading the file…',
+    assistantAttachDefault: 'Read this file and prepare the right action.',
+    assistantAttachNote: 'The file is read by the AI provider as it is (its data cannot be masked), is not stored with any record and is deleted after a few hours.',
     assistantStop: 'Stop',
     assistantClear: 'Clear conversation',
     assistantThinking: 'The assistant is working on your question…',
@@ -1151,49 +1157,4 @@ const messages = {
   },
 } as const
 
-type MessageKey = keyof (typeof messages)['en']
-
-type I18nValue = {
-  locale: Locale
-  dir: 'rtl' | 'ltr'
-  t: (key: MessageKey) => string
-  setLocale: (locale: Locale) => void
-  toggleLocale: () => void
-}
-
-const I18nContext = createContext<I18nValue | null>(null)
-
-export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(getStoredLocale())
-
-  useEffect(() => {
-    document.documentElement.lang = locale
-    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr'
-  }, [locale])
-
-  const setLocale = useCallback((next: Locale) => {
-    setStoredLocale(next)
-    setLocaleState(next)
-  }, [])
-
-  const value = useMemo<I18nValue>(
-    () => ({
-      locale,
-      dir: locale === 'ar' ? 'rtl' : 'ltr',
-      t: (key) => messages[locale][key] ?? messages.en[key] ?? key,
-      setLocale,
-      toggleLocale: () => setLocale(locale === 'ar' ? 'en' : 'ar'),
-    }),
-    [locale, setLocale],
-  )
-
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
-}
-
-export function useI18n(): I18nValue {
-  const context = useContext(I18nContext)
-  if (!context) throw new Error('useI18n must be used inside I18nProvider')
-  return context
-}
-
-export type { MessageKey }
+export type MessageKey = keyof (typeof messages)['en']

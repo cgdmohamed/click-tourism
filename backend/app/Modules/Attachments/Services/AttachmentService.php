@@ -115,7 +115,7 @@ class AttachmentService
      * Security checks on the bytes, never on what the client says: size, real type from the content,
      * an allowlist, a decodable image, and no active content inside a PDF.
      */
-    private function inspect(string $content, int $size): string
+    public function inspect(string $content, int $size): string
     {
         if ($size <= 0 || $size > (int) config('attachments.max_size_kb') * 1024) {
             throw new DomainException('The file is empty or larger than the allowed size.');

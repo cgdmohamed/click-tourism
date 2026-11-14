@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Assistant\Models\AssistantUpload;
 use App\Modules\Assistant\Services\ActionException;
 use App\Modules\Assistant\Services\ActionService;
+use App\Modules\Assistant\Services\AssistantUploadService;
 use App\Modules\Assistant\Services\ChatService;
 use App\Modules\Assistant\Services\ConversationService;
 use App\Modules\Assistant\Services\ProviderManager;
@@ -101,15 +103,15 @@ class AssistantController extends ApiController
         if ($prepared instanceof JsonResponse) {
             return $prepared;
         }
-        [$messages, $locale, $branch, $conversationId] = $prepared;
+        [$messages, $locale, $branch, $conversationId, $uploads] = $prepared;
 
         try {
-            $result = $chat->run($request->user(), $messages, $locale, $branch);
+            $result = $chat->run($request->user(), $messages, $locale, $branch, null, $this->files($uploads));
         } catch (ProviderException) {
             return ApiResponse::error('The assistant provider is unavailable. Try again later.', 'assistant_provider_error', 502);
         }
 
-        return $this->ok($this->payload($history, $request, $branch, $conversationId, $messages, $result));
+        return $this->ok($this->payload($history, $request, $branch, $conversationId, $messages, $result, $uploads));
     }
 
     /**
@@ -123,10 +125,10 @@ class AssistantController extends ApiController
         if ($prepared instanceof JsonResponse) {
             return $prepared;
         }
-        [$messages, $locale, $branch, $conversationId] = $prepared;
+        [$messages, $locale, $branch, $conversationId, $uploads] = $prepared;
         $user = $request->user();
 
-        return new StreamedResponse(function () use ($chat, $history, $request, $user, $messages, $locale, $branch, $conversationId): void {
+        return new StreamedResponse(function () use ($chat, $history, $request, $user, $messages, $locale, $branch, $conversationId, $uploads): void {
             $send = static function (array $event): void {
                 echo json_encode($event, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n";
                 if (ob_get_level() > 0) {
@@ -136,8 +138,8 @@ class AssistantController extends ApiController
             };
 
             try {
-                $result = $chat->run($user, $messages, $locale, $branch, $send);
-                $send(['type' => 'answer', 'data' => $this->payload($history, $request, $branch, $conversationId, $messages, $result)]);
+                $result = $chat->run($user, $messages, $locale, $branch, $send, $this->files($uploads));
+                $send(['type' => 'answer', 'data' => $this->payload($history, $request, $branch, $conversationId, $messages, $result, $uploads)]);
             } catch (ProviderException) {
                 $send(['type' => 'error', 'code' => 'assistant_provider_error', 'message' => 'The assistant provider is unavailable. Try again later.']);
             }
@@ -228,9 +230,39 @@ class AssistantController extends ApiController
     }
 
     /**
+     * POST /assistant/uploads (ADR-0028): a file to read with the next message (a transfer receipt,
+     * a payment slip, a supplier invoice). Same switches as the chat; the file expires after a few hours.
+     */
+    public function upload(Request $request, ProviderManager $providers, AssistantUploadService $uploads, AuditService $audit): JsonResponse
+    {
+        if (! $providers->enabled()) {
+            return $this->denied($audit, $request, 'disabled', 'The assistant is switched off for this installation.', 'assistant_disabled', 403);
+        }
+        if (! $providers->accepted()) {
+            return $this->denied($audit, $request, 'not_accepted', 'Accept the data-processing notice in Settings, Assistant before using the assistant.', 'assistant_not_accepted', 403);
+        }
+        $request->validate(['file' => ['required', 'file', 'max:'.(int) config('attachments.max_size_kb')]]);
+
+        try {
+            $upload = $uploads->store($request->user(), $request->file('file'));
+        } catch (\DomainException $e) {
+            return ApiResponse::error($e->getMessage(), 'validation_failed', 422, ['errors' => ['file' => [$e->getMessage()]]]);
+        }
+        $audit->log('assistant.file_uploaded', null, null, ['upload' => $upload->public_id, 'mime' => $upload->mime, 'size_bytes' => $upload->size_bytes], $request->user()->id);
+
+        return $this->created(['id' => $upload->public_id, 'name' => $upload->name, 'mime' => $upload->mime, 'size_bytes' => $upload->size_bytes, 'expires_at' => $upload->expires_at->toIso8601String()]);
+    }
+
+    /** @param  list<AssistantUpload>  $uploads */
+    private function files(array $uploads): array
+    {
+        return $uploads === [] ? [] : app(AssistantUploadService::class)->contents($uploads);
+    }
+
+    /**
      * Shared checks of /chat and /chat/stream.
      *
-     * @return JsonResponse|array{0: list<array{role: string, content: string}>, 1: string, 2: ?Branch, 3: ?string}
+     * @return JsonResponse|array{0: list<array{role: string, content: string}>, 1: string, 2: ?Branch, 3: ?string, 4: list<AssistantUpload>}
      */
     private function prepare(Request $request, ProviderManager $providers, ChatService $chat, AuditService $audit, BranchScope $scope): JsonResponse|array
     {
@@ -254,6 +286,9 @@ class AssistantController extends ApiController
             'messages.*.content' => ['required', 'string', 'max:'.(int) config('assistant.max_message_chars')],
             'locale' => ['nullable', 'in:ar,en'],
             'conversation_id' => ['nullable', 'string', 'max:26'],
+            // Files uploaded with POST /assistant/uploads, read together with the last message (ADR-0028).
+            'attachments' => ['nullable', 'array', 'max:'.AssistantUploadService::MAX_PER_MESSAGE],
+            'attachments.*' => ['string', 'max:26'],
         ]);
         $messages = array_values($data['messages']);
         if (end($messages)['role'] !== 'user') {
@@ -270,14 +305,25 @@ class AssistantController extends ApiController
         // An X-Branch-Id the user does not hold is a 403 here (BranchScope), before any provider call.
         $branch = $scope->resolve($user);
 
-        return [$messages, $locale, $branch, $data['conversation_id'] ?? null];
+        $uploads = [];
+        if (! empty($data['attachments'])) {
+            $uploads = app(AssistantUploadService::class)->resolve($user, $data['attachments']);
+            if ($uploads === null) {
+                return ApiResponse::error('An attached file was not found or has expired. Attach it again.', 'validation_failed', 422, ['errors' => ['attachments' => ['An attached file was not found or has expired. Attach it again.']]]);
+            }
+        }
+
+        return [$messages, $locale, $branch, $data['conversation_id'] ?? null, $uploads];
     }
 
     /** @param  list<array{role: string, content: string}>  $messages */
-    private function payload(ConversationService $history, Request $request, $branch, ?string $conversationId, array $messages, $result): array
+    private function payload(ConversationService $history, Request $request, $branch, ?string $conversationId, array $messages, $result, array $uploads = []): array
     {
         $payload = $result->payload();
-        $saved = $history->saveTurn($request->user(), $branch, $conversationId, (string) end($messages)['content'], $payload['answer'], $payload['citations'], (bool) $payload['truncated'], array_column($payload['actions'], 'id'));
+        // Only the file names are kept with the saved chat; the files themselves expire (ADR-0028).
+        $names = array_map(fn ($u) => $u->name, $uploads);
+        $userText = (string) end($messages)['content'].($names === [] ? '' : "\n[".implode(', ', $names).']');
+        $saved = $history->saveTurn($request->user(), $branch, $conversationId, $userText, $payload['answer'], $payload['citations'], (bool) $payload['truncated'], array_column($payload['actions'], 'id'));
         $payload['conversation_id'] = $saved?->public_id;
 
         return $payload;
