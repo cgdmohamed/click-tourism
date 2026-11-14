@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios'
-import { translateError } from './errors'
+import { rememberError, translateError } from './errors'
 import type { ApiError } from './types'
 
 const TOKEN_KEY = 'tourism_erp_token'
@@ -78,7 +78,9 @@ function rawErrorMessage(error: unknown, fallback: string): string {
 
 /** Human-readable error text; backend messages are translated when the UI locale is Arabic. */
 export function errorMessage(error: unknown, fallback = 'Unexpected error'): string {
-  return translateError(rawErrorMessage(error, fallback), getStoredLocale())
+  const message = translateError(rawErrorMessage(error, fallback), getStoredLocale())
+  rememberError(message, error)
+  return message
 }
 
 export function idempotencyKey(): string {

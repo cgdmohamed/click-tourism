@@ -14,8 +14,11 @@ import { cx, IconButton, Spinner, Select } from './ui'
 import { localizedName } from '../lib/names'
 import { showAssistant } from '../lib/assistant'
 import { useFeatureFlags } from '../lib/useSetting'
+import { useApprovalCount } from '../lib/useApprovalCount'
 
-type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[] }
+type NavItem = { to: string; label: string; icon: IconName; permission?: string; anyPermission?: string[]; badge?: number }
+
+const APPROVAL_PERMISSIONS = ['expenses.approve', 'documents.approve', 'invoices.approve', 'commissions.approve', 'refunds.approve']
 
 /** Entities the import page can load; the page is useful to anyone holding one of these. */
 const IMPORT_PERMISSIONS = ['customers.create', 'suppliers.create', 'employees.manage', 'bookings.create', 'accounts.update', 'opening_balances.manage']
@@ -23,6 +26,7 @@ type NavGroup = { label?: string; items: NavItem[] }
 
 export function Layout() {
   const { user, loading, branches, activeBranch, setActiveBranch, can } = useAuth()
+  const approvalCount = useApprovalCount()
   const { t, locale } = useI18n()
   const brand = useBrandName()
   useSyncCurrencyExponents(Boolean(user))
@@ -73,6 +77,7 @@ export function Layout() {
       label: t('operations'),
       items: [
         { to: '/treasury', label: t('treasury'), icon: 'wallet', permission: 'accounts.view' },
+        { to: '/approvals', label: locale === 'ar' ? 'الاعتمادات' : 'Approvals', icon: 'clipboardCheck', anyPermission: APPROVAL_PERMISSIONS, badge: approvalCount },
         { to: '/expenses', label: t('expenses'), icon: 'receipt', permission: 'expenses.view' },
         { to: '/invoices', label: t('invoices'), icon: 'fileText', permission: 'invoices.view' },
         { to: '/commissions', label: locale === 'ar' ? 'العمولات' : 'Commissions', icon: 'coins', permission: 'commissions.view' },
@@ -143,6 +148,7 @@ export function Layout() {
                     ) : null}
                     <Icon name={item.icon} className={cx('h-5 w-5', isActive && 'text-brand-1-accent')} />
                     <span className="truncate">{item.label}</span>
+                    {item.badge ? <span className="text-small ms-auto rounded-full bg-surface-selected px-2 tabular" aria-label={`${item.badge}`}>{item.badge}</span> : null}
                   </>
                 )}
               </NavLink>
