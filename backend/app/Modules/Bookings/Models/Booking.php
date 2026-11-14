@@ -101,13 +101,17 @@ class Booking extends Model
         return $this->hasMany(BookingItem::class);
     }
 
-    /** The booking's live customer invoice (not voided); the same rule that stops a second one being created. */
+    /**
+     * The booking's live customer invoice (not voided); the same rule that stops a second one being created.
+     * The constraint is part of the aggregate: credit notes carry the booking id too, and a plain
+     * latestOfMany() would pick the newest row of any type and then drop it, hiding the real invoice.
+     */
     public function customerInvoice()
     {
-        return $this->hasOne(Invoice::class)
-            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
-            ->where('status', '!=', Invoice::STATUS_VOIDED)
-            ->latestOfMany();
+        return $this->hasOne(Invoice::class)->ofMany(['id' => 'max'], function ($query) {
+            $query->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_VOIDED);
+        });
     }
 
     public function statusHistory()

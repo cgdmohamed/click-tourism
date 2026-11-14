@@ -85,4 +85,22 @@ class BookingInvoiceStatusTest extends TestCase
         $detail = $this->rows('/api/v1/bookings/'.$booking->public_id);
         $this->assertSame($invoice->number, $detail['invoice']['number']);
     }
+
+    public function test_a_credit_note_on_the_booking_does_not_hide_its_invoice_or_bring_it_back_to_the_worklist(): void
+    {
+        $booking = $this->booking('confirmed');
+        $invoice = app(InvoiceService::class)->createFromBooking($booking, $this->user->id);
+        // A newer row of another type for the same booking, as creditNote() writes it.
+        Invoice::query()->create([
+            'type' => Invoice::TYPE_CREDIT_NOTE, 'series' => 'CN', 'number' => 'CN-T-1', 'party_type' => 'customer', 'party_id' => $invoice->party_id,
+            'booking_id' => $booking->id, 'branch_id' => $this->branch->id, 'issue_date' => now()->toDateString(), 'currency_code' => 'EGP',
+            'fx_rate' => '1', 'fx_rate_date' => now()->toDateString(), 'status' => Invoice::STATUS_ISSUED,
+            'subtotal_minor' => 1000, 'tax_minor' => 0, 'total_minor' => 1000, 'outstanding_minor' => 0,
+        ]);
+
+        $row = $this->rows('/api/v1/bookings')[0];
+        $this->assertSame($invoice->number, $row['invoice']['number']);
+        $this->assertSame([], $this->rows('/api/v1/bookings?needs_invoice=1'));
+        $this->assertSame($invoice->number, $this->rows('/api/v1/bookings/'.$booking->public_id)['invoice']['number']);
+    }
 }

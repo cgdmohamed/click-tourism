@@ -130,14 +130,19 @@ class ReportScheduleService
         ]);
         // A failed run is told to the schedule's owner instead of living only on the schedule card (W10).
         if ($status === 'failed') {
-            $this->notifications->send(
-                $schedule->user_id,
-                'report_schedule.failed',
-                'A scheduled report could not be sent',
-                ($error ?? 'The report could not be sent.').($deactivate ? ' The schedule was switched off after repeated failures.' : ''),
-                ['schedule_id' => $schedule->public_id, 'report' => $schedule->report, 'deactivated' => $deactivate],
-                $schedule->branch_id,
-            );
+            // Best-effort: a notification problem must not stop the other due schedules or skip this run's audit event.
+            try {
+                $this->notifications->send(
+                    $schedule->user_id,
+                    'report_schedule.failed',
+                    'A scheduled report could not be sent',
+                    ($error ?? 'The report could not be sent.').($deactivate ? ' The schedule was switched off after repeated failures.' : ''),
+                    ['schedule_id' => $schedule->public_id, 'report' => $schedule->report, 'deactivated' => $deactivate],
+                    $schedule->branch_id,
+                );
+            } catch (Throwable $e) {
+                report($e);
+            }
         }
         $this->audit->log('report_schedule.'.($status === 'sent' ? 'sent' : 'not_sent'), null, null, [
             'schedule' => $schedule->public_id, 'report' => $schedule->report, 'status' => $status, 'recipients' => count($schedule->recipients ?? []), 'deactivated' => $deactivate,
