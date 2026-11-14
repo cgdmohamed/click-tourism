@@ -10,7 +10,6 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   ErrorState,
   Field,
   Input,
@@ -29,6 +28,9 @@ import {
 import { localizedName } from '../lib/names'
 import { ReasonModal } from '../components/ReasonModal'
 import { statusLabel } from '../lib/labels'
+import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
+import { ListEmpty } from '../components/ListEmpty'
 
 type PartyType = '' | 'customer' | 'supplier'
 
@@ -54,10 +56,6 @@ const emptyLine = (): DraftLine => ({
   cost_center_id: '',
 })
 
-type Filters = { from: string; to: string; status: '' | 'draft' | 'posted'; search: string; includeReversals: boolean }
-
-const defaultFilters: Filters = { from: '', to: '', status: '', search: '', includeReversals: true }
-
 /** Entries owned by a business document are cancelled from that document, never reversed directly. */
 const DOCUMENT_SOURCES = [
   'payment', 'payment_allocation', 'refund', 'supplier_payment', 'supplier_payment_application',
@@ -82,7 +80,7 @@ export default function Journal() {
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()])
   const [page, setPage] = useState(1)
   const [detail, setDetail] = useState<JournalEntry | null>(null)
-  const [filters, setFilters] = useState<Filters>(defaultFilters)
+  const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
@@ -99,19 +97,33 @@ export default function Journal() {
   // Debounce the free-text search so each keystroke does not hit the API.
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      setFilters((current) => (current.search === searchInput.trim() ? current : { ...current, search: searchInput.trim() }))
+      setSearch((current) => (current === searchInput.trim() ? current : searchInput.trim()))
       setPage(1)
     }, 300)
     return () => window.clearTimeout(handle)
   }, [searchInput])
 
-  const updateFilters = (patch: Partial<Filters>) => {
-    setFilters((current) => ({ ...current, ...patch }))
-    setPage(1)
-  }
-
-  const filtersActive =
-    filters.from !== '' || filters.to !== '' || filters.status !== '' || filters.search !== '' || !filters.includeReversals
+  const filters = useFilters(
+    [
+      { key: 'from', label: ar ? 'من تاريخ' : 'From date', type: 'date' },
+      { key: 'to', label: ar ? 'إلى تاريخ' : 'To date', type: 'date' },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['draft', 'posted'].map((value) => ({ value, label: statusLabel(value, locale) })),
+        allLabel: ar ? 'كل الحالات' : 'All statuses',
+      },
+      {
+        key: 'reversals',
+        label: ar ? 'القيود العكسية' : 'Reversal entries',
+        type: 'select',
+        options: [{ value: 'hide', label: ar ? 'إخفاء القيود العكسية' : 'Hide reversal entries' }],
+        allLabel: ar ? 'إظهار القيود العكسية' : 'Show reversal entries',
+      },
+    ],
+    { onApply: () => setPage(1) },
+  )
 
   const accountsQuery = useQuery({
     queryKey: ['accounts'],
@@ -122,17 +134,17 @@ export default function Journal() {
   })
 
   const entriesQuery = useQuery({
-    queryKey: ['journal', page, activeBranch?.id, filters],
+    queryKey: ['journal', page, activeBranch?.id, filters.applied, search],
     queryFn: async () => {
       const { data } = await api.get<Paginated<JournalEntry>>('/journal-entries', {
         params: {
           page,
           per_page: 20,
-          ...(filters.from ? { from: filters.from } : {}),
-          ...(filters.to ? { to: filters.to } : {}),
-          ...(filters.status ? { status: filters.status } : {}),
-          ...(filters.search ? { search: filters.search } : {}),
-          ...(filters.includeReversals ? {} : { include_reversals: 0 }),
+          ...(filters.applied.from ? { from: filters.applied.from } : {}),
+          ...(filters.applied.to ? { to: filters.applied.to } : {}),
+          ...(filters.applied.status ? { status: filters.applied.status } : {}),
+          ...(search ? { search } : {}),
+          ...(filters.applied.reversals === 'hide' ? { include_reversals: 0 } : {}),
         },
       })
       return data
@@ -339,103 +351,8 @@ export default function Journal() {
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)))
   }
 
-  return (
-    <div>
-      <PageHeader
-        title={t('journal')}
-        subtitle={locale === 'ar' ? 'قيود اليومية — مدينة = دائنة' : 'Double-entry journal — debits must equal credits'}
-        icon="scale"
-        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newJournal')}</Button>}
-      />
-
-      {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
-
-      <Card className="mb-4">
-        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
-          <div className="lg:col-span-2">
-            <Field label={ar ? 'بحث (الرقم أو البيان)' : 'Search (number or memo)'}>
-              <Input
-                icon="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder={ar ? 'رقم القيد أو البيان' : 'Entry number or memo'}
-              />
-            </Field>
-          </div>
-          <Field label={ar ? 'من تاريخ' : 'From'}>
-            <DateField value={filters.from} max={filters.to || undefined} onChange={(event) => updateFilters({ from: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={ar ? 'إلى تاريخ' : 'To'}>
-            <DateField value={filters.to} min={filters.from || undefined} onChange={(event) => updateFilters({ to: event.target.value })} dir="ltr" />
-          </Field>
-          <Field label={t('status')}>
-            <Select value={filters.status} onChange={(event) => updateFilters({ status: event.target.value as Filters['status'] })}>
-              <option value="">{ar ? 'الكل' : 'All'}</option>
-              <option value="draft">{statusLabel('draft', locale)}</option>
-              <option value="posted">{statusLabel('posted', locale)}</option>
-            </Select>
-          </Field>
-          <div className="flex flex-col justify-end gap-2">
-            <label className="flex h-9 items-center gap-2 text-medium text-text-default">
-              <input
-                type="checkbox"
-                checked={filters.includeReversals}
-                onChange={(event) => updateFilters({ includeReversals: event.target.checked })}
-              />
-              {ar ? 'إظهار القيود العكسية' : 'Include reversals'}
-            </label>
-          </div>
-        </div>
-        {filtersActive ? (
-          <div className="flex justify-end px-4 pb-4">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setFilters(defaultFilters)
-                setSearchInput('')
-                setPage(1)
-              }}
-            >
-              {ar ? 'مسح التصفية' : 'Clear filters'}
-            </Button>
-          </div>
-        ) : null}
-      </Card>
-
-      <Card>
-        {entriesQuery.isLoading ? <Loading /> : null}
-        {entriesQuery.isError ? (
-          <ErrorState message={errorMessage(entriesQuery.error)} onRetry={() => void entriesQuery.refetch()} />
-        ) : null}
-        {entriesQuery.data && entries.length === 0 ? <EmptyState /> : null}
-        {entries.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>{t('code')}</Th>
-                <Th>{t('date')}</Th>
-                <Th>{t('description')}</Th>
-                <Th>{t('currency')}</Th>
-                <Th>{t('status')}</Th>
-                <Th className="text-end">{t('amount')}</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => (
-                <tr key={entry.id}>
-                  <Td className="tabular font-medium">{entry.number}</Td>
-                  <Td>{formatDate(entry.entry_date, locale)}</Td>
-                  <Td>{entry.memo ?? '—'}</Td>
-                  <Td>{entry.currency}</Td>
-                  <Td>
-                    <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status, locale)}</Badge>
-                  </Td>
-                  <Td className="text-end tabular">
-                    {formatMoney(entry.total_minor, entry.currency, locale)}
-                  </Td>
-                  <Td className="text-end">
-                    <div className="flex items-center justify-end gap-1">
+  const entryActions = (entry: JournalEntry) => (
+    <div className="flex flex-wrap items-center justify-end gap-1">
                     <Button variant="ghost" onClick={() => setDetail(entry)}>
                       {locale === 'ar' ? 'عرض' : 'View'}
                     </Button>
@@ -465,12 +382,91 @@ export default function Journal() {
                         )}
                       </>
                     )}
-                    </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <PageHeader
+        title={t('journal')}
+        subtitle={locale === 'ar' ? 'قيود اليومية — مدينة = دائنة' : 'Double-entry journal — debits must equal credits'}
+        icon="scale"
+        actions={<Button icon="plus" onClick={() => setOpen(true)}>{t('newJournal')}</Button>}
+      />
+
+      {error && !open ? <p className="mb-4 rounded-12 border border-danger-border bg-danger-background px-3 py-2 text-medium text-danger-text">{error}</p> : null}
+
+      <Card>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input
+            icon="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder={ar ? 'رقم القيد أو البيان' : 'Entry number or memo'}
+            aria-label={ar ? 'بحث (الرقم أو البيان)' : 'Search (number or memo)'}
+            className="max-w-xs"
+          />
+          <FilterControl state={filters} />
+        </div>
+
+        {entriesQuery.isLoading ? <Loading /> : null}
+        {entriesQuery.isError ? (
+          <ErrorState message={errorMessage(entriesQuery.error)} onRetry={() => void entriesQuery.refetch()} />
+        ) : null}
+        {entriesQuery.data && entries.length === 0 ? <ListEmpty filters={filters} search={search} onClearSearch={() => { setSearchInput(''); setSearch('') }} /> : null}
+        {entries.length > 0 ? (
+          <>
+          <MobileCards items={entries} getKey={(entry) => entry.id} label={t('journal')}>
+            {(entry) => (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-medium tabular font-semibold">{entry.number}</span>
+                  <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status, locale)}</Badge>
+                </div>
+                {entry.memo ? <p className="text-medium break-words">{entry.memo}</p> : null}
+                <dl className="grid grid-cols-2 gap-3">
+                  <CardField label={t('date')}>{formatDate(entry.entry_date, locale)}</CardField>
+                  <CardField label={t('amount')}>{formatMoney(entry.total_minor, entry.currency, locale)}</CardField>
+                </dl>
+                {entryActions(entry)}
+              </>
+            )}
+          </MobileCards>
+          <TableOnly>
+          <Table>
+            <thead>
+              <tr>
+                <Th>{t('code')}</Th>
+                <Th>{t('date')}</Th>
+                <Th>{t('description')}</Th>
+                <Th>{t('currency')}</Th>
+                <Th>{t('status')}</Th>
+                <Th className="text-end">{t('amount')}</Th>
+                <Th />
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <Td className="tabular font-medium">{entry.number}</Td>
+                  <Td>{formatDate(entry.entry_date, locale)}</Td>
+                  <Td>{entry.memo ?? '—'}</Td>
+                  <Td>{entry.currency}</Td>
+                  <Td>
+                    <Badge tone={statusTone(entry.status)}>{statusLabel(entry.status, locale)}</Badge>
+                  </Td>
+                  <Td className="text-end tabular">
+                    {formatMoney(entry.total_minor, entry.currency, locale)}
+                  </Td>
+                  <Td className="text-end">
+                    {entryActions(entry)}
                   </Td>
                 </tr>
               ))}
             </tbody>
           </Table>
+          </TableOnly>
+          </>
         ) : null}
         <Pagination
           page={entriesQuery.data?.meta.current_page ?? 1}
