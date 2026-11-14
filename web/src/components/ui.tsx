@@ -11,6 +11,7 @@ import type {
 import { Children, Fragment, isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../i18n'
+import { describeError, recallError } from '../lib/errors'
 import { formatMoney } from '../lib/format'
 import { statusToneOf } from '../lib/labels'
 import { nextTabIndex } from '../lib/tabs'
@@ -623,22 +624,39 @@ export function Td({
 export function EmptyState({
   title,
   hint,
+  description,
   action,
-  icon = 'inbox',
+  icon,
+  variant = 'default',
+  onClear,
 }: {
   title?: string
   hint?: string
+  /** Alias of `hint`. */
+  description?: string
   action?: ReactNode
   icon?: IconName
+  /** `filtered`: the list is empty because of the active filters/search; offers a clear-filters action when `onClear` is passed. */
+  variant?: 'default' | 'filtered'
+  onClear?: () => void
 }) {
   const { t } = useI18n()
+  const filtered = variant === 'filtered'
+  const body = description ?? hint ?? (filtered ? t('noResultsHint') : undefined)
+  const clear =
+    filtered && onClear ? (
+      <Button variant="secondary" icon="x" onClick={onClear}>
+        {t('clearFilters')}
+      </Button>
+    ) : null
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
       <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-surface-subtle text-text-subtle">
-        <Icon name={icon} size={22} />
+        <Icon name={icon ?? (filtered ? 'search' : 'inbox')} size={22} />
       </span>
-      <p className="text-medium font-medium text-text-default">{title ?? t('noData')}</p>
-      {hint ? <p className="text-medium max-w-sm text-text-subtle">{hint}</p> : null}
+      <p className="text-medium font-medium text-text-default">{title ?? (filtered ? t('noResults') : t('noData'))}</p>
+      {body ? <p className="text-medium max-w-sm text-text-subtle">{body}</p> : null}
+      {clear}
       {action}
     </div>
   )
@@ -649,36 +667,153 @@ export function Spinner({ className }: { className?: string }) {
     <span
       aria-hidden="true"
       className={cx(
-        'inline-block h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-action-primary-background',
+        'inline-block h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-action-primary-background motion-reduce:animate-none',
         className,
       )}
     />
   )
 }
 
-export function Loading({ className }: { className?: string }) {
-  const { t } = useI18n()
+/** One grey placeholder bar. Pulses unless the user prefers reduced motion. */
+export function Skeleton({ className }: { className?: string }) {
+  return <span aria-hidden="true" className={cx('block rounded-md bg-surface-subtlest motion-safe:animate-pulse', className)} />
+}
+
+const LINE_WIDTHS = ['w-full', 'w-11/12', 'w-3/4', 'w-5/6', 'w-2/3']
+
+/** Placeholder `<tr>` rows for a `<tbody>`; keeps the table header and column count while data loads. */
+export function SkeletonRows({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div className={cx('flex items-center justify-center px-6 py-16', className)} role="status" aria-live="polite">
-      <span className="sr-only">{t('loading')}</span>
-      <Spinner />
+    <>
+      {Array.from({ length: rows }, (_, row) => (
+        <tr key={row} aria-hidden="true">
+          {Array.from({ length: columns }, (_, col) => (
+            <td key={col} className="border-b border-border-subtle px-4 py-3.5">
+              <Skeleton className={cx('h-4', LINE_WIDTHS[(row + col) % LINE_WIDTHS.length])} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
+/** Placeholder cards for a grid of summary tiles or record cards. */
+export function SkeletonCards({ count = 4, className }: { count?: number; className?: string }) {
+  return (
+    <div aria-hidden="true" className={cx('grid gap-3 sm:grid-cols-2 lg:grid-cols-4', className)}>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-default p-4">
+          <Skeleton className="h-3 w-1/3" />
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      ))}
     </div>
   )
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+type LoadingVariant = 'block' | 'table' | 'cards' | 'form' | 'spinner'
+
+/**
+ * Loading placeholder. The default `block` is a neutral stack of text lines; pass the
+ * variant that matches what is being replaced (`table`, `cards`, `form`) so the layout
+ * does not jump when data arrives. `spinner` keeps the old centred spinner.
+ */
+export function Loading({ className, variant = 'block', rows }: { className?: string; variant?: LoadingVariant; rows?: number }) {
   const { t } = useI18n()
+  let body: ReactNode
+  if (variant === 'spinner') {
+    body = <Spinner />
+  } else if (variant === 'table') {
+    body = (
+      <div aria-hidden="true" className="overflow-hidden rounded-lg border border-border-subtle">
+        <div className="bg-surface-subtle px-4 py-3">
+          <Skeleton className="h-3 w-1/4" />
+        </div>
+        <table className="w-full border-collapse">
+          <tbody>
+            <SkeletonRows rows={rows ?? 5} columns={4} />
+          </tbody>
+        </table>
+      </div>
+    )
+  } else if (variant === 'cards') {
+    body = <SkeletonCards count={rows ?? 4} />
+  } else if (variant === 'form') {
+    body = (
+      <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2">
+        {Array.from({ length: rows ?? 4 }, (_, i) => (
+          <div key={i} className="flex flex-col gap-2">
+            <Skeleton className="h-3 w-1/4" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ))}
+      </div>
+    )
+  } else {
+    body = (
+      <div aria-hidden="true" className="flex flex-col gap-3">
+        {Array.from({ length: rows ?? 3 }, (_, i) => (
+          <Skeleton key={i} className={cx('h-4', LINE_WIDTHS[i % LINE_WIDTHS.length])} />
+        ))}
+      </div>
+    )
+  }
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+    <div
+      className={cx(variant === 'spinner' ? 'flex items-center justify-center px-6 py-16' : 'px-4 py-6', className)}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">{t('loading')}</span>
+      {body}
+    </div>
+  )
+}
+
+/**
+ * Friendly failure panel. Existing callers pass only `message` (from `errorMessage()`); the
+ * original error is recovered from the registry in lib/errors so the headline can be a
+ * translated sentence chosen by HTTP status, with the server's own text under "details".
+ * Callers may also pass `error` directly.
+ */
+export function ErrorState({ message, onRetry, error }: { message: string; onRetry?: () => void; error?: unknown }) {
+  const { t, locale } = useI18n()
+  const source = error ?? recallError(message)
+  const info = source ? describeError(source, locale) : null
+  const title = info ? info.title : t('error')
+  const hint = info ? info.hint : message
+  const detailParts = info
+    ? [info.detail && info.detail !== info.title ? info.detail : null, info.status ? `HTTP ${info.status}` : null, info.code ?? null].filter(Boolean)
+    : []
+  return (
+    <div role="alert" className="flex flex-col items-center gap-3 px-6 py-12 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-danger-background text-danger-text">
         <Icon name="alertTriangle" size={22} />
       </span>
-      <p className="text-medium font-medium text-danger-text">{t('error')}</p>
-      <p className="text-medium max-w-md text-text-subtle">{message}</p>
+      <p className="text-medium font-medium text-danger-text">{title}</p>
+      <p className="text-medium max-w-md text-text-subtle">{hint}</p>
       {onRetry ? (
         <Button variant="secondary" icon="refresh" onClick={onRetry}>
           {t('retry')}
         </Button>
+      ) : null}
+      {info && (detailParts.length > 0 || info.requestId) ? (
+        <details className="text-small max-w-md text-text-subtle">
+          <summary className="cursor-pointer select-none rounded-md px-1 py-0.5 hover:text-text-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus">
+            {t('errorDetails')}
+          </summary>
+          <div className="mt-2 flex flex-col gap-1 text-start" dir="auto">
+            {detailParts.length > 0 ? <p className="break-words">{detailParts.join(' · ')}</p> : null}
+            {info.requestId ? (
+              <p>
+                {t('errorRequestId')}: <bdi dir="ltr" className="font-mono select-all">{info.requestId}</bdi>
+              </p>
+            ) : null}
+          </div>
+        </details>
       ) : null}
     </div>
   )
