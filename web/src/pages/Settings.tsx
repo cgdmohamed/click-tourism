@@ -139,13 +139,6 @@ export default function Settings() {
         title={t('settings')}
         subtitle={L('إعدادات التثبيت والفروع والعملات', 'Installation, branch, and currency configuration')}
         icon="settings"
-        actions={
-          isFormTab ? (
-            <Button icon="save" onClick={() => save.mutate()} disabled={readOnly || save.isPending || changes.length === 0}>
-              {save.isPending ? t('saving') : saved && changes.length === 0 ? t('saved') : t('save')}
-            </Button>
-          ) : null
-        }
       />
 
       {error ? (
@@ -229,6 +222,30 @@ export default function Settings() {
 
         {active === 'decisions' ? <DecisionsPanel /> : null}
       </TabPanel>
+
+      {isFormTab && !readOnly && (changes.length > 0 || save.isPending || saved) ? (
+        <div
+          className="no-print sticky bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle bg-surface-default/95 px-4 py-3 shadow-3 backdrop-blur lg:-mx-8 lg:px-8"
+          role="region"
+          aria-label={L('التغييرات غير المحفوظة', 'Unsaved changes')}
+        >
+          <p className="text-medium text-text-default" role="status">
+            {changes.length > 0
+              ? L(`تغييرات غير محفوظة (${changes.length})`, `Unsaved changes (${changes.length})`)
+              : saved
+                ? t('saved')
+                : ''}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setDraft(values)} disabled={save.isPending || changes.length === 0}>
+              {L('تجاهل', 'Discard')}
+            </Button>
+            <Button icon="save" onClick={() => save.mutate()} disabled={save.isPending || changes.length === 0}>
+              {save.isPending ? t('saving') : t('save')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

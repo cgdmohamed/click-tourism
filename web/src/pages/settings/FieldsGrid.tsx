@@ -64,7 +64,7 @@ export function FieldsGrid({
                 <option value="">—</option>
                 {options.map((option) => (
                   <option key={option} value={option}>
-                    {option}
+                    {field.optionLabels?.[option]?.[ar ? 'ar' : 'en'] ?? option}
                   </option>
                 ))}
               </Select>
