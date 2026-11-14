@@ -48,3 +48,24 @@ Legend: **P1** a job cannot be completed or a person is not told to act; **P2** 
 4. Decisions for the owner: W2, W3, W10, W12 (each needs a backend change).
 
 Not changed here: no code was modified for this audit.
+
+
+## Status after implementation (2026-11-14)
+
+| # | Status |
+|---|---|
+| W1 | Done: `/approvals` page and sidebar count (refund approval stays on Payments because it needs an FX decision). |
+| W4 | Done: "Create a booking for this customer" after conversion. |
+| W5 | Done: "Record supplier invoice" and "Pay supplier" on the supplier page, pre-filled. Starting a supplier invoice from a booking's cost lines is **not** done (needs a design decision on how cost lines map to invoice lines). |
+| W6 | Done: profile "View all" links apply the party filter (`?party_type=&party_id=`, `?supplier_id=`). |
+| W7 | Done: month-end guide on the Periods page for the oldest open period. The accrual and revaluation steps cannot show a done state because the API does not report whether they ran. |
+| W8 | Done: setup checklist for administrators on the dashboard, derived from existing data, hidden when complete. |
+| W9 | Done: submit / approve / reject and a "next waiting" link on the expense and voucher pages. |
+| W11 | Done: dashboard shortcuts open the dialog (`?new=`). |
+| W2, W3, W10, W12 | Still need owner decisions (backend changes). |
+
+Measured with `web/e2e/workflow-timing.spec.ts` (actions, screens and elapsed time on one machine, local API):
+
+- Receipt for a customer, from the customer page to the receipt saved: 8 actions / 2.4 s via Payments, 5 actions / 1.4 s via the shortcut.
+- Supplier invoice, from the supplier page to the form open with the supplier chosen: 5 actions via Invoices, 1 via the shortcut; elapsed time is about the same because page load dominates. The journey was not measured through to saving.
+- Reaching a waiting expense: 4 actions via Expenses > Filter, 0 via Approvals.

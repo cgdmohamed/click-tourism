@@ -6,6 +6,7 @@ import { Doughnut, Line } from 'react-chartjs-2'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Input, Loading, Money, PageHeader, Select, Table, Td, Th } from '../components/ui'
+import { SetupChecklist } from '../components/SetupChecklist'
 import { AssistantToggleCard } from '../components/AssistantToggleCard'
 import { Icon, type IconName } from '../components/icons'
 import { api, errorMessage } from '../lib/api'
@@ -238,6 +239,7 @@ export default function Dashboard() {
             </div>
           </section>
 
+          <SetupChecklist />
           <AssistantToggleCard mode="banner" />
 
 
