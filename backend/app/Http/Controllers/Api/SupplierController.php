@@ -20,6 +20,9 @@ class SupplierController extends ApiController
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
                 $query, ['name_ar', 'name_en', 'phone'], $search))
+            ->when($request->query('is_active') !== null && $request->query('is_active') !== '', fn ($query) => $query->where('is_active', $request->boolean('is_active')))
+            ->when($request->query('category'), fn ($query, $category) => $query->where('category', $category))
+            ->when($request->query('settlement_currency'), fn ($query, $currency) => $query->where('settlement_currency', strtoupper((string) $currency)))
             ->orderBy('name_ar')
             ->paginate(min(100, max(1, (int) $request->query('per_page', 50))));
 

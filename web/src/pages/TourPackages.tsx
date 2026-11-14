@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
+import { FilterControl, useFilters } from '../components/FilterDrawer'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
 import { useBaseCurrency } from '../lib/useSetting'
@@ -56,10 +57,48 @@ export default function TourPackages() {
   const [departure, setDeparture] = useState({ starts_on: todayISO(), ends_on: '', capacity: '40' })
   const [error, setError] = useState('')
 
+  const [search, setSearch] = useState('')
+  const filters = useFilters([
+    {
+      key: 'category',
+      label: L('التصنيف', 'Category'),
+      type: 'select',
+      options: categories.map((category) => ({ value: category[0], label: locale === 'ar' ? category[1] : category[2] })),
+      allLabel: L('كل التصنيفات', 'All categories'),
+    },
+    {
+      key: 'execution_type',
+      label: L('طريقة التنفيذ', 'Execution model'),
+      type: 'select',
+      options: [
+        { value: 'fixed', label: L('جماعية بمواعيد وسعة', 'Fixed group departures') },
+        { value: 'private', label: L('خاصة حسب الطلب', 'Private / custom') },
+        { value: 'standalone', label: L('خدمة منفصلة', 'Standalone service') },
+      ],
+      allLabel: L('كل الطرق', 'All models'),
+    },
+    {
+      key: 'status',
+      label: L('الحالة', 'Status'),
+      type: 'select',
+      options: [
+        { value: 'active', label: L('نشط', 'Active') },
+        { value: 'inactive', label: L('موقوف', 'Inactive') },
+      ],
+      allLabel: L('الكل', 'All'),
+    },
+  ])
   const packagesQuery = useQuery({
-    queryKey: ['tour-packages', activeBranch?.id],
+    queryKey: ['tour-packages', activeBranch?.id, search, filters.applied],
     queryFn: async () => {
-      const { data } = await api.get<{ data: TourPackage[] }>('/tour-packages')
+      const { data } = await api.get<{ data: TourPackage[] }>('/tour-packages', {
+        params: {
+          search: search || undefined,
+          category: filters.applied.category || undefined,
+          execution_type: filters.applied.execution_type || undefined,
+          status: filters.applied.status || undefined,
+        },
+      })
       return data.data
     },
   })
@@ -145,9 +184,13 @@ export default function TourPackages() {
         ) : null}
       />
       <Card>
+        <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-4">
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={L('بحث بالكود أو الاسم أو الوجهة', 'Search code, name or destination')} aria-label={L('بحث', 'Search')} className="max-w-xs" />
+          <FilterControl state={filters} />
+        </div>
         {packagesQuery.isLoading ? <Loading /> : null}
         {packagesQuery.isError ? <ErrorState message={errorMessage(packagesQuery.error)} onRetry={() => void packagesQuery.refetch()} /> : null}
-        {!packagesQuery.isLoading && packages.length === 0 ? <EmptyState /> : null}
+        {!packagesQuery.isLoading && !packagesQuery.isError && packages.length === 0 ? (search !== '' || filters.count > 0 ? <EmptyState variant="filtered" onClear={() => { setSearch(''); filters.clearAll() }} /> : <EmptyState />) : null}
         {packages.length > 0 ? (
           <>
           <MobileCards items={packages} getKey={(item) => item.id} label={L('البرامج', 'Programs')}>

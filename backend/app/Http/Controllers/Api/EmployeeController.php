@@ -22,6 +22,7 @@ class EmployeeController extends ApiController
         $employees = Employee::query()->with('branch')
             ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->when($request->boolean('include_inactive') === false, fn ($query) => $query->where('is_active', true))
+            ->when($request->query('category'), fn ($query, $category) => $query->where('category', $category))
             ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
                 $query, ['name_ar', 'name_en', 'internal_code'], $search))
             ->orderBy('internal_code')->get()

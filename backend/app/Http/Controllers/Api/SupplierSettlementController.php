@@ -90,6 +90,7 @@ class SupplierSettlementController extends ApiController
                 'supplier',
                 fn ($query) => $query->where('public_id', $supplierId),
             ))
+            ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('from'), fn ($query, $from) => $query->whereDate('paid_at', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->whereDate('paid_at', '<=', $to))
             ->orderByDesc('id')

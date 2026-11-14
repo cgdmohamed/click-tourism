@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Accounting\Models\AccountingDocument;
 use App\Modules\Accounting\Services\AccountingDocumentService;
+use App\Modules\Parties\Models\Customer;
+use App\Modules\Parties\Models\Employee;
+use App\Modules\Parties\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,7 +22,19 @@ class AccountingDocumentController extends ApiController
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
             ->when($request->query('status'), fn ($query, $status) => $query->where('status', $status))
             ->when($request->query('party_type'), fn ($query, $partyType) => $query->where('party_type', $partyType))
-            ->when($request->query('party_id'), fn ($query, $partyId) => $query->where('party_id', $partyId))
+            ->when($request->query('party_id'), function ($query, $partyId) use ($request) {
+                // Accept the public id as well as the internal one (same rule as invoices).
+                if (! ctype_digit((string) $partyId)) {
+                    $model = match ($request->query('party_type')) {
+                        'supplier' => Supplier::class,
+                        'employee' => Employee::class,
+                        default => Customer::class,
+                    };
+                    $partyId = $model::query()->where('public_id', $partyId)->value('id') ?? 0;
+                }
+
+                return $query->where('party_id', $partyId);
+            })
             ->when($request->query('from'), fn ($query, $from) => $query->where('fx_rate_date', '>=', $from))
             ->when($request->query('to'), fn ($query, $to) => $query->where('fx_rate_date', '<=', $to))
             ->when($request->query('search'), function ($query, $search) {

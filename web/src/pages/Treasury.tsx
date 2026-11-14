@@ -96,8 +96,60 @@ export default function Treasury() {
     },
   })
 
+  const [accountSearch, setAccountSearch] = useState('')
+  const accountFilters = useFilters([
+    {
+      key: 'kind',
+      label: L('النوع', 'Type'),
+      type: 'select',
+      options: [
+        { value: 'cash', label: paymentMethodLabel('cash', locale) },
+        { value: 'bank', label: paymentMethodLabel('bank', locale) },
+      ],
+      allLabel: L('الكل', 'All'),
+    },
+    {
+      key: 'currency',
+      label: t('currency'),
+      type: 'select',
+      options: [...new Set((accountsQuery.data ?? []).map((account) => account.currency))].map((code) => ({ value: code, label: code })),
+      allLabel: L('كل العملات', 'All currencies'),
+    },
+  ])
+  // The table shows the filtered list; `accounts` above stays complete for the transfer form and its filters.
+  const accountsFiltered = accountSearch !== '' || accountFilters.count > 0
+  const accountListQuery = useQuery({
+    queryKey: ['cash-accounts', 'treasury-list', accountFilters.applied, accountSearch, activeBranch?.id],
+    enabled: accountsFiltered,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: CashAccount[] }>('/cash-accounts', {
+        params: {
+          include_inactive: 1,
+          kind: accountFilters.applied.kind || undefined,
+          currency: accountFilters.applied.currency || undefined,
+          search: accountSearch || undefined,
+        },
+      })
+      return data.data
+    },
+  })
+
   const transferFilters = useFilters(
     [
+      {
+        key: 'cash_account_id',
+        label: L('الحساب', 'Account'),
+        type: 'select',
+        options: (accountsQuery.data ?? []).filter((account) => account.registered).map((account) => ({ value: account.cash_account_id ?? account.id, label: localizedName(account, locale) })),
+        allLabel: L('كل الحسابات', 'All accounts'),
+      },
+      {
+        key: 'status',
+        label: t('status'),
+        type: 'select',
+        options: ['posted', 'reversed'].map((value) => ({ value, label: statusLabel(value, locale) })),
+        allLabel: L('كل الحالات', 'All statuses'),
+      },
       { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
       { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
     ],
@@ -107,7 +159,7 @@ export default function Treasury() {
   const transfersQuery = useQuery({
     queryKey: ['transfers', page, transferFilters.applied, activeBranch?.id],
     queryFn: async () => {
-      const { data } = await api.get<Paginated<Transfer>>('/transfers', { params: { page, per_page: 20, from: transferFilters.applied.from || undefined, to: transferFilters.applied.to || undefined } })
+      const { data } = await api.get<Paginated<Transfer>>('/transfers', { params: { page, per_page: 20, from: transferFilters.applied.from || undefined, to: transferFilters.applied.to || undefined, status: transferFilters.applied.status || undefined, cash_account_id: transferFilters.applied.cash_account_id || undefined } })
       return data
     },
     enabled: can('transfers.view'),
@@ -122,6 +174,7 @@ export default function Treasury() {
   })
 
   const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data])
+  const shownAccounts = accountsFiltered ? (accountListQuery.data ?? []) : accounts
   const registered = useMemo(() => accounts.filter((account) => account.registered && account.is_active !== false), [accounts])
   const fromAccount = registered.find((account) => account.cash_account_id === transferForm.from)
   const toAccount = registered.find((account) => account.cash_account_id === transferForm.to)
@@ -269,12 +322,16 @@ export default function Treasury() {
 
       {tab === 'accounts' ? (
         <Card>
-          {accountsQuery.isLoading ? <Loading /> : null}
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
+            <Input value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder={L('بحث بالاسم أو اسم البنك', 'Search name or bank')} aria-label={L('بحث', 'Search')} className="max-w-xs" />
+            <FilterControl state={accountFilters} />
+          </div>
+          {(accountsFiltered ? accountListQuery.isLoading : accountsQuery.isLoading) ? <Loading /> : null}
           {accountsQuery.isError ? <ErrorState message={errorMessage(accountsQuery.error)} onRetry={() => void accountsQuery.refetch()} /> : null}
-          {accounts.length === 0 && !accountsQuery.isLoading ? <EmptyState /> : null}
-          {accounts.length > 0 ? (
+          {shownAccounts.length === 0 && !accountsQuery.isLoading && !accountListQuery.isLoading ? (accountsFiltered ? <EmptyState variant="filtered" onClear={() => { setAccountSearch(''); accountFilters.clearAll() }} /> : <EmptyState />) : null}
+          {shownAccounts.length > 0 ? (
             <>
-            <MobileCards items={accounts} getKey={(account) => account.id} label={L('الحسابات', 'Accounts')}>
+            <MobileCards items={shownAccounts} getKey={(account) => account.id} label={L('الحسابات', 'Accounts')}>
               {(account) => (
                 <>
                   <div className="flex items-start justify-between gap-3">
@@ -320,7 +377,7 @@ export default function Treasury() {
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((account) => (
+                {shownAccounts.map((account) => (
                   <tr key={account.id}>
                     <Td className="tabular">{account.code}</Td>
                     <Td>

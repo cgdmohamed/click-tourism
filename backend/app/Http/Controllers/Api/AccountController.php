@@ -88,6 +88,9 @@ class AccountController extends ApiController
         $accounts = Account::query()
             ->with('parent:id,public_id')
             ->when($request->query('type'), fn ($query, $type) => $query->where('type', $type))
+            ->when($request->query('is_active') !== null && $request->query('is_active') !== '', fn ($query) => $query->where('is_active', $request->boolean('is_active')))
+            ->when($request->query('is_postable') !== null && $request->query('is_postable') !== '', fn ($query) => $query->where('is_postable', $request->boolean('is_postable')))
+            ->when($request->query('classification'), fn ($query, $classification) => $query->where('classification', $classification))
             ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
                 $query, ['code', 'name_ar', 'name_en'], $search))
             ->orderBy('code')

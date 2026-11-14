@@ -48,6 +48,13 @@ class BankReconciliationController extends ApiController
             ->when($request->query('cash_account_id'), function ($query, $cashAccount) {
                 $query->whereHas('cashAccount', fn ($inner) => $inner->where('public_id', $cashAccount));
             })
+            // `period` is a month (YYYY-MM): statements whose date range touches it.
+            ->when(preg_match('/^\d{4}-\d{2}$/', (string) $request->query('period')) === 1, function ($query) use ($request) {
+                $start = $request->query('period').'-01';
+                $end = date('Y-m-t', strtotime($start));
+
+                return $query->whereDate('period_from', '<=', $end)->whereDate('period_to', '>=', $start);
+            })
             ->orderByDesc('period_to')
             ->orderByDesc('id')
             ->get();

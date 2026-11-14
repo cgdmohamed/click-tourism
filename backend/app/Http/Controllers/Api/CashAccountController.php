@@ -7,6 +7,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Treasury\Models\CashAccount;
 use App\Modules\Treasury\Services\TreasuryService;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -22,6 +23,10 @@ class CashAccountController extends ApiController
     {
         $query = CashAccount::query()->with(['account', 'branch'])
             ->when(! $request->boolean('include_inactive'), fn ($query) => $query->where('is_active', true))
+            ->when($request->query('kind'), fn ($query, $kind) => $query->where('kind', $kind))
+            ->when($request->query('currency'), fn ($query, $currency) => $query->where('currency_code', strtoupper((string) $currency)))
+            ->when(Like::term($request->query('search')), fn ($query, $search) => Like::contains(
+                $query, ['name_ar', 'name_en', 'bank_name'], $search))
             ->orderBy('id');
 
         $registered = $query->get();

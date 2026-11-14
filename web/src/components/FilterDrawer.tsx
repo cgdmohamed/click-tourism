@@ -374,3 +374,43 @@ export function PartyFilterField({ kind, value, set }: { kind: PartyKind; value:
     />
   )
 }
+
+/**
+ * Party filter for lists that mix kinds: the API needs the party kind and id, so one control carries both as
+ * `kind:id`. `kinds` limits the choices (customers and suppliers by default).
+ */
+export function PartyKindFilterField({
+  value,
+  set,
+  kinds = ['customer', 'supplier'],
+}: {
+  value: string
+  set: (value: string, label?: string) => void
+  kinds?: readonly PartyKind[]
+}) {
+  const { locale } = useI18n()
+  const [kind, setKind] = useState<PartyKind>(kinds.find((candidate) => value.startsWith(`${candidate}:`)) ?? kinds[0])
+  const id = value.includes(':') ? value.slice(value.indexOf(':') + 1) : ''
+  const names: Record<PartyKind, string> = {
+    customer: locale === 'ar' ? 'عميل' : 'Customer',
+    supplier: locale === 'ar' ? 'مورد' : 'Supplier',
+    employee: locale === 'ar' ? 'موظف' : 'Employee',
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <Select
+        value={kind}
+        onChange={(event) => {
+          setKind(event.target.value as PartyKind)
+          set('')
+        }}
+        aria-label={locale === 'ar' ? 'نوع الطرف' : 'Party type'}
+      >
+        {kinds.map((candidate) => (
+          <option key={candidate} value={candidate}>{names[candidate]}</option>
+        ))}
+      </Select>
+      <PartyFilterField kind={kind} value={id} set={(next, label) => set(next ? `${kind}:${next}` : '', label)} />
+    </div>
+  )
+}
