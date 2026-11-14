@@ -1,6 +1,6 @@
 // The HTTP gateway (ADR-0024) driven by the official SDK client over Streamable HTTP, against a fake ERP API.
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { after, before, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -103,4 +103,21 @@ test('a wrong token reaches the ERP and comes back as the stable unauthenticated
   } finally {
     await client.close();
   }
+});
+
+test('a malformed request target is a 400 and the gateway keeps serving', async () => {
+  const { port } = gateway.address();
+  for (const target of ['//[', '//%', '/mcp?%E0%A4%A']) {
+    const status = await new Promise((resolve, reject) => {
+      const request = httpRequest({ host: '127.0.0.1', port, method: 'POST', path: target }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      });
+      request.on('error', reject);
+      request.end('{}');
+    });
+    assert.ok(status >= 400 && status < 500, `${target} -> ${status}`);
+  }
+  const health = await fetch(`${gatewayUrl}/health`);
+  assert.equal(health.status, 200, 'the gateway must still be up');
 });

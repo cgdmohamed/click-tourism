@@ -70,8 +70,14 @@ export function createHttpGateway(env = process.env) {
   const configFor = configCache(env);
   const allowedOrigins = (env.MCP_ALLOWED_ORIGINS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
 
-  return createServer(async (req, res) => {
-    const url = new URL(req.url ?? '/', 'http://gateway.local');
+  async function handle(req, res) {
+    // A hostile request target such as `//[` makes URL parsing throw: that is a client error, never a crash.
+    let url;
+    try {
+      url = new URL(req.url ?? '/', 'http://gateway.local');
+    } catch {
+      return send(res, 400, rpcError('Invalid request target.'));
+    }
 
     if (url.pathname === '/health') return send(res, 200, { status: 'ok' });
     if (url.pathname !== '/mcp') return send(res, 404, rpcError('Not found.'));
@@ -111,6 +117,14 @@ export function createHttpGateway(env = process.env) {
     } catch {
       if (!res.headersSent) send(res, 500, rpcError('Internal error.'));
     }
+  }
+
+  // Whatever goes wrong inside a request must not become an unhandled rejection that stops the process.
+  return createServer((req, res) => {
+    handle(req, res).catch(() => {
+      if (!res.headersSent) send(res, 500, rpcError('Internal error.'));
+      else res.end();
+    });
   });
 }
 
