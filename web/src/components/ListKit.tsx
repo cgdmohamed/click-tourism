@@ -69,19 +69,25 @@ export function RowActions({ items, label }: { items: readonly ActionItem[]; lab
 
   useEffect(() => {
     if (!open) return
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus()
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus({ preventScroll: true })
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node
       if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return
       setOpen(false)
     }
     const dismiss = () => setOpen(false)
+    // A scroll that does not move the trigger (focus or click scrolling its container) must not close the menu.
+    const startTop = triggerRef.current?.getBoundingClientRect().top ?? 0
+    const onScroll = () => {
+      const top = triggerRef.current?.getBoundingClientRect().top ?? 0
+      if (Math.abs(top - startTop) > 1) setOpen(false)
+    }
     document.addEventListener('mousedown', onPointerDown)
-    window.addEventListener('scroll', dismiss, true)
+    window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', dismiss)
     return () => {
       document.removeEventListener('mousedown', onPointerDown)
-      window.removeEventListener('scroll', dismiss, true)
+      window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', dismiss)
     }
   }, [open])
