@@ -72,6 +72,9 @@ class PaymentService
             if (! $cashAccount || ! $cashAccount->is_active || ! $cashAccount->is_postable) {
                 throw new DomainException('Cash account not found or not postable.');
             }
+            if ($cashAccount->type !== 'asset') {
+                throw new DomainException('A receipt must be paid into an asset (cash or bank) account.');
+            }
 
             $amount = (int) ($data['amount_minor'] ?? 0);
             if ($amount <= 0) {

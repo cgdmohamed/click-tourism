@@ -59,7 +59,7 @@ class SupplierSettlementController extends ApiController
         $data = $request->validate([
             'supplier_id' => ['required', 'string'],
             'branch_id' => ['required', 'string'],
-            'amount_minor' => ['required', 'integer', 'min:1'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
             'currency' => ['required', 'string', 'size:3'],
             'invoice_reference' => ['nullable', 'string', 'max:100'],
             'booking_item_id' => ['nullable', 'string', 'max:40'],
@@ -117,9 +117,9 @@ class SupplierSettlementController extends ApiController
             'supplier_obligation_id' => ['nullable', 'string'],
             'branch_id' => ['required', 'string'],
             'cash_account_id' => ['required', 'string'],
-            'amount_minor' => ['required', 'integer', 'min:1'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
             'currency' => ['required', 'string', 'size:3'],
-            'fx_rate' => ['nullable', 'string'],
+            'fx_rate' => ['nullable', 'numeric', 'gt:0'],
             'paid_at' => ['nullable', 'date'],
         ]);
 
@@ -134,7 +134,7 @@ class SupplierSettlementController extends ApiController
 
         $data = $request->validate([
             'supplier_obligation_id' => ['required', 'string'],
-            'amount_minor' => ['required', 'integer', 'min:1'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
         ]);
 
         $payment = $settlements->applyAdvance($supplierPayment, $data, $this->actorId());
@@ -181,7 +181,7 @@ class SupplierSettlementController extends ApiController
 
         $data = $request->validate([
             'invoice_id' => ['required', 'string'],
-            'amount_minor' => ['required', 'integer', 'min:1'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
         ]);
 
         $invoice = Invoice::query()->where('public_id', $data['invoice_id'])->firstOrFail();

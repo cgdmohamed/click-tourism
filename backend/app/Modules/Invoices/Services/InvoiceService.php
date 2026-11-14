@@ -706,6 +706,9 @@ class InvoiceService
             if ($tax < 0) {
                 throw new DomainException("Line {$position}: tax cannot be negative.");
             }
+            if ($tax > $debit + $credit) {
+                throw new DomainException("Line {$position}: tax cannot exceed the line amount.");
+            }
             $this->taxPolicy->assertTaxAllowed($tax, "Line {$position}");
 
             $taxAccountId = null;
