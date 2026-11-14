@@ -39,12 +39,14 @@ type Options = {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
   locale: 'ar' | 'en'
   conversationId: string | null
+  /** Ids of files uploaded with POST /assistant/uploads, read together with the last message. */
+  attachments?: string[]
   signal: AbortSignal
   onEvent: (event: StreamEvent) => void
 }
 
 /** Sends one turn and reports progress events as they arrive. Resolves when the stream ends. */
-export async function streamChat({ messages, locale, conversationId, signal, onEvent }: Options): Promise<void> {
+export async function streamChat({ messages, locale, conversationId, attachments, signal, onEvent }: Options): Promise<void> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/x-ndjson, application/json',
@@ -59,7 +61,7 @@ export async function streamChat({ messages, locale, conversationId, signal, onE
     method: 'POST',
     headers,
     signal,
-    body: JSON.stringify({ messages, locale, ...(conversationId ? { conversation_id: conversationId } : {}) }),
+    body: JSON.stringify({ messages, locale, ...(conversationId ? { conversation_id: conversationId } : {}), ...(attachments && attachments.length > 0 ? { attachments } : {}) }),
   })
 
   if (!response.ok) {

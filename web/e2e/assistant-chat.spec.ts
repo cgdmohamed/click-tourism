@@ -156,3 +156,32 @@ test('an action that posts or pays asks a second time, and going back runs nothi
   await expect(card.getByRole('status')).toContainText(/تم التنفيذ|Done/)
   expect(confirmed).toBe(1)
 })
+
+test('a receipt is attached in the chat and sent with the message', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  let chatBody: { attachments?: string[]; messages?: Array<{ content: string }> } = {}
+  await page.route('**/api/v1/feature-flags', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { data: Record<string, unknown> }
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, assistant_enabled: true, assistant_provider: 'openai' } } })
+  })
+  await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/assistant/uploads', (route) => route.fulfill({ status: 201, json: { data: { id: '01HUPLOADUPLOADUPLOADUPLO', name: 'transfer.png', mime: 'image/png', size_bytes: 70, expires_at: '2099-01-01T00:00:00Z' } } }))
+  await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    chatBody = route.request().postDataJSON()
+    const answer = { type: 'answer', data: { answer: 'قرأت الإيصال: 5,000 جنيه.', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [], conversation_id: null } }
+    return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
+  await page.locator('input[type="file"]').setInputFiles({ name: 'transfer.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') })
+  await expect(page.getByText('transfer.png')).toBeVisible()
+
+  // A file with no words still sends.
+  await page.getByRole('button', { name: /إرسال|^Send$/ }).click()
+  await expect(page.getByText('قرأت الإيصال: 5,000 جنيه.')).toBeVisible()
+  expect(chatBody.attachments).toEqual(['01HUPLOADUPLOADUPLOADUPLO'])
+  expect(chatBody.messages?.at(-1)?.content).toContain('transfer.png')
+  await expect(page.getByRole('button', { name: /إزالة الملف|Remove the file/ })).toHaveCount(0)
+})
