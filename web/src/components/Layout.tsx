@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { BrandMark, useBrandName } from './Brand'
 import { useSyncCurrencyExponents } from '../lib/useCurrencies'
 import { AssistantChat } from './AssistantChat'
+import { AssistantOrb } from './AssistantOrb'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationBell } from './NotificationBell'
 import { UserMenu } from './UserMenu'
@@ -241,6 +242,7 @@ export function Layout() {
               <GlobalSearch />
             </div>
             <IconButton icon="search" label={t('globalSearch')} variant="secondary" className="sm:hidden" onClick={() => setSearchOpen(true)} />
+            {assistantVisible ? <AssistantOrb onClick={() => setAssistantOpen(true)} /> : null}
             <NotificationBell />
             {branches.length > 1 ? (
               <label className="text-small hidden items-center gap-2 text-text-subtle sm:flex">
@@ -282,18 +284,6 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
-      {assistantVisible ? (
-        // While the assistant is connected and the screen is not in assistant mode it is a chat bubble.
-        <button
-          type="button"
-          className="no-print fixed bottom-6 end-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-action-primary-background text-action-primary-text shadow-4 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2"
-          onClick={() => setAssistantOpen(true)}
-          aria-label={t('assistantOpen')}
-          title={t('assistantOpen')}
-        >
-          <Icon name="sparkles" className="h-6 w-6" />
-        </button>
-      ) : null}
     </div>
   )
 }

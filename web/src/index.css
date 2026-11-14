@@ -652,3 +652,19 @@ body {
     letter-spacing: 0em;
   }
 }
+
+/* Assistant orb (header): the sparkles twinkle and the button breathes a soft glow. */
+.orb-star { transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes orb-glow {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-brand-1-accent) 45%, transparent); }
+    60% { box-shadow: 0 0 0 8px color-mix(in oklch, var(--color-brand-1-accent) 0%, transparent); }
+  }
+  @keyframes orb-twinkle-big { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.14) rotate(14deg); } }
+  @keyframes orb-twinkle-small { 0%, 100% { transform: scale(0.75) rotate(0deg); } 50% { transform: scale(1.4) rotate(-20deg); } }
+  .assistant-orb { animation: orb-glow 2.8s ease-out infinite; }
+  .orb-star-big { animation: orb-twinkle-big 2.8s ease-in-out infinite; }
+  .orb-star-small { animation: orb-twinkle-small 2.8s ease-in-out infinite 0.5s; }
+  .assistant-orb:hover .orb-star-big { animation-duration: 1.2s; }
+  .assistant-orb:hover .orb-star-small { animation-duration: 1.2s; }
+}
