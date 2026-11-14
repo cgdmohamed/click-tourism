@@ -10,6 +10,7 @@ use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceDocument;
 use App\Modules\Invoices\Services\InvoiceService;
+use App\Support\ArabicText;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
@@ -238,6 +239,12 @@ class InvoiceDocumentTest extends TestCase
         $this->assertStringContainsString('dir="rtl"', $html);
         $this->assertStringNotContainsString('>Invoice<', $html);
         $this->assertStringNotContainsString('Amount due', $html);
+
+        // Labels go through the same shaping as names: the renderer would otherwise
+        // print them reversed and unjoined.
+        $this->assertStringContainsString(ArabicText::visual('فاتورة'), $html);
+        $this->assertStringContainsString(ArabicText::visual('المبلغ المستحق'), $html);
+        $this->assertStringNotContainsString('فاتورة', $html);
     }
 
     public function test_foreign_currency_document_shows_the_fx_snapshot_and_rate_date(): void
