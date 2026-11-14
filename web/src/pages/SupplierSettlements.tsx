@@ -1,5 +1,7 @@
 import { DateField } from '../components/DateField'
 import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
@@ -93,6 +95,14 @@ export default function SupplierSettlements() {
   const [paymentPage, setPaymentPage] = useState(1)
   const [obligationSearch, setObligationSearch] = useState('')
   const currencyCodes = useActiveCurrencyCodes()
+  const [searchParams] = useSearchParams()
+  const urlSupplier = searchParams.get('supplier_id') ?? ''
+  const urlName = searchParams.get('party_name') ?? ''
+  useDeepLinkNew(can('supplier_payments.create'), (value, params) => {
+    if (value !== 'payment') return
+    setPaymentForm((current) => ({ ...current, supplier_id: params.get('supplier_id') ?? '' }))
+    setPaymentOpen(true)
+  })
 
   const obligationFilters = useFilters(
     [
@@ -112,7 +122,7 @@ export default function SupplierSettlements() {
         allLabel: L('كل العملات', 'All currencies'),
       },
     ],
-    { onApply: () => setObligationPage(1) },
+    { onApply: () => setObligationPage(1), initial: urlSupplier ? { supplier_id: urlSupplier } : undefined, initialLabels: urlSupplier && urlName ? { supplier_id: urlName } : undefined },
   )
 
   const paymentFilters = useFilters(
@@ -121,7 +131,7 @@ export default function SupplierSettlements() {
       { key: 'from', label: L('من تاريخ', 'From date'), type: 'date' },
       { key: 'to', label: L('إلى تاريخ', 'To date'), type: 'date' },
     ],
-    { onApply: () => setPaymentPage(1) },
+    { onApply: () => setPaymentPage(1), initial: urlSupplier ? { supplier_id: urlSupplier } : undefined, initialLabels: urlSupplier && urlName ? { supplier_id: urlName } : undefined },
   )
 
   const obligationsQuery = useQuery({

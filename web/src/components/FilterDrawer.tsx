@@ -73,10 +73,22 @@ function writeStored(key: string | undefined, value: Stored) {
   }
 }
 
-export function useFilters(defs: readonly FilterDef[], options: { persistKey?: string; onApply?: () => void } = {}): FilterState {
+/**
+ * `initial` (for example from a deep link) wins over what the session remembered; `initialLabels` names custom
+ * values so their chips read well before the user opens the drawer.
+ */
+export function useFilters(
+  defs: readonly FilterDef[],
+  options: { persistKey?: string; onApply?: () => void; initial?: Record<string, string>; initialLabels?: Record<string, string> } = {},
+): FilterState {
   const { locale } = useI18n()
   const [defaults] = useState<Record<string, string>>(() => Object.fromEntries(defs.map((def) => [def.key, def.default ?? ''])))
-  const [stored] = useState(() => readStored(options.persistKey, defaults))
+  const [stored] = useState(() => {
+    const base = readStored(options.persistKey, defaults)
+    const given = Object.entries(options.initial ?? {}).filter(([key, value]) => key in defaults && value !== '')
+    if (given.length === 0) return base
+    return { values: { ...base.values, ...Object.fromEntries(given) }, labels: { ...base.labels, ...(options.initialLabels ?? {}) } }
+  })
   const [applied, setApplied] = useState<Record<string, string>>(stored.values)
   const [labels, setLabels] = useState<Record<string, string>>(stored.labels)
   const [draft, setDraftState] = useState<Record<string, string>>(applied)

@@ -2,6 +2,7 @@ import { DateField } from '../components/DateField'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
 import { useAuth } from '../auth/AuthProvider'
 import AttachmentsCard from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
@@ -60,6 +61,12 @@ export default function Payments() {
   const [search, setSearch] = useState(urlSearch)
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
+  useDeepLinkNew(can('payments.create'), (value, params) => {
+    if (value !== 'payment') return
+    const customer = params.get('customer_id')
+    if (customer) setForm((current) => ({ ...current, customer_id: customer }))
+    setOpen(true)
+  })
   const [error, setError] = useState('')
   const [applyTarget, setApplyTarget] = useState<ApplyTarget | null>(null)
   const [documentsFor, setDocumentsFor] = useState<Payment | null>(null)

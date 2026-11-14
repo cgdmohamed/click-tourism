@@ -144,10 +144,10 @@ export default function Dashboard() {
   const colors = ['#4273c3', '#23a183', '#e2a549', '#d66a71', '#8c75be']
   const shortcuts: Array<{ label: string; href: string; permission: string }> = [
     { label: locale === 'ar' ? 'فواتير العملاء والموردين' : 'Customer & supplier invoices', href: '/invoices', permission: 'invoices.view' },
-    { label: locale === 'ar' ? 'تسجيل تحصيل' : 'Record a receipt', href: '/payments', permission: 'payments.create' },
+    { label: locale === 'ar' ? 'تسجيل تحصيل' : 'Record a receipt', href: '/payments?new=payment', permission: 'payments.create' },
     { label: locale === 'ar' ? 'مدفوعات الموردين' : 'Supplier payments', href: '/supplier-settlements', permission: 'supplier_payments.view' },
     { label: locale === 'ar' ? 'القيود اليومية' : 'Journal entries', href: '/journal', permission: 'journal.view' },
-    { label: locale === 'ar' ? 'تسجيل مصروف' : 'Expenses', href: '/expenses', permission: 'expenses.create' },
+    { label: locale === 'ar' ? 'تسجيل مصروف' : 'Expenses', href: '/expenses?new=expense', permission: 'expenses.create' },
     { label: locale === 'ar' ? 'كشوف حساب العملاء' : 'Customer statements', href: '/customers', permission: 'customers.view' },
     { label: locale === 'ar' ? 'التسوية البنكية' : 'Bank reconciliation', href: '/reconciliation', permission: 'reconciliation.view' },
     { label: locale === 'ar' ? 'التقارير وميزان المراجعة' : 'Reports & trial balance', href: '/reports', permission: 'reports.view' },

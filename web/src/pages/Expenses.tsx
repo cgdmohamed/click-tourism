@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { DateField } from '../components/DateField'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
 import { useAuth } from '../auth/AuthProvider'
 import { DocumentsButton } from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
@@ -82,6 +83,7 @@ export default function Expenses() {
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  useDeepLinkNew(can('expenses.create'), (value) => value === 'expense' && setOpen(true))
   const [form, setForm] = useState(emptyForm)
   const [action, setAction] = useState<Action | null>(null)
   const [reason, setReason] = useState('')

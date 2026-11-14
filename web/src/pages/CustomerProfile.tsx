@@ -125,6 +125,12 @@ export default function CustomerProfile() {
                 {locale === 'ar' ? 'حجز جديد لهذا العميل' : 'New booking for this customer'}
               </Link>
             ) : null}
+            {can('payments.create') ? (
+              <Link to={`/payments?new=payment&customer_id=${party.id}`}
+                className="inline-flex items-center rounded-8 border border-border-default px-3 py-2 text-small font-semibold text-text-default hover:bg-surface-hovered">
+                {locale === 'ar' ? 'تسجيل تحصيل' : 'Record collection'}
+              </Link>
+            ) : null}
             {can('customers.update') ? <Button variant="secondary" icon="edit" onClick={openEditor}>{t('edit')}</Button> : null}
             <Button variant="secondary" icon="printer" onClick={() => window.print()}>{t('print')}</Button>
           </>
@@ -251,7 +257,7 @@ export default function CustomerProfile() {
                 title={t('invoices')}
                 icon="fileText"
                 actions={
-                  <Link to="/invoices" className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
+                  <Link to={`/invoices?party_type=customer&party_id=${party.id}&party_name=${encodeURIComponent(name)}`} className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
                     {t('viewAll')}
                   </Link>
                 }

@@ -37,6 +37,7 @@ import CreditLimitNotice, { type CreditWarning } from '../components/CreditLimit
 import { InvoiceCollectionModal } from '../components/InvoiceCollectionModal'
 import { AiBadge } from '../components/AiBadge'
 import { CardField, MobileCards, TableOnly } from '../components/MobileCards'
+import { useDeepLinkNew } from '../lib/useDeepLinkNew'
 import { FilterControl, PartyFilterField, useFilters } from '../components/FilterDrawer'
 import { ACTIONS_COL, ListEmpty, ListSkeleton, ListTable, ListTh } from '../components/ListKit'
 
@@ -125,6 +126,9 @@ export default function Invoices() {
   const [searchParams] = useSearchParams()
   const bookingFilter = searchParams.get('booking_id') ?? ''
   const urlSearch = searchParams.get('search') ?? ''
+  const urlPartyType = searchParams.get('party_type')
+  const urlPartyId = searchParams.get('party_id')
+  const urlParty = (urlPartyType === 'customer' || urlPartyType === 'supplier') && urlPartyId ? `${urlPartyType}:${urlPartyId}` : ''
   const queryClient = useQueryClient()
   const L = (ar: string, en: string) => (locale === 'ar' ? ar : en)
   const partyLabel = (ar: string, en: string) => (locale === 'ar' ? ar : en)
@@ -157,6 +161,16 @@ export default function Invoices() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill])
   const [simpleMode, setSimpleMode] = useState(true)
+  useDeepLinkNew(can('invoices.create'), (value, params) => {
+    if (value !== 'invoice') return
+    const supplier = params.get('party_type') === 'supplier' && params.get('party_id')
+    setForm((current) => ({
+      ...current,
+      ...(supplier ? { type: 'supplier_invoice' as const, party_type: 'supplier' as const, party_id: params.get('party_id') as string } : {}),
+    }))
+    setError('')
+    setOpen(true)
+  })
   const [detailId, setDetailId] = useState<string | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -211,7 +225,11 @@ export default function Invoices() {
       { key: 'from', label: L('من تاريخ الإصدار', 'Issued from'), type: 'date' },
       { key: 'to', label: L('إلى تاريخ الإصدار', 'Issued to'), type: 'date' },
     ],
-    { onApply: () => setPage(1) },
+    {
+      onApply: () => setPage(1),
+      initial: urlParty ? { party: urlParty } : undefined,
+      initialLabels: urlParty && searchParams.get('party_name') ? { party: searchParams.get('party_name') as string } : undefined,
+    },
   )
   const [partyKind, partyId] = filters.applied.party ? (filters.applied.party.split(':') as [string, string]) : ['', '']
 

@@ -113,6 +113,18 @@ export default function SupplierProfile() {
         }
         actions={
           <>
+            {can('invoices.create') ? (
+              <Link to={`/invoices?new=invoice&party_type=supplier&party_id=${party.id}`}
+                className="inline-flex items-center rounded-8 bg-brand-1 px-3 py-2 text-small font-semibold text-white">
+                {locale === 'ar' ? 'تسجيل فاتورة مورد' : 'Record supplier invoice'}
+              </Link>
+            ) : null}
+            {can('supplier_payments.create') ? (
+              <Link to={`/supplier-settlements?new=payment&supplier_id=${party.id}`}
+                className="inline-flex items-center rounded-8 border border-border-default px-3 py-2 text-small font-semibold text-text-default hover:bg-surface-hovered">
+                {locale === 'ar' ? 'سداد للمورد' : 'Pay supplier'}
+              </Link>
+            ) : null}
             {can('suppliers.update') ? <Button variant="secondary" icon="edit" onClick={openEditor}>{t('edit')}</Button> : null}
             <Button variant="secondary" icon="printer" onClick={() => window.print()}>{t('print')}</Button>
           </>
@@ -189,7 +201,7 @@ export default function SupplierProfile() {
                 title={t('invoices')}
                 icon="fileText"
                 actions={
-                  <Link to="/invoices" className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
+                  <Link to={`/invoices?party_type=supplier&party_id=${party.id}&party_name=${encodeURIComponent(name)}`} className="text-small inline-flex items-center gap-1 font-medium text-brand-1-accent hover:underline">
                     {t('viewAll')}
                   </Link>
                 }
@@ -233,7 +245,7 @@ export default function SupplierProfile() {
             </Card>
 
             <Card>
-              <CardHeader title={t('obligations')} icon="handshake" actions={<Link to="/supplier-settlements" className="text-small font-medium text-brand-1-accent hover:underline">{t('viewAll')}</Link>} />
+              <CardHeader title={t('obligations')} icon="handshake" actions={<Link to={`/supplier-settlements?supplier_id=${party.id}&party_name=${encodeURIComponent(name)}`} className="text-small font-medium text-brand-1-accent hover:underline">{t('viewAll')}</Link>} />
               {profile.obligations.length === 0 ? (
                 <EmptyState icon="handshake" title={t('noObligations')} />
               ) : (
