@@ -296,7 +296,14 @@ export default function BookingDetails({ bookingId, onClose }: { bookingId: stri
                 {receivableInvoice && can('payments.create') ? (
                   <Button onClick={() => setCollecting(true)}>{ar ? 'تحصيل الفاتورة' : 'Collect invoice'}</Button>
                 ) : null}
-                {!activeInvoice ? (
+                {!can('invoices.view') ? (
+                  <span className="text-small text-text-subtle">
+                    {booking.invoice
+                      ? `${ar ? 'الفاتورة' : 'Invoice'} ${booking.invoice.number} · ${statusLabel(booking.invoice.status, locale)} · ${ar ? 'المتبقي' : 'Outstanding'} ${formatMoney(booking.invoice.outstanding_minor, booking.invoice.currency, locale)}`
+                      : ar ? 'لم تُصدر فاتورة لهذا الحجز بعد.' : 'No invoice has been created for this booking yet.'}
+                  </span>
+                ) : null}
+                {!activeInvoice && can('invoices.view') ? (
                   <span className="text-small text-text-subtle">
                     {ar ? 'الفاتورة تُنشأ من نفس بنود الحجز، وتخضع للاعتماد قبل الإصدار.' : 'Invoice lines come from the booking and require approval before issue.'}
                   </span>

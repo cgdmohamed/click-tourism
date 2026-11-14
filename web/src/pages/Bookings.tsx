@@ -114,6 +114,13 @@ export default function Bookings() {
         type: 'custom',
         render: (value, set) => <PartyFilterField kind="customer" value={value} set={set} />,
       },
+      {
+        key: 'needs_invoice',
+        label: locale === 'ar' ? 'الفوترة' : 'Invoicing',
+        type: 'select',
+        options: [{ value: '1', label: locale === 'ar' ? 'جاهز للفوترة (بلا فاتورة)' : 'Ready to invoice (no invoice yet)' }],
+        allLabel: locale === 'ar' ? 'الكل' : 'All',
+      },
     ],
     { onApply: () => setPage(1) },
   )
@@ -125,6 +132,7 @@ export default function Bookings() {
         params: {
           status: filters.applied.status || undefined,
           customer_id: filters.applied.customer_id || undefined,
+          needs_invoice: filters.applied.needs_invoice || undefined,
           search: search || undefined,
           page,
           per_page: 20,

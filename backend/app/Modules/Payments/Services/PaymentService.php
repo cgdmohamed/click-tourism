@@ -14,6 +14,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\BranchScope;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Core\Services\SequenceService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Invoices\Models\InvoiceApplication;
@@ -44,6 +45,7 @@ class PaymentService
         private readonly PartyLedgerService $ledger,
         private readonly RealizedFxService $realizedFx,
         private readonly CommissionService $commissions,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function record(array $data, ?int $actorId = null, ?string $idempotencyKey = null): Payment
@@ -450,6 +452,21 @@ class PaymentService
             ]);
 
             $this->audit->log('refund.requested', $refund, null, ['amount_minor' => $amount], $actorId);
+
+            // Tell the people who can approve it (W10). Best-effort, like every notification: it never blocks the refund.
+            try {
+                foreach ($this->notifications->branchUsers($branch, 'refunds.approve') as $approver) {
+                    if ($approver->id === $actorId) {
+                        continue;
+                    }
+                    $this->notifications->send($approver->id, 'refund.requested', 'Refund '.$refund->number.' is waiting for approval', null, [
+                        'refund_id' => $refund->public_id,
+                        'number' => $refund->number,
+                    ], $branch->id);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
 
             return $refund;
         });

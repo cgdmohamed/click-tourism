@@ -70,7 +70,6 @@ class RolePermissionSeeder extends Seeder
             'bookings.view', 'bookings.create', 'bookings.update', 'bookings.transition', 'bookings.cancel',
             'payments.view', 'payments.create',
             'refunds.create',
-            'reports.view',
             'leads.view', 'leads.create', 'leads.update', 'leads.convert', 'leads.manage_rules',
         ],
         'viewer' => [
@@ -111,7 +110,6 @@ class RolePermissionSeeder extends Seeder
             'suppliers.view', 'supplier_obligations.view',
             'payments.view', 'payments.create',
             'refunds.create',
-            'reports.view',
             'leads.view', 'leads.create', 'leads.update',
             'cost_centers.view',
             'expenses.view', 'accounts.view', 'branches.view',
@@ -121,7 +119,8 @@ class RolePermissionSeeder extends Seeder
             '@sales',
             'employees.view',
             'commissions.view',
-            'reports.export',
+            // Supervisors keep read access to reports (they already export them); sales, reservations and cashier do not (W12, owner decision 2026-11-14).
+            'reports.view', 'reports.export',
             'users.view',
         ],
         // Cashier: collections and refunds at the counter.
@@ -131,7 +130,6 @@ class RolePermissionSeeder extends Seeder
             'refunds.create',
             'transfers.view', 'transfers.create',
             'customers.view',
-            'reports.view',
             'expenses.view', 'accounts.view', 'branches.view',
         ],
     ];

@@ -237,15 +237,13 @@ export default function Payments() {
 
   // One issued invoice can have many linked receipts. Selecting it prefills
   // the outstanding amount, which remains editable for partial collection.
+  // The collection-scoped lookup needs payments.create only, so a cashier can pick the invoice too.
   const invoiceParams = useMemo(() => ({
-    type: 'customer_invoice',
-    party_type: 'customer',
-    party_id: form.customer_id || undefined,
+    customer_id: form.customer_id || undefined,
     currency: draftCurrency,
-    open: 1,
   }), [form.customer_id, draftCurrency])
   const invoicePicker = useRemoteOptions<OpenCustomerInvoice>({
-    endpoint: '/invoices',
+    endpoint: '/collections/open-invoices',
     keyPrefix: 'customer-collection-invoices',
     params: invoiceParams,
     value: form.invoice_id,

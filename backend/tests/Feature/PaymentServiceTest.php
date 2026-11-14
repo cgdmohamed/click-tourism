@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Models\JournalLine;
 use App\Modules\Bookings\Services\BookingService;
+use App\Modules\Core\Models\Notification;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Parties\Services\PartyLedgerService;
@@ -13,6 +14,8 @@ use App\Modules\Payments\Services\PaymentService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\Support\BuildsAccounting;
 use Tests\TestCase;
 
@@ -128,6 +131,27 @@ class PaymentServiceTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, Payment::query()->count());
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'payment')->count());
+    }
+
+    public function test_a_refund_request_notifies_the_approvers_of_the_branch_but_not_the_requester(): void
+    {
+        $approver = User::factory()->create();
+        $approver->branches()->attach($this->branch->id);
+        Permission::query()->firstOrCreate(['name' => 'refunds.approve', 'guard_name' => 'web']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $approver->givePermissionTo('refunds.approve');
+        $this->user->givePermissionTo('refunds.approve');
+        $bystander = User::factory()->create();
+        $bystander->branches()->attach($this->branch->id);
+
+        $booking = $this->confirmedBooking();
+        $payment = $this->record(['booking_id' => $booking->public_id, 'amount_minor' => 100000]);
+        $refund = app(PaymentService::class)->requestRefund(['payment_id' => $payment->public_id, 'amount_minor' => 10000, 'reason' => 'x'], $this->user->id);
+
+        $notice = Notification::query()->where('type', 'refund.requested')->get();
+        $this->assertSame([$approver->id], $notice->pluck('user_id')->all());
+        $this->assertSame($refund->number, $notice->first()->data['number']);
+        $this->assertSame($refund->public_id, $notice->first()->data['refund_id']);
     }
 
     public function test_refund_segregation_is_optional_and_blocks_self_approval_when_enabled(): void

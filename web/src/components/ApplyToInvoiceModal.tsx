@@ -41,13 +41,10 @@ export function ApplyToInvoiceModal({ target, onClose }: { target: ApplyTarget |
   // Open invoices of the party in the payment's currency, searchable by number on
   // the server; a party with more than one page of open invoices stays reachable.
   const params = useMemo(
-    () => ({
-      party_type: target?.kind,
-      party_id: target?.partyId,
-      type: target?.kind === 'customer' ? 'customer_invoice' : 'supplier_invoice',
-      currency: target?.currency,
-      open: 1,
-    }),
+    () =>
+      target?.kind === 'customer'
+        ? { customer_id: target.partyId, currency: target.currency }
+        : { party_type: target?.kind, party_id: target?.partyId, type: 'supplier_invoice', currency: target?.currency, open: 1 },
     [target?.kind, target?.partyId, target?.currency],
   )
   const toOption = useCallback(
@@ -59,7 +56,8 @@ export function ApplyToInvoiceModal({ target, onClose }: { target: ApplyTarget |
     [locale],
   )
   const picker = useRemoteOptions<OpenInvoice>({
-    endpoint: '/invoices',
+    // Customers use the collection-scoped lookup (payments.create); supplier invoices keep the invoice list.
+    endpoint: target?.kind === 'customer' ? '/collections/open-invoices' : '/invoices',
     keyPrefix: 'open-invoices',
     params,
     toOption,

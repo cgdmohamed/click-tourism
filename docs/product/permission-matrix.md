@@ -26,9 +26,9 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 | `senior_accountant` | 79 | Accountant scope plus posting/deleting own or branch journal drafts (maker-checker override, audited). |
 | `accountant` | 77 | Full accounting operations: CoA, periods, journals, parties, payments, reports — without user management or draft posting. |
 | `supervisor` | 30 | Sales scope plus staff visibility, exports, and the user directory (`users.view`). |
-| `sales` | 26 | Customer-facing pipeline: parties, bookings, receipts, leads — no accounting setup. |
-| `reservations` | 21 | Bookings and parties without accounting power; leads without conversion or rule management. |
-| `cashier` | 12 | Collections, refunds, and transfers at the counter. |
+| `sales` | 25 | Customer-facing pipeline: parties, bookings, receipts, leads — no accounting setup. |
+| `reservations` | 20 | Bookings and parties without accounting power; leads without conversion or rule management. |
+| `cashier` | 11 | Collections, refunds, and transfers at the counter. |
 | `viewer` | 18 | Read-only baseline across operational reports. |
 
 `finance_manager`, `senior_accountant`, and `supervisor` are defined by extension (`@accountant` / `@sales`) in the seeder; the counts above are the expanded sets.
@@ -135,7 +135,7 @@ Source of truth: `backend/database/seeders/RolePermissionSeeder.php` (constants 
 
 | Permission | admin | finance_manager | senior_accountant | accountant | supervisor | sales | reservations | cashier | viewer |
 |---|---|---|---|---|---|---|---|---|---|
-| `reports.view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `reports.view` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | ✓ |
 | `reports.export` | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
 | `reports.schedule` | ✓ | ✓ | — | — | — | — | — | — | — |
 

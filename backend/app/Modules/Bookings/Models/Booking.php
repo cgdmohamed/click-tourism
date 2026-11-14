@@ -5,6 +5,7 @@ namespace App\Modules\Bookings\Models;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
+use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\PaymentAllocation;
 use App\Support\CarriesWarnings;
@@ -100,6 +101,15 @@ class Booking extends Model
         return $this->hasMany(BookingItem::class);
     }
 
+    /** The booking's live customer invoice (not voided); the same rule that stops a second one being created. */
+    public function customerInvoice()
+    {
+        return $this->hasOne(Invoice::class)
+            ->where('type', Invoice::TYPE_CUSTOMER_INVOICE)
+            ->where('status', '!=', Invoice::STATUS_VOIDED)
+            ->latestOfMany();
+    }
+
     public function statusHistory()
     {
         return $this->hasMany(BookingStatusHistory::class);
@@ -162,6 +172,18 @@ class Booking extends Model
                 : null,
             'allowed_transitions' => BookingService::allowedTransitionsFor($this->status),
         ];
+
+        // Read-only invoice status for everyone who can see the booking (W2): sales and reservations cannot list invoices.
+        if ($this->relationLoaded('customerInvoice')) {
+            $invoice = $this->customerInvoice;
+            $payload['invoice'] = $invoice === null ? null : [
+                'number' => $invoice->number,
+                'status' => $invoice->status,
+                'currency' => $invoice->currency_code,
+                'total_minor' => (int) $invoice->total_minor,
+                'outstanding_minor' => (int) $invoice->outstanding_minor,
+            ];
+        }
 
         if ($this->relationLoaded('statusHistory')) {
             $payload['status_history'] = $this->statusHistory

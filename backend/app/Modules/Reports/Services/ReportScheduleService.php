@@ -5,6 +5,7 @@ namespace App\Modules\Reports\Services;
 use App\Mail\ScheduledReportMail;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Services\AuditService;
+use App\Modules\Core\Services\NotificationService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Reports\Models\ExportJob;
 use App\Modules\Reports\Models\ReportSchedule;
@@ -31,6 +32,7 @@ class ReportScheduleService
         private readonly ExportJobService $exports,
         private readonly AuditService $audit,
         private readonly SettingService $settings,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function mailConfigured(): bool
@@ -126,6 +128,17 @@ class ReportScheduleService
             'is_active' => $deactivate ? false : $schedule->is_active,
             'next_run_at' => $this->nextRunAt($schedule->frequency, $schedule->day),
         ]);
+        // A failed run is told to the schedule's owner instead of living only on the schedule card (W10).
+        if ($status === 'failed') {
+            $this->notifications->send(
+                $schedule->user_id,
+                'report_schedule.failed',
+                'A scheduled report could not be sent',
+                ($error ?? 'The report could not be sent.').($deactivate ? ' The schedule was switched off after repeated failures.' : ''),
+                ['schedule_id' => $schedule->public_id, 'report' => $schedule->report, 'deactivated' => $deactivate],
+                $schedule->branch_id,
+            );
+        }
         $this->audit->log('report_schedule.'.($status === 'sent' ? 'sent' : 'not_sent'), null, null, [
             'schedule' => $schedule->public_id, 'report' => $schedule->report, 'status' => $status, 'recipients' => count($schedule->recipients ?? []), 'deactivated' => $deactivate,
         ], $schedule->user_id, $schedule->branch_id);

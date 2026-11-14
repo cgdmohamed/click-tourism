@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { recordHref, rowAmount, rowDate, SOURCES, visibleSources } from './approvals'
+import { recordHref, rowAmount, rowDate, SOURCES, sourceParams, visibleSources } from './approvals'
 
 describe('approvals', () => {
   it('shows only the sources the user may approve', () => {
@@ -18,5 +18,13 @@ describe('approvals', () => {
     expect(recordHref(by('documents'), 'a b')).toBe('/documents/a%20b')
     expect(recordHref(by('invoices-approved'), 'x1')).toBe('/invoices/x1')
     expect(recordHref(by('commissions'), 'c1')).toBe('/commissions')
+  })
+  it('lists bookings without an invoice for the ready-to-invoice source and statuses for the others', () => {
+    const by = (key: string) => SOURCES.find((source) => source.key === key)!
+    expect(sourceParams(by('ready-to-invoice'))).toEqual({ needs_invoice: '1' })
+    expect(sourceParams(by('expenses'))).toEqual({ status: 'submitted' })
+    expect(visibleSources((p) => p === 'invoices.create').map((source) => source.key)).toEqual(['ready-to-invoice'])
+    expect(rowAmount({ id: 'b', total_sell_minor: 900 })).toBe(900)
+    expect(rowDate({ id: 'b', start_date: '2026-05-01' })).toBe('2026-05-01')
   })
 })

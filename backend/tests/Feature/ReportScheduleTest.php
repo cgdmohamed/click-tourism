@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\ScheduledReportMail;
 use App\Modules\Core\Models\AuditEvent;
+use App\Modules\Core\Models\Notification;
 use App\Modules\Core\Models\User;
 use App\Modules\Reports\Models\ExportJob;
 use App\Modules\Reports\Models\ReportSchedule;
@@ -113,6 +114,7 @@ class ReportScheduleTest extends TestCase
         $this->assertSame('mail_not_configured', $row['last_status']);
         Mail::assertNothingSent();
         $this->assertTrue($row['is_active'], 'a missing SMTP setting does not count as a failure');
+        $this->assertSame(0, Notification::query()->where('type', 'report_schedule.failed')->count());
         $this->getJson('/api/v1/feature-flags')->assertJsonPath('data.mail_configured', false);
     }
 
@@ -131,6 +133,13 @@ class ReportScheduleTest extends TestCase
         $this->assertFalse($row['is_active']);
         $this->assertNotEmpty($row['last_error']);
         Mail::assertNothingSent();
+
+        // Each failed run tells the owner; the last one says the schedule was switched off.
+        $notices = Notification::query()->where('type', 'report_schedule.failed')->orderBy('id')->get();
+        $this->assertCount(5, $notices);
+        $this->assertSame([$this->user->id], $notices->pluck('user_id')->unique()->values()->all());
+        $this->assertStringContainsString('switched off', (string) $notices->last()->body);
+        $this->assertStringNotContainsString('switched off', (string) $notices->first()->body);
 
         $this->patchJson('/api/v1/report-schedules/'.$id, ['is_active' => true])->assertOk()->assertJsonPath('data.is_active', true);
     }
