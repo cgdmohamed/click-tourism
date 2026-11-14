@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useI18n } from '../i18n'
 import type { ActionItem } from './ActionsMenu'
 import { Icon } from './icons'
-import { Button, EmptyState, IconButton, Spinner, Th, cx } from './ui'
+import { EmptyState, IconButton, Skeleton, Spinner, Th, cx } from './ui'
 
 /**
  * Building blocks shared by the list pages (customers, invoices, suppliers, payments):
@@ -166,15 +166,14 @@ export function RowActions({ items, label }: { items: readonly ActionItem[]; lab
 /** Skeleton shaped like the loaded list: rows from `md` up, cards below. Announced once as "loading". */
 export function ListSkeleton({ columns = 5 }: { columns?: number }) {
   const { t } = useI18n()
-  const bar = 'h-3 animate-pulse rounded-6 bg-surface-subtle motion-reduce:animate-none'
   return (
-    <div role="status" aria-live="polite">
+    <div role="status" aria-live="polite" aria-busy="true">
       <span className="sr-only">{t('loading')}</span>
       <div aria-hidden="true" className="hidden md:block">
         {Array.from({ length: 6 }, (_, row) => (
           <div key={row} className="flex items-center gap-6 border-b border-border-subtle px-4 py-4">
             {Array.from({ length: columns }, (_, col) => (
-              <span key={col} className={cx(bar, col === 0 ? 'w-24' : col === columns - 1 ? 'ms-auto w-20' : 'flex-1')} />
+              <Skeleton key={col} className={cx('h-3', col === 0 ? 'w-24' : col === columns - 1 ? 'ms-auto w-20' : 'flex-1')} />
             ))}
           </div>
         ))}
@@ -182,11 +181,11 @@ export function ListSkeleton({ columns = 5 }: { columns?: number }) {
       <div aria-hidden="true" className="flex flex-col gap-3 p-3 md:hidden">
         {Array.from({ length: 4 }, (_, card) => (
           <div key={card} className="flex flex-col gap-3 rounded-12 border border-border-subtle p-4">
-            <span className={cx(bar, 'w-28')} />
-            <span className={cx(bar, 'w-2/3')} />
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-3 w-2/3" />
             <div className="grid grid-cols-2 gap-3">
-              <span className={bar} />
-              <span className={bar} />
+              <Skeleton className="h-3" />
+              <Skeleton className="h-3" />
             </div>
           </div>
         ))}
@@ -195,23 +194,7 @@ export function ListSkeleton({ columns = 5 }: { columns?: number }) {
   )
 }
 
-/**
- * Empty list. With an active search/filter it says so and offers to clear them; without one it is the
- * plain "no data" state.
- */
+/** Empty list: names an active search/filter and offers "clear filters" (shared EmptyState), else plain "no data". */
 export function ListEmpty({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
-  const { locale } = useI18n()
-  if (!filtered) return <EmptyState />
-  const ar = locale === 'ar'
-  return (
-    <EmptyState
-      title={ar ? 'لا توجد نتائج مطابقة' : 'No matching results'}
-      hint={ar ? 'لا توجد سجلات تطابق البحث أو الفلاتر المفعّلة.' : 'No records match the active search or filters.'}
-      action={
-        <Button variant="secondary" onClick={onClear}>
-          {ar ? 'مسح الفلاتر' : 'Clear filters'}
-        </Button>
-      }
-    />
-  )
+  return filtered ? <EmptyState variant="filtered" onClear={onClear} /> : <EmptyState />
 }
