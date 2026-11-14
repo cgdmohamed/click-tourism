@@ -205,7 +205,7 @@ export function FilterChips({ state }: { state: FilterState }) {
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 /** The off-canvas panel on the inline-end edge (left in Arabic, right in English). */
-export function FilterDrawer({ state, title, children }: { state: FilterState; title?: string; children?: ReactNode }) {
+export function FilterDrawer({ state, title, children, applyDisabled = false }: { state: FilterState; title?: string; children?: ReactNode; applyDisabled?: boolean }) {
   const { locale } = useI18n()
   const ar = locale === 'ar'
   const panelRef = useRef<HTMLDivElement>(null)
@@ -242,7 +242,7 @@ export function FilterDrawer({ state, title, children }: { state: FilterState; t
     }
     if (event.key === 'Enter' && event.target instanceof HTMLInputElement && event.target.type !== 'checkbox') {
       event.preventDefault()
-      state.apply()
+      if (!applyDisabled) state.apply()
       return
     }
     if (event.key !== 'Tab') return
@@ -322,7 +322,7 @@ export function FilterDrawer({ state, title, children }: { state: FilterState; t
           <Button variant="secondary" onClick={state.resetDraft}>
             {ar ? 'إعادة ضبط' : 'Reset'}
           </Button>
-          <Button icon="check" onClick={state.apply}>
+          <Button icon="check" onClick={state.apply} disabled={applyDisabled}>
             {ar ? 'تطبيق' : 'Apply'}
           </Button>
         </div>

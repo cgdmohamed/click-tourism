@@ -28,8 +28,8 @@ test('closing a period keeps the reports available, then it is reopened', async 
     await expect(status).toContainText('closed')
 
     await page.goto('/reports')
-    // Reports still run for the year whose last period is closed (an empty install shows "No data").
-    await page.getByRole('button', { name: /^(Run|تشغيل)$/ }).click()
+    // Reports still run for the year whose last period is closed (an empty install shows "No data"): the trial
+    // balance runs on its own when the page opens.
     await expect(page.getByText(/Trial balance|ميزان المراجعة/).first()).toBeVisible()
     await expect(page.getByText(/No data|لا توجد بيانات/).or(page.locator('table').first()).first()).toBeVisible()
     await expect(page.getByRole('alert')).toHaveCount(0)
