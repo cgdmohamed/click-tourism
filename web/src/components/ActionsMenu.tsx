@@ -84,7 +84,7 @@ export function ActionsMenu({ items, label, icon = 'more' }: { items: readonly A
       </button>
 
       {open ? (
-        <div ref={menuRef} id={menuId} role="menu" aria-label={text} className="absolute end-0 top-full z-40 mt-2 flex min-w-52 flex-col gap-0.5 rounded-16 border border-border-subtle bg-surface-default p-2 shadow-4">
+        <div ref={menuRef} id={menuId} role="menu" aria-label={text} className="anim-pop absolute end-0 top-full z-40 mt-2 flex min-w-52 flex-col gap-0.5 rounded-16 border border-border-subtle bg-surface-default p-2 shadow-4">
           {items.map((item, index) =>
             item === 'separator' ? (
               <div key={`sep-${index}`} role="separator" className="my-1 border-t border-border-subtle" />

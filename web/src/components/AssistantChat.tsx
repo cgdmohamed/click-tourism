@@ -383,6 +383,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
                 <div className="flex items-center gap-2">
                   <Spinner />
                   <span>{status}</span>
+                  <span className="typing-dots inline-flex gap-0.5" aria-hidden="true"><span>·</span><span>·</span><span>·</span></span>
                 </div>
               </div>
             ) : null}
@@ -454,7 +455,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
   const citations = uniqueCitations(message.citations ?? [])
 
   return (
-    <div className={mine ? 'flex flex-col items-end gap-1' : 'flex flex-col items-start gap-1'}>
+    <div className={mine ? 'anim-rise flex flex-col items-end gap-1' : 'anim-rise flex flex-col items-start gap-1'}>
       <p className="text-small font-semibold text-text-subtle">{mine ? t('assistantYou') : t('assistantName')}</p>
       {message.steps && message.steps.length > 0 ? (
         <p className="text-small text-text-subtle">
@@ -531,7 +532,7 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
   }
 
   return (
-    <section className={cx('w-full max-w-xl rounded-16 border bg-surface-default p-4 shadow-1', tone)} aria-label={card.title}>
+    <section className={cx('anim-rise w-full max-w-xl rounded-16 border bg-surface-default p-4 shadow-1', tone)} aria-label={card.title}>
       <h3 className="label flex items-center gap-2">
         <Icon name="sparkles" className="h-4 w-4 text-brand-1-accent" />
         {card.title}
@@ -560,6 +561,7 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
         </>
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-3" role="status">
+          {card.status === 'confirmed' ? <Icon name="check" className="anim-check h-4 w-4 text-success-text" /> : null}
           <Badge tone={card.status === 'confirmed' ? 'positive' : card.status === 'rejected' ? 'neutral' : 'negative'}>{statusText[card.status]}</Badge>
           {card.status === 'failed' && card.error?.message ? <span className="text-small text-danger-text">{card.error.message}</span> : null}
           {card.status === 'confirmed' && link?.href ? (

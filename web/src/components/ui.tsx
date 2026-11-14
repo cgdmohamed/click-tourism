@@ -433,7 +433,7 @@ export function SearchableSelect({
               ref={panelRef}
               dir={dir}
               className={cx(
-                'fixed z-[70] flex flex-col overflow-hidden rounded-12 border border-border-default bg-surface-default shadow-3',
+                'anim-pop fixed z-[70] flex flex-col overflow-hidden rounded-12 border border-border-default bg-surface-default shadow-3',
                 place ? null : 'invisible',
               )}
               style={{ top: place?.top, bottom: place?.bottom, left: place?.left ?? 0, width: place?.width, maxHeight: place?.maxHeight }}
@@ -946,9 +946,9 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" role="presentation" onMouseDown={onClose}>
+    <div className="anim-fade fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6" role="presentation" onMouseDown={onClose}>
       <div
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-24 bg-surface-default shadow-4 sm:rounded-16"
+        className="anim-sheet max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-24 bg-surface-default shadow-4 sm:rounded-16"
         role="dialog"
         aria-modal="true"
         aria-label={title}
