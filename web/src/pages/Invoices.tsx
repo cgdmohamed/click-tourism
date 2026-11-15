@@ -153,6 +153,8 @@ export default function Invoices() {
   })
   const [detailId, setDetailId] = useState<string | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
+  // The invoice whose "void for good?" question is open: tied to one invoice, so it can never carry over to another.
+  const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [creditId, setCreditId] = useState<string | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
@@ -431,9 +433,13 @@ export default function Invoices() {
     },
     onSuccess: async () => {
       setError('')
+      setVoidConfirmId(null)
       await refresh()
     },
-    onError: (cause) => setError(errorMessage(cause)),
+    onError: (cause) => {
+      setVoidConfirmId(null)
+      setError(errorMessage(cause))
+    },
   })
 
   const creditNote = useMutation({
@@ -855,7 +861,7 @@ export default function Invoices() {
       <Modal
         open={detailId !== null}
         title={L('تفاصيل الفاتورة', 'Invoice details')}
-        onClose={() => { setDetailId(null); setCreditWarnings([]); setOverrideReason('') }}
+        onClose={() => { setDetailId(null); setCreditWarnings([]); setOverrideReason(''); setVoidConfirmId(null) }}
         footer={<Button variant="secondary" onClick={() => setDetailId(null)}>{L('إغلاق', 'Close')}</Button>}
       >
         {detailQuery.isLoading ? <Loading /> : null}
@@ -874,45 +880,60 @@ export default function Invoices() {
                   — {detailQuery.data.currency}
                 </p>
               </div>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto">
                 <Badge tone={statusTone(detailQuery.data.status)}>{statusLabel(detailQuery.data.status, locale)}</Badge>
-                {detailQuery.data.status === 'draft' && can('invoices.create') ? (
-                  <Button variant="ghost" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'submit' })}>
-                    {L('إرسال', 'Submit')}
-                  </Button>
-                ) : null}
-                {detailQuery.data.status === 'submitted' && can('invoices.approve') ? (
-                  <Button variant="ghost" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'approve' })}>
-                    {L('اعتماد', 'Approve')}
-                  </Button>
-                ) : null}
-                {detailQuery.data.status === 'approved' && can('invoices.approve') ? (
-                  <Button variant="ghost" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'issue' })}>
-                    {L('إصدار', 'Issue')}
-                  </Button>
-                ) : null}
-                {['draft', 'submitted'].includes(detailQuery.data.status) && can('invoices.create') ? (
-                  <Button variant="ghost" onClick={() => voidInvoice.mutate(detailQuery.data)}>
-                    {L('إلغاء', 'Void')}
-                  </Button>
-                ) : null}
-                {detailQuery.data.type === 'customer_invoice' && detailQuery.data.status === 'issued' && detailQuery.data.outstanding_minor > 0 && can('payments.create') ? (
-                  <Button onClick={() => setCollectOpen(true)}>
-                    {L('تحصيل الفاتورة', 'Collect invoice')}
-                  </Button>
-                ) : null}
-                {detailQuery.data.status === 'issued' && can('invoices.approve') ? (
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setError('')
-                      setCreditId(detailQuery.data.id)
-                    }}
-                  >
-                    {L('إشعار دائن', 'Credit note')}
-                  </Button>
-                ) : null}
               </div>
+            </div>
+
+            <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label={L('إجراءات الفاتورة', 'Invoice actions')}>
+              {detailQuery.data.status === 'draft' && can('invoices.create') ? (
+                <Button icon="send" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'submit' })}>
+                  {L('إرسال للاعتماد', 'Send for approval')}
+                </Button>
+              ) : null}
+              {detailQuery.data.status === 'submitted' && can('invoices.approve') ? (
+                <Button icon="check" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'approve' })}>
+                  {L('اعتماد الفاتورة', 'Approve invoice')}
+                </Button>
+              ) : null}
+              {detailQuery.data.status === 'approved' && can('invoices.approve') ? (
+                <Button icon="check" onClick={() => step.mutate({ invoice: detailQuery.data, path: 'issue' })}>
+                  {L('إصدار الفاتورة', 'Issue invoice')}
+                </Button>
+              ) : null}
+              {detailQuery.data.type === 'customer_invoice' && detailQuery.data.status === 'issued' && detailQuery.data.outstanding_minor > 0 && can('payments.create') ? (
+                <Button icon="check" onClick={() => setCollectOpen(true)}>
+                  {L('تحصيل الفاتورة', 'Collect invoice')}
+                </Button>
+              ) : null}
+              {detailQuery.data.status === 'issued' && can('invoices.approve') ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setError('')
+                    setCreditId(detailQuery.data.id)
+                  }}
+                >
+                  {L('إشعار دائن', 'Credit note')}
+                </Button>
+              ) : null}
+              {['draft', 'submitted'].includes(detailQuery.data.status) && can('invoices.create') ? (
+                voidConfirmId === detailQuery.data.id ? (
+                  <span className="flex flex-wrap items-center gap-2 rounded-12 border border-danger-border bg-danger-background px-3 py-1" role="alert">
+                    <span className="text-small text-danger-text">{L('إلغاء هذه الفاتورة نهائياً؟', 'Void this invoice for good?')}</span>
+                    <Button variant="danger" icon="trash" onClick={() => voidInvoice.mutate(detailQuery.data)}>
+                      {L('نعم، ألغِ الفاتورة', 'Yes, void it')}
+                    </Button>
+                    <Button variant="secondary" onClick={() => setVoidConfirmId(null)}>
+                      {L('تراجع', 'Keep it')}
+                    </Button>
+                  </span>
+                ) : (
+                  <Button variant="danger" icon="trash" onClick={() => setVoidConfirmId(detailQuery.data.id)}>
+                    {L('إلغاء الفاتورة', 'Void invoice')}
+                  </Button>
+                )
+              ) : null}
             </div>
 
             {error ? (

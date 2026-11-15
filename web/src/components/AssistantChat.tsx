@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -16,7 +16,7 @@ import {
   canSend,
   citationLink,
   dropLastTurn,
-  lastUserAttachmentIds,
+  carriedAttachmentIds,
   withoutFileNote,
   formatAsOf,
   fromSaved,
@@ -43,7 +43,21 @@ type SavedConversation = { id: string; title: string; last_message_at: string | 
  * is on. Past chats are listed on the side, answers show what the assistant is doing while it works,
  * and the model's text is rendered as structured text (no HTML) with links built from server citations.
  */
+/** Opening a record from the chat leaves the chat first: the assistant is a full-screen mode on top of the routes. */
+const ExitContext = createContext<() => void>(() => undefined)
+
 export function AssistantChat({ onExit }: { onExit: () => void }) {
+  return (
+    <ExitContext.Provider value={onExit}>
+      <AssistantChatScreen onExit={onExit} />
+    </ExitContext.Provider>
+  )
+}
+
+/** Records the assistant creates for the user's request, after which it should carry on with that request. */
+const CONTINUES_AFTER = ['erp_customer_create', 'erp_supplier_create']
+
+function AssistantChatScreen({ onExit }: { onExit: () => void }) {
   const { t, locale, toggleLocale } = useI18n()
   const { theme, toggleTheme } = useTheme()
   const { branches, activeBranch, setActiveBranch } = useAuth()
@@ -52,7 +66,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [files, setFiles] = useState<Array<{ id: string; name: string }>>([])
+  const [files, setFiles] = useState<Array<{ id: string; name: string; expires_at?: string }>>([])
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -119,7 +133,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
   const ask = useCallback(
     async (turns: ChatMessage[], conversation: string | null) => {
       // The files belong to the user turn, so a retry or a resubmit sends them again.
-      const attachments = lastUserAttachmentIds(turns)
+      const attachments = carriedAttachmentIds(turns)
       const controller = new AbortController()
       abortRef.current = controller
       stepsRef.current = []
@@ -184,6 +198,21 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
     void ask(next, conversationId)
   }
 
+  /**
+   * After the assistant creates a customer or supplier the user asked for, it carries on with the original
+   * request by itself (the next step is another card to confirm), so the user does not have to say so.
+   */
+  function continueAfter(card: ActionCard) {
+    if (busy || !CONTINUES_AFTER.includes(card.tool) || !card.result) return
+    const text =
+      locale === 'ar'
+        ? `تم تنفيذ: ${card.title}. معرّف السجل: ${card.result.id}. أكمل طلبي الأصلي (واستخدم الإيصال المرفق إن وُجد)، وإن لم تبقَ خطوة فاكتفِ بجملة واحدة.`
+        : `Done: ${card.title}. Record id: ${card.result.id}. Continue my original request (use the attached receipt if there is one); if no step is left, answer in one sentence.`
+    const next = addUserMessage(messages, text)
+    setMessages(next)
+    void ask(next, conversationId)
+  }
+
   /** The answers of a form become the user's next message, like typed text. */
   function answerForm(text: string) {
     if (busy) return
@@ -203,8 +232,8 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
         count += 1
         const form = new FormData()
         form.append('file', file)
-        const { data } = await api.post<{ data: { id: string; name: string } }>('/assistant/uploads', form)
-        setFiles((current) => [...current, { id: data.data.id, name: data.data.name }])
+        const { data } = await api.post<{ data: { id: string; name: string; expires_at?: string } }>('/assistant/uploads', form)
+        setFiles((current) => [...current, { id: data.data.id, name: data.data.name, expires_at: data.data.expires_at }])
       }
     } catch (cause) {
       setUploadError(errorMessage(cause))
@@ -422,6 +451,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
                       onRetry={lastIsError && message.key === messages[messages.length - 1].key ? retry : undefined}
                       answered={messages[messages.length - 1].key !== message.key || busy}
                       onAnswer={answerForm}
+                      onConfirmed={continueAfter}
                     />
                   </li>
                 ))}
@@ -512,8 +542,9 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
   )
 }
 
-function MessageBubble({ message, onRetry, answered, onAnswer }: { message: ChatMessage; onRetry?: () => void; answered?: boolean; onAnswer?: (text: string) => void }) {
+function MessageBubble({ message, onRetry, answered, onAnswer, onConfirmed }: { message: ChatMessage; onRetry?: () => void; answered?: boolean; onAnswer?: (text: string) => void; onConfirmed?: (card: ActionCard) => void }) {
   const { t, locale } = useI18n()
+  const exit = useContext(ExitContext)
   const mine = message.role === 'user'
 
   if (message.error) {
@@ -553,7 +584,7 @@ function MessageBubble({ message, onRetry, answered, onAnswer }: { message: Chat
       </div>
       {message.form && onAnswer ? <AssistantFormCard form={message.form} answered={answered ?? false} onSubmit={onAnswer} /> : null}
       {(message.actions ?? []).map((card) => (
-        <ActionCardView key={card.id} initial={card} />
+        <ActionCardView key={card.id} initial={card} onConfirmed={onConfirmed} />
       ))}
       {message.truncated ? <p className="text-small text-warning-text">{t('assistantTruncated')}</p> : null}
       {citations.length > 0 ? (
@@ -565,7 +596,7 @@ function MessageBubble({ message, onRetry, answered, onAnswer }: { message: Chat
             const text = `${link.label}${citation.id ? ` …${citation.id.slice(-6)}` : ''}${time ? ` · ${t('assistantAsOf')} ${time}` : ''}`
             const chip = 'text-small inline-flex items-center gap-1 rounded-full border border-border-subtle px-2 py-0.5'
             return link.href ? (
-              <Link key={`${citation.tool}|${citation.id ?? ''}|${citation.route}`} to={link.href} className={`${chip} text-brand-1-accent underline hover:bg-surface-hovered`}>
+              <Link key={`${citation.tool}|${citation.id ?? ''}|${citation.route}`} to={link.href} onClick={exit} className={`${chip} text-brand-1-accent underline hover:bg-surface-hovered`}>
                 {text}
               </Link>
             ) : (
@@ -581,8 +612,9 @@ function MessageBubble({ message, onRetry, answered, onAnswer }: { message: Chat
 }
 
 /** Confirmation card of an action the assistant prepared (ADR-0023): nothing runs until the user confirms. */
-function ActionCardView({ initial }: { initial: ActionCard }) {
+function ActionCardView({ initial, onConfirmed }: { initial: ActionCard; onConfirmed?: (card: ActionCard) => void }) {
   const { t, locale } = useI18n()
+  const exit = useContext(ExitContext)
   const [card, setCard] = useState(initial)
   const [error, setError] = useState('')
   // post / pay / void / delete need a second, explicit "yes" after the card (the card itself is the first).
@@ -592,9 +624,10 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
       const { data } = await api.post<{ data: ActionCard }>(`/assistant/actions/${encodeURIComponent(card.id)}/${verb}`)
       return data.data
     },
-    onSuccess: (next) => {
+    onSuccess: (next, verb) => {
       setCard(next)
       setError('')
+      if (verb === 'confirm' && next.status === 'confirmed') onConfirmed?.(next)
     },
     onError: (cause) => {
       const code = axios.isAxiosError<{ code?: string }>(cause) ? cause.response?.data?.code : undefined
@@ -659,7 +692,7 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
           <Badge tone={card.status === 'confirmed' ? 'positive' : card.status === 'rejected' ? 'neutral' : 'negative'}>{statusText[card.status]}</Badge>
           {card.status === 'failed' && card.error?.message ? <span className="text-small text-danger-text">{card.error.message}</span> : null}
           {card.status === 'confirmed' && link?.href ? (
-            <Link to={link.href} className="text-small text-brand-1-accent underline">
+            <Link to={link.href} onClick={exit} className="text-small text-brand-1-accent underline">
               {t('assistantActionOpen')}
             </Link>
           ) : null}
@@ -675,12 +708,13 @@ function ActionCardView({ initial }: { initial: ActionCard }) {
 }
 
 function InlineRuns({ runs }: { runs: Inline[] }) {
+  const exit = useContext(ExitContext)
   return (
     <>
       {runs.map((run, index) => {
         if (run.kind === 'link') {
           return (
-            <Link key={index} to={run.href} className="text-brand-1-accent underline hover:bg-surface-hovered">
+            <Link key={index} to={run.href} onClick={exit} className="text-brand-1-accent underline hover:bg-surface-hovered">
               {run.text}
             </Link>
           )

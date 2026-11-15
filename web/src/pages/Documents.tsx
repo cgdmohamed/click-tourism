@@ -654,25 +654,25 @@ export default function Documents() {
               <div className="ms-auto flex flex-wrap items-center gap-2">
                 <Badge tone={statusTone(detail.status)}>{statusLabel(detail.status, locale)}</Badge>
                 {detail.status === 'draft' && can('documents.create') ? (
-                  <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
+                  <Button variant="secondary" icon="send" onClick={() => step.mutate({ id: detail.id, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
                 ) : null}
                 {detail.status === 'submitted' && can('documents.approve') ? (
                   <>
-                    <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
-                    <Button variant="ghost" onClick={() => { setError(''); setRejectId(detail.id) }}>{L('رفض', 'Reject')}</Button>
+                    <Button variant="secondary" icon="check" onClick={() => step.mutate({ id: detail.id, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
+                    <Button variant="danger" onClick={() => { setError(''); setRejectId(detail.id) }}>{L('رفض', 'Reject')}</Button>
                   </>
                 ) : null}
                 {detail.status === 'rejected' && can('documents.create') ? (
                   <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'reopen' })}>{L('إعادة فتح', 'Reopen')}</Button>
                 ) : null}
                 {detail.status === 'approved' && can('documents.approve') ? (
-                  <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'post' })}>{t('post')}</Button>
+                  <Button variant="secondary" icon="check" onClick={() => step.mutate({ id: detail.id, path: 'post' })}>{t('post')}</Button>
                 ) : null}
                 {['draft', 'submitted'].includes(detail.status) && can('documents.create') ? (
-                  <Button variant="ghost" onClick={() => step.mutate({ id: detail.id, path: 'cancel' })}>{L('إلغاء', 'Cancel')}</Button>
+                  <Button variant="danger" onClick={() => step.mutate({ id: detail.id, path: 'cancel' })}>{L('إلغاء المستند', 'Cancel document')}</Button>
                 ) : null}
                 {detail.status === 'posted' && can('documents.approve') ? (
-                  <Button variant="ghost" onClick={() => { setError(''); setCorrectId(detail.id) }}>{L('سند عكسي', 'Reverse')}</Button>
+                  <Button variant="danger" onClick={() => { setError(''); setCorrectId(detail.id) }}>{L('سند عكسي', 'Reverse')}</Button>
                 ) : null}
               </div>
             </div>

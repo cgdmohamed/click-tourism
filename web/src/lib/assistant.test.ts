@@ -4,6 +4,7 @@ import {
   addAssistantError,
   addAssistantReply,
   addUserMessage,
+  carriedAttachmentIds,
   lastUserAttachmentIds,
   withoutFileNote,
   assistantErrorKey,
@@ -185,5 +186,30 @@ describe('files attached to a user turn (ADR-0028)', () => {
   it('never puts file ids into the text history sent to the model', () => {
     const turns = addUserMessage([], 'hello', files)
     expect(JSON.stringify(toApiMessages(turns))).not.toContain('01HFILE')
+  })
+})
+
+describe('carriedAttachmentIds', () => {
+  const file = { id: '01HFILE000000000000000000A', name: 'receipt.png', expires_at: '2026-11-15T10:00:00Z' }
+  const now = Date.parse('2026-11-15T06:00:00Z')
+
+  it('keeps sending an earlier receipt with later messages while it is valid', () => {
+    const turns = addUserMessage([], 'record this [receipt.png]', [file])
+    const later = addUserMessage(addAssistantReply(turns, { answer: 'ok', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false }), 'now record it')
+    expect(carriedAttachmentIds(later, now)).toEqual([file.id])
+  })
+
+  it('drops a file that is about to expire', () => {
+    const turns = addUserMessage([], 'a', [{ ...file, expires_at: '2026-11-15T06:00:30Z' }])
+    const later = addUserMessage(addAssistantReply(turns, { answer: 'ok', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false }), 'b')
+    expect(carriedAttachmentIds(later, now)).toEqual([])
+  })
+
+  it('always sends the files of the last user message', () => {
+    expect(carriedAttachmentIds(addUserMessage([], 'a', [{ id: 'X', name: 'x.png' }]), now)).toEqual(['X'])
+  })
+
+  it('sends nothing when no turn has a file', () => {
+    expect(carriedAttachmentIds(addUserMessage([], 'hello'), now)).toEqual([])
   })
 })

@@ -365,7 +365,7 @@ export default function Journal() {
                         <Badge tone="neutral">{locale === 'ar' ? 'يُلغى من المستند' : 'Cancel from document'}</Badge>
                       ) : (
                         can('journal.reverse') ? (
-                          <Button variant="ghost" onClick={() => { setReverseError(''); setReverseTarget(entry) }}>
+                          <Button variant="danger" onClick={() => { setReverseError(''); setReverseTarget(entry) }}>
                             {locale === 'ar' ? 'عكس' : 'Reverse'}
                           </Button>
                         ) : null
