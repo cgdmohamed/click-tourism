@@ -72,7 +72,7 @@ final class ActionLabels
         'payee_name' => ['ar' => 'المستفيد', 'en' => 'Payee'], 'start_date' => ['ar' => 'تاريخ البدء', 'en' => 'Start date'], 'end_date' => ['ar' => 'تاريخ الانتهاء', 'en' => 'End date'],
         'pax_adults' => ['ar' => 'عدد البالغين', 'en' => 'Adults'], 'pax_children' => ['ar' => 'عدد الأطفال', 'en' => 'Children'],
         '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__booking' => ['ar' => 'الحجز المرتبط', 'en' => 'Linked booking'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
-        '__invoice' => ['ar' => 'الفاتورة', 'en' => 'Invoice'], '__amount' => ['ar' => 'المبلغ المحصَّل', 'en' => 'Amount collected'], '__when' => ['ar' => 'تاريخ التحصيل', 'en' => 'Collected on'], '__outstanding' => ['ar' => 'المتبقي بعد التحصيل', 'en' => 'Remaining after this'], '__attach' => ['ar' => 'سيُرفق بالفاتورة', 'en' => 'Will be attached'],
+        '__invoice' => ['ar' => 'الفاتورة', 'en' => 'Invoice'], '__amount' => ['ar' => 'المبلغ المحصَّل', 'en' => 'Amount collected'], '__when' => ['ar' => 'تاريخ التحصيل', 'en' => 'Collected on'], '__rate' => ['ar' => 'سعر الصرف', 'en' => 'Exchange rate'], '__outstanding' => ['ar' => 'المتبقي بعد التحصيل', 'en' => 'Remaining after this'], '__attach' => ['ar' => 'سيُرفق بالفاتورة', 'en' => 'Will be attached'],
         '__record' => ['ar' => 'السجل', 'en' => 'Record'], '__status' => ['ar' => 'حالته الآن', 'en' => 'Current status'], '__total' => ['ar' => 'إجمالي المبلغ', 'en' => 'Total amount'], '__paid' => ['ar' => 'المصروف سابقاً', 'en' => 'Already paid'], '__note' => ['ar' => 'البيان', 'en' => 'Note'],
         'report' => ['ar' => 'التقرير', 'en' => 'Report'], 'format' => ['ar' => 'الصيغة', 'en' => 'Format'], 'language' => ['ar' => 'اللغة', 'en' => 'Language'], 'method' => ['ar' => 'طريقة الدفع', 'en' => 'Method'],
         'paid_at' => ['ar' => 'تاريخ الدفع', 'en' => 'Paid on'], 'reason' => ['ar' => 'السبب', 'en' => 'Reason'], 'params' => ['ar' => 'عوامل التصفية', 'en' => 'Filters'],
@@ -97,7 +97,7 @@ final class ActionLabels
         $l = $locale === 'en' ? 'en' : 'ar';
         $currency = strtoupper((string) ($payload['currency'] ?? ''));
         $rows = [];
-        foreach (['__record', '__invoice', '__status', '__total', '__amount', '__when', '__outstanding', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment', '__attach'] as $key) {
+        foreach (['__record', '__invoice', '__status', '__total', '__amount', '__rate', '__when', '__outstanding', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment', '__attach'] as $key) {
             if (isset($payload[$key])) {
                 $rows[] = ['label' => self::FIELDS[$key][$l], 'value' => (string) $payload[$key]];
             }

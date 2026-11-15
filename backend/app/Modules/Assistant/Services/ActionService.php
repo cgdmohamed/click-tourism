@@ -8,6 +8,7 @@ use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Support\Redactor;
 use App\Modules\Assistant\Support\SchemaValidator;
 use App\Modules\Attachments\Services\AttachmentService;
+use App\Modules\Attachments\Services\AttachmentTargets;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
@@ -23,6 +24,7 @@ use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\PaymentMethod;
 use App\Modules\Treasury\Models\CashAccount;
 use App\Support\Like;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -204,6 +206,13 @@ class ActionService
         $uploads = app(AssistantUploadService::class)->resolve($user, array_values($payload['__attachments']));
         if ($record === null || $uploads === null) {
             return ['saved' => 0, 'failed' => count($payload['__attachments'])];
+        }
+
+        // Permissions are checked again now, not trusted from the proposal: they may have changed since (ADR-0023).
+        try {
+            app(AttachmentTargets::class)->authorizeRecord($user, $entity, $record, 'upload');
+        } catch (AuthorizationException) {
+            return ['saved' => 0, 'failed' => count($uploads)];
         }
 
         $saved = $failed = 0;
@@ -573,15 +582,22 @@ class ActionService
             '__amount' => ActionLabels::moneyText($amount, $currency), '__when' => (string) $paidAt,
             '__outstanding' => ActionLabels::moneyText($outstanding - $amount, $currency),
             '__payment' => $account->name_en ?: $account->name_ar,
+            // The rate posts to the ledger, so it is shown on the card for the user to check (ADR-0023).
+            '__rate' => empty($args['fx_rate']) ? null : '1 '.$currency.' = '.rtrim(rtrim((string) $args['fx_rate'], '0'), '.').' '.$this->settings->baseCurrency(),
             'receipts' => [array_filter([
                 'amount_minor' => $amount, 'cash_account_id' => $account->account->public_id,
                 'payment_method_id' => $method->public_id, 'paid_at' => $paidAt, 'fx_rate' => $args['fx_rate'] ?? null,
             ], fn ($v) => $v !== null)],
         ];
 
+        $payload = array_filter($payload, fn ($v) => $v !== null);
+
         if (! empty($args['attachments'])) {
-            if (! $user->can('attachments.upload')) {
-                throw new \DomainException('The user may not attach files to records. Prepare the collection without attachments.');
+            // The same rule as attaching by hand (ADR-0021): the right to upload AND to view the invoice and its branch.
+            try {
+                app(AttachmentTargets::class)->authorizeRecord($user, 'invoice', $invoice, 'upload');
+            } catch (AuthorizationException) {
+                throw new \DomainException('The user may not attach files to this invoice. Prepare the collection without attachments.');
             }
             $uploads = app(AssistantUploadService::class)->resolve($user, array_values($args['attachments']));
             if ($uploads === null) {

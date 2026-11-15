@@ -985,6 +985,66 @@ class AssistantChatTest extends TestCase
         $this->assertStringContainsString('may not attach', $this->lastToolMessages()[0]['content']);
     }
 
+    public function test_attach_rights_are_checked_again_when_the_card_is_confirmed(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'invoices.view', 'attachments.upload', 'attachments.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $upload = $this->uploadReceipt()->assertCreated()->json('data.id');
+        $card = $this->prepare('erp_invoice_collect', ['invoice' => $invoice->number, 'amount_minor' => 40000, 'payment_account' => 'main cash', 'attachments' => [$upload]]);
+
+        // Before the user presses Confirm the role loses the right to attach.
+        $this->user->revokePermissionTo('attachments.upload');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+
+        $this->assertSame('confirmed', $done['status'], 'the collection itself stands');
+        $this->assertSame(60000, (int) $invoice->fresh()->outstanding_minor);
+        $this->assertSame(['saved' => 0, 'failed' => 1], $done['attached']);
+        $this->assertSame(0, Attachment::query()->count());
+    }
+
+    public function test_a_user_who_cannot_view_invoices_cannot_attach_to_one_through_the_assistant(): void
+    {
+        $this->grant('payments.create', 'attachments.upload');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $upload = $this->uploadReceipt()->assertCreated()->json('data.id');
+
+        $this->script([$this->toolCallReply([['erp_invoice_collect', ['invoice' => $invoice->number, 'payment_account' => 'main cash', 'attachments' => [$upload]]]]), $this->finalReply('No rights.')]);
+        $this->assertSame([], $this->chat('collect')->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('may not attach', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_a_foreign_currency_collection_shows_the_exchange_rate_that_will_post(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'invoices.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $this->settings->set('invoices', 'segregation', 'false');
+        $this->customer()->update(['currency_code' => 'USD']);
+        $service = app(InvoiceService::class);
+        $invoice = $service->create([
+            'type' => 'customer_invoice', 'party_type' => 'customer', 'party_id' => $this->customer()->public_id,
+            'issue_date' => now()->toDateString(), 'currency' => 'USD', 'fx_rate' => '50',
+            'lines' => [['account_id' => $this->account('4100')->public_id, 'credit_minor' => 100000]],
+        ], $this->branch, $this->user->id);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+        $service->issue($invoice, $this->user->id);
+
+        $this->script([$this->toolCallReply([['erp_invoice_collect', ['invoice' => $invoice->number, 'payment_account' => 'main cash']]]), $this->finalReply('Which rate?')]);
+        $this->assertSame([], $this->chat('collect')->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('fx_rate', $this->lastToolMessages()[0]['content']);
+
+        $card = $this->prepare('erp_invoice_collect', ['invoice' => $invoice->number, 'payment_account' => 'main cash', 'fx_rate' => '48.5000']);
+
+        $this->assertContains('1 USD = 48.5 EGP', array_column($card['rows'], 'value'));
+        $this->assertContains('Exchange rate', array_column($card['rows'], 'label'));
+    }
+
     public function test_a_draft_or_paid_invoice_cannot_be_collected(): void
     {
         $this->grant('payments.create', 'invoices.view', 'invoices.create');
