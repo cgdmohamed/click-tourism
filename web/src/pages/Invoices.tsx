@@ -153,7 +153,8 @@ export default function Invoices() {
   })
   const [detailId, setDetailId] = useState<string | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
-  const [confirmVoid, setConfirmVoid] = useState(false)
+  // The invoice whose "void for good?" question is open: tied to one invoice, so it can never carry over to another.
+  const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [creditId, setCreditId] = useState<string | null>(null)
   const [creditAmount, setCreditAmount] = useState('')
@@ -432,11 +433,11 @@ export default function Invoices() {
     },
     onSuccess: async () => {
       setError('')
-      setConfirmVoid(false)
+      setVoidConfirmId(null)
       await refresh()
     },
     onError: (cause) => {
-      setConfirmVoid(false)
+      setVoidConfirmId(null)
       setError(errorMessage(cause))
     },
   })
@@ -860,7 +861,7 @@ export default function Invoices() {
       <Modal
         open={detailId !== null}
         title={L('تفاصيل الفاتورة', 'Invoice details')}
-        onClose={() => { setDetailId(null); setCreditWarnings([]); setOverrideReason(''); setConfirmVoid(false) }}
+        onClose={() => { setDetailId(null); setCreditWarnings([]); setOverrideReason(''); setVoidConfirmId(null) }}
         footer={<Button variant="secondary" onClick={() => setDetailId(null)}>{L('إغلاق', 'Close')}</Button>}
       >
         {detailQuery.isLoading ? <Loading /> : null}
@@ -917,18 +918,18 @@ export default function Invoices() {
                 </Button>
               ) : null}
               {['draft', 'submitted'].includes(detailQuery.data.status) && can('invoices.create') ? (
-                confirmVoid ? (
+                voidConfirmId === detailQuery.data.id ? (
                   <span className="flex flex-wrap items-center gap-2 rounded-12 border border-danger-border bg-danger-background px-3 py-1" role="alert">
                     <span className="text-small text-danger-text">{L('إلغاء هذه الفاتورة نهائياً؟', 'Void this invoice for good?')}</span>
                     <Button variant="danger" icon="trash" onClick={() => voidInvoice.mutate(detailQuery.data)}>
                       {L('نعم، ألغِ الفاتورة', 'Yes, void it')}
                     </Button>
-                    <Button variant="secondary" onClick={() => setConfirmVoid(false)}>
+                    <Button variant="secondary" onClick={() => setVoidConfirmId(null)}>
                       {L('تراجع', 'Keep it')}
                     </Button>
                   </span>
                 ) : (
-                  <Button variant="danger" icon="trash" onClick={() => setConfirmVoid(true)}>
+                  <Button variant="danger" icon="trash" onClick={() => setVoidConfirmId(detailQuery.data.id)}>
                     {L('إلغاء الفاتورة', 'Void invoice')}
                   </Button>
                 )
