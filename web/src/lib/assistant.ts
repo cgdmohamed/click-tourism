@@ -4,6 +4,7 @@
  */
 
 import type { AssistantForm } from './assistantForm'
+import type { AttachedFile } from './assistantFiles'
 
 export type Citation = {
   tool: string
@@ -39,7 +40,7 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   /** Files uploaded with this user turn (ADR-0028). Kept with the turn so a retry or a resubmit sends them again. */
-  attachments?: Array<{ id: string; name: string; expires_at?: string }>
+  attachments?: AttachedFile[]
   citations?: Citation[]
   actions?: ActionCard[]
   /** A form the assistant asks the user to answer (ADR-0029); answered when a later user message exists. */
@@ -66,7 +67,7 @@ export type ChatReply = {
 export const MAX_MESSAGES = 40
 export const MAX_MESSAGE_CHARS = 4000
 
-export function addUserMessage(messages: ChatMessage[], content: string, attachments: Array<{ id: string; name: string; expires_at?: string }> = []): ChatMessage[] {
+export function addUserMessage(messages: ChatMessage[], content: string, attachments: AttachedFile[] = []): ChatMessage[] {
   return [...messages, { key: nextKey(messages), role: 'user', content: content.trim(), ...(attachments.length > 0 ? { attachments } : {}) }]
 }
 

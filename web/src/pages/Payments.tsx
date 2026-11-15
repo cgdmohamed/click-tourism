@@ -379,7 +379,7 @@ export default function Payments() {
   const rowActions = (payment: Payment): ActionItem[] => {
     const items: ActionItem[] = []
     const ar = locale === 'ar'
-    if (can('attachments.view')) items.push({ key: 'documents', label: ar ? 'المستندات' : 'Documents', icon: 'folder', onSelect: () => setDocumentsFor(payment) })
+    if (can('attachments.view')) items.push({ key: 'documents', label: ar ? 'المرفقات' : 'Attachments', icon: 'folder', onSelect: () => setDocumentsFor(payment) })
     if (payment.status === 'posted' && payment.unallocated_minor > 0 && can('payments.create')) {
       items.push({
         key: 'apply',
