@@ -10,7 +10,7 @@ import { FilterControl, useFilters } from '../components/FilterDrawer'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
 import { useBaseCurrency } from '../lib/useSetting'
-import { toMinor, todayISO, formatMoney } from '../lib/format'
+import { toMinor, toDecimal, todayISO, formatMoney } from '../lib/format'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input, Loading,
   Modal, PageHeader, Select, Table, Td, Th,
@@ -56,6 +56,10 @@ export default function TourPackages() {
   const [departureFor, setDepartureFor] = useState<TourPackage | null>(null)
   const [departure, setDeparture] = useState({ starts_on: todayISO(), ends_on: '', capacity: '40' })
   const [error, setError] = useState('')
+  const [editing, setEditing] = useState<TourPackage | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', category: 'domestic', destination: '', description: '', base_price: '', estimated_cost: '' })
+  const [editingDeparture, setEditingDeparture] = useState<Departure | null>(null)
+  const [departureEdit, setDepartureEdit] = useState({ starts_on: '', ends_on: '', capacity: '' })
 
   const [search, setSearch] = useState('')
   const filters = useFilters([
@@ -119,11 +123,28 @@ export default function TourPackages() {
                                 ) : null}
                               </>
                             ) : <Badge tone="neutral">{L('مغلق', 'Closed')}</Badge>}
+                            {can('bookings.update') ? (
+                              <>
+                                <button type="button" className="ms-2 font-semibold text-brand-1-accent underline" onClick={() => openDepartureEdit(d)}>{L('تعديل', 'Edit')}</button>
+                                <button type="button" className="ms-2 font-semibold text-brand-1-accent underline" onClick={() => toggleDeparture.mutate(d)}>
+                                  {d.status === 'open' ? L('إغلاق', 'Close') : L('إعادة فتح', 'Reopen')}
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         ))}
                       </div>
                     )}
     </>
+  )
+
+  const editButtons = (item: TourPackage) => (
+    can('bookings.update') ? (
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={() => openEdit(item)}>{L('تعديل البرنامج', 'Edit program')}</Button>
+        <Button variant="secondary" onClick={() => setActive.mutate(item)}>{item.is_active ? L('إيقاف', 'Deactivate') : L('تفعيل', 'Activate')}</Button>
+      </div>
+    ) : null
   )
 
   const addDepartureButton = (item: TourPackage) => (
@@ -154,6 +175,53 @@ export default function TourPackages() {
       setError('')
       await queryClient.invalidateQueries({ queryKey: ['tour-packages'] })
     },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['tour-packages'] })
+  const openEdit = (item: TourPackage) => {
+    setError('')
+    setEditing(item)
+    setEditForm({
+      name: item.name, category: item.category, destination: item.destination ?? '', description: item.description ?? '',
+      base_price: toDecimal(item.base_price_minor, item.currency), estimated_cost: toDecimal(item.estimated_cost_minor, item.currency),
+    })
+  }
+  const openDepartureEdit = (d: Departure) => {
+    setError('')
+    setEditingDeparture(d)
+    setDepartureEdit({ starts_on: d.starts_on, ends_on: d.ends_on ?? '', capacity: String(d.capacity ?? '') })
+  }
+  const saveEdit = useMutation({
+    mutationFn: async () => {
+      if (!editing) return
+      await api.patch(`/tour-packages/${editing.id}`, {
+        name: editForm.name.trim(), category: editForm.category,
+        destination: editForm.destination || null, description: editForm.description || null,
+        base_price_minor: toMinor(editForm.base_price || '0', editing.currency),
+        estimated_cost_minor: toMinor(editForm.estimated_cost || '0', editing.currency),
+      })
+    },
+    onSuccess: async () => { setEditing(null); setError(''); await refresh() },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+  const setActive = useMutation({
+    mutationFn: async (item: TourPackage) => { await api.patch(`/tour-packages/${item.id}`, { is_active: !item.is_active }) },
+    onSuccess: refresh,
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+  const saveDepartureEdit = useMutation({
+    mutationFn: async () => {
+      if (!editingDeparture) return
+      await api.patch(`/tour-departures/${editingDeparture.id}`, {
+        starts_on: departureEdit.starts_on, ends_on: departureEdit.ends_on || null, capacity: Number(departureEdit.capacity),
+      })
+    },
+    onSuccess: async () => { setEditingDeparture(null); setError(''); await refresh() },
+    onError: (cause) => setError(errorMessage(cause)),
+  })
+  const toggleDeparture = useMutation({
+    mutationFn: async (d: Departure) => { await api.post(`/tour-departures/${d.id}/${d.status === 'open' ? 'close' : 'reopen'}`) },
+    onSuccess: refresh,
     onError: (cause) => setError(errorMessage(cause)),
   })
   const addDeparture = useMutation({
@@ -210,6 +278,7 @@ export default function TourPackages() {
                   {departuresList(item)}
                 </div>
                 {addDepartureButton(item)}
+                {editButtons(item)}
               </>
             )}
           </MobileCards>
@@ -228,7 +297,7 @@ export default function TourPackages() {
             <tbody>
               {packages.map((item) => (
                 <tr key={item.id}>
-                  <Td><strong>{item.name}</strong><div className="text-small text-text-subtle">{item.code}</div></Td>
+                  <Td><strong>{item.name}</strong>{item.is_active ? null : <> <Badge tone="neutral">{L('موقوف', 'Inactive')}</Badge></>}<div className="text-small text-text-subtle">{item.code}</div></Td>
                   <Td>
                     {categories.find((category) => category[0] === item.category)?.[locale === 'ar' ? 1 : 2] ?? item.category}
                     <div className="text-small text-text-subtle">{item.execution_type}</div>
@@ -236,7 +305,7 @@ export default function TourPackages() {
                   <Td>{item.destination ?? '—'}</Td>
                   <Td className="whitespace-nowrap text-end">{formatMoney(item.base_price_minor, item.currency, locale)}</Td>
                   <Td>{departuresList(item)}</Td>
-                  <Td>{addDepartureButton(item)}</Td>
+                  <Td><div className="space-y-2">{addDepartureButton(item)}{editButtons(item)}</div></Td>
                 </tr>
               ))}
             </tbody>
@@ -280,6 +349,45 @@ export default function TourPackages() {
           <Field label={L('السعر المبدئي للفرد', 'Base price per person')}><Input value={form.base_price} onChange={(e) => setForm({ ...form, base_price: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
           <Field label={L('التكلفة التقديرية للفرد', 'Estimated cost per person')}><Input value={form.estimated_cost} onChange={(e) => setForm({ ...form, estimated_cost: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
           <div className="sm:col-span-2"><Field label={L('الوصف', 'Description')}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}/></Field></div>
+        </div>
+        {error ? <p className="mt-3 text-small text-danger-text">{error}</p> : null}
+      </Modal>
+      <Modal
+        open={editing !== null}
+        title={L('تعديل البرنامج', 'Edit program')}
+        onClose={() => setEditing(null)}
+        footer={<>
+          <Button variant="secondary" onClick={() => setEditing(null)}>{L('إلغاء', 'Cancel')}</Button>
+          <Button disabled={saveEdit.isPending || !editForm.name.trim()} onClick={() => saveEdit.mutate()}>{L('حفظ التعديل', 'Save changes')}</Button>
+        </>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="text-small text-text-subtle sm:col-span-2">{L('السعر الجديد يسري على الحجوزات الجديدة فقط، والحجوزات القائمة تحتفظ بسعرها.', 'A new price applies to new bookings only; existing bookings keep theirs.')}</div>
+          <Field label={L('اسم البرنامج', 'Program name')} required><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}/></Field>
+          <Field label={L('التصنيف', 'Category')}><Select value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}>
+            {categories.map((c) => <option key={c[0]} value={c[0]}>{locale === 'ar' ? c[1] : c[2]}</option>)}
+          </Select></Field>
+          <Field label={L('الوجهة', 'Destination')}><Input value={editForm.destination} onChange={(e) => setEditForm({ ...editForm, destination: e.target.value })}/></Field>
+          <Field label={L('السعر المبدئي للفرد', 'Base price per person')}><Input value={editForm.base_price} onChange={(e) => setEditForm({ ...editForm, base_price: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
+          <Field label={L('التكلفة التقديرية للفرد', 'Estimated cost per person')}><Input value={editForm.estimated_cost} onChange={(e) => setEditForm({ ...editForm, estimated_cost: e.target.value })} inputMode="decimal" dir="ltr"/></Field>
+          <div className="sm:col-span-2"><Field label={L('الوصف', 'Description')}><Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}/></Field></div>
+        </div>
+        {error ? <p className="mt-3 text-small text-danger-text">{error}</p> : null}
+      </Modal>
+      <Modal
+        open={editingDeparture !== null}
+        title={L('تعديل الموعد', 'Edit departure')}
+        onClose={() => setEditingDeparture(null)}
+        footer={<>
+          <Button variant="secondary" onClick={() => setEditingDeparture(null)}>{L('إلغاء', 'Cancel')}</Button>
+          <Button disabled={saveDepartureEdit.isPending || Number(departureEdit.capacity) < 1} onClick={() => saveDepartureEdit.mutate()}>{L('حفظ التعديل', 'Save changes')}</Button>
+        </>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="text-small text-text-subtle sm:col-span-2">{L('لا يمكن تقليل المقاعد عن المحجوز، ولا تغيير تاريخ البداية بعد وجود حجوزات.', 'Seats cannot drop below those taken, and the start date is locked once bookings exist.')}</div>
+          <Field label={L('تاريخ البداية', 'Start date')} required><DateField dir="ltr" value={departureEdit.starts_on} onChange={(e) => setDepartureEdit({ ...departureEdit, starts_on: e.target.value })}/></Field>
+          <Field label={L('تاريخ النهاية', 'End date')}><DateField dir="ltr" value={departureEdit.ends_on} onChange={(e) => setDepartureEdit({ ...departureEdit, ends_on: e.target.value })}/></Field>
+          <Field label={L('عدد المقاعد', 'Seat capacity')} required><Input type="number" min="1" value={departureEdit.capacity} onChange={(e) => setDepartureEdit({ ...departureEdit, capacity: e.target.value })}/></Field>
         </div>
         {error ? <p className="mt-3 text-small text-danger-text">{error}</p> : null}
       </Modal>
