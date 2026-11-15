@@ -387,7 +387,7 @@ test('the assistant asks for a date and a number with proper fields', async ({ p
   await page.route('**/api/v1/assistant/chat/stream', (route) => {
     bodies.push(route.request().postDataJSON())
     const data = { citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [], conversation_id: null }
-    const form = { title: 'موعد السفر', fields: [{ id: 'starts_on', label: 'أي يوم تغادر الرحلة؟', type: 'date', required: true }, { id: 'seats', label: 'عدد المقاعد', type: 'number', required: false }] }
+    const form = { title: 'موعد السفر', fields: [{ id: 'starts_on', label: 'أي يوم تغادر الرحلة؟', type: 'date', required: true }, { id: 'seats', label: 'عدد المقاعد', type: 'number', required: false, min: 1 }, { id: 'children', label: 'عدد الأطفال', type: 'number', required: true }] }
     const answer = bodies.length === 1 ? { type: 'answer', data: { ...data, answer: 'حدد الموعد.', form } } : { type: 'answer', data: { ...data, answer: 'تمام.', form: null } }
     return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
   })
@@ -402,6 +402,8 @@ test('the assistant asks for a date and a number with proper fields', async ({ p
   await expect(send).toBeDisabled()
   await form.getByLabel('أي يوم تغادر الرحلة؟').fill('2026-12-01')
   await form.getByLabel('عدد المقاعد').fill('20')
+  // Zero children is a real answer: nothing in the form forces a positive number.
+  await form.getByLabel('عدد الأطفال').fill('0')
   await expect(send).toBeEnabled()
 
   const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
@@ -412,4 +414,5 @@ test('the assistant asks for a date and a number with proper fields', async ({ p
   const sent = bodies[1].messages.at(-1)?.content ?? ''
   expect(sent).toContain('2026-12-01')
   expect(sent).toContain('20')
+  expect(sent).toContain('عدد الأطفال: 0')
 })

@@ -7,6 +7,9 @@ export type FormField = {
   type: 'radio' | 'checkbox' | 'text' | 'date' | 'number'
   required: boolean
   placeholder?: string
+  /** number fields: bounds the assistant asked for; none means any number, zero included. */
+  min?: number
+  max?: number
   options?: FormOption[]
 }
 

@@ -49,33 +49,38 @@ class AssistantEval extends Command
         $branch = $user->primaryBranch ?? $user->branches()->first() ?? Branch::query()->orderBy('id')->first();
         Auth::setUser($user);
         request()->headers->set('X-Branch-Id', (string) $branch?->public_id);
-        // The evaluation must not be cut short by the day's token budget.
-        config(['assistant.daily_token_budget' => 1_000_000_000]);
+        // The evaluation must not be cut short by the day's token budget, whatever an administrator saved in Settings:
+        // the effective limit is forced for this run and restored when it ends.
+        ProviderManager::forceLimit('daily_token_budget', 1_000_000_000);
 
         $placeholders = ['{in_20_days}' => now()->addDays(20)->toDateString(), '{next_month}' => now()->addMonthNoOverflow()->format('Y-m')];
         $only = (string) $this->option('only');
         $rows = [];
         $passed = 0;
         $total = 0;
-        foreach ($decoded['scenarios'] as $scenario) {
-            if ($only !== '' && ! str_contains((string) $scenario['id'], $only)) {
-                continue;
-            }
-            $total++;
-            $text = strtr((string) $scenario['text'], $placeholders);
-            $expect = json_decode(strtr(json_encode($scenario['expect'], JSON_UNESCAPED_UNICODE), array_map(fn ($v) => $v, $placeholders)), true);
+        try {
+            foreach ($decoded['scenarios'] as $scenario) {
+                if ($only !== '' && ! str_contains((string) $scenario['id'], $only)) {
+                    continue;
+                }
+                $total++;
+                $text = strtr((string) $scenario['text'], $placeholders);
+                $expect = json_decode(strtr(json_encode($scenario['expect'], JSON_UNESCAPED_UNICODE), array_map(fn ($v) => $v, $placeholders)), true);
 
-            DB::beginTransaction();
-            try {
-                $result = $chat->run($user, [['role' => 'user', 'content' => $text]], (string) ($scenario['locale'] ?? 'ar'), $branch);
-                $problems = $this->problems($expect, $result);
-            } catch (\Throwable $e) {
-                $problems = ['error: '.class_basename($e)];
-            } finally {
-                DB::rollBack();
+                DB::beginTransaction();
+                try {
+                    $result = $chat->run($user, [['role' => 'user', 'content' => $text]], (string) ($scenario['locale'] ?? 'ar'), $branch);
+                    $problems = $this->problems($expect, $result);
+                } catch (\Throwable $e) {
+                    $problems = ['error: '.class_basename($e)];
+                } finally {
+                    DB::rollBack();
+                }
+                $passed += $problems === [] ? 1 : 0;
+                $rows[] = [$problems === [] ? 'PASS' : 'FAIL', $scenario['id'], $problems === [] ? '' : implode('; ', $problems)];
             }
-            $passed += $problems === [] ? 1 : 0;
-            $rows[] = [$problems === [] ? 'PASS' : 'FAIL', $scenario['id'], $problems === [] ? '' : implode('; ', $problems)];
+        } finally {
+            ProviderManager::forceLimit('daily_token_budget', null);
         }
 
         $this->table(['', 'scenario', 'what is wrong'], $rows);

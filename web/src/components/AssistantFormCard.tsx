@@ -44,7 +44,8 @@ export function AssistantFormCard({ form, answered, onSubmit }: { form: Assistan
             <Input
               type={field.type}
               inputMode={field.type === 'number' ? 'numeric' : undefined}
-              min={field.type === 'number' ? 1 : undefined}
+              min={field.type === 'number' ? field.min : undefined}
+              max={field.type === 'number' ? field.max : undefined}
               value={typeof answers[field.id] === 'string' ? (answers[field.id] as string) : ''}
               placeholder={field.placeholder}
               aria-label={field.label}

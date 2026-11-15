@@ -42,6 +42,8 @@ final class AskUserForm
                             'type' => ['type' => 'string', 'enum' => ['radio', 'checkbox', 'text', 'date', 'number']],
                             'options' => ['type' => 'array', 'maxItems' => self::MAX_OPTIONS, 'items' => $option, 'description' => 'Required for radio and checkbox (2 to 8).'],
                             'placeholder' => ['type' => 'string'],
+                            'min' => ['type' => 'number', 'description' => 'number fields only: the smallest allowed value. Leave it out when zero is a valid answer (children, discounts); use 1 for seats or people.'],
+                            'max' => ['type' => 'number', 'description' => 'number fields only: the largest allowed value.'],
                             'required' => ['type' => 'boolean', 'description' => 'Defaults to true.'],
                         ],
                     ]],
@@ -77,6 +79,17 @@ final class AskUserForm
             ];
             if (in_array($type, ['text', 'date', 'number'], true)) {
                 $field['placeholder'] = self::clean($text, $raw['placeholder'] ?? '', 100);
+                if ($type === 'number') {
+                    // Bounds are optional and only what the model asked for: nothing forces a positive number.
+                    foreach (['min', 'max'] as $bound) {
+                        if (isset($raw[$bound]) && is_numeric($raw[$bound]) && abs((float) $raw[$bound]) <= 1_000_000_000) {
+                            $field[$bound] = $raw[$bound] + 0;
+                        }
+                    }
+                    if (isset($field['min'], $field['max']) && $field['min'] > $field['max']) {
+                        unset($field['min'], $field['max']);
+                    }
+                }
             } else {
                 $options = [];
                 $seen = [];

@@ -12,6 +12,7 @@ use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Models\AssistantConversation;
 use App\Modules\Assistant\Models\AssistantUpload;
 use App\Modules\Assistant\Services\AssistantUploadService;
+use App\Modules\Assistant\Services\ChatService;
 use App\Modules\Assistant\Services\ProviderManager;
 use App\Modules\Attachments\Models\Attachment;
 use App\Modules\Bookings\Models\Booking;
@@ -39,6 +40,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -1235,14 +1237,18 @@ class AssistantChatTest extends TestCase
         $this->script([
             $this->toolCallReply([[AskUserForm::TOOL, ['title' => 'Departure', 'fields' => [
                 ['id' => 'starts_on', 'label' => 'Which day does it leave?', 'type' => 'date'],
-                ['id' => 'seats', 'label' => 'How many seats?', 'type' => 'number', 'required' => false],
+                ['id' => 'seats', 'label' => 'How many seats?', 'type' => 'number', 'required' => false, 'min' => 1, 'max' => 500],
+                ['id' => 'children', 'label' => 'How many children?', 'type' => 'number', 'min' => 5, 'max' => 2],
             ]]]]),
             $this->finalReply('Pick the day.'),
         ]);
 
         $form = $this->chat('add a departure')->assertOk()->json('data.form');
 
-        $this->assertSame(['date', 'number'], array_column($form['fields'], 'type'));
+        $this->assertSame(['date', 'number', 'number'], array_column($form['fields'], 'type'));
+        $this->assertSame([1, 500], [$form['fields'][1]['min'], $form['fields'][1]['max']], 'the bounds the model asked for are carried');
+        $this->assertArrayNotHasKey('min', $form['fields'][2], 'an impossible range is dropped, never enforced');
+        $this->assertArrayNotHasKey('min', $form['fields'][0]);
         $this->assertArrayNotHasKey('options', $form['fields'][0]);
     }
 
@@ -1269,6 +1275,39 @@ class AssistantChatTest extends TestCase
         $this->assertMatchesRegularExpression('/FAIL\s*\|\s*trip-wrong-amount\s*\|[^|]*base_price_minor was 35000/', $output);
         $this->assertSame(0, TourPackage::query()->count());
         $this->assertSame(0, AssistantAction::query()->count(), 'every scenario is rolled back');
+    }
+
+    public function test_the_eval_is_not_cut_short_by_a_saved_budget_and_the_limit_comes_back(): void
+    {
+        $this->grant('bookings.create', 'bookings.view');
+        // An administrator saved a small budget and today's usage is already over it.
+        $this->settings->set('assistant', 'daily_token_budget', '1000');
+        Cache::put('assistant-tokens:'.$this->user->getKey().':'.now()->toDateString(), 5000, now()->endOfDay());
+        $file = tempnam(sys_get_temp_dir(), 'eval').'.json';
+        file_put_contents($file, json_encode(['scenarios' => [['id' => 'trip', 'text' => 'اعمل رحلة عمرة بقيمة 35 الف', 'expect' => ['card' => true, 'status' => 'ok', 'answer_any' => ['Prepared']]]]], JSON_UNESCAPED_UNICODE));
+        $this->script([$this->toolCallReply([['erp_tour_package_create', ['name' => 'عمرة', 'category' => 'umrah', 'base_price_minor' => 3500000]]]), $this->finalReply('Prepared.')]);
+
+        $chat = app(ChatService::class);
+        $this->assertGreaterThan($chat->tokenBudget(), $chat->tokensToday($this->user), 'the day is already over the saved budget');
+
+        $exit = Artisan::call('assistant:eval', ['--file' => $file, '--user' => $this->user->email]);
+        @unlink($file);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame(1000, app(ProviderManager::class)->limit('daily_token_budget'), 'the saved limit applies again afterwards');
+    }
+
+    public function test_a_forced_limit_beats_the_saved_setting_and_goes_away(): void
+    {
+        $this->settings->set('assistant', 'daily_token_budget', '1000');
+        $providers = app(ProviderManager::class);
+        $this->assertSame(1000, $providers->limit('daily_token_budget'));
+
+        ProviderManager::forceLimit('daily_token_budget', 1_000_000_000);
+        $this->assertSame(1_000_000_000, $providers->limit('daily_token_budget'));
+
+        ProviderManager::forceLimit('daily_token_budget', null);
+        $this->assertSame(1000, $providers->limit('daily_token_budget'));
     }
 
     public function test_an_unknown_payment_account_is_reported_with_the_choices_and_no_card_exists(): void

@@ -59,4 +59,10 @@ describe('assistant form', () => {
     expect(isFormComplete(when, { starts_on: '2026-12-01' })).toBe(true)
     expect(formAnswerText(when, { starts_on: '2026-12-01', seats: '20' }, 'en')).toBe('My answers:\n- Departure: 2026-12-01\n- Seats: 20')
   })
+
+  it('counts a zero as an answer', () => {
+    const kids: AssistantForm = { fields: [{ id: 'children', label: 'Children', type: 'number', required: true }] }
+    expect(isFormComplete(kids, { children: '0' })).toBe(true)
+    expect(formAnswerText(kids, { children: '0' }, 'en')).toBe('My answers:\n- Children: 0')
+  })
 })
