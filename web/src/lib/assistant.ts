@@ -3,6 +3,8 @@
  * The conversation lives in memory only: nothing here touches localStorage, sessionStorage or the server.
  */
 
+import type { AssistantForm } from './assistantForm'
+
 export type Citation = {
   tool: string
   entity: string
@@ -36,6 +38,8 @@ export type ChatMessage = {
   attachments?: Array<{ id: string; name: string }>
   citations?: Citation[]
   actions?: ActionCard[]
+  /** A form the assistant asks the user to answer (ADR-0029); answered when a later user message exists. */
+  form?: AssistantForm | null
   truncated?: boolean
   /** Tools the assistant used for this answer (shown as "Searched: ..."); not saved or sent. */
   steps?: string[]
@@ -49,6 +53,7 @@ export type ChatReply = {
   usage: { prompt: number; completion: number; total: number }
   truncated: boolean
   actions?: ActionCard[]
+  form?: AssistantForm | null
   /** Set when the server saved the turn (ADR-0022); null when saving is off. */
   conversation_id?: string | null
 }
@@ -79,7 +84,7 @@ export function withoutFileNote(message: ChatMessage): string {
 export function addAssistantReply(messages: ChatMessage[], reply: ChatReply, steps: string[] = []): ChatMessage[] {
   return [
     ...messages,
-    { key: nextKey(messages), role: 'assistant', content: reply.answer, citations: reply.citations, truncated: reply.truncated, steps, actions: reply.actions ?? [] },
+    { key: nextKey(messages), role: 'assistant', content: reply.answer, citations: reply.citations, truncated: reply.truncated, steps, actions: reply.actions ?? [], form: reply.form ?? null },
   ]
 }
 
