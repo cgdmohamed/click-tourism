@@ -30,21 +30,37 @@ final class Like
         return $value === '' ? null : mb_substr($value, 0, 100);
     }
 
+    /** Arabic letters that people type interchangeably (أ إ آ -> ا, ى -> ي, ة -> ه) are folded together. */
+    public static function fold(string $text): string
+    {
+        return strtr($text, ['أ' => 'ا', 'إ' => 'ا', 'آ' => 'ا', 'ى' => 'ي', 'ة' => 'ه']);
+    }
+
     /**
-     * Adds `(col1 LIKE %term% OR col2 LIKE %term% ...)` to the query.
+     * Adds `(col1 LIKE %word% OR col2 LIKE %word% ...)` for EVERY word of the term, so "Mohamed Darwish"
+     * finds "Mohamed Mostafa Darwish", and Arabic spelling variants match each other.
      *
      * @param  Builder<*>  $query
      * @param  string[]  $columns
      */
     public static function contains(Builder $query, array $columns, string $term): void
     {
-        $pattern = '%'.self::escape($term).'%';
+        $words = preg_split('/\s+/u', trim($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $words = array_slice($words, 0, 8);
 
-        $query->where(function (Builder $query) use ($columns, $pattern) {
-            $grammar = $query->getQuery()->getGrammar();
-            foreach ($columns as $column) {
-                $query->orWhereRaw('lower('.$grammar->wrap($column).") like lower(?) escape '!'", [$pattern]);
-            }
-        });
+        foreach ($words as $word) {
+            $pattern = '%'.self::escape(self::fold($word)).'%';
+
+            $query->where(function (Builder $query) use ($columns, $pattern) {
+                $grammar = $query->getQuery()->getGrammar();
+                foreach ($columns as $column) {
+                    $folded = $grammar->wrap($column);
+                    foreach (['أ' => 'ا', 'إ' => 'ا', 'آ' => 'ا', 'ى' => 'ي', 'ة' => 'ه'] as $from => $to) {
+                        $folded = "replace({$folded}, '{$from}', '{$to}')";
+                    }
+                    $query->orWhereRaw("lower({$folded}) like lower(?) escape '!'", [$pattern]);
+                }
+            });
+        }
     }
 }

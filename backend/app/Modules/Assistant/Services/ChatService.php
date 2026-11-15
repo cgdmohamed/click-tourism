@@ -3,7 +3,9 @@
 namespace App\Modules\Assistant\Services;
 
 use App\Modules\Assistant\Actions\ActionCatalogue;
+use App\Modules\Assistant\Actions\AskUserForm;
 use App\Modules\Assistant\Support\ChatResult;
+use App\Modules\Assistant\Support\InputGuard;
 use App\Modules\Assistant\Support\OutputSanitizer;
 use App\Modules\Assistant\Support\ProviderException;
 use App\Modules\Assistant\Support\Redactor;
@@ -11,6 +13,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -55,15 +58,24 @@ class ChatService
      */
     public function run(User $user, array $messages, string $locale, ?Branch $branch, ?callable $onEvent = null, array $files = []): ChatResult
     {
+        // The plain attempts to override the rules, run a system command or skip the confirmation never
+        // reach the provider (ADR-0030); the real limits are the tool allowlist, the user's permissions and the card.
+        if ($messages !== [] && InputGuard::blocks((string) end($messages)['content'])) {
+            $this->log($user, $branch, $locale, 'blocked_input', $this->providers->model(), 0, 0, [], 0, 0, 0, 0, count($files));
+
+            return new ChatResult(InputGuard::refusal($locale), [], 0, 0, false, 'blocked_input', [], 0, 0, 0);
+        }
+
         $provider = $this->providers->provider();
         $redactor = new Redactor($this->settings->bool('assistant', 'redact_pii', true));
         $maxCalls = $this->providers->limit('max_tool_calls_per_turn');
         $options = ['model' => $this->providers->model(), 'max_output_tokens' => $this->providers->limit('max_output_tokens')];
         // Read tools for everyone; the actions the user may prepare are added by permission (ADR-0023).
-        $tools = [...$this->catalogue->modelTools(), ...$this->actionCatalogue->modelTools($user)];
+        $tools = [...$this->catalogue->modelTools(), ...$this->actionCatalogue->modelTools($user), AskUserForm::definition()];
+        $form = null;
         $actions = [];
 
-        $conversation = [['role' => 'system', 'content' => $this->systemPrompt($locale, $branch)]];
+        $conversation = [['role' => 'system', 'content' => $this->systemPrompt($locale, $branch, $user)]];
         $lastIndex = array_key_last($messages);
         foreach ($messages as $index => $message) {
             $text = $redactor->redact($message['content']);
@@ -116,6 +128,17 @@ class ChatService
                 ];
 
                 foreach ($reply->toolCalls as $call) {
+                    if ($call['name'] === AskUserForm::TOOL) {
+                        $shaped = AskUserForm::shape(json_decode((string) $call['arguments'], true), fn (string $t) => $redactor->restore($t));
+                        if ($shaped['form'] !== null && $form === null) {
+                            $form = $shaped['form'];
+                            $conversation[] = ['role' => 'tool', 'tool_call_id' => $call['id'], 'content' => 'The form is shown to the user. Write at most one short sentence and stop; their answer arrives as the next message.'];
+                        } else {
+                            $conversation[] = $this->toolMessage($call['id'], 'invalid_form', $shaped['error'] ?? 'Only one form per answer.');
+                        }
+
+                        continue;
+                    }
                     if ($this->actionCatalogue->has($call['name']) && $calls < $maxCalls) {
                         $calls++;
                         if ($onEvent !== null) {
@@ -189,6 +212,7 @@ class ChatService
             $rejected,
             $rounds,
             $actions,
+            $form,
         );
         $this->log($user, $branch, $locale, $status, $options['model'], $prompt, $completion, $executed, $toolErrors, $rejected, $rounds, $calls, count($files));
 
@@ -263,13 +287,26 @@ class ChatService
         ];
     }
 
-    private function systemPrompt(string $locale, ?Branch $branch): string
+    private function systemPrompt(string $locale, ?Branch $branch, User $user): string
     {
         $file = resource_path('assistant/'.config('assistant.system_prompt'));
         $prompt = trim((string) file_get_contents($file));
 
         return $prompt."\n\nContext: interface language = {$locale}; today = ".now()->toDateString()
-            .'; active branch id = '.($branch?->public_id ?? 'none').'. Tool calls always use this branch.';
+            .'; active branch id = '.($branch?->public_id ?? 'none').'. Tool calls always use this branch.'
+            .$this->paymentAccountsLine($user, $branch);
+    }
+
+    /** The names of the branch's cash and bank accounts, so the model never has to ask which exist. */
+    private function paymentAccountsLine(User $user, ?Branch $branch): string
+    {
+        if ($branch === null || ! ($user->can('payments.create') || $user->can('expenses.create') || $user->can('supplier_payments.create') || $user->can('commissions.pay'))) {
+            return '';
+        }
+        $names = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->limit(15)->get()
+            ->map(fn (CashAccount $a) => $a->name_en ?: $a->name_ar)->filter()->values()->all();
+
+        return $names === [] ? '' : ' Payment accounts of this branch (use one of these names as payment_account): '.implode('; ', $names).'.';
     }
 
     private function tokensKey(User $user): string

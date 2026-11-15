@@ -26,6 +26,7 @@ import {
   uniqueCitations,
 } from '../lib/assistant'
 import type { ActionCard, ChatMessage, Citation } from '../lib/assistant'
+import { AssistantFormCard } from './AssistantFormCard'
 import { linkRecords, parseAnswer } from '../lib/answerText'
 import type { Inline } from '../lib/answerText'
 import { AssistantRequestError, streamChat } from '../lib/assistantStream'
@@ -180,6 +181,14 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
     setMessages(next)
     setDraft('')
     setFiles([])
+    void ask(next, conversationId)
+  }
+
+  /** The answers of a form become the user's next message, like typed text. */
+  function answerForm(text: string) {
+    if (busy) return
+    const next = addUserMessage(messages, text)
+    setMessages(next)
     void ask(next, conversationId)
   }
 
@@ -408,7 +417,12 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
               <ol className="flex flex-col gap-5">
                 {messages.map((message) => (
                   <li key={message.key}>
-                    <MessageBubble message={message} onRetry={lastIsError && message.key === messages[messages.length - 1].key ? retry : undefined} />
+                    <MessageBubble
+                      message={message}
+                      onRetry={lastIsError && message.key === messages[messages.length - 1].key ? retry : undefined}
+                      answered={messages[messages.length - 1].key !== message.key || busy}
+                      onAnswer={answerForm}
+                    />
                   </li>
                 ))}
               </ol>
@@ -498,7 +512,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
   )
 }
 
-function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: () => void }) {
+function MessageBubble({ message, onRetry, answered, onAnswer }: { message: ChatMessage; onRetry?: () => void; answered?: boolean; onAnswer?: (text: string) => void }) {
   const { t, locale } = useI18n()
   const mine = message.role === 'user'
 
@@ -537,6 +551,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
       >
         {mine ? message.content : <AnswerBody text={message.content} citations={message.citations ?? []} />}
       </div>
+      {message.form && onAnswer ? <AssistantFormCard form={message.form} answered={answered ?? false} onSubmit={onAnswer} /> : null}
       {(message.actions ?? []).map((card) => (
         <ActionCardView key={card.id} initial={card} />
       ))}

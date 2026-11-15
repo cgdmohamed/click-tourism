@@ -17,7 +17,9 @@ use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Treasury\Models\CashAccount;
+use App\Support\Like;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -225,7 +227,7 @@ class ActionService
             throw new \DomainException('Give a stage or a note to change.');
         }
 
-        return array_filter(['stage' => $args['stage'] ?? null, 'note' => $args['note'] ?? null]) + ['__id' => $lead->public_id, '__lead' => $lead->name];
+        return array_filter(['stage' => $args['stage'] ?? null, 'note' => $args['note'] ?? null]) + ['__id' => $lead->public_id, '__lead' => $this->partyLabel($lead)];
     }
 
     private function prepareInvoice(array $args, Branch $branch, string $base): array
@@ -257,7 +259,7 @@ class ActionService
                 'credit_minor' => $line['quantity'] * $line['unit_price_minor'],
             ], $args['lines']),
             'submit' => false,
-            '__customer' => $customer->name_en ?: $customer->name_ar,
+            '__customer' => $this->partyLabel($customer),
             '__booking' => $booking?->number,
         ];
     }
@@ -283,15 +285,9 @@ class ActionService
                 throw new \DomainException('Supplier not found.');
             }
             unset($args['supplier_id']);
-            $paying = ['payee_type' => 'supplier', 'payee_id' => $supplier->public_id, '__payee' => $supplier->name_en ?: $supplier->name_ar];
+            $paying = ['payee_type' => 'supplier', 'payee_id' => $supplier->public_id, '__payee' => $this->partyLabel($supplier)];
         } else {
-            $accounts = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->get();
-            $needle = mb_strtolower(trim((string) ($args['payment_account'] ?? '')));
-            $match = $accounts->filter(fn ($a) => $needle !== '' && (mb_strtolower((string) $a->name_en) === $needle || mb_strtolower((string) $a->name_ar) === $needle));
-            if ($match->count() !== 1) {
-                $list = $accounts->take(15)->map(fn ($a) => $a->name_en ?: $a->name_ar)->implode(', ');
-                throw new \DomainException('Say which payment account pays (payment_account) or give a supplier_id. Payment accounts in this branch: '.($list ?: 'none').'.');
-            }
+            $match = collect([$this->cashAccount((string) ($args['payment_account'] ?? ''), $branch)]);
             $paying = ['cash_account_id' => $match->first()->public_id, '__payment' => $match->first()->name_en ?: $match->first()->name_ar];
         }
         unset($args['payment_account']);
@@ -313,13 +309,13 @@ class ActionService
                 if ($supplier === null) {
                     throw new \DomainException("Supplier {$item['supplier_id']} not found.");
                 }
-                $item['__supplier'] = $supplier->name_en ?: $supplier->name_ar;
+                $item['__supplier'] = $this->partyLabel($supplier);
             }
 
             return $item;
         }, $args['items']);
 
-        return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $customer->name_en ?: $customer->name_ar];
+        return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $this->partyLabel($customer)];
     }
 
     /**
@@ -391,15 +387,21 @@ class ActionService
         if ($customer === null) {
             throw new \DomainException('Customer not found.');
         }
-        $account = $this->cashAccount($args['payment_account'], $branch);
+        $account = $this->cashAccount((string) ($args['payment_account'] ?? ''), $branch);
         $currency = strtoupper($args['currency'] ?? $base);
 
         // With a booking and no explicit allocations the route puts the WHOLE receipt on that booking,
         // so the card must name it; without one the receipt is an unallocated advance.
         $booking = null;
         if (! empty($args['booking_id'])) {
-            $booking = Booking::query()->where('public_id', $args['booking_id'])->orWhere('number', $args['booking_id'])->first();
-            if ($booking === null || $booking->branch_id !== $branch->id) {
+            $bookings = Booking::query()->where('branch_id', $branch->id)
+                ->where(fn ($q) => $q->where('public_id', $args['booking_id'])->orWhere('number', $args['booking_id']))
+                ->limit(2)->get();
+            if ($bookings->count() > 1) {
+                throw new \DomainException('More than one booking has this number: use the booking id.');
+            }
+            $booking = $bookings->first();
+            if ($booking === null) {
                 throw new \DomainException('Booking not found in this branch.');
             }
             if ($booking->customer_id !== $customer->id) {
@@ -414,7 +416,7 @@ class ActionService
             'customer_id' => $customer->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
             'method' => $args['method'] ?? 'cash', 'amount_minor' => $args['amount_minor'], 'currency' => $currency,
             'booking_id' => $booking?->public_id, 'paid_at' => $args['paid_at'] ?? null,
-            '__customer' => $customer->name_en ?: $customer->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
+            '__customer' => $this->partyLabel($customer), '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
     }
 
@@ -424,13 +426,13 @@ class ActionService
         if ($supplier === null) {
             throw new \DomainException('Supplier not found.');
         }
-        $account = $this->cashAccount($args['payment_account'], $branch);
+        $account = $this->cashAccount((string) ($args['payment_account'] ?? ''), $branch);
 
         return array_filter([
             '__tool' => 'erp_supplier_payment_record',
             'supplier_id' => $supplier->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
             'amount_minor' => $args['amount_minor'], 'currency' => strtoupper($args['currency'] ?? $base), 'paid_at' => $args['paid_at'] ?? null,
-            '__payee' => $supplier->name_en ?: $supplier->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
+            '__payee' => $this->partyLabel($supplier), '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
     }
 
@@ -444,17 +446,54 @@ class ActionService
     }
 
     /** The active cash or bank account of this branch with exactly this name; otherwise the user is told which exist. */
+    /**
+     * A customer, supplier or lead as the confirmation card prints it. Customers and suppliers carry
+     * their unique code ("Ahmed · C-0007"), so a wrong "first Ahmed" is visible before Confirm. A lead
+     * has no code: when another lead shares the name, the card says so and adds the branch.
+     */
+    private function partyLabel(Model $party): string
+    {
+        $name = (string) ($party->name_en ?? null ?: $party->name_ar ?? null ?: $party->name ?? '');
+        if (! empty($party->code)) {
+            return $name.' · '.$party->code;
+        }
+        $others = $party::query()->where('id', '!=', $party->id)->where('name', $party->name)->count();
+
+        return $others === 0 ? $name : sprintf('%s (%s · %d)', $name, $party->branch?->name_ar ?: $party->branch?->code, $others + 1);
+    }
+
+    /**
+     * The cash or bank account of this branch the user means. No name and a single account: that one.
+     * Otherwise the exact name, else the one account whose name contains (or is contained in) what was said,
+     * Arabic spelling folded. Anything else is a question for the user, with the accounts listed.
+     */
     private function cashAccount(string $name, Branch $branch): CashAccount
     {
         $accounts = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->get();
-        $needle = mb_strtolower(trim($name));
-        $match = $accounts->filter(fn ($a) => $needle !== '' && (mb_strtolower((string) $a->name_en) === $needle || mb_strtolower((string) $a->name_ar) === $needle));
-        if ($match->count() !== 1) {
-            $list = $accounts->take(15)->map(fn ($a) => $a->name_en ?: $a->name_ar)->implode(', ');
-            throw new \DomainException('Say which payment account to use (payment_account). Payment accounts in this branch: '.($list ?: 'none').'.');
+        $needle = mb_strtolower(Like::fold(trim($name)));
+        $names = fn (CashAccount $a) => [mb_strtolower(Like::fold((string) $a->name_en)), mb_strtolower(Like::fold((string) $a->name_ar))];
+
+        if ($needle === '' && $accounts->count() === 1) {
+            return $accounts->first();
+        }
+        $exact = $accounts->filter(fn ($a) => $needle !== '' && in_array($needle, $names($a), true));
+        if ($exact->count() === 1) {
+            return $exact->first();
+        }
+        // Loose wording ("the main bank account"): score each account by how many meaningful words of the
+        // request appear in its name; a single clear winner is the one meant.
+        $words = collect(preg_split('/\s+/u', $needle, -1, PREG_SPLIT_NO_EMPTY) ?: [])
+            ->map(fn ($w) => preg_replace('/^ال/u', '', $w))
+            ->reject(fn ($w) => mb_strlen($w) < 3 || in_array($w, ['the', 'account', 'acct', 'حساب', 'الحساب'], true));
+        $scored = $accounts->map(fn ($a) => ['account' => $a, 'score' => $words->filter(
+            fn ($w) => collect($names($a))->contains(fn ($n) => $n !== '' && str_contains($n, $w)),
+        )->count()])->sortByDesc('score')->values();
+        if ($scored->isNotEmpty() && $scored[0]['score'] > 0 && ($scored->count() === 1 || $scored[1]['score'] < $scored[0]['score'])) {
+            return $scored[0]['account'];
         }
 
-        return $match->first();
+        $list = $accounts->take(15)->map(fn ($a) => $a->name_en ?: $a->name_ar)->implode(', ');
+        throw new \DomainException('Which payment account? Payment accounts in this branch: '.($list ?: 'none').'. Show them to the user as a radio form with erp_ask_user, then prepare again with the chosen name.');
     }
 
     /** Display-only keys (`__...`) never reach the route, at any depth. */

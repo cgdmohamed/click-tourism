@@ -22,6 +22,8 @@ final class ChatResult
         public readonly int $rounds,
         /** @var list<array<string, mixed>> confirmation cards of the actions prepared in this turn (ADR-0023) */
         public readonly array $actions = [],
+        /** @var ?array<string, mixed> a short form (radio, checkbox, text) the model asked the user to answer (ADR-0029) */
+        public readonly ?array $form = null,
     ) {}
 
     public function payload(): array
@@ -36,6 +38,7 @@ final class ChatResult
             ],
             'truncated' => $this->truncated,
             'actions' => $this->actions,
+            'form' => $this->form,
         ];
     }
 }

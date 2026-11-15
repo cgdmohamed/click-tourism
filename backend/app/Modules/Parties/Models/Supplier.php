@@ -3,12 +3,19 @@
 namespace App\Modules\Parties\Models;
 
 use App\Modules\Core\Models\Branch;
+use App\Support\HasPartyCode;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 class Supplier extends Model
 {
+    use HasPartyCode;
     use HasPublicId;
+
+    public function codePrefix(): string
+    {
+        return 'S';
+    }
 
     protected $fillable = [
         'category',
@@ -37,6 +44,7 @@ class Supplier extends Model
     {
         return [
             'id' => $this->public_id,
+            'code' => $this->code,
             'created_via' => $this->created_via,
             'category' => $this->category,
             'name_ar' => $this->name_ar,
