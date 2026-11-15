@@ -32,6 +32,12 @@ final class OfficeText
 
     private const MAX_ROWS = 200;
 
+    private const MAX_COLUMNS = 60;
+
+    private const NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+    private const NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
     /** @return 'docx'|'xlsx'|null null when the bytes are not a plain (macro-free) Word or Excel file */
     public static function kind(string $bytes): ?string
     {
@@ -147,7 +153,7 @@ final class OfficeText
         $strings = self::xml($zip, 'xl/sharedStrings.xml');
         if ($strings !== null) {
             $xpath = new DOMXPath($strings);
-            $xpath->registerNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+            $xpath->registerNamespace('m', self::NS_MAIN);
             foreach ($xpath->query('//m:si') ?: [] as $item) {
                 $shared[] = $item->textContent;
             }
@@ -155,22 +161,32 @@ final class OfficeText
 
         $out = [];
         $length = 0;
-        for ($sheet = 1; $sheet <= self::MAX_SHEETS && $length <= $max; $sheet++) {
-            $doc = self::xml($zip, "xl/worksheets/sheet{$sheet}.xml");
+        foreach (array_slice(self::sheets($zip), 0, self::MAX_SHEETS) as [$name, $path]) {
+            if ($length > $max) {
+                break;
+            }
+            $doc = self::xml($zip, $path);
             if ($doc === null) {
                 continue;
             }
             $xpath = new DOMXPath($doc);
-            $xpath->registerNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
-            $out[] = "[Sheet {$sheet}]";
+            $xpath->registerNamespace('m', self::NS_MAIN);
+            $out[] = '[Sheet: '.$name.']';
             $rows = 0;
             foreach ($xpath->query('//m:row') ?: [] as $row) {
                 if (++$rows > self::MAX_ROWS || $length > $max) {
                     break;
                 }
                 $cells = [];
+                $next = 0;
                 foreach ($xpath->query('m:c', $row) ?: [] as $cell) {
                     /** @var DOMElement $cell */
+                    // A row lists only the cells that have a value: the reference (C2) says which column this is.
+                    $column = self::column($cell->getAttribute('r'), $next);
+                    $next = $column + 1;
+                    if ($column >= self::MAX_COLUMNS) {
+                        continue;
+                    }
                     $type = $cell->getAttribute('t');
                     $value = (string) ($xpath->query('m:v', $cell)->item(0)?->textContent ?? '');
                     if ($type === 's') {
@@ -178,16 +194,84 @@ final class OfficeText
                     } elseif ($type === 'inlineStr') {
                         $value = (string) ($xpath->query('m:is', $cell)->item(0)?->textContent ?? '');
                     }
-                    $cells[] = trim($value);
+                    $cells[$column] = trim($value);
                 }
-                $line = rtrim(implode("\t", $cells), "\t");
-                if ($line !== '') {
-                    $out[] = $line;
-                    $length += mb_strlen($line);
+                if ($cells === []) {
+                    continue;
+                }
+                $line = [];
+                for ($i = 0; $i <= max(array_keys($cells)); $i++) {
+                    $line[] = $cells[$i] ?? '';
+                }
+                $text = rtrim(implode("\t", $line), "\t");
+                if ($text !== '') {
+                    $out[] = $text;
+                    $length += mb_strlen($text);
                 }
             }
         }
 
         return implode("\n", $out);
+    }
+
+    /** Zero-based column of a cell reference such as "C2" (a missing reference continues after the previous cell). */
+    private static function column(string $reference, int $fallback): int
+    {
+        if (preg_match('/^([A-Za-z]+)/', $reference, $m) !== 1) {
+            return $fallback;
+        }
+        $index = 0;
+        foreach (str_split(strtoupper($m[1])) as $letter) {
+            $index = $index * 26 + (ord($letter) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    /**
+     * The visible sheets in tab order, as [name, part path]: the order and the targets come from the workbook
+     * and its relationships, never from the file names (sheet4.xml may be the first tab).
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private static function sheets(ZipArchive $zip): array
+    {
+        $targets = [];
+        $rels = self::xml($zip, 'xl/_rels/workbook.xml.rels');
+        if ($rels !== null) {
+            foreach ($rels->getElementsByTagName('Relationship') as $rel) {
+                $targets[$rel->getAttribute('Id')] = $rel->getAttribute('Target');
+            }
+        }
+
+        $sheets = [];
+        $book = self::xml($zip, 'xl/workbook.xml');
+        if ($book !== null) {
+            foreach ($book->getElementsByTagName('sheet') as $sheet) {
+                $target = $targets[$sheet->getAttributeNS(self::NS_REL, 'id')] ?? '';
+                if ($target === '' || str_contains($target, '..') || in_array($sheet->getAttribute('state'), ['hidden', 'veryHidden'], true)) {
+                    continue;
+                }
+                $path = str_starts_with($target, '/') ? ltrim($target, '/') : 'xl/'.$target;
+                if ($zip->locateName($path) !== false) {
+                    $sheets[] = [$sheet->getAttribute('name') ?: basename($path, '.xml'), $path];
+                }
+            }
+        }
+        if ($sheets !== []) {
+            return $sheets;
+        }
+
+        // A workbook that lists nothing usable: fall back to the worksheet parts in natural name order.
+        $parts = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (preg_match('~^xl/worksheets/[^/]+\.xml$~', $name) === 1) {
+                $parts[] = $name;
+            }
+        }
+        natsort($parts);
+
+        return array_map(fn (string $path) => [basename($path, '.xml'), $path], array_values($parts));
     }
 }
