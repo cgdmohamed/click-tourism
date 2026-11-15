@@ -92,6 +92,14 @@ export function carriedAttachmentIds(turns: ChatMessage[], now: number = Date.no
   return []
 }
 
+/** True when the files that travel with this turn were attached to an earlier message, not the last one. */
+export function attachmentsAreCarried(turns: ChatMessage[]): boolean {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index].role === 'user') return (turns[index].attachments ?? []).length === 0 && carriedAttachmentIds(turns).length > 0
+  }
+  return false
+}
+
 /** The text of a user turn without the `[file names]` line that was added for display. */
 export function withoutFileNote(message: ChatMessage): string {
   const names = message.attachments?.map((file) => file.name) ?? []

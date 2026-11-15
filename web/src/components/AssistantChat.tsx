@@ -16,6 +16,7 @@ import {
   canSend,
   citationLink,
   dropLastTurn,
+  attachmentsAreCarried,
   carriedAttachmentIds,
   withoutFileNote,
   formatAsOf,
@@ -134,6 +135,7 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
     async (turns: ChatMessage[], conversation: string | null) => {
       // The files belong to the user turn, so a retry or a resubmit sends them again.
       const attachments = carriedAttachmentIds(turns)
+      const attachmentsCarried = attachmentsAreCarried(turns)
       const controller = new AbortController()
       abortRef.current = controller
       stepsRef.current = []
@@ -146,6 +148,7 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
           locale,
           conversationId: conversation,
           attachments,
+          attachmentsCarried,
           signal: controller.signal,
           onEvent: (event) => {
             if (event.type === 'thinking') {

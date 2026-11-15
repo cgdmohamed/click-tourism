@@ -106,7 +106,7 @@ class AssistantController extends ApiController
         [$messages, $locale, $branch, $conversationId, $uploads] = $prepared;
 
         try {
-            $result = $chat->run($request->user(), $messages, $locale, $branch, null, $this->files($uploads));
+            $result = $chat->run($request->user(), $messages, $locale, $branch, null, $this->files($uploads, $request->boolean('attachments_carried')));
         } catch (ProviderException) {
             return ApiResponse::error('The assistant provider is unavailable. Try again later.', 'assistant_provider_error', 502);
         }
@@ -138,7 +138,7 @@ class AssistantController extends ApiController
             };
 
             try {
-                $result = $chat->run($user, $messages, $locale, $branch, $send, $this->files($uploads));
+                $result = $chat->run($user, $messages, $locale, $branch, $send, $this->files($uploads, $request->boolean('attachments_carried')));
                 $send(['type' => 'answer', 'data' => $this->payload($history, $request, $branch, $conversationId, $messages, $result, $uploads)]);
             } catch (ProviderException) {
                 $send(['type' => 'error', 'code' => 'assistant_provider_error', 'message' => 'The assistant provider is unavailable. Try again later.']);
@@ -254,9 +254,18 @@ class AssistantController extends ApiController
     }
 
     /** @param  list<AssistantUpload>  $uploads */
-    private function files(array $uploads): array
+    /**
+     * The files with the detail level the provider reads them at. A file attached to an earlier message
+     * that travels along again (`attachments_carried`) is sent at low detail: the model already read it, and
+     * re-sending it in full at every round of every later turn would use up the daily token budget.
+     */
+    private function files(array $uploads, bool $carried = false): array
     {
-        return $uploads === [] ? [] : app(AssistantUploadService::class)->contents($uploads);
+        if ($uploads === []) {
+            return [];
+        }
+
+        return array_map(fn (array $file) => $file + ['detail' => $carried ? 'low' : 'auto'], app(AssistantUploadService::class)->contents($uploads));
     }
 
     /**
@@ -289,6 +298,8 @@ class AssistantController extends ApiController
             // Files uploaded with POST /assistant/uploads, read together with the last message (ADR-0028).
             'attachments' => ['nullable', 'array', 'max:'.AssistantUploadService::MAX_PER_MESSAGE],
             'attachments.*' => ['string', 'max:26'],
+            // True when the files belong to an earlier message and only travel along for context.
+            'attachments_carried' => ['nullable', 'boolean'],
         ]);
         $messages = array_values($data['messages']);
         if (end($messages)['role'] !== 'user') {

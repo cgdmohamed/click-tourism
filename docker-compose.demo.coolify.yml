@@ -63,7 +63,9 @@ services:
       # visitors can try it at once. Use a dedicated key with a spending limit; it stays in the
       # container environment and is never written to the database or the repository.
       OPENAI_API_KEY: ${DEMO_OPENAI_API_KEY:-}
-      ASSISTANT_DAILY_TOKEN_BUDGET: ${DEMO_ASSISTANT_DAILY_TOKEN_BUDGET:-200000}
+      # Per user per day. A demo shares a few accounts and a receipt conversation is image-heavy, so it is higher than
+      # a real installation's default (200000); cap spending at the provider as well.
+      ASSISTANT_DAILY_TOKEN_BUDGET: ${DEMO_ASSISTANT_DAILY_TOKEN_BUDGET:-1500000}
       META_APP_ID: ""
       META_APP_SECRET: ""
       WHATSAPP_ACCESS_TOKEN: ""

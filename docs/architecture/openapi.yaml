@@ -526,6 +526,7 @@ paths:
                   maxItems: 3
                   description: 'Ids of files uploaded with POST /assistant/uploads, read together with the last message (ADR-0028). An unknown, expired or foreign id answers 422 before any provider call.'
                   items: { type: string, maxLength: 26 }
+                attachments_carried: { type: boolean, description: 'True when the files belong to an earlier message and only travel along for context: images are read at low detail to save tokens' }
       responses:
         '200':
           description: The answer

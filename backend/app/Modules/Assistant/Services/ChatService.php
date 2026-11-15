@@ -261,7 +261,7 @@ class ChatService
      * they cannot be redacted, which the data-processing notice says. The file names are listed in the
      * text and every file is declared untrusted data.
      *
-     * @param  list<array{name: string, mime: string, content: string}>  $files
+     * @param  list<array{name: string, mime: string, content: string, detail?: string}>  $files
      * @return list<array<string, mixed>>
      */
     private function withFiles(string $text, array $files): array
@@ -272,7 +272,7 @@ class ChatService
             $data = 'data:'.$file['mime'].';base64,'.base64_encode($file['content']);
             $parts[] = $file['mime'] === 'application/pdf'
                 ? ['type' => 'file', 'file' => ['filename' => 'attachment.pdf', 'file_data' => $data]]
-                : ['type' => 'image_url', 'image_url' => ['url' => $data]];
+                : ['type' => 'image_url', 'image_url' => ['url' => $data, 'detail' => $file['detail'] ?? 'auto']];
         }
 
         return $parts;

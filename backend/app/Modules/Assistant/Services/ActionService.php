@@ -201,10 +201,10 @@ class ActionService
         $base = $this->settings->baseCurrency();
 
         return match ($tool) {
-            'erp_lead_create' => $args + ['branch_id' => $branch->public_id],
+            'erp_lead_create' => $this->realNames($args) + ['branch_id' => $branch->public_id],
             'erp_lead_update' => $this->prepareLeadUpdate($args, $branch),
-            'erp_customer_create' => $args + ['branch_id' => $branch->public_id],
-            'erp_supplier_create' => $args + ['branch_id' => $branch->public_id],
+            'erp_customer_create' => $this->realNames($args) + ['branch_id' => $branch->public_id],
+            'erp_supplier_create' => $this->realNames($args) + ['branch_id' => $branch->public_id],
             'erp_invoice_draft_create' => $this->prepareInvoice($args, $branch, $base),
             'erp_expense_draft_create' => $this->prepareExpense($args, $branch, $base),
             'erp_booking_draft_create' => $this->prepareBooking($args, $branch),
@@ -215,6 +215,24 @@ class ActionService
                 ? $this->prepareRecord($tool, $args, $branch)
                 : throw new \DomainException('Unknown action.'),
         };
+    }
+
+    /**
+     * Banks and wallets print names masked ("MAHMOUD K**** A****"). A masked name is not a person: refuse it
+     * so the assistant asks the user for the real one instead of saving asterisks as a customer.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array<string, mixed>
+     */
+    private function realNames(array $args): array
+    {
+        foreach (['name', 'name_ar', 'name_en'] as $field) {
+            if (isset($args[$field]) && str_contains((string) $args[$field], '*')) {
+                throw new \DomainException('The name contains * : it is masked on the document. Ask the user for the full name (a text field with erp_ask_user) and prepare again.');
+            }
+        }
+
+        return $args;
     }
 
     private function prepareLeadUpdate(array $args, Branch $branch): array
