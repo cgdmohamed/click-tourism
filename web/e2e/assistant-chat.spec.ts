@@ -374,3 +374,42 @@ test('a collection on an invoice stores the file, offers the invoice PDF and the
   await expect(page.getByText('تم التحصيل. هل تريد تعديل أي تفصيلة؟')).toBeVisible()
   expect(asked[1].messages.at(-1)?.content).toMatch(/تعديل أي تفصيلة|change any detail/)
 })
+
+test('the assistant asks for a date and a number with proper fields', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  const bodies: Array<{ messages: Array<{ content: string }> }> = []
+  await page.route('**/api/v1/feature-flags', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { data: Record<string, unknown> }
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, assistant_enabled: true, assistant_provider: 'openai' } } })
+  })
+  await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    bodies.push(route.request().postDataJSON())
+    const data = { citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [], conversation_id: null }
+    const form = { title: 'موعد السفر', fields: [{ id: 'starts_on', label: 'أي يوم تغادر الرحلة؟', type: 'date', required: true }, { id: 'seats', label: 'عدد المقاعد', type: 'number', required: false }] }
+    const answer = bodies.length === 1 ? { type: 'answer', data: { ...data, answer: 'حدد الموعد.', form } } : { type: 'answer', data: { ...data, answer: 'تمام.', form: null } }
+    return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
+  await page.locator('#assistant-input').fill('اعمل رحلة عمرة بقيمة 35 الف')
+  await page.keyboard.press('Enter')
+
+  const form = page.getByRole('form', { name: 'موعد السفر' })
+  const send = form.getByRole('button', { name: /إرسال الإجابات|Send answers/ })
+  await expect(send).toBeDisabled()
+  await form.getByLabel('أي يوم تغادر الرحلة؟').fill('2026-12-01')
+  await form.getByLabel('عدد المقاعد').fill('20')
+  await expect(send).toBeEnabled()
+
+  const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)).toEqual([])
+
+  await send.click()
+  await expect(page.getByText('تمام.')).toBeVisible()
+  const sent = bodies[1].messages.at(-1)?.content ?? ''
+  expect(sent).toContain('2026-12-01')
+  expect(sent).toContain('20')
+})

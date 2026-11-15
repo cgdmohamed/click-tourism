@@ -177,6 +177,7 @@ const ENTITY_LABEL: Record<string, { en: string; ar: string }> = {
   expense: { en: 'Expenses', ar: 'المصروفات' },
   lead: { en: 'Lead', ar: 'عميل محتمل' },
   report: { en: 'Report', ar: 'تقرير' },
+  tour_package: { en: 'Tour package', ar: 'باقة رحلة' },
   search: { en: 'Search', ar: 'بحث' },
 }
 
@@ -205,6 +206,8 @@ export function citationLink(citation: Pick<Citation, 'entity' | 'id'>, locale: 
       return { href: '/payments', label }
     case 'expense':
       return { href: '/expenses', label }
+    case 'tour_package':
+      return { href: '/tour-packages', label }
     case 'report':
       return { href: '/reports', label }
     default:

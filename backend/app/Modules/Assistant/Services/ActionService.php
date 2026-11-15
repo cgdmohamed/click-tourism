@@ -10,6 +10,7 @@ use App\Modules\Assistant\Support\SchemaValidator;
 use App\Modules\Attachments\Services\AttachmentService;
 use App\Modules\Attachments\Services\AttachmentTargets;
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Bookings\Models\TourPackage;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
@@ -29,6 +30,7 @@ use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -314,6 +316,8 @@ class ActionService
             'erp_booking_draft_create' => $this->prepareBooking($args, $branch),
             'erp_payment_record' => $this->preparePayment($args, $branch, $base),
             'erp_invoice_collect' => $this->prepareInvoiceCollect($args, $branch, $user),
+            'erp_tour_package_create' => $this->prepareTourPackage($args, $branch, $base),
+            'erp_tour_departure_create' => $this->prepareTourDeparture($args, $branch),
             'erp_supplier_payment_record' => $this->prepareSupplierPayment($args, $branch, $base),
             'erp_export_queue' => $this->prepareExport($args),
             default => ($this->catalogue->find($tool)['kind'] ?? null) === 'record'
@@ -624,6 +628,57 @@ class ActionService
         }
 
         return $payload;
+    }
+
+    /**
+     * A trip the company sells. A package with the same name is refused so the assistant adds a departure to it
+     * instead of making a twin.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array<string, mixed>
+     */
+    private function prepareTourPackage(array $args, Branch $branch, string $base): array
+    {
+        $name = trim((string) $args['name']);
+        if (TourPackage::query()->where('branch_id', $branch->id)->whereRaw('lower(name) = ?', [mb_strtolower($name)])->exists()) {
+            throw new \DomainException("A package named \"{$name}\" already exists in this branch: add a departure to it with erp_tour_departure_create.");
+        }
+
+        return array_filter([
+            '__tool' => 'erp_tour_package_create', 'name' => $name, 'category' => $args['category'],
+            'execution_type' => $args['execution_type'] ?? 'fixed', 'destination' => $args['destination'] ?? null, 'description' => $args['description'] ?? null,
+            'currency' => strtoupper($args['currency'] ?? $base), 'base_price_minor' => (int) $args['base_price_minor'],
+            'estimated_cost_minor' => (int) ($args['estimated_cost_minor'] ?? 0),
+        ], fn ($v) => $v !== null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $args
+     * @return array<string, mixed>
+     */
+    private function prepareTourDeparture(array $args, Branch $branch): array
+    {
+        $needle = trim((string) $args['package']);
+        $matches = TourPackage::query()->where('branch_id', $branch->id)
+            ->where(fn ($q) => $q->where('public_id', $needle)->orWhere('code', $needle)->orWhereRaw('lower(name) = ?', [mb_strtolower($needle)]))
+            ->limit(2)->get();
+        if ($matches->count() !== 1) {
+            throw new \DomainException($matches->isEmpty() ? 'No such tour package in this branch.' : 'More than one package matches: use its id or code.');
+        }
+        $package = $matches->first();
+        if ($package->execution_type !== 'fixed') {
+            throw new \DomainException('Only a fixed-departure package has scheduled departures.');
+        }
+        $start = Carbon::parse($args['starts_on']);
+        $end = isset($args['ends_on']) ? Carbon::parse($args['ends_on']) : null;
+        if ($end !== null && $end->lt($start)) {
+            throw new \DomainException('The end date is before the start date.');
+        }
+
+        return array_filter([
+            '__tool' => 'erp_tour_departure_create', '__id' => $package->public_id, '__package' => $package->name,
+            'starts_on' => $start->toDateString(), 'ends_on' => $end?->toDateString(), 'capacity' => (int) $args['capacity'],
+        ], fn ($v) => $v !== null);
     }
 
     /** The payment method a collection into this account is recorded under: its own, else the one of the requested type with no fixed account. */

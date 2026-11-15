@@ -29,7 +29,7 @@ final class AskUserForm
 
         return ['type' => 'function', 'function' => [
             'name' => self::TOOL,
-            'description' => 'Show the user a short form to answer, when you need a choice or a missing detail: which of several matching records, which account, which option. Use it instead of guessing and instead of a long written list. radio = pick one, checkbox = pick several, text = a short free answer. After calling it, write at most one short sentence and wait; the answer arrives as the next user message.',
+            'description' => 'Show the user a short form to answer, when you need a choice or a missing detail: which of several matching records, which account, which option. Use it instead of guessing and instead of a long written list. radio = pick one, checkbox = pick several, text = a short free answer, date = a calendar date, number = a quantity. Prefer a date or number field to a written question when you need exactly that (a start date, how many people). After calling it, write at most one short sentence and wait; the answer arrives as the next user message.',
             'parameters' => [
                 'type' => 'object', 'additionalProperties' => false, 'required' => ['fields'],
                 'properties' => [
@@ -39,7 +39,7 @@ final class AskUserForm
                         'properties' => [
                             'id' => ['type' => 'string', 'description' => 'Short key for this question, e.g. customer.'],
                             'label' => ['type' => 'string', 'description' => 'The question.'],
-                            'type' => ['type' => 'string', 'enum' => ['radio', 'checkbox', 'text']],
+                            'type' => ['type' => 'string', 'enum' => ['radio', 'checkbox', 'text', 'date', 'number']],
                             'options' => ['type' => 'array', 'maxItems' => self::MAX_OPTIONS, 'items' => $option, 'description' => 'Required for radio and checkbox (2 to 8).'],
                             'placeholder' => ['type' => 'string'],
                             'required' => ['type' => 'boolean', 'description' => 'Defaults to true.'],
@@ -66,8 +66,8 @@ final class AskUserForm
         foreach (array_slice(array_values($args['fields']), 0, self::MAX_FIELDS) as $i => $raw) {
             $type = is_array($raw) ? ($raw['type'] ?? null) : null;
             $label = is_array($raw) ? self::clean($text, $raw['label'] ?? '', 160) : '';
-            if (! in_array($type, ['radio', 'checkbox', 'text'], true) || $label === '') {
-                return ['form' => null, 'error' => 'Each field needs a label and a type of radio, checkbox or text.'];
+            if (! in_array($type, ['radio', 'checkbox', 'text', 'date', 'number'], true) || $label === '') {
+                return ['form' => null, 'error' => 'Each field needs a label and a type of radio, checkbox, text, date or number.'];
             }
             $field = [
                 'id' => self::slug($raw['id'] ?? '', 'q'.($i + 1)),
@@ -75,7 +75,7 @@ final class AskUserForm
                 'type' => $type,
                 'required' => (bool) ($raw['required'] ?? true),
             ];
-            if ($type === 'text') {
+            if (in_array($type, ['text', 'date', 'number'], true)) {
                 $field['placeholder'] = self::clean($text, $raw['placeholder'] ?? '', 100);
             } else {
                 $options = [];

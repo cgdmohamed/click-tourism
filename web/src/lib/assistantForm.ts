@@ -4,7 +4,7 @@ export type FormOption = { id: string; label: string; hint?: string }
 export type FormField = {
   id: string
   label: string
-  type: 'radio' | 'checkbox' | 'text'
+  type: 'radio' | 'checkbox' | 'text' | 'date' | 'number'
   required: boolean
   placeholder?: string
   options?: FormOption[]
@@ -12,7 +12,7 @@ export type FormField = {
 
 export type AssistantForm = { title?: string; fields: FormField[] }
 
-/** radio: one option id, checkbox: several option ids, text: the typed text. */
+/** radio: one option id, checkbox: several option ids, text, date (YYYY-MM-DD) and number: the entered value. */
 export type FormAnswers = Record<string, string | string[]>
 
 function answered(field: FormField, answers: FormAnswers): boolean {
@@ -35,7 +35,7 @@ export function formAnswerText(form: AssistantForm, answers: FormAnswers, locale
     .filter((field) => answered(field, answers))
     .map((field) => {
       const value = answers[field.id]
-      if (field.type === 'text') return `- ${field.label}: ${String(value).trim()}`
+      if (field.type === 'text' || field.type === 'date' || field.type === 'number') return `- ${field.label}: ${String(value).trim()}`
       const chosen = (field.options ?? []).filter((option) => (Array.isArray(value) ? value.includes(option.id) : value === option.id))
       return `- ${field.label}: ${chosen.map((option) => `${option.label} [id: ${option.id}]`).join('، ')}`
     })

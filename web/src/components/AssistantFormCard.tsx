@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useI18n } from '../i18n'
 import { formAnswerText, isFormComplete, type AssistantForm, type FormAnswers } from '../lib/assistantForm'
-import { Button, Textarea } from './ui'
+import { Button, Input, Textarea } from './ui'
 
 /**
  * A short form the assistant shows instead of guessing (ADR-0029): radio buttons, checkboxes and a text
@@ -40,7 +40,18 @@ export function AssistantFormCard({ form, answered, onSubmit }: { form: Assistan
             {field.label}
             {!field.required ? <span className="ms-2 font-normal text-text-subtle">({t('assistantFormOptional')})</span> : null}
           </legend>
-          {field.type === 'text' ? (
+          {field.type === 'date' || field.type === 'number' ? (
+            <Input
+              type={field.type}
+              inputMode={field.type === 'number' ? 'numeric' : undefined}
+              min={field.type === 'number' ? 1 : undefined}
+              value={typeof answers[field.id] === 'string' ? (answers[field.id] as string) : ''}
+              placeholder={field.placeholder}
+              aria-label={field.label}
+              dir="ltr"
+              onChange={(event) => setAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+            />
+          ) : field.type === 'text' ? (
             <Textarea
               rows={2}
               value={typeof answers[field.id] === 'string' ? (answers[field.id] as string) : ''}

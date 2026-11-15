@@ -47,4 +47,16 @@ describe('assistant form', () => {
   it('uses the Arabic heading', () => {
     expect(formAnswerText(form, { customer: 'C-0001' }, 'ar').startsWith('إجاباتي:')).toBe(true)
   })
+
+  it('carries a date and a number like a typed answer', () => {
+    const when: AssistantForm = {
+      fields: [
+        { id: 'starts_on', label: 'Departure', type: 'date', required: true },
+        { id: 'seats', label: 'Seats', type: 'number', required: false },
+      ],
+    }
+    expect(isFormComplete(when, {})).toBe(false)
+    expect(isFormComplete(when, { starts_on: '2026-12-01' })).toBe(true)
+    expect(formAnswerText(when, { starts_on: '2026-12-01', seats: '20' }, 'en')).toBe('My answers:\n- Departure: 2026-12-01\n- Seats: 20')
+  })
 })
