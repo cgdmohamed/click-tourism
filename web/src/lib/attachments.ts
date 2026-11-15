@@ -41,6 +41,21 @@ export const CATEGORIES: { value: string; ar: string; en: string }[] = [
   { value: 'other', ar: 'أخرى', en: 'Other' },
 ]
 
+/** The categories that make sense for each kind of record, so an invoice does not offer "Passport" (a record's current category is always kept). */
+const CATEGORIES_BY_TYPE: Record<AttachableType, string[]> = {
+  customer: ['passport', 'visa', 'travel_document', 'contract', 'other'],
+  supplier: ['supplier_invoice', 'contract', 'bank_transfer', 'other'],
+  booking: ['booking_confirmation', 'passport', 'visa', 'travel_document', 'contract', 'other'],
+  invoice: ['supplier_invoice', 'contract', 'payment_receipt', 'bank_transfer', 'booking_confirmation', 'other'],
+  payment: ['payment_receipt', 'bank_transfer', 'other'],
+  expense: ['supplier_invoice', 'payment_receipt', 'other'],
+}
+
+export function categoriesFor(type: AttachableType, current?: string): { value: string; ar: string; en: string }[] {
+  const allowed = CATEGORIES_BY_TYPE[type]
+  return CATEGORIES.filter((entry) => allowed.includes(entry.value) || entry.value === current)
+}
+
 /** Fields the server may propose for each category (mirrors ExtractionSchema). */
 export const FIELDS: Record<string, { key: string; ar: string; en: string }[]> = {
   supplier_invoice: [

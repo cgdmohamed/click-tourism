@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
 import { api, errorMessage } from '../lib/api'
-import { CATEGORIES, FIELDS, canExtract, categoryLabel, formatSize, initialValues, invoicePrefill, toConfirmPayload } from '../lib/attachments'
+import { FIELDS, canExtract, categoriesFor, categoryLabel, formatSize, initialValues, invoicePrefill, toConfirmPayload } from '../lib/attachments'
 import type { AttachableType, AttachmentRow, Extraction } from '../lib/attachments'
 import { formatDateTime } from '../lib/format'
 import { useFeatureFlags } from '../lib/useSetting'
@@ -145,7 +145,7 @@ export default function AttachmentsCard({ type, recordId, bare = false }: { type
           <div className="sm:col-span-4">
             <Field label={L('التصنيف', 'Category')}>
               <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-                {CATEGORIES.map((entry) => (
+                {categoriesFor(type).map((entry) => (
                   <option key={entry.value} value={entry.value}>{entry[locale === 'ar' ? 'ar' : 'en']}</option>
                 ))}
               </Select>
@@ -180,10 +180,10 @@ export default function AttachmentsCard({ type, recordId, bare = false }: { type
       {listing.isError ? <ErrorState message={errorMessage(listing.error)} onRetry={() => void listing.refetch()} /> : null}
       {listing.data && (listing.data.hidden_sensitive_count ?? 0) > 0 ? (
         <p className="px-5 pt-3 text-small text-text-subtle">
-          {L(`${listing.data.hidden_sensitive_count} مستند يحتوي بيانات شخصية لا تملك صلاحية عرضه.`, `${listing.data.hidden_sensitive_count} document(s) with personal data are hidden from your role.`)}
+          {L(`${listing.data.hidden_sensitive_count} مرفق يحتوي بيانات شخصية لا تملك صلاحية عرضه.`, `${listing.data.hidden_sensitive_count} attachment(s) with personal data are hidden from your role.`)}
         </p>
       ) : null}
-      {listing.data && rows.length === 0 ? <EmptyState title={L('لا توجد مستندات', 'No documents')} /> : null}
+      {listing.data && rows.length === 0 ? <EmptyState title={L('لا توجد مرفقات', 'No attachments')} /> : null}
       {rows.length > 0 ? (
         <Table>
           <thead>
@@ -228,11 +228,11 @@ export default function AttachmentsCard({ type, recordId, bare = false }: { type
       ) : null}
 
       <PreviewModal row={preview} onClose={() => setPreview(null)} />
-      <EditModal row={editing} queryKey={queryKey} onClose={() => setEditing(null)} />
+      <EditModal row={editing} type={type} queryKey={queryKey} onClose={() => setEditing(null)} />
       <ReviewModal row={reviewing} onClose={() => setReviewing(null)} />
       <Modal
         open={removing !== null}
-        title={L('حذف المستند', 'Delete document')}
+        title={L('حذف المرفق', 'Delete attachment')}
         onClose={() => setRemoving(null)}
         footer={
           <>
@@ -242,7 +242,7 @@ export default function AttachmentsCard({ type, recordId, bare = false }: { type
         }
       >
         <p className="text-medium">
-          {L('سيختفي المستند من السجل ويبقى الملف محفوظاً لأغراض التدقيق.', 'The document disappears from the record; the file is kept for audit.')} {removing?.name}
+          {L('سيختفي المرفق من السجل ويبقى الملف محفوظاً لأغراض التدقيق.', 'The attachment disappears from the record; the file is kept for audit.')} {removing?.name}
         </p>
       </Modal>
     </>
@@ -252,7 +252,7 @@ export default function AttachmentsCard({ type, recordId, bare = false }: { type
 
   return (
     <Card>
-      <CardHeader title={L('المستندات', 'Documents')} icon="folder" actions={<Badge tone="neutral">{rows.length}</Badge>} />
+      <CardHeader title={L('المرفقات', 'Attachments')} icon="folder" actions={<Badge tone="neutral">{rows.length}</Badge>} />
       {body}
     </Card>
   )
@@ -270,7 +270,7 @@ function PreviewModal({ row, onClose }: { row: AttachmentRow | null; onClose: ()
 
 function DocumentView({ url, failed, mime }: { url: string | null; failed: boolean; mime: string }) {
   const { locale } = useI18n()
-  if (failed) return <InlineNotice tone="negative">{locale === 'ar' ? 'تعذّر تحميل المستند.' : 'The document could not be loaded.'}</InlineNotice>
+  if (failed) return <InlineNotice tone="negative">{locale === 'ar' ? 'تعذّر تحميل المرفق.' : 'The attachment could not be loaded.'}</InlineNotice>
   if (!url) return <Loading />
   return mime === 'application/pdf' ? (
     <iframe src={url} title="document" sandbox="" className="h-[60vh] w-full rounded-12 border border-border-default" />
@@ -279,7 +279,7 @@ function DocumentView({ url, failed, mime }: { url: string | null; failed: boole
   )
 }
 
-function EditModal({ row, queryKey, onClose }: { row: AttachmentRow | null; queryKey: unknown[]; onClose: () => void }) {
+function EditModal({ row, type, queryKey, onClose }: { row: AttachmentRow | null; type: AttachableType; queryKey: unknown[]; onClose: () => void }) {
   const { locale } = useI18n()
   const queryClient = useQueryClient()
   const [category, setCategory] = useState('')
@@ -301,7 +301,7 @@ function EditModal({ row, queryKey, onClose }: { row: AttachmentRow | null; quer
   return (
     <Modal
       open={row !== null}
-      title={locale === 'ar' ? 'تعديل المستند' : 'Edit document'}
+      title={locale === 'ar' ? 'تعديل المرفق' : 'Edit attachment'}
       onClose={onClose}
       footer={
         <>
@@ -314,7 +314,7 @@ function EditModal({ row, queryKey, onClose }: { row: AttachmentRow | null; quer
       <div className="flex flex-col gap-3">
         <Field label={locale === 'ar' ? 'التصنيف' : 'Category'}>
           <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-            {CATEGORIES.map((entry) => (
+            {categoriesFor(type, row?.category).map((entry) => (
               <option key={entry.value} value={entry.value}>{entry[locale === 'ar' ? 'ar' : 'en']}</option>
             ))}
           </Select>
@@ -430,7 +430,7 @@ function ReviewModal({ row, onClose }: { row: AttachmentRow | null; onClose: () 
           {start.isPending ? <Loading /> : null}
           {extraction?.status === 'failed' ? (
             <InlineNotice tone="warning">
-              {L('تعذّرت القراءة التلقائية لهذا المستند. يمكنك إدخال البيانات يدوياً ومتابعة عملك.', 'The document could not be read automatically. You can enter the details by hand and carry on.')}
+              {L('تعذّرت القراءة التلقائية لهذا المرفق. يمكنك إدخال البيانات يدوياً ومتابعة عملك.', 'The attachment could not be read automatically. You can enter the details by hand and carry on.')}
             </InlineNotice>
           ) : null}
           {extraction?.status === 'succeeded' ? (
@@ -438,7 +438,7 @@ function ReviewModal({ row, onClose }: { row: AttachmentRow | null; onClose: () 
               {L('هذه قيم مقترحة فقط. راجعها وصحّحها قبل الاعتماد؛ لا يُنشأ أي سجل مالي من هذه الشاشة.', 'These are proposed values only. Check and correct them before confirming; no financial record is created from this screen.')}
             </InlineNotice>
           ) : null}
-          {confirmed ? <InlineNotice tone="positive">{L('تم اعتماد القيم وحفظها مع المستند.', 'The values were confirmed and stored with the document.')}</InlineNotice> : null}
+          {confirmed ? <InlineNotice tone="positive">{L('تم اعتماد القيم وحفظها مع المرفق.', 'The values were confirmed and stored with the attachment.')}</InlineNotice> : null}
           {extraction && extraction.status !== 'failed'
             ? fields.map((field) => {
                 const flag = flagged[field.key]?.flag ?? null
@@ -474,10 +474,10 @@ export function DocumentsButton({ type, recordId }: { type: AttachableType; reco
   if (!can('attachments.view')) return null
   return (
     <>
-      <Button variant="ghost" icon="folder" aria-label={locale === 'ar' ? 'المستندات' : 'Documents'} onClick={() => setOpen(true)} />
+      <Button variant="ghost" icon="folder" aria-label={locale === 'ar' ? 'المرفقات' : 'Attachments'} onClick={() => setOpen(true)} />
       <Modal
         open={open}
-        title={locale === 'ar' ? 'المستندات' : 'Documents'}
+        title={locale === 'ar' ? 'المرفقات' : 'Attachments'}
         onClose={() => setOpen(false)}
         footer={<Button variant="secondary" onClick={() => setOpen(false)}>{locale === 'ar' ? 'إغلاق' : 'Close'}</Button>}
       >
