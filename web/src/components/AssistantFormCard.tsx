@@ -11,6 +11,8 @@ export function AssistantFormCard({ form, answered, onSubmit }: { form: Assistan
   const { t, locale } = useI18n()
   const [answers, setAnswers] = useState<FormAnswers>({})
   const complete = isFormComplete(form, answers)
+  // One question with one answer needs no button: picking the option sends it.
+  const instant = form.fields.length === 1 && form.fields[0].type === 'radio'
 
   function toggle(fieldId: string, optionId: string, checked: boolean) {
     setAnswers((current) => {
@@ -58,9 +60,11 @@ export function AssistantFormCard({ form, answered, onSubmit }: { form: Assistan
                     name={`${field.id}`}
                     value={option.id}
                     checked={checked}
-                    onChange={(event) =>
-                      field.type === 'radio' ? setAnswers((current) => ({ ...current, [field.id]: option.id })) : toggle(field.id, option.id, event.target.checked)
-                    }
+                    onChange={(event) => {
+                      if (field.type !== 'radio') return toggle(field.id, option.id, event.target.checked)
+                      setAnswers((current) => ({ ...current, [field.id]: option.id }))
+                      if (instant && !answered) onSubmit(formAnswerText(form, { [field.id]: option.id }, locale))
+                    }}
                     className="mt-1 size-4 shrink-0"
                   />
                   <span className="flex min-w-0 flex-col">
@@ -73,9 +77,11 @@ export function AssistantFormCard({ form, answered, onSubmit }: { form: Assistan
           )}
         </fieldset>
       ))}
-      <Button type="submit" disabled={answered || !complete}>
-        {answered ? t('assistantFormAnswered') : t('assistantFormSubmit')}
-      </Button>
+      {instant && !answered ? null : (
+        <Button type="submit" disabled={answered || !complete}>
+          {answered ? t('assistantFormAnswered') : t('assistantFormSubmit')}
+        </Button>
+      )}
     </form>
   )
 }

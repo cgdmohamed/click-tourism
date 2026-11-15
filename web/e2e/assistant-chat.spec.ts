@@ -268,3 +268,31 @@ test('the assistant asks with a form: radio and checkbox answers go back as the 
   // The answered form is read-only.
   await expect(page.getByRole('radio', { name: /أحمد علي/ })).toBeDisabled()
 })
+
+test('a form with one question sends as soon as the option is picked', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  const bodies: Array<{ messages: Array<{ content: string }> }> = []
+  await page.route('**/api/v1/feature-flags', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { data: Record<string, unknown> }
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, assistant_enabled: true, assistant_provider: 'openai' } } })
+  })
+  await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    bodies.push(route.request().postDataJSON())
+    const form = { title: 'أي أحمد؟', fields: [{ id: 'customer', label: 'العميل', type: 'radio', required: true, options: [{ id: 'C-0001', label: 'أحمد علي' }, { id: 'C-0002', label: 'أحمد سامي' }] }] }
+    const data = { citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [], conversation_id: null }
+    const answer = bodies.length === 1 ? { type: 'answer', data: { ...data, answer: 'اختر.', form } } : { type: 'answer', data: { ...data, answer: 'تم.', form: null } }
+    return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
+  await page.getByRole('textbox').fill('فاتورة لأحمد')
+  await page.getByRole('button', { name: /إرسال|^Send$/ }).first().click()
+  const form = page.getByRole('form', { name: 'أي أحمد؟' })
+  await expect(form.getByRole('button')).toHaveCount(0)
+  await form.getByRole('radio', { name: 'أحمد سامي' }).check()
+  await expect(page.getByText('تم.')).toBeVisible()
+  expect(bodies[1].messages.at(-1)?.content).toContain('[id: C-0002]')
+})

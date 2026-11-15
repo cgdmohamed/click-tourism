@@ -5,6 +5,7 @@ namespace App\Modules\Assistant\Services;
 use App\Modules\Assistant\Actions\ActionCatalogue;
 use App\Modules\Assistant\Actions\AskUserForm;
 use App\Modules\Assistant\Support\ChatResult;
+use App\Modules\Assistant\Support\InputGuard;
 use App\Modules\Assistant\Support\OutputSanitizer;
 use App\Modules\Assistant\Support\ProviderException;
 use App\Modules\Assistant\Support\Redactor;
@@ -56,6 +57,14 @@ class ChatService
      */
     public function run(User $user, array $messages, string $locale, ?Branch $branch, ?callable $onEvent = null, array $files = []): ChatResult
     {
+        // The plain attempts to override the rules, run a system command or skip the confirmation never
+        // reach the provider (ADR-0030); the real limits are the tool allowlist, the user's permissions and the card.
+        if ($messages !== [] && InputGuard::blocks((string) end($messages)['content'])) {
+            $this->log($user, $branch, $locale, 'blocked_input', $this->providers->model(), 0, 0, [], 0, 0, 0, 0, count($files));
+
+            return new ChatResult(InputGuard::refusal($locale), [], 0, 0, false, 'blocked_input', [], 0, 0, 0);
+        }
+
         $provider = $this->providers->provider();
         $redactor = new Redactor($this->settings->bool('assistant', 'redact_pii', true));
         $maxCalls = $this->providers->limit('max_tool_calls_per_turn');
