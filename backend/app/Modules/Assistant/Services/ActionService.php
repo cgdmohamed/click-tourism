@@ -391,16 +391,32 @@ class ActionService
         ];
     }
 
+    /** Lower-case, no diacritics, one spelling of alef/ya/ta-marbuta and no leading "ال", so Arabic names compare fairly. */
+    private function plainName(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = preg_replace('/[\x{064B}-\x{065F}\x{0640}]/u', '', $value) ?? $value;
+        $value = strtr($value, ['أ' => 'ا', 'إ' => 'ا', 'آ' => 'ا', 'ى' => 'ي', 'ة' => 'ه']);
+        $value = preg_replace('/^ال(?=.{2,})/u', '', $value) ?? $value;
+
+        return $value;
+    }
+
     private function prepareExpense(array $args, Branch $branch, string $base): array
     {
-        $needle = mb_strtolower(trim($args['category']));
         $categories = ExpenseCategory::query()->where('is_active', true)->get();
-        $matches = $categories->filter(fn ($c) => mb_strtolower($c->code) === $needle || mb_strtolower((string) $c->name_en) === $needle || mb_strtolower((string) $c->name_ar) === $needle);
+        $needle = $this->plainName((string) $args['category']);
+        $names = fn ($c) => array_map(fn ($v) => $this->plainName((string) $v), [$c->code, $c->name_en, $c->name_ar]);
+        // Exact first, then a unique partial match: "إيجار" must find "الإيجار" and "rent" must find RENT.
+        $matches = $categories->filter(fn ($c) => in_array($needle, $names($c), true));
+        if ($matches->isEmpty() && $needle !== '') {
+            $matches = $categories->filter(fn ($c) => collect($names($c))->contains(fn ($n) => $n !== '' && (str_contains($n, $needle) || str_contains($needle, $n))));
+        }
         if ($matches->count() !== 1) {
-            $list = $categories->take(25)->map(fn ($c) => "{$c->code} ({$c->name_en})")->implode(', ');
+            $list = $categories->take(25)->map(fn ($c) => "{$c->code} ({$c->name_ar} / {$c->name_en})")->implode(', ');
             throw new \DomainException($matches->isEmpty()
-                ? "Expense category not found. Available: {$list}."
-                : 'More than one category matches. Use the code. Available: '.$list.'.');
+                ? "Expense category not found. Do not list them as text: ask with erp_ask_user (radio) offering these: {$list}."
+                : 'More than one category matches. Ask with erp_ask_user (radio) offering these: '.$matches->map(fn ($c) => "{$c->code} ({$c->name_ar} / {$c->name_en})")->implode(', ').'.');
         }
         $category = $matches->first();
         unset($args['category']);

@@ -39,6 +39,7 @@ use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -454,6 +455,22 @@ class AssistantChatTest extends TestCase
         $this->assertSame('assistant', $expense->created_via);
     }
 
+    public function test_an_expense_category_matches_loosely_in_arabic_and_english(): void
+    {
+        $this->grant('expenses.create', 'expenses.view');
+        $account = Account::query()->where('type', 'expense')->where('is_postable', true)->firstOrFail();
+        ExpenseCategory::query()->create(['code' => 'RENT-T', 'name_ar' => 'الإيجار', 'name_en' => 'Rent', 'account_id' => $account->id, 'is_active' => true]);
+        ExpenseCategory::query()->create(['code' => 'UTIL-T', 'name_ar' => 'المرافق', 'name_en' => 'Utilities', 'account_id' => $account->id, 'is_active' => true]);
+        $this->branchCashAccount();
+
+        foreach (['إيجار', 'ايجار', 'rent', 'RENT-T'] as $word) {
+            $card = $this->prepare('erp_expense_draft_create', ['category' => $word, 'expense_date' => now()->toDateString(), 'amount_minor' => 800000, 'description' => 'Rent', 'payment_account' => 'main cash']);
+            $this->assertNotEmpty($card['id'], $word);
+            $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+            $this->assertSame('RENT-T', Expense::query()->where('public_id', $done['result']['id'])->firstOrFail()->category->code, $word);
+        }
+    }
+
     private function branchCashAccount(): CashAccount
     {
         return CashAccount::query()->create([
@@ -568,6 +585,31 @@ class AssistantChatTest extends TestCase
         $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE);
         $this->assertStringContainsString('Payment accounts of this branch', $system);
         $this->assertStringContainsString('Main cash', $system);
+    }
+
+    public function test_the_prompt_lists_the_expense_categories_for_users_who_can_record_expenses(): void
+    {
+        $this->grant('expenses.create', 'expenses.view');
+        $account = Account::query()->where('type', 'expense')->where('is_postable', true)->firstOrFail();
+        ExpenseCategory::query()->create(['code' => 'RENT-T', 'name_ar' => 'الإيجار', 'name_en' => 'Rent', 'account_id' => $account->id, 'is_active' => true]);
+        $this->script([$this->finalReply('ok')]);
+        $this->chat('hello')->assertOk();
+        $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->assertStringContainsString('RENT-T = الإيجار / Rent', $system);
+
+    }
+
+    public function test_the_prompt_carries_ready_made_dates_for_relative_phrases(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-15 10:00:00'));
+        $this->script([$this->finalReply('ok')]);
+        $this->chat('hello')->assertOk();
+
+        $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->assertStringContainsString('in 10 days = 2026-11-25', $system);
+        $this->assertStringContainsString('end of this month = 2026-11-30', $system);
+        $this->assertStringContainsString('end of next month = 2026-12-31', $system);
+        $this->assertStringContainsString('next Saturday = 2026-11-21', $system);
     }
 
     public function test_a_loose_account_name_or_a_single_account_is_resolved_without_asking(): void
