@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canExtract, categoryLabel, formatSize, initialValues, invoicePrefill, toConfirmPayload } from './attachments'
+import { canExtract, categoriesFor, categoryLabel, formatSize, initialValues, invoicePrefill, toConfirmPayload } from './attachments'
 import type { Extraction } from './attachments'
 
 const extraction: Extraction = {
@@ -36,5 +36,24 @@ describe('attachments helpers', () => {
     expect(invoicePrefill({ supplier_name: 'Nile', invoice_number: 'I-1', invoice_date: '2026-11-13', subtotal: null, total: '100.00' })).toEqual({
       issue_date: '2026-11-13', due_date: undefined, currency: undefined, memo: 'Nile · I-1', description: 'I-1', amount: '100.00',
     })
+  })
+})
+
+describe('categoriesFor', () => {
+  it('offers an invoice only the types that make sense for it', () => {
+    const values = categoriesFor('invoice').map((entry) => entry.value)
+    expect(values).toContain('supplier_invoice')
+    expect(values).toContain('bank_transfer')
+    expect(values).not.toContain('passport')
+    expect(values).not.toContain('visa')
+  })
+
+  it('offers a customer the identity documents and a payment only receipts', () => {
+    expect(categoriesFor('customer').map((entry) => entry.value)).toContain('passport')
+    expect(categoriesFor('payment').map((entry) => entry.value)).toEqual(['payment_receipt', 'bank_transfer', 'other'])
+  })
+
+  it('keeps the category a file already has, even when it no longer fits', () => {
+    expect(categoriesFor('invoice', 'passport').map((entry) => entry.value)).toContain('passport')
   })
 })
