@@ -7,6 +7,8 @@ import { Layout } from './components/Layout'
 import { BrandTitle } from './components/Brand'
 import { DemoBanner } from './components/DemoBanner'
 import Login from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Accounts from './pages/Accounts'
 import Journal from './pages/Journal'
@@ -67,6 +69,8 @@ export default function App() {
               <DemoBanner />
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route element={<Layout />}>
                   <Route index element={<Dashboard />} />
                   <Route path="accounts" element={<Accounts />} />

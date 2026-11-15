@@ -30,6 +30,45 @@ tags:
   - name: Webhooks
 
 paths:
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: E-mail a password reset link (ADR-0031)
+      description: Same answer whether or not the account exists. 503 `password_reset_unavailable` when the server has no real mailer. Throttled to 5 per minute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { description: 'If the account exists, a link was sent' }
+        '503': { description: 'Reset by e-mail is not set up on this server' }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Set a new password from the e-mailed link (ADR-0031)
+      description: The link works once and expires after 60 minutes. A disabled account cannot be reset. On success every session of the user is ended.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, token, password, password_confirmation]
+              properties:
+                email: { type: string, format: email }
+                token: { type: string }
+                password: { type: string, format: password, minLength: 12 }
+                password_confirmation: { type: string, format: password }
+      responses:
+        '200': { description: Password changed }
+        '422': { description: 'Invalid or expired link (`invalid_reset_link`), or a rejected password' }
   /auth/login:
     post:
       tags: [Auth]
@@ -1042,6 +1081,7 @@ paths:
                       company_name_ar: { type: string }
                       company_name_en: { type: string }
                       has_logo: { type: boolean }
+                      password_reset_available: { type: boolean, description: 'True when the server can send e-mail, so the login page offers "forgot password" (ADR-0031)' }
                       logo_version: { type: string, nullable: true, description: Cache-busting token for the logo URL }
   /branding/logo:
     get:

@@ -18,7 +18,7 @@ test.describe('invoice PDF', () => {
     const invoice = await ensureInvoice(request, { email, password })
 
     await page.goto('/login')
-    await page.getByPlaceholder('admin@example.com').fill(email)
+    await page.locator('input[type="email"]').fill(email)
     await page.locator('input[autocomplete="current-password"]').fill(password)
     await page.locator('form button[type="submit"]').click()
     await page.waitForURL((url) => !url.pathname.startsWith('/login'))

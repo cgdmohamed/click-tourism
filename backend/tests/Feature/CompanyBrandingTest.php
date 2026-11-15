@@ -99,7 +99,7 @@ class CompanyBrandingTest extends TestCase
             ->assertJsonPath('data.has_logo', false);
         $keys = array_keys($response->json('data'));
         sort($keys);
-        $this->assertSame(['company_name_ar', 'company_name_en', 'has_logo', 'logo_version'], $keys);
+        $this->assertSame(['company_name_ar', 'company_name_en', 'has_logo', 'logo_version', 'password_reset_available'], $keys);
     }
 
     public function test_blank_company_names_are_rejected_instead_of_silently_resetting(): void

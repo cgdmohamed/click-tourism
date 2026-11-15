@@ -16,9 +16,11 @@ use App\Modules\Parties\Models\EmployeeAdvance;
 use App\Modules\Parties\Models\EmployeeCustody;
 use App\Modules\Parties\Models\Supplier;
 use App\Support\ApiResponse;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -43,6 +45,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Password reset (ADR-0031): the link opens the SPA page, and the mail is written in both languages.
+        ResetPassword::createUrlUsing(fn ($user, string $token) => rtrim((string) config('app.frontend_url'), '/')
+            .'/reset-password?token='.$token.'&email='.urlencode($user->getEmailForPasswordReset()));
+        ResetPassword::toMailUsing(function ($user, string $token) {
+            $url = rtrim((string) config('app.frontend_url'), '/').'/reset-password?token='.$token.'&email='.urlencode($user->getEmailForPasswordReset());
+            $minutes = (int) config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
+
+            return (new MailMessage)
+                ->subject('إعادة تعيين كلمة المرور / Reset your password')
+                ->line('طلبنا إعادة تعيين كلمة المرور لحسابك. الرابط صالح لمدة '.$minutes.' دقيقة ويُستخدم مرة واحدة.')
+                ->line('We received a request to reset your password. The link is valid for '.$minutes.' minutes and works once.')
+                ->action('إعادة التعيين / Reset password', $url)
+                ->line('إذا لم تطلب ذلك فتجاهل هذه الرسالة، ولن يتغير شيء. / If you did not ask for this, ignore this message and nothing changes.');
+        });
+
         // Party/source type aliases are persisted in financial tables. Keep
         // this map stable so polymorphic eager loading never relies on PHP
         // class names in stored accounting data.

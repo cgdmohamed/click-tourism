@@ -64,6 +64,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::get('demo/status', [DemoStatusController::class, 'show'])->middleware('throttle:120,1,demo-status');
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1,auth-login');
+    Route::post('auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1,auth-forgot-password');
+    Route::post('auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1,auth-reset-password');
 
     // Public branding for the login page: company names and the logo image only.
     Route::get('branding', [BrandingController::class, 'show'])->middleware('throttle:branding');

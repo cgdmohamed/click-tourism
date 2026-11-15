@@ -1,25 +1,31 @@
 import { useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthProvider'
 import { useI18n } from '../i18n'
-import { useTheme } from '../theme'
-import { Button, Field, IconButton, InlineNotice, Input } from '../components/ui'
+import { Button, Field, InlineNotice, Input } from '../components/ui'
 import { Icon } from '../components/icons'
-import { BrandMark, useBrandName } from '../components/Brand'
-import { errorMessage } from '../lib/api'
+import { AuthShell, PasswordField } from '../components/AuthShell'
+import { api, errorMessage } from '../lib/api'
+import { useBranding } from '../lib/branding'
 
 export default function Login() {
   const { user, loading, login } = useAuth()
-  const { t, locale, toggleLocale } = useI18n()
-  const { theme, toggleTheme } = useTheme()
-  const brand = useBrandName()
+  const { t, locale } = useI18n()
+  const branding = useBranding()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Same query as the demo banner, so no extra request; the note shows only on the public demo.
+  const demo = useQuery({
+    queryKey: ['public-demo-status'],
+    queryFn: async () => (await api.get<{ data: { enabled: boolean } }>('/demo/status')).data.data,
+    retry: 0,
+    staleTime: 0,
+  })
 
   if (!loading && user) return <Navigate to="/" replace />
 
@@ -39,85 +45,46 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface-canvas px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <BrandMark className="h-12 w-12" iconSize={26} />
-            <div>
-              <h1 className="heading-large text-brand-1-accent">{brand}</h1>
-              <p className="text-medium mt-1 text-text-subtle">{t('appTagline')}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <IconButton
-              icon={theme === 'dark' ? 'sun' : 'moon'}
-              label={theme === 'dark' ? t('switchToLight') : t('switchToDark')}
-              variant="secondary"
-              onClick={toggleTheme}
-            />
-            <button
-              className="text-small inline-flex h-9 items-center gap-2 rounded-12 border border-border-subtle bg-surface-default px-2.5 font-medium text-text-subtle transition hover:bg-surface-hovered"
-              onClick={toggleLocale}
-              aria-label={t('language')}
-            >
-              <Icon name="globe" className="h-4 w-4" />
-              {locale === 'ar' ? 'EN' : 'عربي'}
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={onSubmit} className="rounded-16 border border-border-subtle bg-surface-default p-6 shadow-2">
-          <h2 className="heading-medium text-text-default">{t('login')}</h2>
-          <p className="text-medium mt-1 text-text-subtle">{t('appTagline')}</p>
-
-          <div className="mt-6 flex flex-col gap-4">
-            <Field label={t('email')} required>
-              <Input
-                type="email"
-                icon="mail"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@example.com"
-                dir="ltr"
-              />
-            </Field>
-            <Field label={t('password')} required>
-              <div className="relative">
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  icon="lock"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
-                  dir="ltr"
-                  className="[&>input]:pe-10"
-                />
-                <IconButton
-                  type="button"
-                  icon={showPassword ? 'eyeOff' : 'eye'}
-                  label={showPassword ? t('hidePassword') : t('showPassword')}
-                  className="absolute end-1 top-1/2 -translate-y-1/2"
-                  onClick={() => setShowPassword((current) => !current)}
-                />
-              </div>
-            </Field>
-            {error ? <InlineNotice tone="negative">{error}</InlineNotice> : null}
-            <Button type="submit" icon="logIn" disabled={submitting} className="w-full">
-              {submitting ? t('signingIn') : t('signIn')}
-            </Button>
-          </div>
-        </form>
-
-        <p className="text-small mt-4 flex items-center justify-center gap-1.5 text-center text-text-subtle">
-          <Icon name="info" className="h-3.5 w-3.5" />
-          {locale === 'ar' ? 'نسخة تجريبية — بيانات الدخول من ملف التهيئة' : 'Demo build — credentials come from the seeder'}
+    <AuthShell
+      title={t('login')}
+      subtitle={t('loginSubtitle')}
+      footer={
+        demo.data?.enabled ? (
+          <>
+            <Icon name="info" className="h-3.5 w-3.5" />
+            {locale === 'ar' ? 'نسخة تجريبية — الحسابات التجريبية من ملف التهيئة' : 'Demo build — the demo accounts come from the seeder'}
+          </>
+        ) : null
+      }
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <Field label={t('email')} required>
+          <Input
+            type="email"
+            icon="mail"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@company.com"
+            dir="ltr"
+          />
+        </Field>
+        <PasswordField label={t('password')} value={password} onChange={setPassword} autoComplete="current-password" />
+        <p className="text-small -mt-2">
+          {branding?.password_reset_available ? (
+            <Link to="/forgot-password" className="text-brand-1-accent underline">
+              {t('forgotPasswordLink')}
+            </Link>
+          ) : (
+            <span className="text-text-subtle">{t('forgotPasswordAdmin')}</span>
+          )}
         </p>
-      </div>
-    </div>
+        {error ? <InlineNotice tone="negative">{error}</InlineNotice> : null}
+        <Button type="submit" icon="logIn" disabled={submitting} className="w-full">
+          {submitting ? t('signingIn') : t('signIn')}
+        </Button>
+      </form>
+    </AuthShell>
   )
 }

@@ -9,6 +9,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends ApiController
@@ -39,6 +41,55 @@ class AuthController extends ApiController
             'token' => $token,
             'user' => $user->load('branches', 'roles', 'permissions')->toApiArray(),
         ]);
+    }
+
+    /** POST /auth/forgot-password: e-mails a reset link. The answer is the same whether or not the account exists. */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate(['email' => ['required', 'email', 'max:255']]);
+
+        if (in_array((string) config('mail.default'), ['log', 'array', 'null', ''], true)) {
+            return ApiResponse::error('Password reset by e-mail is not set up on this server. Ask an administrator to reset your password.', 'password_reset_unavailable', 503);
+        }
+
+        $user = User::query()->where('email', $data['email'])->first();
+        if ($user !== null && $user->is_active) {
+            Password::sendResetLink(['email' => $data['email']]);
+        }
+
+        return $this->ok(['message' => 'If the account exists, a reset link has been sent.']);
+    }
+
+    /** POST /auth/reset-password: sets a new password from the e-mailed link, once, and ends every session. */
+    public function resetPassword(Request $request, AuditService $audit): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'token' => ['required', 'string', 'max:255'],
+            'password' => ['required', 'string', 'min:12', 'max:200', 'confirmed'],
+        ]);
+
+        $reset = null;
+        $status = Password::reset(
+            $data + ['password_confirmation' => $request->input('password_confirmation')],
+            function (User $user, string $password) use (&$reset) {
+                if (! $user->is_active) {
+                    return;
+                }
+                $user->forceFill(['password' => $password])->setRememberToken(Str::random(60));
+                $user->save();
+                $user->tokens()->delete();
+                $reset = $user;
+            },
+        );
+
+        if ($status !== Password::PASSWORD_RESET || $reset === null) {
+            return ApiResponse::error('This reset link is invalid or has expired. Ask for a new one.', 'invalid_reset_link', 422);
+        }
+
+        $audit->log('user.password_reset_by_link', $reset, null, ['reason' => 'password_reset'], $reset->id);
+
+        return $this->ok(['message' => 'Password changed. Sign in with the new password.']);
     }
 
     public function logout(Request $request, AuditService $audit): JsonResponse
