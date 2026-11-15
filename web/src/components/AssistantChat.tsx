@@ -28,6 +28,9 @@ import {
 } from '../lib/assistant'
 import type { ActionCard, ChatMessage, Citation } from '../lib/assistant'
 import { AssistantFormCard } from './AssistantFormCard'
+import { AttachmentStrip } from './AssistantAttachments'
+import { ACCEPT, MAX_FILES, fileKind, fileProblem, withNames } from '../lib/assistantFiles'
+import type { AttachedFile } from '../lib/assistantFiles'
 import { linkRecords, parseAnswer } from '../lib/answerText'
 import type { Inline } from '../lib/answerText'
 import { AssistantRequestError, streamChat } from '../lib/assistantStream'
@@ -67,7 +70,9 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [files, setFiles] = useState<Array<{ id: string; name: string; expires_at?: string }>>([])
+  const [files, setFiles] = useState<AttachedFile[]>([])
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -224,26 +229,79 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
     void ask(next, conversationId)
   }
 
-  async function attach(list: FileList | null) {
-    if (!list || list.length === 0) return
+  /** Upload the files of a picker, a drop or a paste: only JPG, PNG, Word and Excel, up to five per message. */
+  async function attach(list: FileList | File[] | null) {
+    const incoming = withNames(Array.from(list ?? []))
+    if (incoming.length === 0) return
     setUploadError('')
     setUploading(true)
+    let held = files.length
+    let problem = ''
     try {
-      let count = files.length
-      for (const file of Array.from(list)) {
-        if (count >= 3) break
-        count += 1
+      for (const file of incoming) {
+        const issue = fileProblem(file, held)
+        if (issue === 'type') {
+          problem = t('assistantAttachTypes')
+          continue
+        }
+        if (issue === 'size') {
+          problem = t('assistantAttachTooBig')
+          continue
+        }
+        if (issue === 'count') {
+          problem = t('assistantAttachTooMany').replace('{max}', String(MAX_FILES))
+          break
+        }
         const form = new FormData()
         form.append('file', file)
+        const kind = fileKind(file) ?? undefined
         const { data } = await api.post<{ data: { id: string; name: string; expires_at?: string } }>('/assistant/uploads', form)
-        setFiles((current) => [...current, { id: data.data.id, name: data.data.name, expires_at: data.data.expires_at }])
+        held += 1
+        const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined
+        setFiles((current) => [...current, { id: data.data.id, name: data.data.name, expires_at: data.data.expires_at, kind, previewUrl }])
       }
+      if (problem) setUploadError(problem)
     } catch (cause) {
       setUploadError(errorMessage(cause))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  function removeFile(file: AttachedFile) {
+    if (file.previewUrl) URL.revokeObjectURL(file.previewUrl)
+    setFiles((current) => current.filter((item) => item.id !== file.id))
+  }
+
+  function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = Array.from(event.clipboardData.files)
+    if (pasted.length === 0) return
+    event.preventDefault()
+    void attach(pasted)
+  }
+
+  const hasFiles = (event: React.DragEvent) => Array.from(event.dataTransfer.types).includes('Files')
+
+  function onDragEnter(event: React.DragEvent) {
+    if (!hasFiles(event)) return
+    event.preventDefault()
+    dragDepth.current += 1
+    setDragging(true)
+  }
+
+  function onDragLeave(event: React.DragEvent) {
+    if (!hasFiles(event)) return
+    dragDepth.current = Math.max(0, dragDepth.current - 1)
+    if (dragDepth.current === 0) setDragging(false)
+  }
+
+  function onDrop(event: React.DragEvent) {
+    if (!hasFiles(event)) return
+    event.preventDefault()
+    dragDepth.current = 0
+    setDragging(false)
+    if (!busy && !uploading) void attach(Array.from(event.dataTransfer.files))
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -273,6 +331,8 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
     abortRef.current = null
     setBusy(false)
     setStatus('')
+    for (const message of messages) for (const file of message.attachments ?? []) if (file.previewUrl) URL.revokeObjectURL(file.previewUrl)
+    for (const file of files) if (file.previewUrl) URL.revokeObjectURL(file.previewUrl)
     setMessages([])
     setConversationId(null)
     setDraft('')
@@ -355,7 +415,20 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
   )
 
   return (
-    <div className="flex h-screen min-h-0 bg-surface-canvas" role="region" aria-label={t('assistant')}>
+    <div
+      className="relative flex h-screen min-h-0 bg-surface-canvas"
+      role="region"
+      aria-label={t('assistant')}
+      onDragEnter={onDragEnter}
+      onDragOver={(event) => hasFiles(event) && event.preventDefault()}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging ? (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-surface-canvas/80 backdrop-blur-sm" data-testid="drop-overlay">
+          <p className="heading-medium rounded-16 border-2 border-dashed border-border-selected bg-surface-default px-8 py-6 text-text-default shadow-2">{t('assistantDropHere')}</p>
+        </div>
+      ) : null}
       <aside className="no-print hidden w-72 shrink-0 border-e border-border-subtle bg-surface-default lg:block">{sidebar}</aside>
       {listOpen ? (
         <div className="no-print fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setListOpen(false)}>
@@ -484,14 +557,8 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
               {t('assistantInputLabel')}
             </label>
             {files.length > 0 || uploading || uploadError ? (
-              <div className="flex flex-wrap items-center gap-2" aria-live="polite">
-                {files.map((file) => (
-                  <span key={file.id} className="anim-rise text-small inline-flex max-w-full items-center gap-1 rounded-full border border-border-default bg-surface-subtle py-1 pe-1 ps-3">
-                    <Icon name="paperclip" size={14} />
-                    <bdi className="truncate">{file.name}</bdi>
-                    <IconButton icon="x" label={t('assistantAttachRemove')} onClick={() => setFiles((current) => current.filter((item) => item.id !== file.id))} />
-                  </span>
-                ))}
+              <div className="flex flex-wrap items-center gap-3" aria-live="polite">
+                {files.length > 0 ? <AttachmentStrip files={files} onRemove={removeFile} /> : null}
                 {uploading ? <span className="text-small text-text-subtle">{t('assistantAttachUploading')}</span> : null}
                 {uploadError ? <span role="alert" className="text-small text-danger-text">{uploadError}</span> : null}
               </div>
@@ -500,14 +567,14 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp,application/pdf"
+                accept={ACCEPT}
                 multiple
                 className="sr-only"
                 tabIndex={-1}
                 aria-hidden="true"
                 onChange={(event) => void attach(event.target.files)}
               />
-              <IconButton icon="paperclip" label={t('assistantAttach')} disabled={busy || uploading || files.length >= 3} onClick={() => fileInputRef.current?.click()} />
+              <IconButton icon="paperclip" label={t('assistantAttach')} disabled={busy || uploading || files.length >= MAX_FILES} onClick={() => fileInputRef.current?.click()} />
               <textarea
                 id="assistant-input"
                 ref={inputRef}
@@ -518,6 +585,7 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
                 placeholder={t('assistantPlaceholder')}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={onKeyDown}
+                onPaste={onPaste}
                 className="text-medium min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-text-default outline-none placeholder:text-text-subtle"
               />
               {busy ? (
@@ -575,6 +643,7 @@ function MessageBubble({ message, onRetry, answered, onAnswer, onConfirmed }: { 
           {t('assistantStepsDone')}: {message.steps.join('، ')}
         </p>
       ) : null}
+      {mine && message.attachments && message.attachments.length > 0 ? <AttachmentStrip files={message.attachments} /> : null}
       <div
         dir="auto"
         className={
@@ -583,7 +652,7 @@ function MessageBubble({ message, onRetry, answered, onAnswer, onConfirmed }: { 
             : 'text-medium max-w-full break-words rounded-16 bg-surface-default px-4 py-3 text-text-default shadow-1'
         }
       >
-        {mine ? message.content : <AnswerBody text={message.content} citations={message.citations ?? []} />}
+        {mine ? (message.attachments && message.attachments.length > 0 ? withoutFileNote(message) : message.content) : <AnswerBody text={message.content} citations={message.citations ?? []} />}
       </div>
       {message.form && onAnswer ? <AssistantFormCard form={message.form} answered={answered ?? false} onSubmit={onAnswer} /> : null}
       {(message.actions ?? []).map((card) => (

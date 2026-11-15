@@ -192,7 +192,7 @@ test('a receipt is attached in the chat and sent with the message', async ({ pag
   await page.goto('/')
   await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
   await page.locator('input[type="file"]').setInputFiles({ name: 'transfer.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') })
-  await expect(page.getByText('transfer.png')).toBeVisible()
+  await expect(page.getByRole('img', { name: 'transfer.png' })).toBeVisible()
 
   // A file with no words still sends.
   await page.getByRole('button', { name: /إرسال|^Send$/ }).click()
