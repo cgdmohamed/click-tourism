@@ -464,6 +464,36 @@ class AssistantChatTest extends TestCase
         return Invoice::query()->where('public_id', $done['result']['id'])->firstOrFail();
     }
 
+    public function test_a_card_for_a_customer_whose_name_is_shared_says_so(): void
+    {
+        $this->grant('invoices.create', 'invoices.view');
+        $first = $this->customer();
+        $this->customer($this->branch); // a second customer carrying the same name
+        $line = [['description' => 'Umrah', 'quantity' => 1, 'unit_price_minor' => 100000]];
+
+        $card = $this->prepare('erp_invoice_draft_create', ['customer_id' => $first->public_id, 'issue_date' => now()->toDateString(), 'lines' => $line]);
+
+        $this->assertStringContainsString('Nile Travel Customer (', json_encode($card, JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_a_unique_customer_name_is_printed_without_a_warning(): void
+    {
+        $this->grant('invoices.create', 'invoices.view');
+        $card = $this->prepare('erp_invoice_draft_create', ['customer_id' => $this->customer()->public_id, 'issue_date' => now()->toDateString(), 'lines' => [['description' => 'Umrah', 'quantity' => 1, 'unit_price_minor' => 100000]]]);
+
+        $this->assertStringNotContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_the_system_prompt_tells_the_model_to_ask_when_a_name_is_ambiguous(): void
+    {
+        $this->script([$this->finalReply('ok')]);
+        $this->chat()->assertOk();
+        $system = json_encode($this->sent()[0]['messages'][0] ?? [], JSON_UNESCAPED_UNICODE);
+
+        $this->assertStringContainsString('A name is not an identity', $system);
+    }
+
     public function test_an_action_on_a_record_shows_what_it_changes_and_runs_only_after_confirm(): void
     {
         $invoice = $this->assistantDraftInvoice();

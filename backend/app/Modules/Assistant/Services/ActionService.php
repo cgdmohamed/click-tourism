@@ -257,7 +257,7 @@ class ActionService
                 'credit_minor' => $line['quantity'] * $line['unit_price_minor'],
             ], $args['lines']),
             'submit' => false,
-            '__customer' => $customer->name_en ?: $customer->name_ar,
+            '__customer' => $this->customerLabel($customer),
             '__booking' => $booking?->number,
         ];
     }
@@ -319,7 +319,7 @@ class ActionService
             return $item;
         }, $args['items']);
 
-        return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $customer->name_en ?: $customer->name_ar];
+        return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $this->customerLabel($customer)];
     }
 
     /**
@@ -414,7 +414,7 @@ class ActionService
             'customer_id' => $customer->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
             'method' => $args['method'] ?? 'cash', 'amount_minor' => $args['amount_minor'], 'currency' => $currency,
             'booking_id' => $booking?->public_id, 'paid_at' => $args['paid_at'] ?? null,
-            '__customer' => $customer->name_en ?: $customer->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
+            '__customer' => $this->customerLabel($customer), '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
     }
 
@@ -444,6 +444,19 @@ class ActionService
     }
 
     /** The active cash or bank account of this branch with exactly this name; otherwise the user is told which exist. */
+    /**
+     * The customer as the confirmation card prints it. When another customer carries the same name,
+     * say so and add the branch, so a wrong "first Ahmed" is visible before the user presses Confirm.
+     */
+    private function customerLabel(Customer $customer): string
+    {
+        $name = $customer->name_en ?: $customer->name_ar;
+        $same = Customer::query()->where('id', '!=', $customer->id)
+            ->where(fn ($q) => $q->where('name_ar', $customer->name_ar)->orWhere('name_en', $customer->name_en))->count();
+
+        return $same === 0 ? $name : sprintf('%s (%s · %d)', $name, $customer->branch?->name_ar ?: $customer->branch?->code, $same + 1);
+    }
+
     private function cashAccount(string $name, Branch $branch): CashAccount
     {
         $accounts = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->get();
