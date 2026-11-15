@@ -34,6 +34,7 @@ import type { AttachedFile } from '../lib/assistantFiles'
 import { linkRecords, parseAnswer } from '../lib/answerText'
 import type { Inline } from '../lib/answerText'
 import { AssistantRequestError, streamChat } from '../lib/assistantStream'
+import { downloadResponse } from '../lib/download'
 import { localizedName } from '../lib/names'
 import { useFeatureFlags } from '../lib/useSetting'
 import { useTheme } from '../theme'
@@ -60,6 +61,9 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
 
 /** Records the assistant creates for the user's request, after which it should carry on with that request. */
 const CONTINUES_AFTER = ['erp_customer_create', 'erp_supplier_create']
+
+/** After these the assistant answers in a sentence and asks whether any detail should change. */
+const ASKS_AFTER = ['erp_invoice_collect', 'erp_payment_cancel']
 
 function AssistantChatScreen({ onExit }: { onExit: () => void }) {
   const { t, locale, toggleLocale } = useI18n()
@@ -211,7 +215,17 @@ function AssistantChatScreen({ onExit }: { onExit: () => void }) {
    * request by itself (the next step is another card to confirm), so the user does not have to say so.
    */
   function continueAfter(card: ActionCard) {
-    if (busy || !CONTINUES_AFTER.includes(card.tool) || !card.result) return
+    if (busy || !card.result || !(CONTINUES_AFTER.includes(card.tool) || ASKS_AFTER.includes(card.tool))) return
+    if (ASKS_AFTER.includes(card.tool)) {
+      const askText =
+        locale === 'ar'
+          ? `تم تنفيذ: ${card.title}. أجب بجملة واحدة واسألني إن كنت أريد تعديل أي تفصيلة (المبلغ أو الحساب أو التاريخ أو المرفق). إن كان سبب الإلغاء تصحيحاً فاسألني عن البيانات الصحيحة وجهّز البطاقة الجديدة.`
+          : `Done: ${card.title}. Answer in one sentence and ask whether I want to change any detail (amount, account, date or attachment). If this was cancelled to correct it, ask me for the right details and prepare the new card.`
+      const nextAsk = addUserMessage(messages, askText)
+      setMessages(nextAsk)
+      void ask(nextAsk, conversationId)
+      return
+    }
     const text =
       locale === 'ar'
         ? `تم تنفيذ: ${card.title}. معرّف السجل: ${card.result.id}. أكمل طلبي الأصلي (واستخدم الإيصال المرفق إن وُجد)، وإن لم تبقَ خطوة فاكتفِ بجملة واحدة.`
@@ -691,6 +705,24 @@ function ActionCardView({ initial, onConfirmed }: { initial: ActionCard; onConfi
   const [error, setError] = useState('')
   // post / pay / void / delete need a second, explicit "yes" after the card (the card itself is the first).
   const [armed, setArmed] = useState(false)
+  async function downloadReceipt(id: string, number: string | null) {
+    try {
+      const response = await api.get<Blob>(`/payments/${encodeURIComponent(id)}/pdf`, { responseType: 'blob' })
+      downloadResponse(response, `receipt-${number ?? 'voucher'}.pdf`)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  async function downloadInvoice(id: string) {
+    try {
+      const response = await api.get<Blob>(`/invoices/${encodeURIComponent(id)}/pdf`, { responseType: 'blob' })
+      downloadResponse(response, 'invoice.pdf')
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
   const decide = useMutation({
     mutationFn: async (verb: 'confirm' | 'reject') => {
       const { data } = await api.post<{ data: ActionCard }>(`/assistant/actions/${encodeURIComponent(card.id)}/${verb}`)
@@ -767,6 +799,29 @@ function ActionCardView({ initial, onConfirmed }: { initial: ActionCard; onConfi
             <Link to={link.href} onClick={exit} className="text-small text-brand-1-accent underline">
               {t('assistantActionOpen')}
             </Link>
+          ) : null}
+          {card.status === 'confirmed' && card.attached ? (
+            <p role="status" className="text-small basis-full text-text-subtle">
+              {card.attached.saved > 0 ? t('assistantActionAttached').replace('{n}', String(card.attached.saved)) : null}{' '}
+              {card.attached.failed > 0 ? <span className="text-warning-text">{t('assistantActionAttachFailed').replace('{n}', String(card.attached.failed))}</span> : null}
+            </p>
+          ) : null}
+          {card.status === 'confirmed' && card.receipts?.length
+            ? card.receipts.map((receipt) => (
+                <Button key={receipt.id} type="button" variant="secondary" icon="download" onClick={() => void downloadReceipt(receipt.id, receipt.number)}>
+                  {t('assistantActionDownloadReceipt').replace('{number}', receipt.number ?? '')}
+                </Button>
+              ))
+            : null}
+          {card.status === 'confirmed' && card.tool === 'erp_payment_record' && card.result?.entity === 'payment' ? (
+            <Button type="button" variant="secondary" icon="download" onClick={() => void downloadReceipt(card.result!.id, null)}>
+              {t('assistantActionDownloadReceipt').replace('{number}', '')}
+            </Button>
+          ) : null}
+          {card.status === 'confirmed' && card.tool === 'erp_invoice_collect' && card.result ? (
+            <Button type="button" variant="secondary" icon="download" onClick={() => void downloadInvoice(card.result!.id)}>
+              {t('assistantActionDownloadInvoice')}
+            </Button>
           ) : null}
         </div>
       )}

@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthProvider'
 import AttachmentsCard from '../components/AttachmentsCard'
 import { useI18n } from '../i18n'
 import { api, errorMessage, idempotencyKey } from '../lib/api'
+import { downloadResponse } from '../lib/download'
 import { useActiveCurrencyCodes } from '../lib/useCurrencies'
 import { resolveCurrency } from '../lib/currencies'
 import { formatDate, formatMoney, toDecimal, toMinor, todayISO } from '../lib/format'
@@ -418,6 +419,20 @@ export default function Payments() {
         onSelect: () => {
           setCancelError('')
           setCancelTarget(payment)
+        },
+      })
+    }
+    if (can('payments.view')) {
+      items.push({
+        key: 'receipt-pdf',
+        label: t('receiptVoucherPdf'),
+        icon: 'download',
+        onSelect: () => {
+          setError('')
+          api
+            .get<Blob>(`/payments/${encodeURIComponent(payment.id)}/pdf`, { responseType: 'blob' })
+            .then((response) => downloadResponse(response, `receipt-${payment.number}.pdf`))
+            .catch((cause) => setError(errorMessage(cause)))
         },
       })
     }

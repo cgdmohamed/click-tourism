@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Modules\Core\Services\AuditService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Services\InvoiceSettlementService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Services\PaymentService;
+use App\Modules\Payments\Services\ReceiptDocument;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 
 class PaymentController extends ApiController
@@ -103,6 +106,27 @@ class PaymentController extends ApiController
         ]);
 
         return $this->ok($payments->allocate($payment, $data['allocations'], $this->actorId()));
+    }
+
+    /** GET /payments/{payment}/pdf: the receipt voucher (سند قبض) of one customer receipt (ADR-0035). */
+    public function pdf(Request $request, Payment $payment, ReceiptDocument $documents, AuditService $audit): Response
+    {
+        $this->authorizeBranchId($payment->branch_id);
+
+        $data = $request->validate(['language' => ['nullable', Rule::in(['ar', 'en', 'bilingual'])]]);
+        $language = $data['language'] ?? (string) $this->settings()->get('documents', 'default_language', 'bilingual');
+
+        $pdf = $documents->receiptPdf($payment, $language);
+
+        // Provenance only: no names or amounts.
+        $audit->log('payment.exported', $payment, null, ['number' => $payment->number, 'language' => $language, 'branch' => $payment->branch?->public_id], $this->actorId());
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.preg_replace('/[^A-Za-z0-9._-]/', '_', 'receipt-'.$payment->number).'.pdf"',
+            'Cache-Control' => 'no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function cancel(Request $request, Payment $payment, PaymentService $payments): JsonResponse

@@ -312,3 +312,65 @@ test('a form with one question sends as soon as the option is picked', async ({ 
   await expect(page.getByText('تم.')).toBeVisible()
   expect(bodies[1].messages.at(-1)?.content).toContain('[id: C-0002]')
 })
+
+test('a collection on an invoice stores the file, offers the invoice PDF and the assistant asks about changes', async ({ page }) => {
+  await uiLogin(page, apiSession())
+  const rows = [
+    { label: 'الفاتورة', value: 'INV-HQ-2026-000009' }, { label: 'العميل', value: 'أحمد علي · C-0007' },
+    { label: 'المبلغ المحصَّل', value: '620.00 EGP' }, { label: 'المتبقي بعد التحصيل', value: '0.00 EGP' },
+    { label: 'حساب الدفع', value: 'الحساب البنكي الرئيسي' }, { label: 'سيُرفق بالفاتورة', value: 'transfer.png' },
+  ]
+  const pending = { id: '01HCOLLECTCOLLECTCOLLECT0', tool: 'erp_invoice_collect', title: 'تحصيل على فاتورة', status: 'pending', risk: 'pay', expires_at: '2099-01-01T00:00:00Z', result: null, error: null, rows }
+  const asked: Array<{ messages: Array<{ content: string }> }> = []
+  let pdfFetched = 0
+  await page.route('**/api/v1/feature-flags', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.json()) as { data: Record<string, unknown> }
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, assistant_enabled: true, assistant_provider: 'openai' } } })
+  })
+  await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
+  await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    asked.push(route.request().postDataJSON())
+    const data = { citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, conversation_id: null }
+    const answer = asked.length === 1
+      ? { type: 'answer', data: { ...data, answer: 'جهّزت التحصيل على الفاتورة، راجع البطاقة.', actions: [pending] } }
+      : { type: 'answer', data: { ...data, answer: 'تم التحصيل. هل تريد تعديل أي تفصيلة؟', actions: [] } }
+    return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
+  })
+  await page.route('**/api/v1/assistant/actions/*/confirm', (route) =>
+    route.fulfill({ json: { data: { ...pending, status: 'confirmed', result: { entity: 'invoice', id: 'invoice12345' }, attached: { saved: 1, failed: 0 }, receipts: [{ id: 'payment12345', number: 'RV-HQ-2026-000044' }] } } }),
+  )
+  let receiptFetched = 0
+  await page.route('**/api/v1/payments/payment12345/pdf', (route) => {
+    receiptFetched += 1
+    return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'Content-Disposition': 'attachment; filename="receipt-RV-HQ-2026-000044.pdf"' }, body: '%PDF-1.4 receipt' })
+  })
+  await page.route('**/api/v1/invoices/invoice12345/pdf', (route) => {
+    pdfFetched += 1
+    return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'Content-Disposition': 'attachment; filename="invoice-INV-HQ-2026-000009.pdf"' }, body: '%PDF-1.4 test' })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /افتح المساعد|Open the assistant/ }).click()
+  await page.locator('#assistant-input').fill('حصّل التحويل ده من أحمد على فاتورته')
+  await page.keyboard.press('Enter')
+
+  const card = page.getByRole('region', { name: 'تحصيل على فاتورة' })
+  await expect(card).toContainText('INV-HQ-2026-000009')
+  await expect(card).toContainText('transfer.png')
+  await card.getByRole('button', { name: /تأكيد وتنفيذ|Confirm and run/ }).click()
+  await card.getByRole('button', { name: /نعم، نفّذ الآن|Yes, run it now/ }).click()
+
+  await expect(card.getByRole('status').first()).toContainText(/تم التنفيذ|Done/)
+  await expect(card).toContainText(/أُرفق 1 ملف|1 file\(s\) attached/)
+  const download = await Promise.all([page.waitForEvent('download'), card.getByRole('button', { name: /تحميل الفاتورة|Download the invoice/ }).click()]).then(([event]) => event)
+  expect(download.suggestedFilename()).toBe('invoice-INV-HQ-2026-000009.pdf')
+  expect(pdfFetched).toBe(1)
+  const voucher = await Promise.all([page.waitForEvent('download'), card.getByRole('button', { name: /تحميل سند القبض|Download receipt voucher/ }).click()]).then(([event]) => event)
+  expect(voucher.suggestedFilename()).toBe('receipt-RV-HQ-2026-000044.pdf')
+  expect(receiptFetched).toBe(1)
+
+  // The assistant is asked to answer briefly and ask whether anything should change.
+  await expect(page.getByText('تم التحصيل. هل تريد تعديل أي تفصيلة؟')).toBeVisible()
+  expect(asked[1].messages.at(-1)?.content).toMatch(/تعديل أي تفصيلة|change any detail/)
+})

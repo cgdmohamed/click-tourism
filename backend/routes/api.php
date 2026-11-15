@@ -391,6 +391,7 @@ Route::prefix('v1')->group(function () {
         Route::get('payments', [PaymentController::class, 'index'])->middleware('permission:payments.view');
         Route::post('payments', [PaymentController::class, 'store'])->middleware(['permission:payments.create', 'idempotent']);
         Route::get('payments/{payment}', [PaymentController::class, 'show'])->middleware('permission:payments.view');
+        Route::get('payments/{payment}/pdf', [PaymentController::class, 'pdf'])->middleware(['permission:payments.view', 'throttle:report-exports']);
         Route::post('payments/{payment}/allocate', [PaymentController::class, 'allocate'])->middleware(['permission:payments.create']);
         Route::delete('invoice-applications/{application}', [InvoiceApplicationController::class, 'destroy'])->middleware('permission:payments.create');
         Route::post('payments/{payment}/invoice-applications', [PaymentController::class, 'applyToInvoice'])->middleware(['permission:payments.create', 'idempotent']);
