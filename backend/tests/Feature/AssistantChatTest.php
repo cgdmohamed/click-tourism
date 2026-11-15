@@ -550,6 +550,50 @@ class AssistantChatTest extends TestCase
         $this->assertSame('blocked_input', $this->auditRows('assistant.chat')[0]->after['status']);
     }
 
+    public function test_the_prompt_lists_the_branch_payment_accounts_so_the_model_does_not_ask(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'customers.view');
+        $this->branchCashAccount();
+        $this->script([$this->finalReply('ok')]);
+        $this->chat('hello')->assertOk();
+
+        $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('Payment accounts of this branch', $system);
+        $this->assertStringContainsString('Main cash', $system);
+    }
+
+    public function test_a_loose_account_name_or_a_single_account_is_resolved_without_asking(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'customers.view');
+        $this->branchCashAccount();
+        $customer = $this->customer();
+
+        $loose = $this->prepare('erp_payment_record', ['customer_id' => $customer->public_id, 'payment_account' => 'the main cash account', 'amount_minor' => 62000]);
+        $none = $this->prepare('erp_payment_record', ['customer_id' => $customer->public_id, 'amount_minor' => 62000]);
+
+        $this->assertNotEmpty($loose);
+        $this->assertNotEmpty($none);
+    }
+
+    public function test_with_several_accounts_and_no_clear_name_the_model_is_told_to_ask_with_a_form(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'customers.view');
+        $this->branchCashAccount();
+        CashAccount::query()->create([
+            'account_id' => $this->account('1120')->id,
+            'branch_id' => $this->user->branches()->first()->id ?? Branch::query()->first()->id,
+            'kind' => 'bank', 'name_ar' => 'بنك', 'name_en' => 'Main bank', 'currency_code' => 'EGP', 'is_active' => true,
+        ]);
+        $customer = $this->customer();
+
+        $this->assertNotEmpty($this->prepare('erp_payment_record', ['customer_id' => $customer->public_id, 'payment_account' => 'the main bank', 'amount_minor' => 5000]));
+
+        $this->script([$this->toolCallReply([['erp_payment_record', ['customer_id' => $customer->public_id, 'payment_account' => 'main', 'amount_minor' => 5000]]]), $this->finalReply('Which account?')]);
+        $this->chat('record it')->assertOk();
+        $this->assertStringContainsString('Main cash, Main bank', $this->lastToolMessages()[0]['content']);
+        $this->assertStringContainsString('erp_ask_user', $this->lastToolMessages()[0]['content']);
+    }
+
     public function test_the_system_prompt_tells_the_model_to_ask_when_a_name_is_ambiguous(): void
     {
         $this->script([$this->finalReply('ok')]);

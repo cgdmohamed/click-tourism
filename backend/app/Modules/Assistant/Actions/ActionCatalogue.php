@@ -159,8 +159,8 @@ final class ActionCatalogue
         return [
             'erp_payment_record' => [
                 'permission' => 'payments.create', 'method' => 'POST', 'route' => '/payments', 'entity' => 'payment', 'model' => null, 'marks' => false, 'risk' => 'pay',
-                'description' => 'Prepare RECORDING a payment received from a customer into a cash or bank account. `customer_id` is the customer public id from a read tool, `payment_account` the account name. Amount in integer minor units. It is posted to the ledger once confirmed.',
-                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['customer_id', 'payment_account', 'amount_minor'], 'properties' => [
+                'description' => 'Prepare RECORDING a payment received from a customer into a cash or bank account. `customer_id` is the customer public id from a read tool, `payment_account` the account name (optional when the branch has one account). Amount in integer minor units. It is posted to the ledger once confirmed.',
+                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['customer_id', 'amount_minor'], 'properties' => [
                     'customer_id' => $publicId, 'payment_account' => $str(255), 'amount_minor' => ['type' => 'integer', 'minimum' => 1], 'currency' => $currency,
                     'booking_id' => $str(30), 'paid_at' => $date, 'method' => ['type' => 'string', 'enum' => ['cash', 'bank_transfer', 'card', 'wallet']],
                 ]],
@@ -168,7 +168,7 @@ final class ActionCatalogue
             'erp_supplier_payment_record' => [
                 'permission' => 'supplier_payments.create', 'method' => 'POST', 'route' => '/supplier-payments', 'entity' => 'supplier_payment', 'model' => null, 'marks' => false, 'risk' => 'pay',
                 'description' => 'Prepare PAYING a supplier out of a cash or bank account. `supplier_id` is the supplier public id from a read tool, `payment_account` the account name. Amount in integer minor units. It is posted to the ledger once confirmed.',
-                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['supplier_id', 'payment_account', 'amount_minor'], 'properties' => [
+                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['supplier_id', 'amount_minor'], 'properties' => [
                     'supplier_id' => $publicId, 'payment_account' => $str(255), 'amount_minor' => ['type' => 'integer', 'minimum' => 1], 'currency' => $currency, 'paid_at' => $date,
                 ]],
             ],

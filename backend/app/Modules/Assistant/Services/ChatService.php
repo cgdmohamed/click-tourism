@@ -13,6 +13,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -74,7 +75,7 @@ class ChatService
         $form = null;
         $actions = [];
 
-        $conversation = [['role' => 'system', 'content' => $this->systemPrompt($locale, $branch)]];
+        $conversation = [['role' => 'system', 'content' => $this->systemPrompt($locale, $branch, $user)]];
         $lastIndex = array_key_last($messages);
         foreach ($messages as $index => $message) {
             $text = $redactor->redact($message['content']);
@@ -286,13 +287,26 @@ class ChatService
         ];
     }
 
-    private function systemPrompt(string $locale, ?Branch $branch): string
+    private function systemPrompt(string $locale, ?Branch $branch, User $user): string
     {
         $file = resource_path('assistant/'.config('assistant.system_prompt'));
         $prompt = trim((string) file_get_contents($file));
 
         return $prompt."\n\nContext: interface language = {$locale}; today = ".now()->toDateString()
-            .'; active branch id = '.($branch?->public_id ?? 'none').'. Tool calls always use this branch.';
+            .'; active branch id = '.($branch?->public_id ?? 'none').'. Tool calls always use this branch.'
+            .$this->paymentAccountsLine($user, $branch);
+    }
+
+    /** The names of the branch's cash and bank accounts, so the model never has to ask which exist. */
+    private function paymentAccountsLine(User $user, ?Branch $branch): string
+    {
+        if ($branch === null || ! ($user->can('payments.create') || $user->can('expenses.create') || $user->can('supplier_payments.create') || $user->can('commissions.pay'))) {
+            return '';
+        }
+        $names = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->limit(15)->get()
+            ->map(fn (CashAccount $a) => $a->name_en ?: $a->name_ar)->filter()->values()->all();
+
+        return $names === [] ? '' : ' Payment accounts of this branch (use one of these names as payment_account): '.implode('; ', $names).'.';
     }
 
     private function tokensKey(User $user): string

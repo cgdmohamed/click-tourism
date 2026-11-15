@@ -7,6 +7,7 @@ use App\Modules\CRM\Models\Lead;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Payments\Models\Payment;
+use App\Support\Like;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,13 +39,7 @@ class SearchController extends ApiController
         if ($user->can('customers.view')) {
             $items = Customer::query()
                 ->when($branch, fn (Builder $query) => $query->where('branch_id', $branch->id))
-                ->where(function (Builder $query) use ($like) {
-                    $query->where('name_ar', 'like', $like)
-                        ->orWhere('name_en', 'like', $like)
-                        ->orWhere('phone', 'like', $like)
-                        ->orWhere('code', 'like', $like)
-                        ->orWhere('email', 'like', $like);
-                })
+                ->tap(fn (Builder $query) => Like::contains($query, ['name_ar', 'name_en', 'phone', 'code', 'email'], $term))
                 ->orderBy('name_ar')
                 ->limit(self::LIMIT)
                 ->get()
@@ -64,13 +59,7 @@ class SearchController extends ApiController
         if ($user->can('suppliers.view')) {
             $items = Supplier::query()
                 ->when($branch, fn (Builder $query) => $query->where('branch_id', $branch->id))
-                ->where(function (Builder $query) use ($like) {
-                    $query->where('name_ar', 'like', $like)
-                        ->orWhere('name_en', 'like', $like)
-                        ->orWhere('phone', 'like', $like)
-                        ->orWhere('code', 'like', $like)
-                        ->orWhere('email', 'like', $like);
-                })
+                ->tap(fn (Builder $query) => Like::contains($query, ['name_ar', 'name_en', 'phone', 'code', 'email'], $term))
                 ->orderBy('name_ar')
                 ->limit(self::LIMIT)
                 ->get()
