@@ -454,6 +454,9 @@ class PostingService
 
     private function resolveOpenPeriod(string $entryDate, ?int $actorId): FiscalPeriod
     {
+        // A date with a time part ("2026-10-31 00:00:00") must still match the period that ends that day.
+        $entryDate = substr($entryDate, 0, 10);
+
         $period = FiscalPeriod::query()
             ->whereDate('starts_on', '<=', $entryDate)
             ->whereDate('ends_on', '>=', $entryDate)

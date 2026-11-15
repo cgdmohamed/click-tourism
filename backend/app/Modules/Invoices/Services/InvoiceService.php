@@ -904,6 +904,9 @@ class InvoiceService
 
     private function assertOpenPeriod(string $date, int $branchId, ?int $actorId): void
     {
+        // A date with a time part ("2026-10-31 00:00:00") must still match the period that ends that day.
+        $date = substr($date, 0, 10);
+
         // Branch scope is enforced by the caller; here we only require an open period.
         $period = FiscalPeriod::query()
             ->whereDate('starts_on', '<=', $date)
