@@ -10,6 +10,7 @@ use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -132,25 +133,32 @@ class TourPackageController extends ApiController
             'capacity' => ['sometimes', 'integer', 'min:1', 'max:5000'],
         ]);
 
-        $starts = Carbon::parse($data['starts_on'] ?? $departure->starts_on);
-        $ends = array_key_exists('ends_on', $data) ? ($data['ends_on'] ? Carbon::parse($data['ends_on']) : null) : $departure->ends_on;
-        if ($ends !== null && $ends->lt($starts)) {
-            throw new DomainException('The return date is before the departure date.');
-        }
-        if (isset($data['capacity']) && $data['capacity'] < $departure->occupiedSeats()) {
-            throw new DomainException('The seats cannot be fewer than the '.$departure->occupiedSeats().' already taken.');
-        }
-        // A booking on a departure must start on its date, so the date moves only while nobody holds a place.
-        if (isset($data['starts_on']) && $starts->toDateString() !== $departure->starts_on->toDateString()
-            && $departure->bookings()->whereNotIn('status', ['cancelled', 'no_show'])->exists()) {
-            throw new DomainException('This departure has bookings: move or cancel them before changing its date.');
-        }
+        // BookingService::transition() locks the departure while it confirms seats; take the same lock before
+        // checking, so a capacity cut cannot race a confirmation and leave more passengers than seats.
+        $departure = DB::transaction(function () use ($departure, $data, $audit) {
+            $locked = TourDeparture::query()->lockForUpdate()->findOrFail($departure->id);
+            $starts = Carbon::parse($data['starts_on'] ?? $locked->starts_on);
+            $ends = array_key_exists('ends_on', $data) ? ($data['ends_on'] ? Carbon::parse($data['ends_on']) : null) : $locked->ends_on;
+            if ($ends !== null && $ends->lt($starts)) {
+                throw new DomainException('The return date is before the departure date.');
+            }
+            if (isset($data['capacity']) && $data['capacity'] < $locked->occupiedSeats()) {
+                throw new DomainException('The seats cannot be fewer than the '.$locked->occupiedSeats().' already taken.');
+            }
+            // A booking on a departure must start on its date, so the date moves only while nobody holds a place.
+            if (isset($data['starts_on']) && $starts->toDateString() !== $locked->starts_on->toDateString()
+                && $locked->bookings()->whereNotIn('status', ['cancelled', 'no_show'])->exists()) {
+                throw new DomainException('This departure has bookings: move or cancel them before changing its date.');
+            }
 
-        $departure->update(array_filter([
-            'starts_on' => isset($data['starts_on']) ? $starts->toDateString() : null,
-            'capacity' => $data['capacity'] ?? null,
-        ], fn ($v) => $v !== null) + (array_key_exists('ends_on', $data) ? ['ends_on' => $ends?->toDateString()] : []));
-        $audit->log('tour_departure.updated', $departure, null, ['fields' => array_keys($data)], $this->actorId());
+            $locked->update(array_filter([
+                'starts_on' => isset($data['starts_on']) ? $starts->toDateString() : null,
+                'capacity' => $data['capacity'] ?? null,
+            ], fn ($v) => $v !== null) + (array_key_exists('ends_on', $data) ? ['ends_on' => $ends?->toDateString()] : []));
+            $audit->log('tour_departure.updated', $locked, null, ['fields' => array_keys($data)], $this->actorId());
+
+            return $locked;
+        });
 
         return $this->ok($departure->load('package')->toApiArray());
     }
