@@ -134,8 +134,17 @@ class ActionService
                     $definition['model']::query()->where('public_id', $entityId)->update(['created_via' => 'assistant']);
                 }
                 $action->update(['status' => 'confirmed', 'entity' => $definition['entity'], 'entity_id' => $entityId ?: null, 'decided_at' => now()]);
+                $extra = [];
                 if (! empty($payload['__attachments']) && $entityId !== '') {
-                    $action->update(['payload' => $payload + ['__attached' => $this->attachFiles($user, $definition['entity'], $entityId, $payload)]]);
+                    $extra['__attached'] = $this->attachFiles($user, $definition['entity'], $entityId, $payload);
+                }
+                // The receipts a collection created, so the card can offer each receipt voucher (ADR-0035).
+                $receipts = collect($json['data']['receipts'] ?? [])->map(fn ($r) => ['id' => $r['receipt']['id'] ?? null, 'number' => $r['receipt']['number'] ?? null])->filter(fn ($r) => $r['id'] !== null)->values()->all();
+                if ($receipts !== []) {
+                    $extra['__receipts'] = $receipts;
+                }
+                if ($extra !== []) {
+                    $action->update(['payload' => $payload + $extra]);
                 }
                 $this->audit->log('assistant.action_executed', null, null, ['tool' => $action->tool, 'action' => $action->public_id, 'entity' => $definition['entity'], 'id' => $entityId], $user->id, $branch->id);
             } else {
@@ -279,6 +288,7 @@ class ActionService
             'expires_at' => $action->expires_at->toIso8601String(),
             'result' => $action->entity_id !== null ? ['entity' => $action->entity, 'id' => $action->entity_id] : null,
             'attached' => $payload['__attached'] ?? null,
+            'receipts' => $payload['__receipts'] ?? null,
             'error' => $action->status === 'failed' ? ['code' => $action->error_code, 'message' => $action->error_message] : null,
         ];
     }

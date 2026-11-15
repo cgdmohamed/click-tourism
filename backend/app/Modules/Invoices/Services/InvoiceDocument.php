@@ -28,7 +28,7 @@ use Dompdf\Options;
 class InvoiceDocument
 {
     /** @var array<string, array{0: string, 1: string}> ar, en */
-    private const LABELS = [
+    protected const LABELS = [
         'number' => ['رقم الفاتورة', 'Invoice number'],
         'issue_date' => ['تاريخ الإصدار', 'Issue date'],
         'due_date' => ['تاريخ الاستحقاق', 'Due date'],
@@ -75,15 +75,19 @@ class InvoiceDocument
         'submitted_note' => ['قيد المراجعة — لم تصدر بعد.', 'Submitted for approval — not yet issued.'],
     ];
 
-    public function __construct(private readonly SettingService $settings) {}
+    public function __construct(protected readonly SettingService $settings) {}
 
     public function pdf(Invoice $invoice, string $language = 'bilingual'): string
     {
-        $rtl = in_array($language, ['ar', 'bilingual'], true);
+        return $this->render($this->html($invoice, $language), in_array($language, ['ar', 'bilingual'], true));
+    }
 
+    /** HTML to an A4 PDF with the page numbers drawn on the final layout (shared with the receipt voucher). */
+    protected function render(string $html, bool $rtl): string
+    {
         $dompdf = new Dompdf($this->dompdfOptions());
         $dompdf->setPaper('A4', 'portrait');
-        $dompdf->loadHtml($this->html($invoice, $language), 'UTF-8');
+        $dompdf->loadHtml($html, 'UTF-8');
         $dompdf->render();
 
         // Page numbers need the final layout, so they are drawn on the canvas.
@@ -361,7 +365,7 @@ class InvoiceDocument
     }
 
     /** @return array<int, string> */
-    private function companyLines(string $language): array
+    protected function companyLines(string $language): array
     {
         $ar = trim((string) $this->settings->get('general', 'company_name_ar', ''));
         $en = trim((string) $this->settings->get('general', 'company_name_en', ''));
@@ -390,7 +394,7 @@ class InvoiceDocument
         };
     }
 
-    private function partyName(object $party, string $language): string
+    protected function partyName(object $party, string $language): string
     {
         $ar = (string) ($party->name_ar ?? '');
         $en = (string) ($party->name_en ?? '');
@@ -414,9 +418,9 @@ class InvoiceDocument
     }
 
     /** Plain logical-order label, for callers that shape the text themselves. */
-    private function rawLabel(string $key, string $language): string
+    protected function rawLabel(string $key, string $language): string
     {
-        [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
+        [$ar, $en] = static::LABELS[$key] ?? [$key, $key];
 
         return match ($language) {
             'en' => $en,
@@ -430,12 +434,12 @@ class InvoiceDocument
      * document, the English text on a smaller second line (or, when
      * $stack is false, Arabic only, for labels that sit inside a sentence).
      */
-    private function label(string $key, string $language, bool $stack = true): string
+    protected function label(string $key, string $language, bool $stack = true): string
     {
         if ($language !== 'bilingual') {
             return $this->text($this->rawLabel($key, $language));
         }
-        [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
+        [$ar, $en] = static::LABELS[$key] ?? [$key, $key];
         if (! $stack) {
             // Inline labels stay Arabic-only: the values next to them are already bilingual.
             return $this->text($ar);
@@ -444,12 +448,12 @@ class InvoiceDocument
         return $this->text($ar).'<br><span class="sub">'.$this->escape($en).'</span>';
     }
 
-    private function amount(int $minor, string $currency): string
+    protected function amount(int $minor, string $currency): string
     {
         return $this->escape($this->groupDigits((new Money($minor, $currency))->toDecimal()));
     }
 
-    private function rate(string $rate): string
+    protected function rate(string $rate): string
     {
         $trimmed = rtrim(rtrim($rate, '0'), '.');
 
@@ -461,12 +465,12 @@ class InvoiceDocument
         return strtoupper((string) $invoice->currency_code) !== $this->baseCurrency();
     }
 
-    private function baseCurrency(): string
+    protected function baseCurrency(): string
     {
         return strtoupper((string) $this->settings->baseCurrency());
     }
 
-    private function generatedAt(): string
+    protected function generatedAt(): string
     {
         $timezone = (string) $this->settings->get('general', 'timezone', 'UTC');
         try {
@@ -476,13 +480,13 @@ class InvoiceDocument
         }
     }
 
-    private function date(?string $value): string
+    protected function date(?string $value): string
     {
         return $value === null || $value === '' ? '—' : $this->escape($value);
     }
 
     /** 1234567.50 => 1,234,567.50 (string-based; no float). */
-    private function groupDigits(string $decimal): string
+    protected function groupDigits(string $decimal): string
     {
         $negative = str_starts_with($decimal, '-');
         $parts = explode('.', ltrim($decimal, '-'), 2);
@@ -496,7 +500,7 @@ class InvoiceDocument
      * Arabic runs are wrapped so they use the Arabic face while digits, Latin text
      * and punctuation keep the interface face (one font cannot cover both).
      */
-    private function text(string $value): string
+    protected function text(string $value): string
     {
         $html = $this->escape(ArabicText::visual($value));
 
@@ -508,20 +512,20 @@ class InvoiceDocument
     }
 
     /** "Label: value" as one logical string, so the bidi order is right in Arabic documents. */
-    private function inline(string $key, string $value, string $language): string
+    protected function inline(string $key, string $value, string $language): string
     {
         return $this->text($this->inlineLabel($key, $language).': '.$value);
     }
 
-    private function inlineLabel(string $key, string $language): string
+    protected function inlineLabel(string $key, string $language): string
     {
-        [$ar, $en] = self::LABELS[$key] ?? [$key, $key];
+        [$ar, $en] = static::LABELS[$key] ?? [$key, $key];
 
         return $language === 'en' ? $en : $ar;
     }
 
     /** Address, phone, tax number and commercial register from Settings (all optional). */
-    private function companyDetails(string $language): string
+    protected function companyDetails(string $language): string
     {
         $rows = [];
         foreach ([
@@ -539,7 +543,7 @@ class InvoiceDocument
         return $rows === [] ? '' : '<div class="details">'.implode('<br>', $rows).'</div>';
     }
 
-    private function escape(string $value): string
+    protected function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
@@ -548,13 +552,13 @@ class InvoiceDocument
      * @param  array<int, mixed>  $cells
      * @return array<int, mixed>
      */
-    private function direction(array $cells, bool $rtl): array
+    protected function direction(array $cells, bool $rtl): array
     {
         return $rtl ? array_reverse($cells) : $cells;
     }
 
     /** The interface fonts (Suisse Intl for Latin, Noto Sans Arabic for Arabic), as TrueType for Dompdf. */
-    private function fontFaces(): string
+    protected function fontFaces(): string
     {
         $css = '';
         foreach ([
@@ -569,7 +573,7 @@ class InvoiceDocument
         return $css;
     }
 
-    private function dompdfOptions(): Options
+    protected function dompdfOptions(): Options
     {
         $cache = storage_path('framework/cache/dompdf');
         if (! is_dir($cache)) {

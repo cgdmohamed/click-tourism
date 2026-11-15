@@ -28,6 +28,8 @@ export type ActionCard = {
   result: { entity: string; id: string } | null
   /** Files stored with the record when a collection was confirmed (saved, and how many could not be). */
   attached?: { saved: number; failed: number } | null
+  /** The receipts a confirmed collection created: each has a receipt voucher PDF. */
+  receipts?: Array<{ id: string; number: string | null }> | null
   error: { code: string | null; message: string | null } | null
 }
 

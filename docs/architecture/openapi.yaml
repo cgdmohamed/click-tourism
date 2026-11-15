@@ -2614,6 +2614,24 @@ paths:
         '201': { description: Recorded }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Validation' }
+  /payments/{id}/pdf:
+    get:
+      tags: [Payments]
+      summary: Receipt voucher (سند قبض) PDF of one customer receipt (ADR-0035; requires payments.view)
+      description: 'Server-rendered A4 document in the invoice''s letterhead and fonts: who paid, amount (and the base-currency equivalent for a foreign receipt), date, method, receiving account, what it was applied to (invoices, booking or unallocated advance) and signature lines. A cancelled receipt is stamped cancelled. Audited as `payment.exported` (no content). Branch-scoped.'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: Payment public id }
+        - { name: language, in: query, required: false, schema: { type: string, enum: [ar, en, bilingual] }, description: Defaults to the documents.default_language setting }
+      responses:
+        '200':
+          description: The PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Validation' }
   /payments/{id}/cancel:
     post:
       tags: [Payments]
@@ -6446,6 +6464,14 @@ components:
           properties:
             saved: { type: integer }
             failed: { type: integer }
+        receipts:
+          type: [array, 'null']
+          description: 'The receipts a confirmed collection created, each with a receipt voucher PDF (ADR-0035)'
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              number: { type: [string, 'null'] }
         error:
           type: [object, 'null']
           properties:

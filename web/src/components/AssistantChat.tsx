@@ -636,6 +636,15 @@ function ActionCardView({ initial, onConfirmed }: { initial: ActionCard; onConfi
   const [error, setError] = useState('')
   // post / pay / void / delete need a second, explicit "yes" after the card (the card itself is the first).
   const [armed, setArmed] = useState(false)
+  async function downloadReceipt(id: string, number: string | null) {
+    try {
+      const response = await api.get<Blob>(`/payments/${encodeURIComponent(id)}/pdf`, { responseType: 'blob' })
+      downloadResponse(response, `receipt-${number ?? 'voucher'}.pdf`)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
   async function downloadInvoice(id: string) {
     try {
       const response = await api.get<Blob>(`/invoices/${encodeURIComponent(id)}/pdf`, { responseType: 'blob' })
@@ -727,6 +736,18 @@ function ActionCardView({ initial, onConfirmed }: { initial: ActionCard; onConfi
               {card.attached.saved > 0 ? t('assistantActionAttached').replace('{n}', String(card.attached.saved)) : null}{' '}
               {card.attached.failed > 0 ? <span className="text-warning-text">{t('assistantActionAttachFailed').replace('{n}', String(card.attached.failed))}</span> : null}
             </p>
+          ) : null}
+          {card.status === 'confirmed' && card.receipts?.length
+            ? card.receipts.map((receipt) => (
+                <Button key={receipt.id} type="button" variant="secondary" icon="download" onClick={() => void downloadReceipt(receipt.id, receipt.number)}>
+                  {t('assistantActionDownloadReceipt').replace('{number}', receipt.number ?? '')}
+                </Button>
+              ))
+            : null}
+          {card.status === 'confirmed' && card.tool === 'erp_payment_record' && card.result?.entity === 'payment' ? (
+            <Button type="button" variant="secondary" icon="download" onClick={() => void downloadReceipt(card.result!.id, null)}>
+              {t('assistantActionDownloadReceipt').replace('{number}', '')}
+            </Button>
           ) : null}
           {card.status === 'confirmed' && card.tool === 'erp_invoice_collect' && card.result ? (
             <Button type="button" variant="secondary" icon="download" onClick={() => void downloadInvoice(card.result!.id)}>

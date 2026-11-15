@@ -338,8 +338,13 @@ test('a collection on an invoice stores the file, offers the invoice PDF and the
     return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, answer].map((line) => JSON.stringify(line)).join('\n') + '\n' })
   })
   await page.route('**/api/v1/assistant/actions/*/confirm', (route) =>
-    route.fulfill({ json: { data: { ...pending, status: 'confirmed', result: { entity: 'invoice', id: 'invoice12345' }, attached: { saved: 1, failed: 0 } } } }),
+    route.fulfill({ json: { data: { ...pending, status: 'confirmed', result: { entity: 'invoice', id: 'invoice12345' }, attached: { saved: 1, failed: 0 }, receipts: [{ id: 'payment12345', number: 'RV-HQ-2026-000044' }] } } }),
   )
+  let receiptFetched = 0
+  await page.route('**/api/v1/payments/payment12345/pdf', (route) => {
+    receiptFetched += 1
+    return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'Content-Disposition': 'attachment; filename="receipt-RV-HQ-2026-000044.pdf"' }, body: '%PDF-1.4 receipt' })
+  })
   await page.route('**/api/v1/invoices/invoice12345/pdf', (route) => {
     pdfFetched += 1
     return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'Content-Disposition': 'attachment; filename="invoice-INV-HQ-2026-000009.pdf"' }, body: '%PDF-1.4 test' })
@@ -361,6 +366,9 @@ test('a collection on an invoice stores the file, offers the invoice PDF and the
   const download = await Promise.all([page.waitForEvent('download'), card.getByRole('button', { name: /تحميل الفاتورة|Download the invoice/ }).click()]).then(([event]) => event)
   expect(download.suggestedFilename()).toBe('invoice-INV-HQ-2026-000009.pdf')
   expect(pdfFetched).toBe(1)
+  const voucher = await Promise.all([page.waitForEvent('download'), card.getByRole('button', { name: /تحميل سند القبض|Download receipt voucher/ }).click()]).then(([event]) => event)
+  expect(voucher.suggestedFilename()).toBe('receipt-RV-HQ-2026-000044.pdf')
+  expect(receiptFetched).toBe(1)
 
   // The assistant is asked to answer briefly and ask whether anything should change.
   await expect(page.getByText('تم التحصيل. هل تريد تعديل أي تفصيلة؟')).toBeVisible()

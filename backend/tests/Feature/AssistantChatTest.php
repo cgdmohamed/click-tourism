@@ -933,6 +933,8 @@ class AssistantChatTest extends TestCase
         $this->assertSame('confirmed', $done['status']);
         $this->assertSame(['entity' => 'invoice', 'id' => $invoice->public_id], $done['result']);
         $this->assertSame(['saved' => 1, 'failed' => 0], $done['attached']);
+        $this->assertCount(1, $done['receipts']);
+        $this->assertSame(Payment::query()->firstOrFail()->public_id, $done['receipts'][0]['id']);
         $this->assertSame(60000, (int) $invoice->fresh()->outstanding_minor);
         $this->assertSame(1, Payment::query()->where('status', 'posted')->count());
         $stored = Attachment::query()->where('attachable_type', 'invoice')->where('attachable_id', $invoice->id)->firstOrFail();
