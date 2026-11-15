@@ -352,6 +352,12 @@ export type CashAccountRow = {
   kind: string
   currency: string
   balance_minor: number
+  /** The balance in the base currency: booked for base accounts, native at the latest recorded rate for foreign ones. */
+  approx_base_minor?: number
+  rate?: string | null
+  rate_date?: string | null
+  rate_missing?: boolean
+  other_currency_base_minor?: number
 }
 
 export type AgingBucket = {
@@ -412,6 +418,10 @@ export type DashboardSummary = {
   recent_payments: Payment[]
   cash_balance_minor: number | null
   cash_balance_mixed_currency: boolean
+  /** The cash total includes foreign accounts converted at the latest recorded rates. */
+  cash_balance_approximate?: boolean
+  cash_rates_as_of?: string | null
+  cash_rates_missing?: string[]
   cash_accounts: CashAccountRow[]
   ar_outstanding_minor: number
   ap_outstanding_minor: number

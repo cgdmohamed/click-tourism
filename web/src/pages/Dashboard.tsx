@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Chart as ChartJS, ArcElement, CategoryScale, Legend, LineElement, LinearScale, PointElement, Tooltip } from 'chart.js'
@@ -33,6 +33,7 @@ function FinancialMetric({
   locale,
   icon,
   hint,
+  approximate = false,
   warn = false,
   href,
   size = 'secondary',
@@ -43,7 +44,9 @@ function FinancialMetric({
   currency?: string
   locale: 'ar' | 'en'
   icon: IconName
-  hint?: string
+  hint?: ReactNode
+  /** The value is an estimate: shown with a leading ≈. */
+  approximate?: boolean
   /** Highlights a non-zero value that needs attention (overdue, unmatched). */
   warn?: boolean
   href?: string
@@ -64,15 +67,43 @@ function FinancialMetric({
       </div>
       <div className={`money-fit leading-tight ${primary ? 'text-[1.875rem]' : 'text-[1.375rem]'} ${isZero ? 'font-medium' : 'font-bold'} ${tone}`}>
         {currency ? (
-          <Money amountMinor={value} currency={currency} className={value !== null && value !== undefined && value < 0 ? undefined : tone} />
+          <>
+            {approximate ? <span aria-hidden="true" className="me-1 text-text-subtle">≈</span> : null}
+            <Money amountMinor={value} currency={currency} className={value !== null && value !== undefined && value < 0 ? undefined : tone} />
+          </>
         ) : (
           <span className="tabular" dir="ltr" title={count}>{count}</span>
         )}
       </div>
-      <p className="min-h-[1.25rem] text-small leading-snug text-text-subtle">{hint ?? '\u00a0'}</p>
+      <div className="min-h-[1.25rem] text-small leading-snug text-text-subtle">{hint ?? '\u00a0'}</div>
     </div>
   )
   return href ? <Link to={href} className={`block h-full min-w-0 rounded-16 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-1-accent ${className ?? ''}`}>{body}</Link> : <div className={className}>{body}</div>
+}
+
+/** What stands behind the cash total: the foreign balances, the rate date, and any currency that has no rate yet. */
+function CashHint({ data, locale, fallback }: { data: DashboardSummary; locale: 'ar' | 'en'; fallback: string }) {
+  if (!data.cash_balance_approximate) return <>{fallback}</>
+  const foreign = new Map<string, number>()
+  for (const account of data.cash_accounts) {
+    if (account.currency !== data.currency) foreign.set(account.currency, (foreign.get(account.currency) ?? 0) + account.balance_minor)
+  }
+  const parts = [...foreign.entries()].filter(([, minor]) => minor !== 0).map(([currency, minor]) => formatMoney(minor, currency, locale))
+  const missing = data.cash_rates_missing ?? []
+  return (
+    <>
+      <span>
+        {locale === 'ar' ? 'تقريبي بآخر أسعار الصرف المسجلة' : 'Approximate, at the latest recorded rates'}
+        {data.cash_rates_as_of ? ` (${formatDate(data.cash_rates_as_of, locale)})` : ''}
+      </span>
+      {parts.length > 0 ? <span className="block" dir="ltr">{parts.join(' · ')}</span> : null}
+      {missing.length > 0 ? (
+        <span className="block text-warning-text">
+          {locale === 'ar' ? `لا يوجد سعر صرف لـ ${missing.join('، ')}: تُحسب بقيمتها المسجلة` : `No rate for ${missing.join(', ')}: counted at the booked value`}
+        </span>
+      ) : null}
+    </>
+  )
 }
 
 /** Placeholder with the same grid and card shapes as the loaded KPIs. */
@@ -213,7 +244,7 @@ export default function Dashboard() {
         <>
           <section aria-label={t('financialKPIs')} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2 xl:grid-cols-3">
-              <FinancialMetric size="primary" icon="wallet" label={t('cashBankBalances')} value={data.cash_balance_minor} currency={data.currency} locale={locale} href="/treasury" hint={data.cash_balance_mixed_currency ? (locale === 'ar' ? 'عملات مختلطة: راجع أرصدة الحسابات' : 'Mixed currencies: review account balances') : baseNote} />
+              <FinancialMetric size="primary" icon="wallet" label={t('cashBankBalances')} value={data.cash_balance_minor} currency={data.currency} locale={locale} href="/treasury" approximate={data.cash_balance_approximate === true} hint={<CashHint data={data} locale={locale} fallback={baseNote} />} />
               <FinancialMetric size="primary" icon="users" label={t('outstandingReceivables')} value={data.ar_outstanding_minor} currency={data.currency} locale={locale} href="/invoices" hint={locale === 'ar' ? 'فواتير العملاء الصادرة وغير المسددة' : 'Open issued customer invoices'} />
               <FinancialMetric size="primary" className="min-[560px]:col-span-2 xl:col-span-1" icon="truck" label={t('outstandingPayables')} value={data.ap_outstanding_minor} currency={data.currency} locale={locale} href="/invoices" hint={locale === 'ar' ? 'فواتير الموردين غير المسددة' : 'Open supplier invoices'} />
             </div>
