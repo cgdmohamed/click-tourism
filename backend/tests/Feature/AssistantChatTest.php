@@ -39,6 +39,7 @@ use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -596,6 +597,19 @@ class AssistantChatTest extends TestCase
         $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $this->assertStringContainsString('RENT-T = الإيجار / Rent', $system);
 
+    }
+
+    public function test_the_prompt_carries_ready_made_dates_for_relative_phrases(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-15 10:00:00'));
+        $this->script([$this->finalReply('ok')]);
+        $this->chat('hello')->assertOk();
+
+        $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->assertStringContainsString('in 10 days = 2026-11-25', $system);
+        $this->assertStringContainsString('end of this month = 2026-11-30', $system);
+        $this->assertStringContainsString('end of next month = 2026-12-31', $system);
+        $this->assertStringContainsString('next Saturday = 2026-11-21', $system);
     }
 
     public function test_a_loose_account_name_or_a_single_account_is_resolved_without_asking(): void

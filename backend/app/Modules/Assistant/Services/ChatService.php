@@ -16,6 +16,7 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Treasury\Models\CashAccount;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -304,8 +305,39 @@ class ChatService
 
         return $prompt."\n\nContext: interface language = {$locale}; today = ".now()->toDateString()
             .'; active branch id = '.($branch?->public_id ?? 'none').'. Tool calls always use this branch.'
+            .$this->datesLine()
             .$this->paymentAccountsLine($user, $branch)
             .$this->expenseCategoriesLine($user);
+    }
+
+    /**
+     * Ready-made dates for the phrases people use ("this month", "in 10 days", "next Saturday"), worked out here
+     * because models slip when they count days. Weeks start on Saturday, as in Egypt.
+     */
+    private function datesLine(): string
+    {
+        $t = now()->startOfDay();
+        $fmt = fn (Carbon $d) => $d->toDateString();
+        $next = fn (int $dow) => $fmt($t->copy()->next($dow));
+        $pairs = [
+            'today' => $fmt($t).' ('.$t->englishDayOfWeek.')',
+            'tomorrow' => $fmt($t->copy()->addDay()),
+            'in 3 days' => $fmt($t->copy()->addDays(3)),
+            'in 7 days / next week' => $fmt($t->copy()->addDays(7)),
+            'in 10 days' => $fmt($t->copy()->addDays(10)),
+            'in 14 days' => $fmt($t->copy()->addDays(14)),
+            'in 30 days' => $fmt($t->copy()->addDays(30)),
+            'end of this month' => $fmt($t->copy()->endOfMonth()),
+            'start of next month' => $fmt($t->copy()->addMonthNoOverflow()->startOfMonth()),
+            'end of next month' => $fmt($t->copy()->addMonthNoOverflow()->endOfMonth()),
+            'same day next month' => $fmt($t->copy()->addMonthNoOverflow()),
+            'next Saturday' => $next(Carbon::SATURDAY),
+            'next Thursday' => $next(Carbon::THURSDAY),
+            'next Friday' => $next(Carbon::FRIDAY),
+        ];
+
+        return ' Dates (use these for relative phrases, never ask the user for a date they already gave in words): '
+            .collect($pairs)->map(fn ($v, $k) => "$k = $v")->implode('; ').'.';
     }
 
     /** The names of the branch's cash and bank accounts, so the model never has to ask which exist. */
