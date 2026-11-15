@@ -60,7 +60,7 @@ export function AssistantChat({ onExit }: { onExit: () => void }) {
 }
 
 /** Records the assistant creates for the user's request, after which it should carry on with that request. */
-const CONTINUES_AFTER = ['erp_customer_create', 'erp_supplier_create']
+const CONTINUES_AFTER = ['erp_customer_create', 'erp_supplier_create', 'erp_tour_package_create']
 
 /** After these the assistant answers in a sentence and asks whether any detail should change. */
 const ASKS_AFTER = ['erp_invoice_collect', 'erp_payment_cancel']

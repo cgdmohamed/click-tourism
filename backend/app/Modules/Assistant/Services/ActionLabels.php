@@ -32,6 +32,8 @@ final class ActionLabels
         'erp_journal_draft_delete' => ['ar' => 'حذف مسودة قيد', 'en' => 'Delete a draft journal entry'],
         'erp_payment_record' => ['ar' => 'تسجيل تحصيل من عميل', 'en' => 'Record a customer payment'],
         'erp_invoice_collect' => ['ar' => 'تحصيل على فاتورة', 'en' => 'Collect on an invoice'],
+        'erp_tour_package_create' => ['ar' => 'إنشاء باقة رحلة', 'en' => 'Create a tour package'],
+        'erp_tour_departure_create' => ['ar' => 'إضافة موعد سفر لباقة', 'en' => 'Add a departure to a package'],
         'erp_payment_cancel' => ['ar' => 'إلغاء تحصيل مسجَّل', 'en' => 'Cancel a recorded payment'],
         'erp_supplier_payment_record' => ['ar' => 'صرف دفعة لمورد', 'en' => 'Pay a supplier'],
         'erp_export_queue' => ['ar' => 'تصدير تقرير', 'en' => 'Export a report'],
@@ -55,6 +57,8 @@ final class ActionLabels
         'erp_journal_post' => ['ar' => 'سيُرحَّل القيد ولا يمكن تعديله بعد ذلك، ويمكن عكسه فقط.', 'en' => 'The entry is posted and can no longer be edited, only reversed.'],
         'erp_journal_draft_delete' => ['ar' => 'ستُحذف المسودة نهائياً ولا يمكن استرجاعها.', 'en' => 'The draft is deleted for good and cannot be recovered.'],
         'erp_payment_record' => ['ar' => 'سيُسجَّل التحصيل في الحساب المحدد ويُرحَّل إلى القيود المحاسبية.', 'en' => 'The payment is recorded in the chosen account and posted to the ledger.'],
+        'erp_tour_package_create' => ['ar' => 'ستُضاف الباقة إلى قائمة الرحلات المتاحة للبيع، ثم يمكن إضافة مواعيد سفر لها.', 'en' => 'The package is added to the trips on sale; departures can then be added to it.'],
+        'erp_tour_departure_create' => ['ar' => 'سيُضاف موعد السفر بعدد المقاعد المحدد ويصبح متاحاً للحجز.', 'en' => 'The departure is added with its seats and becomes open for booking.'],
         'erp_invoice_collect' => ['ar' => 'سيُسجَّل إيصال التحصيل ويُطبَّق على الفاتورة ويُرحَّل إلى القيود، ثم تُرفق الصور المحددة بالفاتورة.', 'en' => 'The receipt is recorded, applied to the invoice and posted to the ledger, then the chosen images are stored with the invoice.'],
         'erp_payment_cancel' => ['ar' => 'سيُلغى التحصيل وتُعكس قيوده، ويعود المبلغ مستحقاً على الفاتورة.', 'en' => 'The payment is cancelled and its entries reversed; the amount becomes due on the invoice again.'],
         'erp_supplier_payment_record' => ['ar' => 'ستُصرف الدفعة من الحساب المحدد وتُرحَّل إلى القيود المحاسبية.', 'en' => 'The payment is made from the chosen account and posted to the ledger.'],
@@ -72,11 +76,21 @@ final class ActionLabels
         'payee_name' => ['ar' => 'المستفيد', 'en' => 'Payee'], 'start_date' => ['ar' => 'تاريخ البدء', 'en' => 'Start date'], 'end_date' => ['ar' => 'تاريخ الانتهاء', 'en' => 'End date'],
         'pax_adults' => ['ar' => 'عدد البالغين', 'en' => 'Adults'], 'pax_children' => ['ar' => 'عدد الأطفال', 'en' => 'Children'],
         '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__booking' => ['ar' => 'الحجز المرتبط', 'en' => 'Linked booking'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
-        '__invoice' => ['ar' => 'الفاتورة', 'en' => 'Invoice'], '__amount' => ['ar' => 'المبلغ المحصَّل', 'en' => 'Amount collected'], '__when' => ['ar' => 'تاريخ التحصيل', 'en' => 'Collected on'], '__rate' => ['ar' => 'سعر الصرف', 'en' => 'Exchange rate'], '__outstanding' => ['ar' => 'المتبقي بعد التحصيل', 'en' => 'Remaining after this'], '__attach' => ['ar' => 'سيُرفق بالفاتورة', 'en' => 'Will be attached'],
+        '__invoice' => ['ar' => 'الفاتورة', 'en' => 'Invoice'], '__package' => ['ar' => 'الباقة', 'en' => 'Package'],
+        'execution_type' => ['ar' => 'نوع التنفيذ', 'en' => 'Type'], 'destination' => ['ar' => 'الوجهة', 'en' => 'Destination'], 'base_price_minor' => ['ar' => 'سعر البيع للفرد', 'en' => 'Selling price per person'], 'estimated_cost_minor' => ['ar' => 'التكلفة المتوقعة للفرد', 'en' => 'Expected cost per person'],
+        'starts_on' => ['ar' => 'تاريخ السفر', 'en' => 'Departure date'], 'ends_on' => ['ar' => 'تاريخ العودة', 'en' => 'Return date'], 'capacity' => ['ar' => 'عدد المقاعد', 'en' => 'Seats'], '__amount' => ['ar' => 'المبلغ المحصَّل', 'en' => 'Amount collected'], '__when' => ['ar' => 'تاريخ التحصيل', 'en' => 'Collected on'], '__rate' => ['ar' => 'سعر الصرف', 'en' => 'Exchange rate'], '__outstanding' => ['ar' => 'المتبقي بعد التحصيل', 'en' => 'Remaining after this'], '__attach' => ['ar' => 'سيُرفق بالفاتورة', 'en' => 'Will be attached'],
         '__record' => ['ar' => 'السجل', 'en' => 'Record'], '__status' => ['ar' => 'حالته الآن', 'en' => 'Current status'], '__total' => ['ar' => 'إجمالي المبلغ', 'en' => 'Total amount'], '__paid' => ['ar' => 'المصروف سابقاً', 'en' => 'Already paid'], '__note' => ['ar' => 'البيان', 'en' => 'Note'],
         'report' => ['ar' => 'التقرير', 'en' => 'Report'], 'format' => ['ar' => 'الصيغة', 'en' => 'Format'], 'language' => ['ar' => 'اللغة', 'en' => 'Language'], 'method' => ['ar' => 'طريقة الدفع', 'en' => 'Method'],
         'paid_at' => ['ar' => 'تاريخ الدفع', 'en' => 'Paid on'], 'reason' => ['ar' => 'السبب', 'en' => 'Reason'], 'params' => ['ar' => 'عوامل التصفية', 'en' => 'Filters'],
         'amount_minor' => ['ar' => 'المبلغ', 'en' => 'Amount'], 'lines' => ['ar' => 'البنود', 'en' => 'Lines'], 'items' => ['ar' => 'البنود', 'en' => 'Items'],
+    ];
+
+    /** Friendly names for coded values shown on a card (tour package kinds). */
+    private const WORDS = [
+        'category:umrah' => ['ar' => 'عمرة', 'en' => 'Umrah'], 'category:hajj' => ['ar' => 'حج', 'en' => 'Hajj'], 'category:domestic' => ['ar' => 'سياحة داخلية', 'en' => 'Domestic'],
+        'category:international' => ['ar' => 'سياحة خارجية', 'en' => 'International'], 'category:day_trip' => ['ar' => 'رحلة يوم', 'en' => 'Day trip'],
+        'category:corporate' => ['ar' => 'شركات', 'en' => 'Corporate'], 'category:other' => ['ar' => 'أخرى', 'en' => 'Other'],
+        'execution_type:fixed' => ['ar' => 'موعد سفر ثابت', 'en' => 'Fixed departures'], 'execution_type:private' => ['ar' => 'برنامج خاص', 'en' => 'Private program'], 'execution_type:standalone' => ['ar' => 'خدمة منفردة', 'en' => 'Standalone'],
     ];
 
     private const SERVICES = [
@@ -97,7 +111,7 @@ final class ActionLabels
         $l = $locale === 'en' ? 'en' : 'ar';
         $currency = strtoupper((string) ($payload['currency'] ?? ''));
         $rows = [];
-        foreach (['__record', '__invoice', '__status', '__total', '__amount', '__rate', '__when', '__outstanding', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment', '__attach'] as $key) {
+        foreach (['__record', '__package', '__invoice', '__status', '__total', '__amount', '__rate', '__when', '__outstanding', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment', '__attach'] as $key) {
             if (isset($payload[$key])) {
                 $rows[] = ['label' => self::FIELDS[$key][$l], 'value' => (string) $payload[$key]];
             }
@@ -110,7 +124,10 @@ final class ActionLabels
             if (is_array($value)) {
                 $value = collect($value)->map(fn ($v, $k) => $k.' = '.$v)->implode('، ');
             }
-            $rows[] = ['label' => $label, 'value' => $key === 'amount_minor' ? self::money((int) $value, $currency) : (string) (is_bool($value) ? ($value ? 'yes' : 'no') : $value)];
+            $text = in_array($key, ['amount_minor', 'base_price_minor', 'estimated_cost_minor'], true)
+                ? self::money((int) $value, $currency)
+                : (string) (self::WORDS[$key.':'.$value][$l] ?? (is_bool($value) ? ($value ? 'yes' : 'no') : $value));
+            $rows[] = ['label' => $label, 'value' => $text];
         }
         if (isset($payload['__allocation'])) {
             $rows[] = ['label' => $l === 'ar' ? 'التخصيص' : 'Allocation', 'value' => $payload['__allocation'] === 'booking'

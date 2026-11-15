@@ -91,9 +91,25 @@ class ProviderManager
         return null;
     }
 
-    /** Persisted whole-number override of assistant.<key>, else config('assistant.<key>') (env). */
+    /** @var array<string, int> limits forced for the rest of this process (the evaluation command), above any saved setting */
+    private static array $forced = [];
+
+    /** Force the effective limit of one key until restored; null removes the force. Never read from a request. */
+    public static function forceLimit(string $key, ?int $value): void
+    {
+        if ($value === null) {
+            unset(self::$forced[$key]);
+        } else {
+            self::$forced[$key] = $value;
+        }
+    }
+
+    /** The forced limit, else the persisted whole-number override of assistant.<key>, else config('assistant.<key>') (env). */
     public function limit(string $key): int
     {
+        if (isset(self::$forced[$key])) {
+            return self::$forced[$key];
+        }
         $stored = $this->settings->get('assistant', $key);
         $value = $stored !== null && ctype_digit($stored) ? (int) $stored : 0;
 

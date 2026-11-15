@@ -116,3 +116,10 @@ The header toggle turns the application into a full-screen chat; the sidebar lis
 ## Assistant actions (ADR-0023)
 
 The assistant can prepare: create a lead, update a lead's stage or add a note, create a customer or supplier, and draft a customer invoice, an expense or a booking. It only shows a confirmation card; the user presses "Confirm and run" and the request then runs through the normal API route as that user (their permissions and branch). Records created this way show an **AI** badge (`created_via = assistant`). There is no setting for it: a user sees an action only when they hold the underlying permission, and `assistant.enabled = false` switches everything off. Drafts are never posted or approved by the assistant. Pending cards expire after 15 minutes. Audit: `assistant.action_proposed|executed|failed|rejected`.
+
+
+## Measuring the assistant (ADR-0036)
+
+`php artisan assistant:eval` sends a fixed set of realistic requests (`backend/resources/assistant/evals/scenarios.json`) through the real chat service with the configured provider, as an existing user (`--user`, default `admin@example.com`), against the current data, and checks what came back: the tools called, the card prepared and its values (for example that "35 ألف" became 3,500,000 minor units), whether it asked with a form instead of guessing, and that unsafe requests are refused. Each scenario runs in a transaction that is rolled back, so nothing is created.
+
+Run it by hand before and after changing the system prompt (`backend/resources/assistant/system-prompt.vN.md`, selected by `config/assistant.php`), the model or the tools, and compare the score. It costs tokens (one chat turn per scenario) and needs the assistant switched on with a key. `--only=<text>` runs the scenarios whose id contains the text; `--min=<percent>` makes the command exit with an error below that score, for a release check. Add a scenario whenever a real conversation goes wrong.

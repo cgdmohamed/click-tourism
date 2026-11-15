@@ -180,6 +180,22 @@ final class ActionCatalogue
                     'attachment_category' => ['type' => 'string', 'enum' => ['payment_receipt', 'bank_transfer', 'other']],
                 ]],
             ],
+            'erp_tour_package_create' => [
+                'permission' => 'bookings.create', 'method' => 'POST', 'route' => '/tour-packages', 'entity' => 'tour_package', 'model' => null, 'marks' => false, 'risk' => 'create',
+                'description' => 'Prepare a NEW tour package: a trip the company sells (Umrah, Hajj, domestic, international, day trip, corporate). This is what "create an Umrah trip worth 35,000" means; it is NOT a booking for a customer (use erp_booking_draft_create for that). `base_price_minor` is the selling price per person in minor units; `estimated_cost_minor` the expected cost per person (0 when unknown). A `fixed` package has scheduled departures, added next with erp_tour_departure_create.',
+                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['name', 'category', 'base_price_minor'], 'properties' => [
+                    'name' => $str(200), 'category' => ['type' => 'string', 'enum' => ['umrah', 'hajj', 'domestic', 'international', 'day_trip', 'corporate', 'other']],
+                    'execution_type' => ['type' => 'string', 'enum' => ['fixed', 'private', 'standalone']], 'destination' => $str(200), 'description' => $str(2000),
+                    'currency' => $currency, 'base_price_minor' => ['type' => 'integer', 'minimum' => 0], 'estimated_cost_minor' => ['type' => 'integer', 'minimum' => 0],
+                ]],
+            ],
+            'erp_tour_departure_create' => [
+                'permission' => 'bookings.create', 'method' => 'POST', 'route' => '/tour-packages/{id}/departures', 'entity' => 'tour_package', 'model' => null, 'marks' => false, 'risk' => 'create',
+                'description' => 'Prepare a scheduled DEPARTURE (date and seats) for a fixed-departure tour package. `package` is the package public id, code or exact name (the id of a package just created is in the message you received). `capacity` is the number of seats.',
+                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['package', 'starts_on', 'capacity'], 'properties' => [
+                    'package' => $str(200), 'starts_on' => $date, 'ends_on' => $date, 'capacity' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000],
+                ]],
+            ],
             'erp_supplier_payment_record' => [
                 'permission' => 'supplier_payments.create', 'method' => 'POST', 'route' => '/supplier-payments', 'entity' => 'supplier_payment', 'model' => null, 'marks' => false, 'risk' => 'pay',
                 'description' => 'Prepare PAYING a supplier out of a cash or bank account. `supplier_id` is the supplier public id from a read tool, `payment_account` the account name. Amount in integer minor units. It is posted to the ledger once confirmed.',
