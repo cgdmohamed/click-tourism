@@ -452,20 +452,17 @@ class ActionService
 
     /** The active cash or bank account of this branch with exactly this name; otherwise the user is told which exist. */
     /**
-     * A customer, supplier or lead as the confirmation card prints it. When another record of the same
-     * kind carries the same name, say so and add the branch, so a wrong "first Ahmed" is visible
-     * before the user presses Confirm.
+     * A customer, supplier or lead as the confirmation card prints it. Customers and suppliers carry
+     * their unique code ("Ahmed · C-0007"), so a wrong "first Ahmed" is visible before Confirm. A lead
+     * has no code: when another lead shares the name, the card says so and adds the branch.
      */
     private function partyLabel(Model $party): string
     {
         $name = (string) ($party->name_en ?? null ?: $party->name_ar ?? null ?: $party->name ?? '');
-        $others = $party::query()->where('id', '!=', $party->id)->where(function ($q) use ($party) {
-            foreach (['name', 'name_ar', 'name_en'] as $column) {
-                if (array_key_exists($column, $party->getAttributes()) && $party->{$column} !== null && $party->{$column} !== '') {
-                    $q->orWhere($column, $party->{$column});
-                }
-            }
-        })->count();
+        if (! empty($party->code)) {
+            return $name.' · '.$party->code;
+        }
+        $others = $party::query()->where('id', '!=', $party->id)->where('name', $party->name)->count();
 
         return $others === 0 ? $name : sprintf('%s (%s · %d)', $name, $party->branch?->name_ar ?: $party->branch?->code, $others + 1);
     }

@@ -42,6 +42,7 @@ class SearchController extends ApiController
                     $query->where('name_ar', 'like', $like)
                         ->orWhere('name_en', 'like', $like)
                         ->orWhere('phone', 'like', $like)
+                        ->orWhere('code', 'like', $like)
                         ->orWhere('email', 'like', $like);
                 })
                 ->orderBy('name_ar')
@@ -51,7 +52,7 @@ class SearchController extends ApiController
                     'id' => $customer->public_id,
                     'title_ar' => $customer->name_ar,
                     'title_en' => $customer->name_en,
-                    'subtitle' => $this->subtitle($customer->phone, $customer->email),
+                    'subtitle' => trim($customer->code.' · '.$this->subtitle($customer->phone, $customer->email), ' ·'),
                 ])
                 ->all();
 
@@ -67,6 +68,7 @@ class SearchController extends ApiController
                     $query->where('name_ar', 'like', $like)
                         ->orWhere('name_en', 'like', $like)
                         ->orWhere('phone', 'like', $like)
+                        ->orWhere('code', 'like', $like)
                         ->orWhere('email', 'like', $like);
                 })
                 ->orderBy('name_ar')
@@ -76,7 +78,7 @@ class SearchController extends ApiController
                     'id' => $supplier->public_id,
                     'title_ar' => $supplier->name_ar,
                     'title_en' => $supplier->name_en,
-                    'subtitle' => $this->subtitle($supplier->phone, $supplier->email),
+                    'subtitle' => trim($supplier->code.' · '.$this->subtitle($supplier->phone, $supplier->email), ' ·'),
                 ])
                 ->all();
 

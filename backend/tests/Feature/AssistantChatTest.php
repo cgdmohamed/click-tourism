@@ -7,6 +7,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Accounting\Services\PostingLine;
 use App\Modules\Accounting\Services\PostingRequest;
 use App\Modules\Accounting\Services\PostingService;
+use App\Modules\Assistant\Actions\AskUserForm;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Models\AssistantConversation;
 use App\Modules\Assistant\Models\AssistantUpload;
@@ -183,7 +184,7 @@ class AssistantChatTest extends TestCase
         $first = $this->sent()[0];
         $this->assertFalse($first['store']);
         $this->assertSame('auto', $first['tool_choice']);
-        $this->assertCount(15, $first['tools']);
+        $this->assertCount(16, $first['tools']); // 15 read tools + the ask-the-user form tool
         $this->assertSame('system', $first['messages'][0]['role']);
         $this->assertStringContainsString('NOTHING runs until the user presses Confirm', $first['messages'][0]['content']);
     }
@@ -464,7 +465,7 @@ class AssistantChatTest extends TestCase
         return Invoice::query()->where('public_id', $done['result']['id'])->firstOrFail();
     }
 
-    public function test_a_card_for_a_customer_whose_name_is_shared_says_so(): void
+    public function test_a_customer_card_prints_the_unique_code_so_same_names_can_be_told_apart(): void
     {
         $this->grant('invoices.create', 'invoices.view');
         $first = $this->customer();
@@ -473,16 +474,16 @@ class AssistantChatTest extends TestCase
 
         $card = $this->prepare('erp_invoice_draft_create', ['customer_id' => $first->public_id, 'issue_date' => now()->toDateString(), 'lines' => $line]);
 
-        $this->assertStringContainsString('Nile Travel Customer (', json_encode($card, JSON_UNESCAPED_UNICODE));
-        $this->assertStringContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString(' · '.$first->fresh()->code, json_encode($card, JSON_UNESCAPED_UNICODE));
     }
 
-    public function test_a_unique_customer_name_is_printed_without_a_warning(): void
+    public function test_two_customers_with_the_same_name_get_different_codes(): void
     {
-        $this->grant('invoices.create', 'invoices.view');
-        $card = $this->prepare('erp_invoice_draft_create', ['customer_id' => $this->customer()->public_id, 'issue_date' => now()->toDateString(), 'lines' => [['description' => 'Umrah', 'quantity' => 1, 'unit_price_minor' => 100000]]]);
+        $one = $this->customer();
+        $two = $this->customer($this->branch);
 
-        $this->assertStringNotContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
+        $this->assertNotSame($one->fresh()->code, $two->fresh()->code);
+        $this->assertMatchesRegularExpression('/^C-\d{4}$/', $one->fresh()->code);
     }
 
     public function test_a_supplier_payment_card_flags_a_supplier_whose_name_is_shared(): void
@@ -494,8 +495,47 @@ class AssistantChatTest extends TestCase
 
         $card = $this->prepare('erp_supplier_payment_record', ['supplier_id' => $first->public_id, 'payment_account' => 'main cash', 'amount_minor' => 5000, 'currency' => 'EGP']);
 
-        $this->assertStringContainsString('Test Supplier (', json_encode($card, JSON_UNESCAPED_UNICODE));
-        $this->assertStringContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString(' · '.$first->fresh()->code, json_encode($card, JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_the_model_can_ask_the_user_with_a_form_of_radio_checkbox_and_text(): void
+    {
+        $this->script([
+            $this->toolCallReply([[AskUserForm::TOOL, [
+                'title' => 'Which <b>Ahmed</b>?',
+                'fields' => [
+                    ['id' => 'customer', 'label' => 'Which customer?', 'type' => 'radio', 'options' => [
+                        ['id' => 'C-0001', 'label' => 'Ahmed Ali', 'hint' => 'Main branch'],
+                        ['id' => 'C-0002', 'label' => 'Ahmed Samy'],
+                    ]],
+                    ['id' => 'extras', 'label' => 'Add which services?', 'type' => 'checkbox', 'options' => [['id' => 'visa', 'label' => 'Visa'], ['id' => 'flight', 'label' => 'Flight']]],
+                    ['id' => 'note', 'label' => 'Any note?', 'type' => 'text', 'required' => false],
+                ],
+            ]]]),
+            $this->finalReply('Please choose.'),
+        ]);
+
+        $form = $this->chat('invoice for ahmed')->assertOk()->json('data.form');
+
+        $this->assertSame('Which Ahmed?', $form['title']);
+        $this->assertSame(['radio', 'checkbox', 'text'], array_column($form['fields'], 'type'));
+        $this->assertSame('C-0002', $form['fields'][0]['options'][1]['id']);
+        $this->assertFalse($form['fields'][2]['required']);
+    }
+
+    public function test_a_form_with_one_option_is_refused_and_the_model_is_told_why(): void
+    {
+        $this->script([
+            $this->toolCallReply([[AskUserForm::TOOL, ['fields' => [
+                ['id' => 'a', 'label' => 'Pick', 'type' => 'radio', 'options' => [['id' => 'x', 'label' => 'Only one']]],
+            ]]]]),
+            $this->finalReply('Which one do you mean?'),
+        ]);
+
+        $reply = $this->chat('pick')->assertOk()->json('data');
+
+        $this->assertNull($reply['form']);
+        $this->assertStringContainsString('at least two', $this->lastToolMessages()[0]['content']);
     }
 
     public function test_the_system_prompt_tells_the_model_to_ask_when_a_name_is_ambiguous(): void
@@ -1281,7 +1321,7 @@ class AssistantChatTest extends TestCase
     {
         config()->set('assistant.max_tool_result_bytes', 2000);
         for ($i = 0; $i < 30; $i++) {
-            $this->customer()->replicate(['public_id'])->fill(['name_en' => 'Bulk Customer '.str_repeat('x', 40).$i, 'phone' => '0100000'.str_pad((string) $i, 4, '0', STR_PAD_LEFT)])->save();
+            $this->customer()->replicate(['public_id', 'code'])->fill(['name_en' => 'Bulk Customer '.str_repeat('x', 40).$i, 'phone' => '0100000'.str_pad((string) $i, 4, '0', STR_PAD_LEFT)])->save();
         }
         $this->script([
             $this->toolCallReply([['erp_customers_list', []]]),

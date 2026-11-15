@@ -516,6 +516,10 @@ paths:
                         type: array
                         description: 'Confirmation cards of the actions prepared in this turn (ADR-0023); nothing is saved until the user confirms'
                         items: { $ref: '#/components/schemas/AssistantActionCard' }
+                      form:
+                        nullable: true
+                        description: 'A short form the assistant asks the user to answer instead of guessing (ADR-0029); the answer is sent back as the next user message'
+                        allOf: [{ $ref: '#/components/schemas/AssistantForm' }]
                       usage:
                         type: object
                         properties:
@@ -6317,6 +6321,36 @@ components:
         started_at: { type: [string, 'null'], format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
         expires_at: { type: [string, 'null'], format: date-time }
+    AssistantForm:
+      type: object
+      required: [fields]
+      properties:
+        title: { type: string, maxLength: 100 }
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: object
+            required: [id, label, type, required]
+            properties:
+              id: { type: string, maxLength: 30 }
+              label: { type: string, maxLength: 160 }
+              type: { type: string, enum: [radio, checkbox, text] }
+              required: { type: boolean }
+              placeholder: { type: string, maxLength: 100 }
+              options:
+                type: array
+                minItems: 2
+                maxItems: 8
+                description: 'radio and checkbox only'
+                items:
+                  type: object
+                  required: [id, label]
+                  properties:
+                    id: { type: string, maxLength: 64 }
+                    label: { type: string, maxLength: 120 }
+                    hint: { type: string, maxLength: 120 }
     AssistantActionCard:
       type: object
       description: 'An action the assistant prepared (ADR-0023, widened by ADR-0027)'
@@ -7792,6 +7826,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        code: { type: string, example: C-0001, description: 'Unique short code generated on creation (ADR-0029); searchable' }
         type: { type: string, enum: [individual, company] }
         name_ar: { type: string }
         name_en: { type: string }
@@ -7818,6 +7853,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        code: { type: string, example: S-0001, description: 'Unique short code generated on creation (ADR-0029); searchable' }
         category: { type: string }
         name_ar: { type: string }
         name_en: { type: string }

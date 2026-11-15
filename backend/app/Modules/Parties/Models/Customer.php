@@ -4,12 +4,19 @@ namespace App\Modules\Parties\Models;
 
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
+use App\Support\HasPartyCode;
 use App\Support\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
 {
+    use HasPartyCode;
     use HasPublicId;
+
+    public function codePrefix(): string
+    {
+        return 'C';
+    }
 
     protected $fillable = [
         'type',
@@ -41,6 +48,7 @@ class Customer extends Model
     {
         return [
             'id' => $this->public_id,
+            'code' => $this->code,
             'created_via' => $this->created_via,
             'type' => $this->type,
             'name_ar' => $this->name_ar,

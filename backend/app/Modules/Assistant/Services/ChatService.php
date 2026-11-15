@@ -3,6 +3,7 @@
 namespace App\Modules\Assistant\Services;
 
 use App\Modules\Assistant\Actions\ActionCatalogue;
+use App\Modules\Assistant\Actions\AskUserForm;
 use App\Modules\Assistant\Support\ChatResult;
 use App\Modules\Assistant\Support\OutputSanitizer;
 use App\Modules\Assistant\Support\ProviderException;
@@ -60,7 +61,8 @@ class ChatService
         $maxCalls = $this->providers->limit('max_tool_calls_per_turn');
         $options = ['model' => $this->providers->model(), 'max_output_tokens' => $this->providers->limit('max_output_tokens')];
         // Read tools for everyone; the actions the user may prepare are added by permission (ADR-0023).
-        $tools = [...$this->catalogue->modelTools(), ...$this->actionCatalogue->modelTools($user)];
+        $tools = [...$this->catalogue->modelTools(), ...$this->actionCatalogue->modelTools($user), AskUserForm::definition()];
+        $form = null;
         $actions = [];
 
         $conversation = [['role' => 'system', 'content' => $this->systemPrompt($locale, $branch)]];
@@ -116,6 +118,17 @@ class ChatService
                 ];
 
                 foreach ($reply->toolCalls as $call) {
+                    if ($call['name'] === AskUserForm::TOOL) {
+                        $shaped = AskUserForm::shape(json_decode((string) $call['arguments'], true), fn (string $t) => $redactor->restore($t));
+                        if ($shaped['form'] !== null && $form === null) {
+                            $form = $shaped['form'];
+                            $conversation[] = ['role' => 'tool', 'tool_call_id' => $call['id'], 'content' => 'The form is shown to the user. Write at most one short sentence and stop; their answer arrives as the next message.'];
+                        } else {
+                            $conversation[] = $this->toolMessage($call['id'], 'invalid_form', $shaped['error'] ?? 'Only one form per answer.');
+                        }
+
+                        continue;
+                    }
                     if ($this->actionCatalogue->has($call['name']) && $calls < $maxCalls) {
                         $calls++;
                         if ($onEvent !== null) {
@@ -189,6 +202,7 @@ class ChatService
             $rejected,
             $rounds,
             $actions,
+            $form,
         );
         $this->log($user, $branch, $locale, $status, $options['model'], $prompt, $completion, $executed, $toolErrors, $rejected, $rounds, $calls, count($files));
 
