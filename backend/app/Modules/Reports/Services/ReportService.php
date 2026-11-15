@@ -873,6 +873,7 @@ class ReportService
             ->map(function (CashAccount $ca) use ($branch, $currency, $today, &$ratesAsOf, &$ratesMissing) {
                 $native = $this->treasury->nativeBalance($ca, $branch);
                 $booked = $this->treasury->balance($ca, $branch);
+                $other = $this->treasury->otherCurrencyBaseBalance($ca, $branch);
                 $row = [
                     'id' => $ca->public_id,
                     'name_ar' => $ca->name_ar,
@@ -882,6 +883,9 @@ class ReportService
                     'balance_minor' => $native,
                     'base_balance_minor' => $booked,
                     'approx_base_minor' => $booked,
+                    // Carrying value (base currency) of postings in a currency other than the account's own.
+                    // Kept in the total at its booked value and flagged, never dropped.
+                    'other_currency_base_minor' => $other,
                     'rate' => null,
                     'rate_date' => null,
                     'rate_missing' => false,
@@ -891,7 +895,7 @@ class ReportService
                 }
                 try {
                     $snapshot = $this->fx->snapshot((string) $ca->currency_code, $today, $currency, 'any');
-                    $row['approx_base_minor'] = $this->fx->convert(new Money($native, strtoupper((string) $ca->currency_code)), $currency, $snapshot['rate'])->amountMinor;
+                    $row['approx_base_minor'] = $this->fx->convert(new Money($native, strtoupper((string) $ca->currency_code)), $currency, $snapshot['rate'])->amountMinor + $other;
                     $row['rate'] = $snapshot['rate'];
                     $row['rate_date'] = $snapshot['date'];
                     $ratesAsOf = $ratesAsOf === null || $snapshot['date'] < $ratesAsOf ? $snapshot['date'] : $ratesAsOf;

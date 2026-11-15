@@ -357,6 +357,7 @@ export type CashAccountRow = {
   rate?: string | null
   rate_date?: string | null
   rate_missing?: boolean
+  other_currency_base_minor?: number
 }
 
 export type AgingBucket = {

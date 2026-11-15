@@ -138,6 +138,25 @@ class TreasuryService
     }
 
     /**
+     * Booked base-currency carrying value of the lines on this account that are NOT in the account's own
+     * currency (legacy base-currency postings on a foreign account, or lines with no currency). These are
+     * excluded from nativeBalance(), so a converted total must add them back instead of dropping them.
+     */
+    public function otherCurrencyBaseBalance(CashAccount $cashAccount, ?Branch $branch = null): int
+    {
+        $row = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->where('jl.account_id', $cashAccount->account_id)
+            ->where(fn ($query) => $query->whereNull('jl.currency_code')->orWhere('jl.currency_code', '!=', strtoupper($cashAccount->currency_code)))
+            ->when($branch, fn ($query) => $query->where('jl.branch_id', $branch->id))
+            ->selectRaw('COALESCE(SUM(jl.base_debit_minor), 0) as debit, COALESCE(SUM(jl.base_credit_minor), 0) as credit')
+            ->first();
+
+        return (int) $row->debit - (int) $row->credit;
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function transfer(array $data, Branch $branch, ?int $actorId = null): Transfer

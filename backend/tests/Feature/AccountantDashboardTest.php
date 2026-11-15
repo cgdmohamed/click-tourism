@@ -137,6 +137,25 @@ class AccountantDashboardTest extends TestCase
         $this->assertTrue(collect($data['cash_accounts'])->firstWhere('currency', 'EUR')['rate_missing']);
     }
 
+    public function test_base_currency_postings_on_a_foreign_account_are_kept_in_the_total_and_flagged(): void
+    {
+        $this->foreignCashAccount('1125', 'USD');
+        $this->receive('1125', 100000, 'USD', '48.5');
+        // Unrestricted ledger account (currency_code null), as register() permits: a base-currency posting lands on it.
+        $this->account('1125')->update(['currency_code' => null]);
+        $this->receive('1125', 20000, 'EGP', '1');
+        app(FxService::class)->upsertRate('USD', '50.0000000000', now()->toDateString());
+
+        $data = $this->summary()->json('data');
+
+        $usd = collect($data['cash_accounts'])->firstWhere('currency', 'USD');
+        $this->assertSame(100000, $usd['balance_minor']);
+        $this->assertSame(20000, $usd['other_currency_base_minor']);
+        // 1,000.00 USD at 50 plus the 200.00 EGP already booked on the same account.
+        $this->assertSame(5_020_000, $usd['approx_base_minor']);
+        $this->assertSame(5_020_000, $data['cash_balance_minor']);
+    }
+
     public function test_only_base_currency_cash_is_not_approximate(): void
     {
         $this->egpCashBox();
