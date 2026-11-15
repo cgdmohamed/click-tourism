@@ -50,12 +50,19 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+/** Signed-out screens: a stale session must not send the user away from them (a reset link would lose its token). */
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password']
+
+export function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiError>) => {
     if (error.response?.status === 401) {
       setToken(null)
-      if (!window.location.pathname.startsWith('/login')) {
+      if (!isPublicPath(window.location.pathname)) {
         window.location.assign('/login')
       }
     }

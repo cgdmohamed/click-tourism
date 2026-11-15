@@ -54,7 +54,7 @@ class BrandingController extends ApiController
         return $this->ok($this->payload($settings, $logo));
     }
 
-    /** @return array{company_name_ar: string, company_name_en: string, has_logo: bool, logo_version: ?string} */
+    /** @return array{company_name_ar: string, company_name_en: string, has_logo: bool, logo_version: ?string, password_reset_available: bool} */
     private function payload(SettingService $settings, CompanyLogoService $logo): array
     {
         return [
@@ -62,6 +62,8 @@ class BrandingController extends ApiController
             'company_name_en' => (string) $settings->get('general', 'company_name_en', ''),
             'has_logo' => $logo->has(),
             'logo_version' => $logo->version(),
+            // The login page offers "forgot password" only when the server can send the e-mail (ADR-0031).
+            'password_reset_available' => ! in_array((string) config('mail.default'), ['log', 'array', 'null', ''], true),
         ];
     }
 }

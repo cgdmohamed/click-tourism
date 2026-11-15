@@ -6,6 +6,8 @@ export type Branding = {
   company_name_en: string
   has_logo: boolean
   logo_version: string | null
+  /** The server can send e-mail, so "forgot password" works (ADR-0031). */
+  password_reset_available?: boolean
 }
 
 /** Company name in the active locale; falls back to the other language, then to the built-in name. */

@@ -4,10 +4,14 @@ namespace App\Modules\Core\Services;
 
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
+use App\Notifications\UserInvitation;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -43,6 +47,8 @@ class UserService
                 'category' => $user->employee->category,
             ],
             'last_login_at' => $user->last_login_at?->toISOString(),
+            // Invited by e-mail and has not signed in yet (ADR-0032): the screen offers "resend the invitation".
+            'invite_pending' => $user->invite_sent_at !== null && $user->last_login_at === null,
             'created_at' => $user->created_at?->toISOString(),
         ];
 
@@ -72,7 +78,8 @@ class UserService
             $user = User::query()->create([
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'password' => $data['password'],
+                // No password given: the user is invited and chooses their own; until then the account has an unusable one.
+                'password' => ($data['password'] ?? '') !== '' ? $data['password'] : Str::random(64),
                 'locale' => $data['locale'],
                 'is_active' => true,
                 'is_available_for_leads' => (bool) ($data['is_available_for_leads'] ?? true),
@@ -94,6 +101,27 @@ class UserService
         });
 
         return $user->load($this->accountRelations());
+    }
+
+    /**
+     * E-mail the user a link to choose their own password (ADR-0032). False, never an exception, when the mail
+     * cannot be sent: the account exists and the administrator can resend or set a password.
+     */
+    public function invite(User $user, User $actor): bool
+    {
+        try {
+            $token = Password::broker('invites')->createToken($user);
+            $user->notify(new UserInvitation($token));
+        } catch (\Throwable $e) {
+            Log::warning('user.invite_mail_failed', ['exception' => $e::class]);
+
+            return false;
+        }
+
+        $user->forceFill(['invite_sent_at' => now()])->save();
+        $this->audit->log('user.invited', $user, null, null, $actor->id);
+
+        return true;
     }
 
     /**
@@ -220,7 +248,7 @@ class UserService
     }
 
     /** @return list<string> */
-    private function accountRelations(): array
+    public function accountRelations(): array
     {
         return ['branches', 'roles', 'employee', 'primaryBranch'];
     }

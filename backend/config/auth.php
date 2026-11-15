@@ -99,6 +99,14 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+
+        // Invitation links for new users (ADR-0032): own token table, seven days.
+        'invites' => [
+            'provider' => 'users',
+            'table' => 'user_invite_tokens',
+            'expire' => 10080,
+            'throttle' => 60,
+        ],
     ],
 
     /*

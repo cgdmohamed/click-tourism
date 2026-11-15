@@ -6,6 +6,7 @@ import { roleLabel } from '../lib/permissionLabels'
 import type { MessageKey } from '../i18n'
 import { api, errorMessage } from '../lib/api'
 import { formatDateTime } from '../lib/format'
+import { useFeatureFlags } from '../lib/useSetting'
 import {
   assignableBranches,
   assignableRoles,
@@ -81,6 +82,10 @@ export default function Users() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState('')
   const [actionError, setActionError] = useState('')
+  const [notice, setNotice] = useState('')
+  const { flags } = useFeatureFlags()
+  // With a working mailer a new user can be invited instead of the administrator typing a password (ADR-0032).
+  const inviteByEmail = flags?.mail_configured === true
   const [deactivateTarget, setDeactivateTarget] = useState<UserAccount | null>(null)
 
   const filters = useFilters(
@@ -232,10 +237,13 @@ export default function Users() {
         is_available_for_leads: form.is_available_for_leads,
       }
       if (form.password) payload.password = form.password
-      const { data } = await api.post<{ data: UserAccount }>('/users', payload)
+      const { data } = await api.post<{ data: UserAccount & { invite_sent?: boolean | null } }>('/users', payload)
       return data.data
     },
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
+      const invite = (saved as UserAccount & { invite_sent?: boolean | null } | undefined)?.invite_sent
+      setNotice(invite === true ? t('inviteSent') : '')
+      if (invite === false) setActionError(t('inviteNotSent'))
       setOpen(false)
       setEditId(null)
       setForm(emptyUserForm)
@@ -244,6 +252,20 @@ export default function Users() {
       await queryClient.invalidateQueries({ queryKey: ['users'] })
     },
     onError: (cause) => setSaveError(errorMessage(cause)),
+  })
+
+  const resendInvite = useMutation({
+    mutationFn: async (id: string) => {
+      await api.post(`/users/${id}/invite`)
+    },
+    onSuccess: () => {
+      setActionError('')
+      setNotice(t('inviteSent'))
+    },
+    onError: (cause) => {
+      setNotice('')
+      setActionError(errorMessage(cause))
+    },
   })
 
   const deactivateUser = useMutation({
@@ -310,7 +332,7 @@ export default function Users() {
   }
 
   const submitUser = () => {
-    const validation = validateUserForm(form, !editId)
+    const validation = validateUserForm(form, !editId, inviteByEmail)
     setFormErrors(validation)
     setSaveError('')
     if (Object.keys(validation).length > 0) return
@@ -339,6 +361,9 @@ export default function Users() {
   const userActions = (account: UserAccount) =>
     canManage ? (
                       <div className="flex justify-end gap-1">
+                        {account.invite_pending && account.is_active && inviteByEmail ? (
+                          <IconButton icon="send" label={t('inviteResend')} disabled={resendInvite.isPending} onClick={() => resendInvite.mutate(account.id)} />
+                        ) : null}
                         <IconButton icon="edit" label={t('edit')} onClick={() => openEdit(account)} />
                         {account.is_active ? (
                           <IconButton
@@ -383,6 +408,11 @@ export default function Users() {
           <InlineNotice tone="negative">{actionError}</InlineNotice>
         </div>
       ) : null}
+      {notice ? (
+        <div className="mb-4" role="status">
+          <InlineNotice tone="positive">{notice}</InlineNotice>
+        </div>
+      ) : null}
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-4">
@@ -415,7 +445,10 @@ export default function Users() {
               <>
                 <div className="flex items-start justify-between gap-3">
                   <span className="text-medium font-semibold">{account.name}</span>
-                  <Badge tone={account.is_active ? 'positive' : 'negative'}>{account.is_active ? t('active') : t('inactive')}</Badge>
+                  <span className="flex flex-wrap justify-end gap-1">
+                    <Badge tone={account.is_active ? 'positive' : 'negative'}>{account.is_active ? t('active') : t('inactive')}</Badge>
+                    {account.invite_pending ? <Badge tone="warning">{t('invitePending')}</Badge> : null}
+                  </span>
                 </div>
                 <p className="text-small break-all text-text-subtle" dir="ltr">{account.email}</p>
                 <dl className="grid grid-cols-2 gap-3">
@@ -448,6 +481,7 @@ export default function Users() {
                       <Badge tone={account.is_active ? 'positive' : 'negative'}>
                         {account.is_active ? t('active') : t('inactive')}
                       </Badge>
+                      {account.invite_pending ? <Badge tone="warning">{t('invitePending')}</Badge> : null}
                     </div>
                     {account.is_available_for_leads ? (
                       <p className="text-small text-text-subtlest">{t('availableForLeads')}</p>
@@ -532,9 +566,9 @@ export default function Users() {
           </Field>
           <Field
             label={t('password')}
-            required={!editId}
+            required={!editId && !inviteByEmail}
             error={fieldError('password')}
-            hint={editId ? t('passwordOptionalHint') : t('passwordHint')}
+            hint={editId ? t('passwordOptionalHint') : inviteByEmail ? t('passwordInviteHint') : t('passwordHint')}
           >
             <Input
               type="password"

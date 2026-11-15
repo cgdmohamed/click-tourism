@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\UserService;
+use App\Support\ApiResponse;
 use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -64,10 +65,33 @@ class UserController extends ApiController
     public function store(Request $request, UserService $users): JsonResponse
     {
         $data = $this->validated($request);
+        $invite = ($data['password'] ?? '') === '';
+
+        // No password means an invitation by e-mail; without a working mailer the administrator must type one.
+        if ($invite && ! $this->mailConfigured()) {
+            return ApiResponse::error('E-mail is not set up on this server, so set a password for the new user.', 'mail_not_configured', 422);
+        }
 
         $user = $users->create($data, $request->user());
+        $sent = $invite ? $users->invite($user, $request->user()) : null;
 
-        return $this->created($users->toUserAccount($user));
+        return $this->created($users->toUserAccount($user->refresh()->load($users->accountRelations())) + ['invite_sent' => $sent]);
+    }
+
+    /** POST /users/{user}/invite: send the invitation again to someone who has not signed in yet. */
+    public function invite(Request $request, User $user, UserService $users): JsonResponse
+    {
+        if (! $this->mailConfigured()) {
+            return ApiResponse::error('E-mail is not set up on this server.', 'mail_not_configured', 503);
+        }
+        if (! $user->is_active || $user->last_login_at !== null || $user->invite_sent_at === null) {
+            return ApiResponse::error('Only an active user who was invited and has not signed in can be invited again.', 'invite_not_pending', 422);
+        }
+        if (! $users->invite($user, $request->user())) {
+            return ApiResponse::error('The invitation could not be sent. Try again later.', 'invite_send_failed', 502);
+        }
+
+        return $this->ok($users->toUserAccount($user->refresh()->load($users->accountRelations())));
     }
 
     public function show(User $user, UserService $users): JsonResponse
@@ -107,6 +131,11 @@ class UserController extends ApiController
         return $this->ok($users->toUserAccount($user));
     }
 
+    private function mailConfigured(): bool
+    {
+        return ! in_array((string) config('mail.default'), ['log', 'array', 'null', ''], true);
+    }
+
     /** @return array<string, mixed> */
     private function validated(Request $request, ?User $user = null): array
     {
@@ -118,7 +147,7 @@ class UserController extends ApiController
                 'max:255',
                 $user ? Rule::unique('users', 'email')->ignore($user->id) : 'unique:users,email',
             ],
-            'password' => [$user ? 'sometimes' : 'required', 'string', 'min:12'],
+            'password' => [$user ? 'sometimes' : 'nullable', 'string', 'min:12'],
             'locale' => [$user ? 'sometimes' : 'required', Rule::in(['ar', 'en'])],
             'roles' => ['sometimes', 'array'],
             'roles.*' => ['string', Rule::exists('roles', 'name')->where('guard_name', 'web')],

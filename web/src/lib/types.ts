@@ -512,6 +512,8 @@ export type UserAccount = {
   primary_branch_id: string | null
   employee: { id: string; internal_code: string; name_ar: string; name_en: string; category: string } | null
   last_login_at: string | null
+  /** Invited by e-mail and has not signed in yet (ADR-0032). */
+  invite_pending?: boolean
   created_at: string
   permissions?: string[]
 }
