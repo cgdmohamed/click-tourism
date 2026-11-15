@@ -214,22 +214,22 @@ export default function Expenses() {
     <div className="flex flex-wrap justify-end gap-1">
                         <DocumentsButton type="expense" recordId={expense.id} />
                         {expense.status === 'draft' && can('expenses.create') ? (
-                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
+                          <Button variant="secondary" icon="send" onClick={() => step.mutate({ expense, path: 'submit' })}>{L('إرسال', 'Submit')}</Button>
                         ) : null}
                         {expense.status === 'rejected' && can('expenses.create') ? (
                           <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'reopen' })}>{L('إعادة فتح', 'Reopen')}</Button>
                         ) : null}
                         {expense.status === 'submitted' && can('expenses.approve') ? (
                           <>
-                            <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
-                            <Button variant="ghost" onClick={() => { setError(''); setAction({ expense, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
+                            <Button variant="secondary" icon="check" onClick={() => step.mutate({ expense, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
+                            <Button variant="danger" onClick={() => { setError(''); setAction({ expense, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
                           </>
                         ) : null}
                         {['draft', 'submitted', 'rejected'].includes(expense.status) && can('expenses.create') ? (
-                          <Button variant="ghost" onClick={() => step.mutate({ expense, path: 'cancel' })}>{L('إلغاء', 'Cancel')}</Button>
+                          <Button variant="danger" onClick={() => step.mutate({ expense, path: 'cancel' })}>{L('إلغاء المصروف', 'Cancel expense')}</Button>
                         ) : null}
                         {expense.status === 'approved' && can('expenses.approve') ? (
-                          <Button variant="ghost" onClick={() => { setError(''); setAction({ expense, kind: 'reverse' }) }}>{L('عكس', 'Reverse')}</Button>
+                          <Button variant="danger" onClick={() => { setError(''); setAction({ expense, kind: 'reverse' }) }}>{L('عكس', 'Reverse')}</Button>
                         ) : null}
     </div>
   )

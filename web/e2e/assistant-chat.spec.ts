@@ -75,6 +75,7 @@ test('an action the assistant prepares waits for the user and then runs as confi
     rows: [{ label: 'الاسم بالإنجليزية', value: 'Nile Co' }, { label: 'الاسم بالعربية', value: 'شركة النيل' }],
   }
   let confirmed = 0
+  const asked: Array<{ messages: Array<{ content: string }> }> = []
   await page.route('**/api/v1/feature-flags', async (route) => {
     const response = await route.fetch()
     const body = (await response.json()) as { data: Record<string, unknown> }
@@ -82,6 +83,11 @@ test('an action the assistant prepares waits for the user and then runs as confi
   })
   await page.route('**/api/v1/assistant/conversations', (route) => route.fulfill({ json: { data: [] } }))
   await page.route('**/api/v1/assistant/chat/stream', (route) => {
+    asked.push(route.request().postDataJSON())
+    if (asked.length > 1) {
+      const next = { type: 'answer', data: { answer: 'تم إنشاء العميل ولا توجد خطوة أخرى.', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [], conversation_id: null } }
+      return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [{ type: 'thinking' }, next].map((line) => JSON.stringify(line)).join('\n') + '\n' })
+    }
     const answer = { type: 'answer', data: { answer: 'جهّزت العميل، راجع البطاقة.', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false, actions: [pending], conversation_id: null } }
     const lines = [{ type: 'thinking' }, { type: 'tool', tool: 'erp_customer_create', entity: 'action' }, answer]
     return route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: lines.map((line) => JSON.stringify(line)).join('\n') + '\n' })
@@ -108,6 +114,16 @@ test('an action the assistant prepares waits for the user and then runs as confi
   await expect(card.getByRole('status')).toContainText(/تم التنفيذ|Done/)
   await expect(card.getByRole('link', { name: /افتح السجل|Open record/ })).toHaveAttribute('href', '/customers/customer12345')
   expect(confirmed).toBe(1)
+
+  // After a customer is created the assistant carries on by itself, with the new record's id.
+  await expect(page.getByText('تم إنشاء العميل ولا توجد خطوة أخرى.')).toBeVisible()
+  expect(asked).toHaveLength(2)
+  expect(asked[1].messages.at(-1)?.content).toContain('customer12345')
+
+  // Opening the record leaves the full-screen chat.
+  await card.getByRole('link', { name: /افتح السجل|Open record/ }).click()
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
+  await expect(page.locator('#assistant-input')).toHaveCount(0)
 })
 
 test('an action that posts or pays asks a second time, and going back runs nothing', async ({ page }) => {
