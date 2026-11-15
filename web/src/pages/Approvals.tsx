@@ -134,7 +134,7 @@ export default function Approvals() {
                           <Money amountMinor={rowAmount(row)} currency={row.currency ?? 'EGP'} />
                         </span>
                         {source.rejectPath ? (
-                          <Button variant="ghost" onClick={() => { setError(''); setRejecting({ source, row }) }}>
+                          <Button variant="danger" onClick={() => { setError(''); setRejecting({ source, row }) }}>
                             {L('رفض', 'Reject')}
                           </Button>
                         ) : null}

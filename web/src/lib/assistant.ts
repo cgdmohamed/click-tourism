@@ -35,7 +35,7 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   content: string
   /** Files uploaded with this user turn (ADR-0028). Kept with the turn so a retry or a resubmit sends them again. */
-  attachments?: Array<{ id: string; name: string }>
+  attachments?: Array<{ id: string; name: string; expires_at?: string }>
   citations?: Citation[]
   actions?: ActionCard[]
   /** A form the assistant asks the user to answer (ADR-0029); answered when a later user message exists. */
@@ -62,7 +62,7 @@ export type ChatReply = {
 export const MAX_MESSAGES = 40
 export const MAX_MESSAGE_CHARS = 4000
 
-export function addUserMessage(messages: ChatMessage[], content: string, attachments: Array<{ id: string; name: string }> = []): ChatMessage[] {
+export function addUserMessage(messages: ChatMessage[], content: string, attachments: Array<{ id: string; name: string; expires_at?: string }> = []): ChatMessage[] {
   return [...messages, { key: nextKey(messages), role: 'user', content: content.trim(), ...(attachments.length > 0 ? { attachments } : {}) }]
 }
 
@@ -70,6 +70,24 @@ export function addUserMessage(messages: ChatMessage[], content: string, attachm
 export function lastUserAttachmentIds(turns: ChatMessage[]): string[] {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     if (turns[index].role === 'user') return (turns[index].attachments ?? []).map((file) => file.id)
+  }
+  return []
+}
+
+/**
+ * The files the assistant should see with this turn. The model reads a file only when it is sent, so a
+ * receipt attached earlier keeps travelling with later messages (a follow-up such as "now record it" still
+ * has the amount, date and reference in front of it) until it expires on the server. The last user message's
+ * own files always go; older ones go only while they have more than a minute left.
+ */
+export function carriedAttachmentIds(turns: ChatMessage[], now: number = Date.now()): string[] {
+  let latest = true
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index].role !== 'user') continue
+    const files = turns[index].attachments ?? []
+    const usable = latest ? files : files.filter((file) => file.expires_at !== undefined && Date.parse(file.expires_at) > now + 60_000)
+    if (usable.length > 0) return usable.slice(0, 3).map((file) => file.id)
+    latest = false
   }
   return []
 }

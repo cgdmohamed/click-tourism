@@ -254,13 +254,13 @@ export default function OpeningBalances() {
                       <div className="flex flex-wrap justify-end gap-1">
                         <Button variant="ghost" onClick={() => setDetailId(batch.id)}>{L('تفاصيل', 'Details')}</Button>
                         {batch.status === 'draft' && can('opening_balances.post') ? (
-                          <Button variant="ghost" onClick={() => post.mutate(batch)}>{L('ترحيل', 'Post')}</Button>
+                          <Button variant="secondary" icon="check" onClick={() => post.mutate(batch)}>{L('ترحيل', 'Post')}</Button>
                         ) : null}
                         {batch.status === 'draft' && can('opening_balances.manage') ? (
                           <Button variant="ghost" onClick={() => discard.mutate(batch)}>{L('حذف المسودة', 'Discard')}</Button>
                         ) : null}
                         {batch.status === 'posted' && can('opening_balances.reverse') ? (
-                          <Button variant="ghost" onClick={() => { setError(''); setReversing(batch) }}>{L('عكس', 'Reverse')}</Button>
+                          <Button variant="danger" onClick={() => { setError(''); setReversing(batch) }}>{L('عكس', 'Reverse')}</Button>
                         ) : null}
                       </div>
                     </Td>

@@ -88,7 +88,7 @@ export function RecordActions({
       ) : null}
       {showDecision ? (
         <>
-          <Button variant="ghost" onClick={() => { setError(''); setRejecting(true) }}>{L('رفض', 'Reject')}</Button>
+          <Button variant="danger" onClick={() => { setError(''); setRejecting(true) }}>{L('رفض', 'Reject')}</Button>
           <Button disabled={step.isPending} onClick={() => step.mutate('approve')}>{L('اعتماد', 'Approve')}</Button>
         </>
       ) : null}

@@ -395,18 +395,18 @@ export default function Commissions() {
                           ) : null}
                           {commission.status === 'accrued' && can('commissions.approve') ? (
                             <>
-                              <Button variant="ghost" onClick={() => step.mutate({ commission, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
-                              <Button variant="ghost" onClick={() => { setError(''); setAction({ commission, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
+                              <Button variant="secondary" icon="check" onClick={() => step.mutate({ commission, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
+                              <Button variant="danger" onClick={() => { setError(''); setAction({ commission, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
                             </>
                           ) : null}
                           {commission.status === 'approved' && can('commissions.post') ? (
-                            <Button variant="ghost" onClick={() => step.mutate({ commission, path: 'post' })}>{L('ترحيل', 'Post')}</Button>
+                            <Button variant="secondary" icon="check" onClick={() => step.mutate({ commission, path: 'post' })}>{L('ترحيل', 'Post')}</Button>
                           ) : null}
                           {commission.status === 'posted' && can('commissions.pay') ? (
                             <Button variant="ghost" onClick={() => { setError(''); setPayForm({ cash_account_id: '', amount: '', paid_on: todayISO(), reference: '' }); setPayTarget(commission) }}>{L('دفع', 'Pay')}</Button>
                           ) : null}
                           {['accrued', 'approved', 'posted', 'paid'].includes(commission.status) && can('commissions.reverse') ? (
-                            <Button variant="ghost" onClick={() => { setError(''); setAction({ commission, kind: 'reverse' }) }}>{L('عكس', 'Reverse')}</Button>
+                            <Button variant="danger" onClick={() => { setError(''); setAction({ commission, kind: 'reverse' }) }}>{L('عكس', 'Reverse')}</Button>
                           ) : null}
     </div>
   )
@@ -416,7 +416,7 @@ export default function Commissions() {
                         {['draft', 'rejected'].includes(rule.status) && can('commission_rules.manage') ? (
                           <>
                             <Button variant="ghost" onClick={() => openRule(rule)}>{t('edit')}</Button>
-                            <Button variant="ghost" onClick={() => ruleStep.mutate({ rule, path: 'submit' })}>{L('إرسال للاعتماد', 'Submit')}</Button>
+                            <Button variant="secondary" icon="send" onClick={() => ruleStep.mutate({ rule, path: 'submit' })}>{L('إرسال للاعتماد', 'Submit')}</Button>
                           </>
                         ) : null}
                         {rule.status === 'draft' && can('commission_rules.manage') ? (
@@ -424,8 +424,8 @@ export default function Commissions() {
                         ) : null}
                         {rule.status === 'pending_approval' && can('commission_rules.approve') ? (
                           <>
-                            <Button variant="ghost" onClick={() => ruleStep.mutate({ rule, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
-                            <Button variant="ghost" onClick={() => { setError(''); setRuleAction({ rule, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
+                            <Button variant="secondary" icon="check" onClick={() => ruleStep.mutate({ rule, path: 'approve' })}>{L('اعتماد', 'Approve')}</Button>
+                            <Button variant="danger" onClick={() => { setError(''); setRuleAction({ rule, kind: 'reject' }) }}>{L('رفض', 'Reject')}</Button>
                           </>
                         ) : null}
                         {rule.status === 'approved' && can('commission_rules.manage') ? (
