@@ -586,6 +586,18 @@ class AssistantChatTest extends TestCase
         $this->assertStringContainsString('Main cash', $system);
     }
 
+    public function test_the_prompt_lists_the_expense_categories_for_users_who_can_record_expenses(): void
+    {
+        $this->grant('expenses.create', 'expenses.view');
+        $account = Account::query()->where('type', 'expense')->where('is_postable', true)->firstOrFail();
+        ExpenseCategory::query()->create(['code' => 'RENT-T', 'name_ar' => 'الإيجار', 'name_en' => 'Rent', 'account_id' => $account->id, 'is_active' => true]);
+        $this->script([$this->finalReply('ok')]);
+        $this->chat('hello')->assertOk();
+        $system = (string) json_encode($this->sent()[0]['messages'][0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->assertStringContainsString('RENT-T = الإيجار / Rent', $system);
+
+    }
+
     public function test_a_loose_account_name_or_a_single_account_is_resolved_without_asking(): void
     {
         $this->grant('payments.create', 'payments.view', 'customers.view');

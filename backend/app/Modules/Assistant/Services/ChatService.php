@@ -14,6 +14,7 @@ use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
 use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
+use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Support\Facades\Cache;
 
@@ -303,7 +304,8 @@ class ChatService
 
         return $prompt."\n\nContext: interface language = {$locale}; today = ".now()->toDateString()
             .'; active branch id = '.($branch?->public_id ?? 'none').'. Tool calls always use this branch.'
-            .$this->paymentAccountsLine($user, $branch);
+            .$this->paymentAccountsLine($user, $branch)
+            .$this->expenseCategoriesLine($user);
     }
 
     /** The names of the branch's cash and bank accounts, so the model never has to ask which exist. */
@@ -316,6 +318,18 @@ class ChatService
             ->map(fn (CashAccount $a) => $a->name_en ?: $a->name_ar)->filter()->values()->all();
 
         return $names === [] ? '' : ' Payment accounts of this branch (use one of these names as payment_account): '.implode('; ', $names).'.';
+    }
+
+    /** The expense categories this company uses, so the model maps "إيجار" or "rent" to the right one itself. */
+    private function expenseCategoriesLine(User $user): string
+    {
+        if (! $user->can('expenses.create')) {
+            return '';
+        }
+        $names = ExpenseCategory::query()->where('is_active', true)->orderBy('code')->limit(30)->get()
+            ->map(fn (ExpenseCategory $c) => $c->code.' = '.trim(($c->name_ar ?: '').' / '.($c->name_en ?: ''), ' /'))->all();
+
+        return $names === [] ? '' : ' Expense categories (send the code as category; understand the user\'s own wording and pick the closest, ask only if two fit equally): '.implode('; ', $names).'.';
     }
 
     private function tokensKey(User $user): string
