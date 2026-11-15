@@ -523,7 +523,7 @@ paths:
                 conversation_id: { type: string, maxLength: 26, description: 'Saved chat to continue (ADR-0022); an unknown or foreign id starts a new chat' }
                 attachments:
                   type: array
-                  maxItems: 3
+                  maxItems: 5
                   description: 'Ids of files uploaded with POST /assistant/uploads, read together with the last message (ADR-0028). An unknown, expired or foreign id answers 422 before any provider call.'
                   items: { type: string, maxLength: 26 }
                 attachments_carried: { type: boolean, description: 'True when the files belong to an earlier message and only travel along for context: images are read at low detail to save tokens' }
@@ -579,7 +579,7 @@ paths:
       tags: [Auth]
       summary: Upload a file for the assistant to read with the next message (ADR-0028; permission `assistant.use`)
       description: |
-        A transfer or payment receipt, a bank slip or a supplier invoice photo, as multipart field `file`. The same byte checks as record attachments apply (real type from the content: PDF, JPEG, PNG or WebP; at most 10 MB; a PDF with active content is refused). The file is stored on the private disk under a random name for `assistant.upload_ttl_hours` (default 6), readable only by its owner, never attached to a record, and removed by `assistant:prune-history`. At most 20 live files per user. Errors: 403 `assistant_disabled`, 403 `assistant_not_accepted`, 422 (type, size, active content, too many files), 429 (limiter). Audited as `assistant.file_uploaded` (no content). The provider reads the file unredacted; the data-processing notice says so.
+        A transfer or payment receipt, a bank slip, a supplier invoice photo, a Word (docx) or an Excel (xlsx) file, as multipart field `file` (ADR-0033). The type comes from the bytes, never the name: only JPEG and PNG images that decode, and docx/xlsx files that open as a macro-free zip (no `vbaProject`, no DOCTYPE or entity declarations, capped entries and size) are accepted; PDF, WebP, legacy .doc/.xls and everything else answer 422. At most 10 MB. A Word or Excel file is turned into text by the server (at most 20,000 characters, three sheets of 200 rows) and sent masked as untrusted data. The file is stored on the private disk under a random name for `assistant.upload_ttl_hours` (default 6), readable only by its owner, never attached to a record, and removed by `assistant:prune-history`. At most 20 live files per user. Errors: 403 `assistant_disabled`, 403 `assistant_not_accepted`, 422 (type, size, too many files), 429 (limiter). Audited as `assistant.file_uploaded` (no content). The provider reads the file unredacted; the data-processing notice says so.
       requestBody:
         required: true
         content:

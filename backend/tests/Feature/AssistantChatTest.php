@@ -876,13 +876,90 @@ class AssistantChatTest extends TestCase
     public function test_uploads_follow_the_assistant_switches_and_attachment_count_is_capped(): void
     {
         $ids = [];
-        foreach (range(1, 4) as $i) {
+        foreach (range(1, 6) as $i) {
             $ids[] = $this->post('/api/v1/assistant/uploads', ['file' => UploadedFile::fake()->createWithContent("r$i.png", base64_decode(self::PNG).$i)], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
         }
-        $this->chat('four files', ['attachments' => $ids])->assertStatus(422);
+        $this->chat('six files', ['attachments' => $ids])->assertStatus(422);
+        $this->script([$this->finalReply('ok')]);
+        $this->chat('five files', ['attachments' => array_slice($ids, 0, 5)])->assertOk();
 
         $this->settings->set('assistant', 'enabled', 'false');
         $this->uploadReceipt()->assertStatus(403);
+    }
+
+    /** @param  array<string, string>  $entries */
+    private function zipBytes(array $entries): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'zip');
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+        foreach ($entries as $name => $body) {
+            $zip->addFromString($name, $body);
+        }
+        $zip->close();
+        $bytes = (string) file_get_contents($path);
+        @unlink($path);
+
+        return $bytes;
+    }
+
+    private function docx(string ...$paragraphs): string
+    {
+        $body = implode('', array_map(fn ($p) => '<w:p><w:r><w:t>'.htmlspecialchars($p).'</w:t></w:r></w:p>', $paragraphs));
+
+        return $this->zipBytes([
+            '[Content_Types].xml' => '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+            'word/document.xml' => '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'.$body.'</w:body></w:document>',
+        ]);
+    }
+
+    private function xlsx(): string
+    {
+        return $this->zipBytes([
+            '[Content_Types].xml' => '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+            'xl/workbook.xml' => '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>',
+            'xl/sharedStrings.xml' => '<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>Customer</t></si><si><t>Nile Travel</t></si></sst>',
+            'xl/worksheets/sheet1.xml' => '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>Amount</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><v>5000</v></c></row></sheetData></worksheet>',
+        ]);
+    }
+
+    private function uploadBytes(string $name, string $bytes)
+    {
+        return $this->post('/api/v1/assistant/uploads', ['file' => UploadedFile::fake()->createWithContent($name, $bytes)], ['Accept' => 'application/json']);
+    }
+
+    public function test_only_jpg_png_word_and_excel_can_be_attached(): void
+    {
+        Storage::fake(config('attachments.disk'));
+        $this->uploadBytes('slip.png', base64_decode(self::PNG))->assertCreated();
+        $this->uploadBytes('letter.docx', $this->docx('Hello'))->assertCreated()->assertJsonPath('data.mime', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        $this->uploadBytes('sheet.xlsx', $this->xlsx())->assertCreated();
+
+        $this->uploadBytes('scan.pdf', "%PDF-1.4\n%fake\n")->assertStatus(422);
+        $this->uploadBytes('notes.txt', 'plain text')->assertStatus(422);
+        $this->uploadBytes('picture.png', 'this is not an image')->assertStatus(422);
+        $this->uploadBytes('archive.docx', $this->zipBytes(['hello.txt' => 'not office']))->assertStatus(422);
+        $this->uploadBytes('macro.docx', $this->zipBytes(['[Content_Types].xml' => '<Types/>', 'word/document.xml' => '<w:document/>', 'word/vbaProject.bin' => 'x']))->assertStatus(422);
+        $this->uploadBytes('old.xlsx', str_repeat('A', 64))->assertStatus(422);
+    }
+
+    public function test_the_text_of_a_word_or_excel_file_reaches_the_provider_masked_and_as_untrusted_data(): void
+    {
+        Storage::fake(config('attachments.disk'));
+        $word = $this->uploadBytes('letter.docx', $this->docx('Please pay Nile Travel', 'Call 01001234567'))->assertCreated()->json('data.id');
+        $sheet = $this->uploadBytes('sheet.xlsx', $this->xlsx())->assertCreated()->json('data.id');
+        $this->script([$this->finalReply('I read both.')]);
+
+        $this->chat('what do these say?', ['attachments' => [$word, $sheet]])->assertOk();
+
+        $last = end($this->sent()[0]['messages']);
+        $text = json_encode($last['content'], JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('Please pay Nile Travel', $text);
+        $this->assertStringContainsString('Nile Travel', $text);
+        $this->assertStringContainsString('5000', $text);
+        $this->assertStringContainsString('untrusted data', $text);
+        $this->assertStringNotContainsString('01001234567', $text);
+        $this->assertCount(3, $last['content']);
     }
 
     public function test_an_unknown_payment_account_is_reported_with_the_choices_and_no_card_exists(): void

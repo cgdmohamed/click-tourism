@@ -3,6 +3,7 @@
 namespace App\Modules\Assistant\Services;
 
 use App\Modules\Assistant\Models\AssistantUpload;
+use App\Modules\Assistant\Support\OfficeText;
 use App\Modules\Attachments\Services\AttachmentService;
 use App\Modules\Core\Models\User;
 use Illuminate\Http\UploadedFile;
@@ -17,7 +18,15 @@ use Illuminate\Support\Str;
  */
 class AssistantUploadService
 {
-    public const MAX_PER_MESSAGE = 3;
+    public const MAX_PER_MESSAGE = 5;
+
+    /** What may be attached (ADR-0033): JPG and PNG images, Word (docx) and Excel (xlsx). Nothing else. */
+    private const TYPES = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        OfficeText::MIME[OfficeText::DOCX] => 'docx',
+        OfficeText::MIME[OfficeText::XLSX] => 'xlsx',
+    ];
 
     private const MAX_LIVE_PER_USER = 20;
 
@@ -27,14 +36,14 @@ class AssistantUploadService
     public function store(User $user, UploadedFile $file): AssistantUpload
     {
         $content = (string) file_get_contents($file->getRealPath());
-        $mime = $this->checks->inspect($content, strlen($content));
+        $mime = $this->inspect($content);
 
         $live = AssistantUpload::query()->where('user_id', $user->id)->where('expires_at', '>', now())->count();
         if ($live >= self::MAX_LIVE_PER_USER) {
             throw new \DomainException('Too many files are waiting. They are removed automatically after a few hours.');
         }
 
-        $extension = (string) (config('attachments.allowed')[$mime] ?? 'bin');
+        $extension = self::TYPES[$mime];
         $path = 'assistant-uploads/'.now()->format('Y/m').'/'.Str::ulid()->toBase32().'.'.$extension;
         if (Storage::disk(config('attachments.disk'))->put($path, $content) !== true) {
             throw new \DomainException('The file could not be saved because storage is full or not writable.');
@@ -49,6 +58,32 @@ class AssistantUploadService
             'stored_path' => $path,
             'expires_at' => now()->addHours((int) config('assistant.upload_ttl_hours', 6)),
         ]);
+    }
+
+    /**
+     * The real type, from the bytes and never from the name: JPG or PNG that decodes as an image, or a Word or
+     * Excel file that opens as a macro-free zip. Anything else is refused.
+     */
+    private function inspect(string $content): string
+    {
+        $size = strlen($content);
+        if ($size <= 0 || $size > (int) config('attachments.max_size_kb') * 1024) {
+            throw new \DomainException('The file is empty or larger than the allowed size.');
+        }
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($content) ?: '';
+        if (in_array($mime, ['image/jpeg', 'image/png'], true)) {
+            if (@getimagesizefromstring($content) === false) {
+                throw new \DomainException('The image could not be read.');
+            }
+
+            return $mime;
+        }
+        $office = OfficeText::kind($content);
+        if ($office !== null) {
+            return OfficeText::MIME[$office];
+        }
+
+        throw new \DomainException('Only JPG and PNG images, Word (docx) and Excel (xlsx) files can be attached.');
     }
 
     /**
