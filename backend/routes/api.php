@@ -498,6 +498,7 @@ Route::prefix('v1')->group(function () {
         Route::post('users', [UserController::class, 'store'])->middleware(['permission:users.manage', 'idempotent']);
         Route::get('users/{user}', [UserController::class, 'show'])->middleware('permission:users.view');
         Route::patch('users/{user}', [UserController::class, 'update'])->middleware('permission:users.manage');
+        Route::post('users/{user}/invite', [UserController::class, 'invite'])->middleware(['permission:users.manage', 'throttle:20,1,users-invite']);
         Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware(['permission:users.manage', 'idempotent']);
         Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware(['permission:users.manage', 'idempotent']);
 

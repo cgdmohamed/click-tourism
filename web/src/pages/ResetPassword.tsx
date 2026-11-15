@@ -14,6 +14,8 @@ export default function ResetPassword() {
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const email = params.get('email') ?? ''
+  // An invitation link opens the same page with a welcome instead of a reset (ADR-0032).
+  const invited = params.get('invite') === '1'
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
@@ -77,7 +79,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <AuthShell title={t('resetTitle')} subtitle={t('resetSubtitle')}>
+    <AuthShell title={invited ? t('inviteWelcomeTitle') : t('resetTitle')} subtitle={invited ? t('inviteWelcomeSubtitle') : t('resetSubtitle')}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <PasswordField label={t('newPassword')} value={password} onChange={setPassword} autoComplete="new-password" />
         <PasswordField label={t('confirmPassword')} value={confirm} onChange={setConfirm} autoComplete="new-password" />

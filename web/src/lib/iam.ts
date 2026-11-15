@@ -53,13 +53,14 @@ export function assignableBranches(branches: Branch[], actorBranchIds: string[],
  * Local validation for the user create/edit form. Returns a field→code
  * map; an empty object means the form is valid.
  */
-export function validateUserForm(form: UserFormState, isCreate: boolean): Record<string, UserFormErrorCode> {
+export function validateUserForm(form: UserFormState, isCreate: boolean, inviteByEmail = false): Record<string, UserFormErrorCode> {
   const errors: Record<string, UserFormErrorCode> = {}
   if (!form.name.trim()) errors.name = 'nameRequired'
   const email = form.email.trim()
   if (!email) errors.email = 'emailRequired'
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'emailFormat'
-  if (isCreate && !form.password) errors.password = 'passwordRequired'
+  // With e-mail set up the password may stay empty: the user is invited and chooses their own (ADR-0032).
+  if (isCreate && !form.password && !inviteByEmail) errors.password = 'passwordRequired'
   else if (form.password && form.password.length < 12) errors.password = 'passwordShort'
   if (form.primary_branch_id && !form.branch_ids.includes(form.primary_branch_id)) {
     errors.primary_branch_id = 'primaryBranchNotAssigned'

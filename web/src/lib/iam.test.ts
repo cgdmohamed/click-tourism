@@ -116,6 +116,9 @@ describe('validateUserForm', () => {
   it('requires a password on create only, and enforces 12 characters', () => {
     expect(validateUserForm({ ...valid, password: '' }, true)).toEqual({ password: 'passwordRequired' })
     expect(validateUserForm({ ...valid, password: 'short' }, true)).toEqual({ password: 'passwordShort' })
+    // An invitation by e-mail makes the password optional; a typed one is still checked.
+    expect(validateUserForm({ ...valid, password: '' }, true, true)).toEqual({})
+    expect(validateUserForm({ ...valid, password: 'short' }, true, true)).toEqual({ password: 'passwordShort' })
     expect(validateUserForm({ ...valid, password: 'short' }, false)).toEqual({ password: 'passwordShort' })
   })
 

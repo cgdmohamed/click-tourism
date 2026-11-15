@@ -5958,10 +5958,36 @@ paths:
               schema:
                 type: object
                 properties:
-                  data: { $ref: '#/components/schemas/UserAccount' }
+                  data:
+                    allOf:
+                      - { $ref: '#/components/schemas/UserAccount' }
+                      - type: object
+                        properties:
+                          invite_sent: { type: [boolean, 'null'], description: 'null when a password was typed; false when the invitation could not be e-mailed (the account exists, resend or set a password)' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Validation' }
+  /users/{user}/invite:
+    post:
+      tags: [IAM]
+      summary: Send the invitation again (requires users.manage)
+      description: Only for an active user who was invited and has not signed in. 422 `invite_not_pending`, 503 `mail_not_configured`, 502 `invite_send_failed`. Audited as `user.invited`. A new link replaces the old one.
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string }, description: User public id }
+      responses:
+        '200':
+          description: Invitation sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 'Not pending' }
+        '502': { description: 'The e-mail could not be sent' }
+        '503': { description: 'E-mail is not set up on this server' }
   /users/assignable:
     get:
       tags: [CRM]
@@ -6576,15 +6602,16 @@ components:
             name_en: { type: string }
             category: { type: string }
         last_login_at: { type: [string, 'null'], format: date-time }
+        invite_pending: { type: boolean, description: 'Invited by e-mail and has not signed in yet (ADR-0032)' }
         created_at: { type: [string, 'null'], format: date-time }
     UserAccountInput:
       type: object
       description: Fields for user create; on update all fields are optional (`roles` and `branch_ids` replace the full sets).
-      required: [name, email, password, locale]
+      required: [name, email, locale]
       properties:
         name: { type: string, maxLength: 255 }
         email: { type: string, format: email, maxLength: 255 }
-        password: { type: string, format: password, minLength: 12 }
+        password: { type: string, format: password, minLength: 12, description: 'Optional on create (ADR-0032): without it the user is invited by e-mail and chooses their own; 422 `mail_not_configured` when the server cannot send e-mail' }
         locale: { type: string, enum: [ar, en] }
         roles: { type: array, items: { type: string }, description: Existing role names }
         branch_ids: { type: array, items: { type: string }, description: Branch public ids }

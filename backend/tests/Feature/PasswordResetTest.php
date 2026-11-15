@@ -6,6 +6,7 @@ use App\Modules\Core\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
@@ -60,6 +61,22 @@ class PasswordResetTest extends TestCase
         $this->assertSame($known->status(), $off->status());
         $this->assertSame($known->json(), $off->json());
         Notification::assertNothingSent();
+    }
+
+    public function test_a_mail_failure_gives_the_same_answer_and_logs_no_address(): void
+    {
+        $this->user();
+        Log::spy();
+        Password::shouldReceive('sendResetLink')->andThrow(new \RuntimeException('smtp down for maha@example.com'));
+
+        $known = $this->postJson('/api/v1/auth/forgot-password', ['email' => 'maha@example.com']);
+        $unknown = $this->postJson('/api/v1/auth/forgot-password', ['email' => 'nobody@example.com']);
+
+        $this->assertSame(200, $known->status());
+        $this->assertSame($unknown->status(), $known->status());
+        $this->assertSame($unknown->json(), $known->json());
+        Log::shouldHaveReceived('warning')->once()->withArgs(fn ($message, $context) => $message === 'password_reset.mail_failed'
+            && ! str_contains(json_encode($context), 'maha@example.com'));
     }
 
     public function test_without_a_real_mailer_it_says_so_instead_of_pretending(): void

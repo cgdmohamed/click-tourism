@@ -104,3 +104,22 @@ test('a reset page without a token is not usable', async ({ page }) => {
   await page.goto('/reset-password')
   await expect(page.getByText(/غير صالح|not valid/)).toBeVisible()
 })
+
+test('a stale session does not throw the user off the reset link', async ({ page }) => {
+  // A revoked token left in the browser makes the app ask /auth/me, which answers 401.
+  await page.addInitScript(() => window.localStorage.setItem('tourism_erp_token', 'revoked-token'))
+  const me = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/me'))
+  await page.goto('/reset-password?token=abc123&email=maha%40example.com')
+  expect((await me).status()).toBe(401)
+  // Give the response interceptor time to act: it used to send the user to /login and drop the token.
+  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/\/reset-password\?token=abc123&email=maha%40example\.com$/)
+  await expect(page.locator('input[autocomplete="new-password"]').first()).toBeVisible()
+})
+
+test('an invitation link welcomes the new user instead of talking about a reset', async ({ page }) => {
+  await branding(page, true)
+  await page.goto('/reset-password?invite=1&token=abc123&email=nour%40example.com')
+  await expect(page.getByRole('heading', { name: /أهلاً بك|Welcome/ })).toBeVisible()
+  await noSeriousViolations(page)
+})
