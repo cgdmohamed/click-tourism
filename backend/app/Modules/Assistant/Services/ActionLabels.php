@@ -31,6 +31,8 @@ final class ActionLabels
         'erp_journal_post' => ['ar' => 'ترحيل قيد يومية', 'en' => 'Post a journal entry'],
         'erp_journal_draft_delete' => ['ar' => 'حذف مسودة قيد', 'en' => 'Delete a draft journal entry'],
         'erp_payment_record' => ['ar' => 'تسجيل تحصيل من عميل', 'en' => 'Record a customer payment'],
+        'erp_invoice_collect' => ['ar' => 'تحصيل على فاتورة', 'en' => 'Collect on an invoice'],
+        'erp_payment_cancel' => ['ar' => 'إلغاء تحصيل مسجَّل', 'en' => 'Cancel a recorded payment'],
         'erp_supplier_payment_record' => ['ar' => 'صرف دفعة لمورد', 'en' => 'Pay a supplier'],
         'erp_export_queue' => ['ar' => 'تصدير تقرير', 'en' => 'Export a report'],
     ];
@@ -53,6 +55,8 @@ final class ActionLabels
         'erp_journal_post' => ['ar' => 'سيُرحَّل القيد ولا يمكن تعديله بعد ذلك، ويمكن عكسه فقط.', 'en' => 'The entry is posted and can no longer be edited, only reversed.'],
         'erp_journal_draft_delete' => ['ar' => 'ستُحذف المسودة نهائياً ولا يمكن استرجاعها.', 'en' => 'The draft is deleted for good and cannot be recovered.'],
         'erp_payment_record' => ['ar' => 'سيُسجَّل التحصيل في الحساب المحدد ويُرحَّل إلى القيود المحاسبية.', 'en' => 'The payment is recorded in the chosen account and posted to the ledger.'],
+        'erp_invoice_collect' => ['ar' => 'سيُسجَّل إيصال التحصيل ويُطبَّق على الفاتورة ويُرحَّل إلى القيود، ثم تُرفق الصور المحددة بالفاتورة.', 'en' => 'The receipt is recorded, applied to the invoice and posted to the ledger, then the chosen images are stored with the invoice.'],
+        'erp_payment_cancel' => ['ar' => 'سيُلغى التحصيل وتُعكس قيوده، ويعود المبلغ مستحقاً على الفاتورة.', 'en' => 'The payment is cancelled and its entries reversed; the amount becomes due on the invoice again.'],
         'erp_supplier_payment_record' => ['ar' => 'ستُصرف الدفعة من الحساب المحدد وتُرحَّل إلى القيود المحاسبية.', 'en' => 'The payment is made from the chosen account and posted to the ledger.'],
         'erp_export_queue' => ['ar' => 'سيُجهَّز ملف التقرير في الخلفية ويظهر في قائمة التصدير.', 'en' => 'The report file is prepared in the background and appears in the export list.'],
     ];
@@ -68,9 +72,10 @@ final class ActionLabels
         'payee_name' => ['ar' => 'المستفيد', 'en' => 'Payee'], 'start_date' => ['ar' => 'تاريخ البدء', 'en' => 'Start date'], 'end_date' => ['ar' => 'تاريخ الانتهاء', 'en' => 'End date'],
         'pax_adults' => ['ar' => 'عدد البالغين', 'en' => 'Adults'], 'pax_children' => ['ar' => 'عدد الأطفال', 'en' => 'Children'],
         '__lead' => ['ar' => 'العميل المحتمل', 'en' => 'Lead'], '__customer' => ['ar' => 'العميل', 'en' => 'Customer'], '__category' => ['ar' => 'فئة المصروف', 'en' => 'Expense category'], '__payee' => ['ar' => 'المورد', 'en' => 'Supplier'], '__booking' => ['ar' => 'الحجز المرتبط', 'en' => 'Linked booking'], '__payment' => ['ar' => 'حساب الدفع', 'en' => 'Payment account'],
+        '__invoice' => ['ar' => 'الفاتورة', 'en' => 'Invoice'], '__amount' => ['ar' => 'المبلغ المحصَّل', 'en' => 'Amount collected'], '__when' => ['ar' => 'تاريخ التحصيل', 'en' => 'Collected on'], '__outstanding' => ['ar' => 'المتبقي بعد التحصيل', 'en' => 'Remaining after this'], '__attach' => ['ar' => 'سيُرفق بالفاتورة', 'en' => 'Will be attached'],
         '__record' => ['ar' => 'السجل', 'en' => 'Record'], '__status' => ['ar' => 'حالته الآن', 'en' => 'Current status'], '__total' => ['ar' => 'إجمالي المبلغ', 'en' => 'Total amount'], '__paid' => ['ar' => 'المصروف سابقاً', 'en' => 'Already paid'], '__note' => ['ar' => 'البيان', 'en' => 'Note'],
         'report' => ['ar' => 'التقرير', 'en' => 'Report'], 'format' => ['ar' => 'الصيغة', 'en' => 'Format'], 'language' => ['ar' => 'اللغة', 'en' => 'Language'], 'method' => ['ar' => 'طريقة الدفع', 'en' => 'Method'],
-        'paid_at' => ['ar' => 'تاريخ الدفع', 'en' => 'Paid on'], 'params' => ['ar' => 'عوامل التصفية', 'en' => 'Filters'],
+        'paid_at' => ['ar' => 'تاريخ الدفع', 'en' => 'Paid on'], 'reason' => ['ar' => 'السبب', 'en' => 'Reason'], 'params' => ['ar' => 'عوامل التصفية', 'en' => 'Filters'],
         'amount_minor' => ['ar' => 'المبلغ', 'en' => 'Amount'], 'lines' => ['ar' => 'البنود', 'en' => 'Lines'], 'items' => ['ar' => 'البنود', 'en' => 'Items'],
     ];
 
@@ -79,7 +84,7 @@ final class ActionLabels
         'visa' => ['ar' => 'تأشيرة', 'en' => 'Visa'], 'program' => ['ar' => 'برنامج', 'en' => 'Program'], 'other' => ['ar' => 'أخرى', 'en' => 'Other'],
     ];
 
-    private const HIDDEN = ['branch_id', 'party_type', 'party_id', 'category_id', 'customer_id', 'booking_id', 'submit', 'payee_type', 'payee_id', 'cash_account_id', '__id'];
+    private const HIDDEN = ['receipts', 'branch_id', 'party_type', 'party_id', 'category_id', 'customer_id', 'booking_id', 'submit', 'payee_type', 'payee_id', 'cash_account_id', '__id'];
 
     public static function title(string $tool, string $locale): string
     {
@@ -92,7 +97,7 @@ final class ActionLabels
         $l = $locale === 'en' ? 'en' : 'ar';
         $currency = strtoupper((string) ($payload['currency'] ?? ''));
         $rows = [];
-        foreach (['__record', '__status', '__total', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment'] as $key) {
+        foreach (['__record', '__invoice', '__status', '__total', '__amount', '__when', '__outstanding', '__paid', '__note', '__lead', '__customer', '__booking', '__category', '__payee', '__payment', '__attach'] as $key) {
             if (isset($payload[$key])) {
                 $rows[] = ['label' => self::FIELDS[$key][$l], 'value' => (string) $payload[$key]];
             }

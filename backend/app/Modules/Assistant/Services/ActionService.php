@@ -7,6 +7,7 @@ use App\Modules\Assistant\Actions\ActionCatalogue;
 use App\Modules\Assistant\Models\AssistantAction;
 use App\Modules\Assistant\Support\Redactor;
 use App\Modules\Assistant\Support\SchemaValidator;
+use App\Modules\Attachments\Services\AttachmentService;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Core\Models\Branch;
 use App\Modules\Core\Models\User;
@@ -14,15 +15,21 @@ use App\Modules\Core\Services\AuditService;
 use App\Modules\Core\Services\SettingService;
 use App\Modules\CRM\Models\Lead;
 use App\Modules\Expenses\Models\ExpenseCategory;
+use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Models\InvoiceApplication;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Models\PaymentMethod;
 use App\Modules\Treasury\Models\CashAccount;
 use App\Support\Like;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -67,7 +74,7 @@ class ActionService
         }
 
         try {
-            $payload = $this->prepare($tool, $args, $branch);
+            $payload = $this->prepare($tool, $args, $branch, $user);
         } catch (\DomainException $e) {
             return $this->refuse('validation_failed', $e->getMessage());
         }
@@ -113,7 +120,9 @@ class ActionService
             $path = str_replace('{id}', rawurlencode((string) ($payload['__id'] ?? '')), $definition['route']);
             $body = $this->withoutDisplayKeys($payload);
 
-            $response = $this->dispatch($user, $definition['method'], $path, $body, $branch->public_id, $locale, 'assistant-'.$action->public_id);
+            $response = $action->tool === 'erp_payment_cancel'
+                ? $this->cancelPayment($user, $branch, (string) ($payload['__id'] ?? ''), $body, $path, $locale, $action->public_id)
+                : $this->dispatch($user, $definition['method'], $path, $body, $branch->public_id, $locale, 'assistant-'.$action->public_id);
             $json = json_decode((string) $response->getContent(), true);
             $json = is_array($json) ? $json : [];
 
@@ -123,6 +132,9 @@ class ActionService
                     $definition['model']::query()->where('public_id', $entityId)->update(['created_via' => 'assistant']);
                 }
                 $action->update(['status' => 'confirmed', 'entity' => $definition['entity'], 'entity_id' => $entityId ?: null, 'decided_at' => now()]);
+                if (! empty($payload['__attachments']) && $entityId !== '') {
+                    $action->update(['payload' => $payload + ['__attached' => $this->attachFiles($user, $definition['entity'], $entityId, $payload)]]);
+                }
                 $this->audit->log('assistant.action_executed', null, null, ['tool' => $action->tool, 'action' => $action->public_id, 'entity' => $definition['entity'], 'id' => $entityId], $user->id, $branch->id);
             } else {
                 $message = (string) ($json['message'] ?? 'The request could not be completed.');
@@ -137,6 +149,78 @@ class ActionService
 
             return $this->card($action->refresh(), $locale);
         });
+    }
+
+    /**
+     * Cancelling a receipt that was applied to an invoice is two steps in the application's own rules: undo the
+     * application, then cancel the receipt. Both run as the user, through the same routes, inside one
+     * transaction, so a refusal at the second step leaves the invoice as it was.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    private function cancelPayment(User $user, Branch $branch, string $paymentId, array $body, string $path, string $locale, string $actionId): Response
+    {
+        $failed = null;
+        try {
+            return DB::transaction(function () use ($user, $branch, $paymentId, $body, $path, $locale, $actionId, &$failed) {
+                $payment = Payment::query()->where('public_id', $paymentId)->first();
+                $applications = $payment === null ? collect() : InvoiceApplication::query()->where('payment_id', $payment->id)->whereNull('reversed_at')->get();
+                foreach ($applications as $application) {
+                    $undo = $this->dispatch($user, 'DELETE', '/invoice-applications/'.rawurlencode((string) $application->public_id), ['reason' => (string) ($body['reason'] ?? 'Collection changed')], $branch->public_id, $locale, 'assistant-'.$actionId.'-u'.$application->id);
+                    if ($undo->getStatusCode() >= 300) {
+                        $failed = $undo;
+                        throw new \RuntimeException('undo failed');
+                    }
+                }
+                $cancel = $this->dispatch($user, 'POST', $path, $body, $branch->public_id, $locale, 'assistant-'.$actionId);
+                if ($cancel->getStatusCode() >= 300) {
+                    $failed = $cancel;
+                    throw new \RuntimeException('cancel failed');
+                }
+
+                return $cancel;
+            });
+        } catch (\RuntimeException $e) {
+            if ($failed !== null) {
+                return $failed;
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Stores the chat files the user chose with the record the action created or changed. The collection is
+     * already done, so a file that cannot be stored is counted, never an error.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{saved: int, failed: int}
+     */
+    private function attachFiles(User $user, string $entity, string $recordId, array $payload): array
+    {
+        $record = match ($entity) {
+            'invoice' => Invoice::query()->where('public_id', $recordId)->first(),
+            default => null,
+        };
+        $uploads = app(AssistantUploadService::class)->resolve($user, array_values($payload['__attachments']));
+        if ($record === null || $uploads === null) {
+            return ['saved' => 0, 'failed' => count($payload['__attachments'])];
+        }
+
+        $saved = $failed = 0;
+        foreach ($uploads as $upload) {
+            $temp = tempnam(sys_get_temp_dir(), 'att');
+            try {
+                file_put_contents($temp, (string) Storage::disk(config('attachments.disk'))->get($upload->stored_path));
+                app(AttachmentService::class)->store(new UploadedFile($temp, $upload->name, $upload->mime, null, true), $entity, $record, (string) ($payload['__attachment_category'] ?? 'payment_receipt'), null, $user->id);
+                $saved++;
+            } catch (\Throwable) {
+                $failed++;
+            } finally {
+                @unlink($temp);
+            }
+        }
+
+        return ['saved' => $saved, 'failed' => $failed];
     }
 
     /** @return array<string, mixed> */
@@ -185,6 +269,7 @@ class ActionService
             'rows' => ActionLabels::rows($payload, $locale),
             'expires_at' => $action->expires_at->toIso8601String(),
             'result' => $action->entity_id !== null ? ['entity' => $action->entity, 'id' => $action->entity_id] : null,
+            'attached' => $payload['__attached'] ?? null,
             'error' => $action->status === 'failed' ? ['code' => $action->error_code, 'message' => $action->error_message] : null,
         ];
     }
@@ -196,7 +281,7 @@ class ActionService
      * @param  array<string, mixed>  $args
      * @return array<string, mixed>
      */
-    private function prepare(string $tool, array $args, Branch $branch): array
+    private function prepare(string $tool, array $args, Branch $branch, User $user): array
     {
         $base = $this->settings->baseCurrency();
 
@@ -209,6 +294,7 @@ class ActionService
             'erp_expense_draft_create' => $this->prepareExpense($args, $branch, $base),
             'erp_booking_draft_create' => $this->prepareBooking($args, $branch),
             'erp_payment_record' => $this->preparePayment($args, $branch, $base),
+            'erp_invoice_collect' => $this->prepareInvoiceCollect($args, $branch, $user),
             'erp_supplier_payment_record' => $this->prepareSupplierPayment($args, $branch, $base),
             'erp_export_queue' => $this->prepareExport($args),
             default => ($this->catalogue->find($tool)['kind'] ?? null) === 'record'
@@ -376,6 +462,10 @@ class ActionService
             $payload['__note'] = mb_substr((string) $note, 0, 120);
         }
 
+        if (! empty($args['reason'])) {
+            $payload['reason'] = (string) $args['reason'];
+        }
+
         if ($tool === 'erp_commission_pay') {
             // The route pays what is outstanding when no amount is sent; state it and send it, so
             // confirming authorises exactly the amount the card shows.
@@ -436,6 +526,93 @@ class ActionService
             'booking_id' => $booking?->public_id, 'paid_at' => $args['paid_at'] ?? null,
             '__customer' => $this->partyLabel($customer), '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
+    }
+
+    /**
+     * A collection on an issued customer invoice, optionally with the images the user attached in the chat.
+     * The card states the amount, the account, what remains and which files will be stored with the invoice.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array<string, mixed>
+     */
+    private function prepareInvoiceCollect(array $args, Branch $branch, User $user): array
+    {
+        $matches = Invoice::query()->where('branch_id', $branch->id)
+            ->where(fn ($q) => $q->where('public_id', $args['invoice'])->orWhere('number', $args['invoice']))->limit(2)->get();
+        if ($matches->count() > 1) {
+            throw new \DomainException('More than one invoice has this number: use the invoice id.');
+        }
+        $invoice = $matches->first();
+        if ($invoice === null) {
+            throw new \DomainException('No such invoice in this branch.');
+        }
+        if ($invoice->type !== Invoice::TYPE_CUSTOMER_INVOICE || $invoice->status !== Invoice::STATUS_ISSUED || $invoice->journal_entry_id === null) {
+            throw new \DomainException("Only an issued customer invoice can receive a collection (this one is {$invoice->status}). Approve and issue it first.");
+        }
+        $outstanding = (int) $invoice->outstanding_minor;
+        if ($outstanding <= 0) {
+            throw new \DomainException('This invoice has nothing outstanding.');
+        }
+        $amount = (int) ($args['amount_minor'] ?? $outstanding);
+        if ($amount > $outstanding) {
+            throw new \DomainException('The amount is more than the outstanding '.ActionLabels::moneyText($outstanding, (string) $invoice->currency_code).'.');
+        }
+        $currency = (string) $invoice->currency_code;
+        if ($currency !== $this->settings->baseCurrency() && empty($args['fx_rate'])) {
+            throw new \DomainException("This invoice is in {$currency}: ask the user for today's exchange rate and send it as fx_rate.");
+        }
+
+        $account = $this->cashAccount((string) ($args['payment_account'] ?? ''), $branch);
+        $method = $this->collectionMethod($account, $args['method'] ?? null);
+        $customer = Customer::query()->find($invoice->party_id);
+        $paidAt = $args['paid_at'] ?? now()->toDateString();
+
+        $payload = [
+            '__tool' => 'erp_invoice_collect', '__id' => $invoice->public_id, '__invoice' => (string) $invoice->number,
+            '__customer' => $customer ? $this->partyLabel($customer) : '—',
+            '__amount' => ActionLabels::moneyText($amount, $currency), '__when' => (string) $paidAt,
+            '__outstanding' => ActionLabels::moneyText($outstanding - $amount, $currency),
+            '__payment' => $account->name_en ?: $account->name_ar,
+            'receipts' => [array_filter([
+                'amount_minor' => $amount, 'cash_account_id' => $account->account->public_id,
+                'payment_method_id' => $method->public_id, 'paid_at' => $paidAt, 'fx_rate' => $args['fx_rate'] ?? null,
+            ], fn ($v) => $v !== null)],
+        ];
+
+        if (! empty($args['attachments'])) {
+            if (! $user->can('attachments.upload')) {
+                throw new \DomainException('The user may not attach files to records. Prepare the collection without attachments.');
+            }
+            $uploads = app(AssistantUploadService::class)->resolve($user, array_values($args['attachments']));
+            if ($uploads === null) {
+                throw new \DomainException('An attached file was not found or has expired: ask the user to attach it again.');
+            }
+            foreach ($uploads as $upload) {
+                if (! in_array($upload->mime, ['image/jpeg', 'image/png'], true)) {
+                    throw new \DomainException("\"{$upload->name}\" is a Word or Excel file: only JPG and PNG images can be stored with a record. Leave it out of attachments and tell the user.");
+                }
+            }
+            $payload['__attachments'] = array_map(fn ($u) => $u->public_id, $uploads);
+            $payload['__attachment_category'] = $args['attachment_category'] ?? 'payment_receipt';
+            $payload['__attach'] = implode('، ', array_map(fn ($u) => $u->name, $uploads));
+        }
+
+        return $payload;
+    }
+
+    /** The payment method a collection into this account is recorded under: its own, else the one of the requested type with no fixed account. */
+    private function collectionMethod(CashAccount $account, ?string $type): PaymentMethod
+    {
+        $methods = PaymentMethod::query()->where('is_active', true)->get();
+        $own = $methods->where('default_cash_account_id', $account->account_id);
+        $pick = ($type !== null ? $own->where('type', $type) : collect())->first() ?? $own->first()
+            ?? ($methods->whereNull('default_cash_account_id')->where('type', $type ?? 'cash')->first())
+            ?? $methods->whereNull('default_cash_account_id')->first();
+        if ($pick === null) {
+            throw new \DomainException('No payment method is set up for this account. An administrator adds one in Settings, Payment methods, then try again.');
+        }
+
+        return $pick;
     }
 
     private function prepareSupplierPayment(array $args, Branch $branch, string $base): array

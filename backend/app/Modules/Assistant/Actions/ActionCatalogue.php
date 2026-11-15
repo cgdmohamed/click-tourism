@@ -12,6 +12,7 @@ use App\Modules\Expenses\Models\Expense;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
+use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Models\Refund;
 
 /**
@@ -140,6 +141,9 @@ final class ActionCatalogue
             'erp_commission_pay' => $rec('commissions.pay', 'POST', '/commissions/{id}/pay', 'commission', Commission::class, 'pay', 'Prepare PAYING a posted commission out of a cash or bank account. `payment_account` is the account name.', [
                 'payment_account' => ['type' => 'string', 'maxLength' => 255], 'reference' => ['type' => 'string', 'maxLength' => 255],
             ], ['payment_account']),
+            'erp_payment_cancel' => $rec('payments.reverse', 'POST', '/payments/{id}/cancel', 'payment', Payment::class, 'void', 'Prepare CANCELLING a recorded customer payment (its entries are reversed, any link to an invoice is undone and the invoice outstanding returns). To change a collection, cancel it and record it again. Give the receipt number (RV-...) found with erp_payments_list, and a short `reason`.', [
+                'reason' => ['type' => 'string', 'maxLength' => 255],
+            ], ['reason']),
             'erp_refund_approve' => $rec('refunds.approve', 'POST', '/refunds/{id}/approve', 'refund', Refund::class, 'approve', 'Prepare APPROVING a refund request.'),
             'erp_journal_post' => $rec('journal.create', 'POST', '/journal-entries/{id}/post', 'journal_entry', JournalEntry::class, 'post', 'Prepare POSTING a draft journal entry (it can only be reversed afterwards).'),
             'erp_journal_draft_delete' => $rec('journal.delete_drafts', 'DELETE', '/journal-entries/{id}', 'journal_entry', JournalEntry::class, 'delete', 'Prepare DELETING a draft journal entry for good.'),
@@ -163,6 +167,17 @@ final class ActionCatalogue
                 'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['customer_id', 'amount_minor'], 'properties' => [
                     'customer_id' => $publicId, 'payment_account' => $str(255), 'amount_minor' => ['type' => 'integer', 'minimum' => 1], 'currency' => $currency,
                     'booking_id' => $str(30), 'paid_at' => $date, 'method' => ['type' => 'string', 'enum' => ['cash', 'bank_transfer', 'card', 'wallet']],
+                ]],
+            ],
+            'erp_invoice_collect' => [
+                'permission' => 'payments.create', 'method' => 'POST', 'route' => '/invoices/{id}/collections', 'entity' => 'invoice', 'model' => null, 'marks' => false, 'risk' => 'pay',
+                'description' => 'Prepare COLLECTING money against an ISSUED customer invoice: it records the receipt, applies it to the invoice and posts it to the ledger once confirmed. Use it when the user asks to record a collection or transfer for a customer and an open invoice exists (find it with the read tools). `invoice` is the invoice public id or number; `amount_minor` defaults to the whole outstanding amount; `payment_account` names the account that receives the money (optional when the branch has one account). `attachments` are the ids of files the user attached in this chat: they are stored with the invoice when confirmed (only JPG or PNG images can be stored; Word and Excel cannot). A foreign-currency invoice needs `fx_rate`.',
+                'schema' => ['type' => 'object', 'additionalProperties' => false, 'required' => ['invoice'], 'properties' => [
+                    'invoice' => $str(40), 'amount_minor' => ['type' => 'integer', 'minimum' => 1], 'payment_account' => $str(255), 'paid_at' => $date,
+                    'method' => ['type' => 'string', 'enum' => ['cash', 'bank_transfer', 'card', 'wallet']],
+                    'fx_rate' => ['type' => 'string', 'pattern' => '^[0-9]+(\\.[0-9]{1,10})?$'],
+                    'attachments' => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'string', 'maxLength' => 26]],
+                    'attachment_category' => ['type' => 'string', 'enum' => ['payment_receipt', 'bank_transfer', 'other']],
                 ]],
             ],
             'erp_supplier_payment_record' => [

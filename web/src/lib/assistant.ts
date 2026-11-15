@@ -26,6 +26,8 @@ export type ActionCard = {
   rows: Array<{ label: string; value: string }>
   expires_at: string
   result: { entity: string; id: string } | null
+  /** Files stored with the record when a collection was confirmed (saved, and how many could not be). */
+  attached?: { saved: number; failed: number } | null
   error: { code: string | null; message: string | null } | null
 }
 

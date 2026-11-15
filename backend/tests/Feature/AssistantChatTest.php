@@ -13,6 +13,7 @@ use App\Modules\Assistant\Models\AssistantConversation;
 use App\Modules\Assistant\Models\AssistantUpload;
 use App\Modules\Assistant\Services\AssistantUploadService;
 use App\Modules\Assistant\Services\ProviderManager;
+use App\Modules\Attachments\Models\Attachment;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Commissions\Models\Commission;
@@ -26,8 +27,10 @@ use App\Modules\CRM\Models\LeadStage;
 use App\Modules\Expenses\Models\Expense;
 use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Invoices\Models\Invoice;
+use App\Modules\Invoices\Services\InvoiceService;
 use App\Modules\Parties\Models\Customer;
 use App\Modules\Payments\Models\Payment;
+use App\Modules\Payments\Models\PaymentMethod;
 use App\Modules\Treasury\Models\CashAccount;
 use Database\Seeders\CrmSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -883,6 +886,155 @@ class AssistantChatTest extends TestCase
 
         $this->settings->set('assistant', 'enabled', 'false');
         $this->uploadReceipt()->assertStatus(403);
+    }
+
+    /** An issued customer invoice of 100,000 (the route's own steps, so the ledger entry exists). */
+    private function issuedInvoice(int $amount = 100000): Invoice
+    {
+        $this->settings->set('invoices', 'segregation', 'false');
+        $service = app(InvoiceService::class);
+        $invoice = $service->create([
+            'type' => 'customer_invoice', 'party_type' => 'customer', 'party_id' => $this->customer()->public_id,
+            'issue_date' => now()->toDateString(), 'currency' => 'EGP',
+            'lines' => [['account_id' => $this->account('4100')->public_id, 'description' => 'Umrah visa fee', 'credit_minor' => $amount]],
+        ], $this->branch, $this->user->id);
+        $service->submit($invoice, $this->user->id);
+        $service->approve($invoice, $this->user->id);
+
+        return $service->issue($invoice, $this->user->id);
+    }
+
+    private function bankMethod(): void
+    {
+        PaymentMethod::query()->create([
+            'code' => 'BANK', 'name_ar' => 'تحويل', 'name_en' => 'Bank transfer', 'type' => 'bank_transfer',
+            'default_cash_account_id' => $this->account('1110')->id, 'is_active' => true,
+        ]);
+    }
+
+    public function test_a_collection_on_an_invoice_is_recorded_and_the_chat_image_is_stored_with_the_invoice(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'invoices.view', 'attachments.upload', 'attachments.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $upload = $this->uploadReceipt()->assertCreated()->json('data.id');
+
+        $card = $this->prepare('erp_invoice_collect', ['invoice' => $invoice->number, 'amount_minor' => 40000, 'payment_account' => 'main cash', 'attachments' => [$upload], 'attachment_category' => 'bank_transfer']);
+
+        $values = array_column($card['rows'], 'value');
+        $this->assertContains($invoice->number, $values);
+        $this->assertContains('receipt.png', $values);
+        $this->assertSame('pay', $card['risk']);
+        $this->assertSame(0, Payment::query()->count(), 'nothing is recorded before the user confirms');
+
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+
+        $this->assertSame('confirmed', $done['status']);
+        $this->assertSame(['entity' => 'invoice', 'id' => $invoice->public_id], $done['result']);
+        $this->assertSame(['saved' => 1, 'failed' => 0], $done['attached']);
+        $this->assertSame(60000, (int) $invoice->fresh()->outstanding_minor);
+        $this->assertSame(1, Payment::query()->where('status', 'posted')->count());
+        $stored = Attachment::query()->where('attachable_type', 'invoice')->where('attachable_id', $invoice->id)->firstOrFail();
+        $this->assertSame('bank_transfer', $stored->category);
+        $this->assertSame('receipt.png', $stored->original_name);
+    }
+
+    public function test_the_whole_outstanding_is_the_default_and_a_larger_amount_is_refused(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'invoices.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+
+        $card = $this->prepare('erp_invoice_collect', ['invoice' => $invoice->public_id, 'payment_account' => 'main cash']);
+        $this->assertNotEmpty($card);
+        $this->assertContains('0.00 EGP', array_column($card['rows'], 'value'));
+
+        $this->script([$this->toolCallReply([['erp_invoice_collect', ['invoice' => $invoice->number, 'amount_minor' => 100001, 'payment_account' => 'main cash']]]), $this->finalReply('Too much.')]);
+        $this->assertSame([], $this->chat('collect more')->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('outstanding', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_word_and_excel_files_are_never_stored_with_a_record_and_the_model_is_told(): void
+    {
+        $this->grant('payments.create', 'invoices.view', 'attachments.upload');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $word = AssistantUpload::query()->create([
+            'user_id' => $this->user->id, 'name' => 'letter.docx', 'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'size_bytes' => 10, 'sha256' => hash('sha256', 'x'), 'stored_path' => 'assistant-uploads/x.docx', 'expires_at' => now()->addHour(),
+        ])->public_id;
+
+        $this->script([$this->toolCallReply([['erp_invoice_collect', ['invoice' => $invoice->number, 'payment_account' => 'main cash', 'attachments' => [$word]]]]), $this->finalReply('I cannot store that.')]);
+        $this->assertSame([], $this->chat('collect with this letter')->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('Word or Excel', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_without_the_attach_permission_the_collection_is_offered_without_files(): void
+    {
+        $this->grant('payments.create', 'invoices.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $upload = $this->uploadReceipt()->assertCreated()->json('data.id');
+
+        $this->script([$this->toolCallReply([['erp_invoice_collect', ['invoice' => $invoice->number, 'payment_account' => 'main cash', 'attachments' => [$upload]]]]), $this->finalReply('No attach rights.')]);
+        $this->assertSame([], $this->chat('collect')->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('may not attach', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_a_draft_or_paid_invoice_cannot_be_collected(): void
+    {
+        $this->grant('payments.create', 'invoices.view', 'invoices.create');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $draft = $this->assistantDraftInvoice();
+
+        $this->script([$this->toolCallReply([['erp_invoice_collect', ['invoice' => $draft->number, 'payment_account' => 'main cash']]]), $this->finalReply('Issue it first.')]);
+        $this->assertSame([], $this->chat('collect on the draft')->assertOk()->json('data.actions'));
+        $this->assertStringContainsString('issued customer invoice', $this->lastToolMessages()[0]['content']);
+    }
+
+    public function test_a_recorded_collection_can_be_cancelled_through_a_confirmed_card(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'payments.reverse', 'invoices.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $collect = $this->prepare('erp_invoice_collect', ['invoice' => $invoice->number, 'amount_minor' => 30000, 'payment_account' => 'main cash']);
+        $this->postJson('/api/v1/assistant/actions/'.$collect['id'].'/confirm')->assertOk();
+        $payment = Payment::query()->firstOrFail();
+
+        $card = $this->prepare('erp_payment_cancel', ['number' => $payment->number, 'reason' => 'Wrong amount']);
+        $this->assertSame('void', $card['risk']);
+        $this->assertContains('Wrong amount', array_column($card['rows'], 'value'));
+
+        $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk();
+        $this->assertSame('cancelled', $payment->fresh()->status);
+        $this->assertSame(100000, (int) $invoice->fresh()->outstanding_minor);
+    }
+
+    public function test_cancelling_an_applied_collection_that_cannot_undo_the_link_changes_nothing(): void
+    {
+        $this->grant('payments.create', 'payments.view', 'payments.reverse', 'invoices.view');
+        $this->branchCashAccount();
+        $this->bankMethod();
+        $invoice = $this->issuedInvoice();
+        $collect = $this->prepare('erp_invoice_collect', ['invoice' => $invoice->number, 'amount_minor' => 30000, 'payment_account' => 'main cash']);
+        $this->postJson('/api/v1/assistant/actions/'.$collect['id'].'/confirm')->assertOk();
+        $payment = Payment::query()->firstOrFail();
+        $card = $this->prepare('erp_payment_cancel', ['number' => $payment->number, 'reason' => 'Wrong amount']);
+
+        // The role loses the right to undo applications before the user confirms.
+        $this->user->revokePermissionTo('payments.create');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+
+        $this->assertSame('failed', $done['status']);
+        $this->assertSame('posted', $payment->fresh()->status);
+        $this->assertSame(70000, (int) $invoice->fresh()->outstanding_minor);
     }
 
     public function test_an_unknown_payment_account_is_reported_with_the_choices_and_no_card_exists(): void
