@@ -16,6 +16,7 @@ use App\Modules\Payments\Models\SupplierPayment;
 use App\Modules\Treasury\Models\CashAccount;
 use App\Modules\Treasury\Services\TreasuryService;
 use App\Support\Money;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -856,8 +857,12 @@ class ReportService
             ->map(fn (Payment $payment) => $payment->toApiArray())
             ->all();
 
-        // Use base currency amounts from posted GL; never sum foreign cash at
-        // an artificial FX rate. Account figures retain native currencies.
+        // Each account keeps its own currency figure. The total in the base currency is APPROXIMATE for foreign
+        // accounts: their native balance at the latest recorded rate of that currency (the booked base figure
+        // when no rate was ever recorded, flagged), so the owner sees one number without a made-up rate.
+        $today = Carbon::now()->toDateString();
+        $ratesAsOf = null;
+        $ratesMissing = [];
         $cashAccounts = CashAccount::query()
             ->when($branch, fn ($q) => $q->where(function ($sub) use ($branch) {
                 $sub->where('branch_id', $branch->id)->orWhereNull('branch_id');
@@ -865,18 +870,41 @@ class ReportService
             ->where('is_active', true)
             ->with('account')
             ->get()
-            ->map(fn (CashAccount $ca) => [
-                'id' => $ca->public_id,
-                'name_ar' => $ca->name_ar,
-                'name_en' => $ca->name_en,
-                'kind' => $ca->kind,
-                'currency' => $ca->currency_code,
-                'balance_minor' => $this->treasury->nativeBalance($ca, $branch),
-                'base_balance_minor' => $this->treasury->balance($ca, $branch),
-            ]);
+            ->map(function (CashAccount $ca) use ($branch, $currency, $today, &$ratesAsOf, &$ratesMissing) {
+                $native = $this->treasury->nativeBalance($ca, $branch);
+                $booked = $this->treasury->balance($ca, $branch);
+                $row = [
+                    'id' => $ca->public_id,
+                    'name_ar' => $ca->name_ar,
+                    'name_en' => $ca->name_en,
+                    'kind' => $ca->kind,
+                    'currency' => $ca->currency_code,
+                    'balance_minor' => $native,
+                    'base_balance_minor' => $booked,
+                    'approx_base_minor' => $booked,
+                    'rate' => null,
+                    'rate_date' => null,
+                    'rate_missing' => false,
+                ];
+                if (strtoupper((string) $ca->currency_code) === $currency) {
+                    return $row;
+                }
+                try {
+                    $snapshot = $this->fx->snapshot((string) $ca->currency_code, $today, $currency, 'any');
+                    $row['approx_base_minor'] = $this->fx->convert(new Money($native, strtoupper((string) $ca->currency_code)), $currency, $snapshot['rate'])->amountMinor;
+                    $row['rate'] = $snapshot['rate'];
+                    $row['rate_date'] = $snapshot['date'];
+                    $ratesAsOf = $ratesAsOf === null || $snapshot['date'] < $ratesAsOf ? $snapshot['date'] : $ratesAsOf;
+                } catch (\DomainException) {
+                    $row['rate_missing'] = true;
+                    $ratesMissing[strtoupper((string) $ca->currency_code)] = true;
+                }
+
+                return $row;
+            });
 
         $hasForeignCash = $cashAccounts->contains(fn ($ca) => strtoupper($ca['currency']) !== $currency);
-        $cashBalanceMinor = $hasForeignCash ? null : (int) $cashAccounts->sum('base_balance_minor');
+        $cashBalanceMinor = (int) $cashAccounts->sum('approx_base_minor');
 
         $invoiceScope = fn ($type) => Invoice::query()
             ->where('type', $type)
@@ -1024,6 +1052,10 @@ class ReportService
             // New KPI data
             'cash_balance_minor' => $cashBalanceMinor,
             'cash_balance_mixed_currency' => $hasForeignCash,
+            // True when the total includes foreign accounts converted at the latest recorded rates (the oldest rate date used and any currency with no rate are listed).
+            'cash_balance_approximate' => $hasForeignCash,
+            'cash_rates_as_of' => $ratesAsOf,
+            'cash_rates_missing' => array_keys($ratesMissing),
             'cash_accounts' => $cashAccounts->values()->all(),
             'ar_outstanding_minor' => $arOutstandingMinor,
             'ap_outstanding_minor' => $apOutstandingMinor,

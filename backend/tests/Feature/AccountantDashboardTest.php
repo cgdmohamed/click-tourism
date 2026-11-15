@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Modules\Accounting\Models\Account;
+use App\Modules\Money\Services\FxService;
+use App\Modules\Payments\Services\PaymentService;
+use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -61,5 +65,87 @@ class AccountantDashboardTest extends TestCase
         $this->withHeader('X-Branch-Id', $this->branch->public_id)
             ->getJson('/api/v1/dashboard/summary?period=customRange')
             ->assertStatus(422);
+    }
+
+    private function foreignCashAccount(string $code, string $currency): CashAccount
+    {
+        $account = Account::query()->create([
+            'code' => $code, 'name_ar' => 'حساب '.$currency, 'name_en' => $currency.' account', 'type' => 'asset',
+            'classification' => Account::defaultClassification('asset', $code),
+            'is_postable' => true, 'is_active' => true, 'currency_code' => $currency,
+        ]);
+
+        return CashAccount::query()->create([
+            'account_id' => $account->id, 'branch_id' => $this->branch->id, 'kind' => 'bank',
+            'name_ar' => 'حساب '.$currency, 'name_en' => $currency.' account', 'currency_code' => $currency, 'is_active' => true,
+        ]);
+    }
+
+    private function egpCashBox(): void
+    {
+        CashAccount::query()->create([
+            'account_id' => $this->account('1110')->id, 'branch_id' => $this->branch->id, 'kind' => 'cash',
+            'name_ar' => 'الخزينة', 'name_en' => 'Cash box', 'currency_code' => 'EGP', 'is_active' => true,
+        ]);
+    }
+
+    private function receive(string $ledgerCode, int $minor, string $currency, string $rate): void
+    {
+        app(PaymentService::class)->record([
+            'branch_id' => $this->branch->public_id, 'customer_id' => $this->customer()->public_id,
+            'cash_account_id' => $this->account($ledgerCode)->public_id, 'amount_minor' => $minor, 'currency' => $currency,
+            'fx_rate' => $rate, 'method' => 'bank_transfer', 'paid_at' => now()->toIso8601String(),
+        ], $this->user->id);
+    }
+
+    private function summary()
+    {
+        return $this->withHeader('X-Branch-Id', $this->branch->public_id)->getJson('/api/v1/dashboard/summary?period=thisMonth')->assertOk();
+    }
+
+    public function test_cash_in_other_currencies_is_totalled_in_the_base_currency_at_each_latest_rate(): void
+    {
+        $this->egpCashBox();
+        $this->receive('1110', 500000, 'EGP', '1');
+        $this->foreignCashAccount('1125', 'USD');
+        $this->receive('1125', 100000, 'USD', '48.5');
+        app(FxService::class)->upsertRate('USD', '50.0000000000', now()->toDateString());
+
+        $data = $this->summary()->json('data');
+
+        // 1,000.00 USD at today's recorded 50 is 50,000.00 EGP, plus the 5,000.00 in the cash box.
+        $this->assertSame(5_500_000, $data['cash_balance_minor']);
+        $this->assertTrue($data['cash_balance_approximate']);
+        $this->assertSame(now()->toDateString(), $data['cash_rates_as_of']);
+        $this->assertSame([], $data['cash_rates_missing']);
+        $usd = collect($data['cash_accounts'])->firstWhere('currency', 'USD');
+        $this->assertSame(100000, $usd['balance_minor']);
+        $this->assertSame(5_000_000, $usd['approx_base_minor']);
+        $this->assertEquals(50, (float) $usd['rate']);
+        $this->assertSame(4_850_000, $usd['base_balance_minor'], 'the booked base value is kept beside the approximation');
+    }
+
+    public function test_a_currency_with_no_rate_falls_back_to_its_booked_value_and_is_listed(): void
+    {
+        $this->foreignCashAccount('1126', 'EUR');
+        $this->receive('1126', 20000, 'EUR', '52');
+
+        $data = $this->summary()->json('data');
+
+        $this->assertSame(1_040_000, $data['cash_balance_minor']);
+        $this->assertSame(['EUR'], $data['cash_rates_missing']);
+        $this->assertTrue(collect($data['cash_accounts'])->firstWhere('currency', 'EUR')['rate_missing']);
+    }
+
+    public function test_only_base_currency_cash_is_not_approximate(): void
+    {
+        $this->egpCashBox();
+        $this->receive('1110', 250000, 'EGP', '1');
+
+        $data = $this->summary()->json('data');
+
+        $this->assertSame(250000, $data['cash_balance_minor']);
+        $this->assertFalse($data['cash_balance_approximate']);
+        $this->assertNull($data['cash_rates_as_of']);
     }
 }
