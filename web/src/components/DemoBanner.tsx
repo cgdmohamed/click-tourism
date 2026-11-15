@@ -10,6 +10,12 @@ type DemoStatus = {
   generation: string | null
 }
 
+const DISMISS_KEY = 'demo-banner-dismissed'
+
+function readDismissed(): string | null {
+  try { return window.sessionStorage.getItem(DISMISS_KEY) } catch { return null }
+}
+
 /**
  * Public demo warning, including login. The status comes from the server
  * rather than build-time flags, so production never displays demo branding.
@@ -18,6 +24,7 @@ export function DemoBanner() {
   const { locale } = useI18n()
   const [now, setNow] = useState(Date.now())
   const previousGeneration = useRef<string | null>(null)
+  const [dismissedFor, setDismissedFor] = useState<string | null>(readDismissed)
   const { data } = useQuery({
     queryKey: ['public-demo-status'],
     queryFn: async () => {
@@ -45,6 +52,13 @@ export function DemoBanner() {
   }, [data?.enabled, data?.generation])
 
   if (!data?.enabled) return null
+  // Closed for this browser session; a database reset (new generation) shows the warning again.
+  if (dismissedFor !== null && dismissedFor === (data.generation ?? 'none')) return null
+  const dismiss = () => {
+    const mark = data.generation ?? 'none'
+    setDismissedFor(mark)
+    try { window.sessionStorage.setItem(DISMISS_KEY, mark) } catch { /* storage may be blocked: the banner just closes for now */ }
+  }
   const seconds = data.next_reset_at
     ? Math.max(0, Math.ceil((new Date(data.next_reset_at).getTime() - now) / 1000))
     : null
@@ -63,6 +77,14 @@ export function DemoBanner() {
       <span dir="ltr" className="rounded-8 border border-warning-border px-2 py-0.5 font-semibold tabular-nums">
         {time}
       </span>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label={locale === 'ar' ? 'إغلاق تنبيه النسخة التجريبية' : 'Dismiss demo notice'}
+        className="ms-1 inline-flex h-8 w-8 items-center justify-center rounded-8 text-base font-semibold hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      >
+        <span aria-hidden="true">×</span>
+      </button>
     </div>
   )
 }
