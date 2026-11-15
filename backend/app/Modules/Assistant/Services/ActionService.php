@@ -18,6 +18,7 @@ use App\Modules\Parties\Models\Customer;
 use App\Modules\Parties\Models\Supplier;
 use App\Modules\Treasury\Models\CashAccount;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -225,7 +226,7 @@ class ActionService
             throw new \DomainException('Give a stage or a note to change.');
         }
 
-        return array_filter(['stage' => $args['stage'] ?? null, 'note' => $args['note'] ?? null]) + ['__id' => $lead->public_id, '__lead' => $lead->name];
+        return array_filter(['stage' => $args['stage'] ?? null, 'note' => $args['note'] ?? null]) + ['__id' => $lead->public_id, '__lead' => $this->partyLabel($lead)];
     }
 
     private function prepareInvoice(array $args, Branch $branch, string $base): array
@@ -257,7 +258,7 @@ class ActionService
                 'credit_minor' => $line['quantity'] * $line['unit_price_minor'],
             ], $args['lines']),
             'submit' => false,
-            '__customer' => $this->customerLabel($customer),
+            '__customer' => $this->partyLabel($customer),
             '__booking' => $booking?->number,
         ];
     }
@@ -283,7 +284,7 @@ class ActionService
                 throw new \DomainException('Supplier not found.');
             }
             unset($args['supplier_id']);
-            $paying = ['payee_type' => 'supplier', 'payee_id' => $supplier->public_id, '__payee' => $supplier->name_en ?: $supplier->name_ar];
+            $paying = ['payee_type' => 'supplier', 'payee_id' => $supplier->public_id, '__payee' => $this->partyLabel($supplier)];
         } else {
             $accounts = CashAccount::query()->where('is_active', true)->where('branch_id', $branch->id)->get();
             $needle = mb_strtolower(trim((string) ($args['payment_account'] ?? '')));
@@ -313,13 +314,13 @@ class ActionService
                 if ($supplier === null) {
                     throw new \DomainException("Supplier {$item['supplier_id']} not found.");
                 }
-                $item['__supplier'] = $supplier->name_en ?: $supplier->name_ar;
+                $item['__supplier'] = $this->partyLabel($supplier);
             }
 
             return $item;
         }, $args['items']);
 
-        return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $this->customerLabel($customer)];
+        return ['branch_id' => $branch->public_id, 'currency' => strtoupper($args['currency'])] + $args + ['__customer' => $this->partyLabel($customer)];
     }
 
     /**
@@ -398,8 +399,14 @@ class ActionService
         // so the card must name it; without one the receipt is an unallocated advance.
         $booking = null;
         if (! empty($args['booking_id'])) {
-            $booking = Booking::query()->where('public_id', $args['booking_id'])->orWhere('number', $args['booking_id'])->first();
-            if ($booking === null || $booking->branch_id !== $branch->id) {
+            $bookings = Booking::query()->where('branch_id', $branch->id)
+                ->where(fn ($q) => $q->where('public_id', $args['booking_id'])->orWhere('number', $args['booking_id']))
+                ->limit(2)->get();
+            if ($bookings->count() > 1) {
+                throw new \DomainException('More than one booking has this number: use the booking id.');
+            }
+            $booking = $bookings->first();
+            if ($booking === null) {
                 throw new \DomainException('Booking not found in this branch.');
             }
             if ($booking->customer_id !== $customer->id) {
@@ -414,7 +421,7 @@ class ActionService
             'customer_id' => $customer->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
             'method' => $args['method'] ?? 'cash', 'amount_minor' => $args['amount_minor'], 'currency' => $currency,
             'booking_id' => $booking?->public_id, 'paid_at' => $args['paid_at'] ?? null,
-            '__customer' => $this->customerLabel($customer), '__payment' => $account->name_en ?: $account->name_ar,
+            '__customer' => $this->partyLabel($customer), '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
     }
 
@@ -430,7 +437,7 @@ class ActionService
             '__tool' => 'erp_supplier_payment_record',
             'supplier_id' => $supplier->public_id, 'branch_id' => $branch->public_id, 'cash_account_id' => $account->account->public_id,
             'amount_minor' => $args['amount_minor'], 'currency' => strtoupper($args['currency'] ?? $base), 'paid_at' => $args['paid_at'] ?? null,
-            '__payee' => $supplier->name_en ?: $supplier->name_ar, '__payment' => $account->name_en ?: $account->name_ar,
+            '__payee' => $this->partyLabel($supplier), '__payment' => $account->name_en ?: $account->name_ar,
         ], fn ($v) => $v !== null);
     }
 
@@ -445,16 +452,22 @@ class ActionService
 
     /** The active cash or bank account of this branch with exactly this name; otherwise the user is told which exist. */
     /**
-     * The customer as the confirmation card prints it. When another customer carries the same name,
-     * say so and add the branch, so a wrong "first Ahmed" is visible before the user presses Confirm.
+     * A customer, supplier or lead as the confirmation card prints it. When another record of the same
+     * kind carries the same name, say so and add the branch, so a wrong "first Ahmed" is visible
+     * before the user presses Confirm.
      */
-    private function customerLabel(Customer $customer): string
+    private function partyLabel(Model $party): string
     {
-        $name = $customer->name_en ?: $customer->name_ar;
-        $same = Customer::query()->where('id', '!=', $customer->id)
-            ->where(fn ($q) => $q->where('name_ar', $customer->name_ar)->orWhere('name_en', $customer->name_en))->count();
+        $name = (string) ($party->name_en ?? null ?: $party->name_ar ?? null ?: $party->name ?? '');
+        $others = $party::query()->where('id', '!=', $party->id)->where(function ($q) use ($party) {
+            foreach (['name', 'name_ar', 'name_en'] as $column) {
+                if (array_key_exists($column, $party->getAttributes()) && $party->{$column} !== null && $party->{$column} !== '') {
+                    $q->orWhere($column, $party->{$column});
+                }
+            }
+        })->count();
 
-        return $same === 0 ? $name : sprintf('%s (%s · %d)', $name, $customer->branch?->name_ar ?: $customer->branch?->code, $same + 1);
+        return $others === 0 ? $name : sprintf('%s (%s · %d)', $name, $party->branch?->name_ar ?: $party->branch?->code, $others + 1);
     }
 
     private function cashAccount(string $name, Branch $branch): CashAccount

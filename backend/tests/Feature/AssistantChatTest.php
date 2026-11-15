@@ -485,6 +485,19 @@ class AssistantChatTest extends TestCase
         $this->assertStringNotContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
     }
 
+    public function test_a_supplier_payment_card_flags_a_supplier_whose_name_is_shared(): void
+    {
+        $this->grant('supplier_payments.create', 'supplier_payments.view', 'suppliers.view');
+        $this->branchCashAccount();
+        $first = $this->supplier();
+        $this->supplier();
+
+        $card = $this->prepare('erp_supplier_payment_record', ['supplier_id' => $first->public_id, 'payment_account' => 'main cash', 'amount_minor' => 5000, 'currency' => 'EGP']);
+
+        $this->assertStringContainsString('Test Supplier (', json_encode($card, JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('· 2)', json_encode($card, JSON_UNESCAPED_UNICODE));
+    }
+
     public function test_the_system_prompt_tells_the_model_to_ask_when_a_name_is_ambiguous(): void
     {
         $this->script([$this->finalReply('ok')]);
