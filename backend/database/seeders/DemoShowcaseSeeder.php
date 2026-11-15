@@ -82,6 +82,18 @@ class DemoShowcaseSeeder extends Seeder
         $this->step('leads', fn () => $this->leads());
     }
 
+    /**
+     * The day that many days ago, never before the first day of this year: the install opens the current
+     * year's fiscal periods only, so a posting dated in the previous year (early January) would be refused.
+     */
+    private function ago(int $days): Carbon
+    {
+        $day = Carbon::now()->subDays($days);
+        $first = Carbon::now()->startOfYear();
+
+        return $day->lessThan($first) ? $first->copy()->addHours(9) : $day;
+    }
+
     /** @template T @param  callable(): T  $do @return T|null */
     private function step(string $name, callable $do): mixed
     {
@@ -378,7 +390,7 @@ class DemoShowcaseSeeder extends Seeder
                 'payment_method_id' => $method?->public_id,
                 'amount_minor' => (int) round($booking->total_sell_minor * $share),
                 'currency' => 'EGP', 'fx_rate' => '1',
-                'paid_at' => $today->copy()->subDays($daysAgo)->toIso8601String(),
+                'paid_at' => $this->ago($daysAgo)->toIso8601String(),
             ], $this->owner?->id);
         }
     }
@@ -400,7 +412,7 @@ class DemoShowcaseSeeder extends Seeder
             $line = ['account_id' => '5100', 'description' => $memo, 'debit_minor' => $amount] + ($tax > 0 ? ['tax_minor' => $tax, 'tax_account_id' => '1160'] : []);
             $bill = $service->create([
                 'type' => Invoice::TYPE_SUPPLIER_INVOICE, 'party_type' => 'supplier', 'party_id' => $suppliers[$key]->public_id,
-                'issue_date' => today()->subDays($daysAgo)->toDateString(), 'due_date' => today()->addDays(30 - $daysAgo)->toDateString(),
+                'issue_date' => $this->ago($daysAgo)->toDateString(), 'due_date' => today()->addDays(30 - $daysAgo)->toDateString(),
                 'currency' => 'EGP', 'memo' => $memo, 'lines' => [$line],
             ], $this->branch, $this->owner?->id);
             $service->submit($bill, $this->owner?->id);
@@ -425,7 +437,7 @@ class DemoShowcaseSeeder extends Seeder
                 'supplier_id' => $suppliers[$key]->public_id,
                 'cash_account_id' => Account::query()->where('code', $accountCode)->value('public_id'),
                 'amount_minor' => $amount, 'currency' => 'EGP', 'fx_rate' => '1',
-                'paid_at' => Carbon::now()->subDays($daysAgo)->toIso8601String(),
+                'paid_at' => $this->ago($daysAgo)->toIso8601String(),
             ], $this->owner?->id);
         }
     }
@@ -457,7 +469,7 @@ class DemoShowcaseSeeder extends Seeder
         foreach ($rows as [$cat, $daysAgo, $amount, $description, $account, $state]) {
             $expense = $service->create([
                 'category_id' => $category($cat)->public_id,
-                'expense_date' => today()->subDays($daysAgo)->toDateString(),
+                'expense_date' => $this->ago($daysAgo)->toDateString(),
                 'amount_minor' => $amount, 'currency' => 'EGP', 'fx_rate' => '1',
                 'description' => $description, 'payee_type' => 'none',
                 'cash_account_id' => $cash($account)->public_id,
@@ -504,9 +516,7 @@ class DemoShowcaseSeeder extends Seeder
             ['vehicles', 'حافلة ميني باص للرحلات الداخلية', 85_000_000, 100],
         ];
         foreach ($assets as [$category, $description, $value, $daysAgo]) {
-            // The assets of the first months are in the current year, whose periods are all open.
-            $date = Carbon::today()->subDays($daysAgo);
-            $date = $date->year === Carbon::today()->year ? $date : Carbon::today()->startOfYear();
+            $date = $this->ago($daysAgo);
             $asset = $service->createAsset([
                 'category_id' => $categories[$category]->public_id, 'description' => $description,
                 'capitalization_date' => $date->toDateString(), 'in_service_date' => $date->toDateString(),
@@ -527,7 +537,7 @@ class DemoShowcaseSeeder extends Seeder
             }
             $advance = $service->requestAdvance([
                 'employee_id' => $employee->public_id, 'amount_minor' => $amount, 'memo' => $memo,
-                'request_date' => today()->subDays($daysAgo)->toDateString(),
+                'request_date' => $this->ago($daysAgo)->toDateString(),
             ], $this->branch, $this->owner?->id);
             if ($code === 'EMP-001') {
                 $service->approveAdvance($advance, $this->approver?->id);
