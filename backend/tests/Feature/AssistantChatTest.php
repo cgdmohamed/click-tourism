@@ -454,6 +454,22 @@ class AssistantChatTest extends TestCase
         $this->assertSame('assistant', $expense->created_via);
     }
 
+    public function test_an_expense_category_matches_loosely_in_arabic_and_english(): void
+    {
+        $this->grant('expenses.create', 'expenses.view');
+        $account = Account::query()->where('type', 'expense')->where('is_postable', true)->firstOrFail();
+        ExpenseCategory::query()->create(['code' => 'RENT-T', 'name_ar' => 'الإيجار', 'name_en' => 'Rent', 'account_id' => $account->id, 'is_active' => true]);
+        ExpenseCategory::query()->create(['code' => 'UTIL-T', 'name_ar' => 'المرافق', 'name_en' => 'Utilities', 'account_id' => $account->id, 'is_active' => true]);
+        $this->branchCashAccount();
+
+        foreach (['إيجار', 'ايجار', 'rent', 'RENT-T'] as $word) {
+            $card = $this->prepare('erp_expense_draft_create', ['category' => $word, 'expense_date' => now()->toDateString(), 'amount_minor' => 800000, 'description' => 'Rent', 'payment_account' => 'main cash']);
+            $this->assertNotEmpty($card['id'], $word);
+            $done = $this->postJson('/api/v1/assistant/actions/'.$card['id'].'/confirm')->assertOk()->json('data');
+            $this->assertSame('RENT-T', Expense::query()->where('public_id', $done['result']['id'])->firstOrFail()->category->code, $word);
+        }
+    }
+
     private function branchCashAccount(): CashAccount
     {
         return CashAccount::query()->create([
