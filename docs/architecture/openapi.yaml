@@ -2399,6 +2399,34 @@ paths:
       responses:
         '200': { description: Package details }
         '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Bookings]
+      summary: Edit a program (bookings.update). Additive 2026-11-15, ADR-0037
+      description: >-
+        Changes only the fields sent. A new price applies to future bookings only. A name already used in the
+        branch is refused, and the execution type cannot change once departures exist. `is_active=false`
+        stops new bookings against the program.
+      parameters:
+        - { name: package, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                category: { type: string, enum: [domestic, international, umrah, hajj, corporate, day_trip, other] }
+                execution_type: { type: string, enum: [fixed, private, standalone] }
+                description: { type: string, nullable: true }
+                destination: { type: string, nullable: true }
+                base_price_minor: { type: integer, minimum: 0 }
+                estimated_cost_minor: { type: integer, minimum: 0 }
+                is_active: { type: boolean }
+      responses:
+        '200': { description: Program updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
   /tour-packages/{package}/departures:
     post:
       tags: [Bookings]
@@ -2427,6 +2455,38 @@ paths:
         - { name: departure, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: Departure closed }
+  /tour-departures/{departure}:
+    patch:
+      tags: [Bookings]
+      summary: Edit a departure (bookings.update). Additive 2026-11-15, ADR-0037
+      description: >-
+        Capacity cannot drop below the seats already taken, the end date cannot precede the start, and the
+        start date cannot move while live bookings hold places.
+      parameters:
+        - { name: departure, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                starts_on: { type: string, format: date }
+                ends_on: { type: string, format: date, nullable: true }
+                capacity: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: Departure updated }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /tour-departures/{departure}/reopen:
+    post:
+      tags: [Bookings]
+      summary: Reopen a closed departure (bookings.update). Additive 2026-11-15, ADR-0037
+      parameters:
+        - { name: departure, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Departure reopened }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /bookings:
     get:
       tags: [Bookings]

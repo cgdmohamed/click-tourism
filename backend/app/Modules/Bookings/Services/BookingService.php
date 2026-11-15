@@ -96,6 +96,9 @@ class BookingService
                 if (! $departure || $departure->branch_id !== $branch->id || $departure->status !== 'open') {
                     throw new DomainException('The selected tour departure is not available for this branch.');
                 }
+                if ($departure->package !== null && ! $departure->package->is_active) {
+                    throw new DomainException('This program is inactive: reactivate it before taking bookings.');
+                }
                 if ($departure->starts_on->toDateString() !== ($data['start_date'] ?? null)) {
                     throw new DomainException('Booking start date must match the selected departure.');
                 }

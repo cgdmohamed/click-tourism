@@ -6,6 +6,7 @@ use App\Modules\Bookings\Models\TourDeparture;
 use App\Modules\Bookings\Models\TourPackage;
 use App\Modules\Bookings\Services\BookingService;
 use App\Modules\Core\Models\Branch;
+use App\Modules\Core\Models\User;
 use App\Modules\Money\Models\Currency;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -172,5 +173,124 @@ class TourPackageTest extends TestCase
                 'sell_currency' => 'EGP',
             ]],
         ], $this->user->id);
+    }
+
+    private function headers(): array
+    {
+        return ['X-Branch-Id' => $this->branch->public_id];
+    }
+
+    private function departureOf(TourPackage $package, int $seats = 10): TourDeparture
+    {
+        return TourDeparture::query()->create([
+            'tour_package_id' => $package->id, 'branch_id' => $this->branch->id, 'starts_on' => now()->addWeeks(3)->toDateString(),
+            'ends_on' => now()->addWeeks(4)->toDateString(), 'capacity' => $seats, 'status' => 'open',
+        ]);
+    }
+
+    private function booked(TourDeparture $departure, int $adults, string $status = 'confirmed'): void
+    {
+        $booking = app(BookingService::class)->create([
+            'customer_id' => $this->customer()->public_id, 'branch_id' => $this->branch->public_id,
+            'tour_departure_id' => $departure->public_id, 'start_date' => $departure->starts_on->toDateString(),
+            'pax_adults' => $adults, 'currency' => 'EGP',
+            'items' => [['service_type' => 'program', 'description' => 'Seat', 'quantity' => $adults, 'unit_cost_minor' => 1000, 'unit_sell_minor' => 2000, 'cost_currency' => 'EGP', 'sell_currency' => 'EGP']],
+        ], $this->user->id);
+        if ($status !== 'draft') {
+            app(BookingService::class)->transition($booking, $status, null, $this->user->id);
+        }
+    }
+
+    public function test_a_program_can_be_edited_and_its_old_bookings_keep_their_price(): void
+    {
+        $package = $this->package();
+
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$package->public_id}", [
+            'name' => 'Winter tour 2027', 'category' => 'international', 'destination' => 'Istanbul',
+            'base_price_minor' => 250000, 'estimated_cost_minor' => 180000, 'description' => 'Seven days.',
+        ])->assertOk()->assertJsonPath('data.name', 'Winter tour 2027')->assertJsonPath('data.base_price_minor', 250000);
+
+        $package->refresh();
+        $this->assertSame('international', $package->category);
+        $this->assertSame('Istanbul', $package->destination);
+        $this->assertDatabaseHas('audit_events', ['action' => 'tour_package.updated']);
+    }
+
+    public function test_a_program_cannot_take_the_name_of_another_or_change_type_once_it_has_departures(): void
+    {
+        $one = $this->package();
+        TourPackage::query()->create(['branch_id' => $this->branch->id, 'code' => 'OTHER', 'name' => 'Nile cruise', 'category' => 'domestic', 'execution_type' => 'fixed', 'currency_code' => 'EGP', 'base_price_minor' => 1, 'estimated_cost_minor' => 1]);
+
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$one->public_id}", ['name' => 'nile CRUISE'])->assertStatus(422);
+
+        $this->departureOf($one);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$one->public_id}", ['execution_type' => 'private'])->assertStatus(422);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$one->public_id}", ['name' => 'Winter tour', 'execution_type' => 'fixed'])->assertOk();
+    }
+
+    public function test_an_inactive_program_takes_no_new_bookings_until_it_is_reactivated(): void
+    {
+        $package = $this->package();
+        $departure = $this->departureOf($package);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$package->public_id}", ['is_active' => false])->assertOk()->assertJsonPath('data.is_active', false);
+
+        $this->withHeaders($this->headers())->postJson('/api/v1/bookings', [
+            'customer_id' => $this->customer()->public_id, 'branch_id' => $this->branch->public_id, 'tour_departure_id' => $departure->public_id,
+            'start_date' => $departure->starts_on->toDateString(), 'pax_adults' => 1, 'currency' => 'EGP',
+            'items' => [['service_type' => 'program', 'description' => 'Seat', 'quantity' => 1, 'unit_cost_minor' => 1000, 'unit_sell_minor' => 2000]],
+        ])->assertStatus(422);
+
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$package->public_id}", ['is_active' => true])->assertOk();
+        $this->booked($departure, 1, 'draft');
+        $this->assertSame(1, $departure->bookings()->count());
+    }
+
+    public function test_a_departure_can_change_seats_and_return_date_but_not_below_the_seats_taken(): void
+    {
+        $departure = $this->departureOf($this->package(), 10);
+        $this->booked($departure, 4);
+
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-departures/{$departure->public_id}", ['capacity' => 3])->assertStatus(422);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-departures/{$departure->public_id}", ['capacity' => 25, 'ends_on' => now()->addWeeks(5)->toDateString()])
+            ->assertOk()->assertJsonPath('data.capacity', 25)->assertJsonPath('data.available_seats', 21);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-departures/{$departure->public_id}", ['ends_on' => now()->addWeek()->toDateString()])->assertStatus(422);
+        $this->assertDatabaseHas('audit_events', ['action' => 'tour_departure.updated']);
+    }
+
+    public function test_the_departure_date_moves_only_while_nobody_holds_a_place(): void
+    {
+        $free = $this->departureOf($this->package());
+        $new = now()->addWeeks(6)->toDateString();
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-departures/{$free->public_id}", ['starts_on' => $new, 'ends_on' => now()->addWeeks(7)->toDateString()])
+            ->assertOk()->assertJsonPath('data.starts_on', $new);
+
+        $taken = $this->departureOf($free->package);
+        $this->booked($taken, 2, 'draft');
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-departures/{$taken->public_id}", ['starts_on' => $new])->assertStatus(422);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-departures/{$taken->public_id}", ['starts_on' => $taken->starts_on->toDateString(), 'capacity' => 12])->assertOk();
+    }
+
+    public function test_a_closed_departure_can_be_reopened(): void
+    {
+        $departure = $this->departureOf($this->package());
+        $this->withHeaders($this->headers())->postJson("/api/v1/tour-departures/{$departure->public_id}/close")->assertOk()->assertJsonPath('data.status', 'closed');
+
+        $this->withHeaders($this->headers())->postJson("/api/v1/tour-departures/{$departure->public_id}/reopen")->assertOk()->assertJsonPath('data.status', 'open');
+        $this->assertDatabaseHas('audit_events', ['action' => 'tour_departure.reopened']);
+    }
+
+    public function test_editing_needs_the_update_permission_and_the_programs_branch(): void
+    {
+        $package = $this->package();
+        $other = Branch::query()->create(['code' => 'ZZ', 'name_ar' => 'فرع', 'name_en' => 'Other', 'accounting_mode' => 'branch_local', 'is_active' => true]);
+        $reader = User::factory()->create();
+        $reader->givePermissionTo('bookings.view');
+        Sanctum::actingAs($reader);
+        $this->withHeaders($this->headers())->patchJson("/api/v1/tour-packages/{$package->public_id}", ['name' => 'x'])->assertForbidden();
+
+        $reader->givePermissionTo('bookings.update');
+        $reader->branches()->sync([$other->id]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->withHeaders(['X-Branch-Id' => $other->public_id])->patchJson("/api/v1/tour-packages/{$package->public_id}", ['name' => 'x'])->assertStatus(403);
     }
 }

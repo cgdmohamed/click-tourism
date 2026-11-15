@@ -374,7 +374,10 @@ Route::prefix('v1')->group(function () {
         Route::get('tour-packages', [TourPackageController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('tour-packages', [TourPackageController::class, 'store'])->middleware('permission:bookings.create');
         Route::get('tour-packages/{package}', [TourPackageController::class, 'show'])->middleware('permission:bookings.view');
+        Route::patch('tour-packages/{package}', [TourPackageController::class, 'update'])->middleware('permission:bookings.update');
         Route::post('tour-packages/{package}/departures', [TourPackageController::class, 'departure'])->middleware('permission:bookings.create');
+        Route::patch('tour-departures/{departure}', [TourPackageController::class, 'updateDeparture'])->middleware('permission:bookings.update');
+        Route::post('tour-departures/{departure}/reopen', [TourPackageController::class, 'reopen'])->middleware('permission:bookings.update');
         Route::post('tour-departures/{departure}/close', [TourPackageController::class, 'close'])->middleware('permission:bookings.update');
         Route::get('bookings', [BookingController::class, 'index'])->middleware('permission:bookings.view');
         Route::post('bookings', [BookingController::class, 'store'])->middleware('permission:bookings.create');

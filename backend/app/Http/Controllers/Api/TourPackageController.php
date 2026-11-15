@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Modules\Bookings\Models\TourDeparture;
 use App\Modules\Bookings\Models\TourPackage;
+use App\Modules\Core\Services\AuditService;
 use App\Support\Like;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -68,6 +70,35 @@ class TourPackageController extends ApiController
         return $this->created($package->toApiArray());
     }
 
+    /** PATCH /tour-packages/{package}: edit a program (ADR-0037). Prices apply to new bookings only; bookings keep theirs. */
+    public function update(Request $request, TourPackage $package, AuditService $audit): JsonResponse
+    {
+        $this->authorizeBranchId($package->branch_id);
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:200'],
+            'category' => ['sometimes', Rule::in(['domestic', 'international', 'umrah', 'hajj', 'corporate', 'day_trip', 'other'])],
+            'execution_type' => ['sometimes', Rule::in(['fixed', 'private', 'standalone'])],
+            'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'destination' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'base_price_minor' => ['sometimes', 'integer', 'min:0'],
+            'estimated_cost_minor' => ['sometimes', 'integer', 'min:0'],
+            'is_active' => ['sometimes', 'boolean'],
+        ]);
+
+        if (isset($data['name']) && TourPackage::query()->where('branch_id', $package->branch_id)->where('id', '!=', $package->id)
+            ->whereRaw('lower(name) = ?', [mb_strtolower(trim($data['name']))])->exists()) {
+            throw new DomainException('Another program already has this name.');
+        }
+        if (isset($data['execution_type']) && $data['execution_type'] !== $package->execution_type && $package->departures()->exists()) {
+            throw new DomainException('The type cannot change once the program has departures.');
+        }
+
+        $package->fill($data)->save();
+        $audit->log('tour_package.updated', $package, null, ['fields' => array_keys($data)], $this->actorId());
+
+        return $this->ok($package->load('departures.package')->toApiArray());
+    }
+
     public function departure(Request $request, TourPackage $package): JsonResponse
     {
         $this->authorizeBranchId($package->branch_id);
@@ -89,6 +120,48 @@ class TourPackageController extends ApiController
         ]);
 
         return $this->created($departure->load('package')->toApiArray());
+    }
+
+    /** PATCH /tour-departures/{departure}: change the dates or the seats of a departure (ADR-0037). */
+    public function updateDeparture(Request $request, TourDeparture $departure, AuditService $audit): JsonResponse
+    {
+        $this->authorizeBranchId($departure->branch_id);
+        $data = $request->validate([
+            'starts_on' => ['sometimes', 'date'],
+            'ends_on' => ['sometimes', 'nullable', 'date'],
+            'capacity' => ['sometimes', 'integer', 'min:1', 'max:5000'],
+        ]);
+
+        $starts = Carbon::parse($data['starts_on'] ?? $departure->starts_on);
+        $ends = array_key_exists('ends_on', $data) ? ($data['ends_on'] ? Carbon::parse($data['ends_on']) : null) : $departure->ends_on;
+        if ($ends !== null && $ends->lt($starts)) {
+            throw new DomainException('The return date is before the departure date.');
+        }
+        if (isset($data['capacity']) && $data['capacity'] < $departure->occupiedSeats()) {
+            throw new DomainException('The seats cannot be fewer than the '.$departure->occupiedSeats().' already taken.');
+        }
+        // A booking on a departure must start on its date, so the date moves only while nobody holds a place.
+        if (isset($data['starts_on']) && $starts->toDateString() !== $departure->starts_on->toDateString()
+            && $departure->bookings()->whereNotIn('status', ['cancelled', 'no_show'])->exists()) {
+            throw new DomainException('This departure has bookings: move or cancel them before changing its date.');
+        }
+
+        $departure->update(array_filter([
+            'starts_on' => isset($data['starts_on']) ? $starts->toDateString() : null,
+            'capacity' => $data['capacity'] ?? null,
+        ], fn ($v) => $v !== null) + (array_key_exists('ends_on', $data) ? ['ends_on' => $ends?->toDateString()] : []));
+        $audit->log('tour_departure.updated', $departure, null, ['fields' => array_keys($data)], $this->actorId());
+
+        return $this->ok($departure->load('package')->toApiArray());
+    }
+
+    public function reopen(TourDeparture $departure, AuditService $audit): JsonResponse
+    {
+        $this->authorizeBranchId($departure->branch_id);
+        $departure->update(['status' => 'open']);
+        $audit->log('tour_departure.reopened', $departure, null, null, $this->actorId());
+
+        return $this->ok($departure->load('package')->toApiArray());
     }
 
     public function close(TourDeparture $departure): JsonResponse
