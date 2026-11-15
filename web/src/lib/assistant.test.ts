@@ -4,6 +4,7 @@ import {
   addAssistantError,
   addAssistantReply,
   addUserMessage,
+  attachmentsAreCarried,
   carriedAttachmentIds,
   lastUserAttachmentIds,
   withoutFileNote,
@@ -211,5 +212,23 @@ describe('carriedAttachmentIds', () => {
 
   it('sends nothing when no turn has a file', () => {
     expect(carriedAttachmentIds(addUserMessage([], 'hello'), now)).toEqual([])
+  })
+})
+
+describe('attachmentsAreCarried', () => {
+  const file = { id: '01HFILE000000000000000000A', name: 'receipt.png', expires_at: '2099-01-01T00:00:00Z' }
+  const reply = { answer: 'ok', citations: [], usage: { prompt: 1, completion: 1, total: 2 }, truncated: false }
+
+  it('is false when the last message has the file itself', () => {
+    expect(attachmentsAreCarried(addUserMessage([], 'read it', [file]))).toBe(false)
+  })
+
+  it('is true when the file comes from an earlier message', () => {
+    const later = addUserMessage(addAssistantReply(addUserMessage([], 'read it', [file]), reply), 'now record it')
+    expect(attachmentsAreCarried(later)).toBe(true)
+  })
+
+  it('is false when no file travels at all', () => {
+    expect(attachmentsAreCarried(addUserMessage([], 'hello'))).toBe(false)
   })
 })

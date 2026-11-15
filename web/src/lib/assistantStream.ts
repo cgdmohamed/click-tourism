@@ -41,12 +41,14 @@ type Options = {
   conversationId: string | null
   /** Ids of files uploaded with POST /assistant/uploads, read together with the last message. */
   attachments?: string[]
+  /** The files belong to an earlier message and only travel along for context: the server reads them at low detail. */
+  attachmentsCarried?: boolean
   signal: AbortSignal
   onEvent: (event: StreamEvent) => void
 }
 
 /** Sends one turn and reports progress events as they arrive. Resolves when the stream ends. */
-export async function streamChat({ messages, locale, conversationId, attachments, signal, onEvent }: Options): Promise<void> {
+export async function streamChat({ messages, locale, conversationId, attachments, attachmentsCarried, signal, onEvent }: Options): Promise<void> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/x-ndjson, application/json',
@@ -61,7 +63,7 @@ export async function streamChat({ messages, locale, conversationId, attachments
     method: 'POST',
     headers,
     signal,
-    body: JSON.stringify({ messages, locale, ...(conversationId ? { conversation_id: conversationId } : {}), ...(attachments && attachments.length > 0 ? { attachments } : {}) }),
+    body: JSON.stringify({ messages, locale, ...(conversationId ? { conversation_id: conversationId } : {}), ...(attachments && attachments.length > 0 ? { attachments, ...(attachmentsCarried ? { attachments_carried: true } : {}) } : {}) }),
   })
 
   if (!response.ok) {

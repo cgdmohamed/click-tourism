@@ -786,6 +786,31 @@ class AssistantChatTest extends TestCase
         $this->assertSame(1, AssistantUpload::query()->count());
     }
 
+    public function test_a_file_that_only_travels_along_is_sent_at_low_detail_to_save_tokens(): void
+    {
+        $id = $this->uploadReceipt()->assertCreated()->json('data.id');
+        $this->script([$this->finalReply('first'), $this->finalReply('later')]);
+
+        $this->chat('read it', ['attachments' => [$id]])->assertOk();
+        $this->chat('now record it', ['attachments' => [$id], 'attachments_carried' => true])->assertOk();
+
+        $sent = $this->sent();
+        $this->assertSame('auto', end($sent[0]['messages'])['content'][1]['image_url']['detail']);
+        $this->assertSame('low', end($sent[1]['messages'])['content'][1]['image_url']['detail']);
+    }
+
+    public function test_a_masked_name_from_a_document_is_never_saved_as_a_customer(): void
+    {
+        $this->grant('customers.create');
+        $this->script([$this->toolCallReply([['erp_customer_create', ['name_ar' => 'محمود ك***** ا*********', 'name_en' => 'MAHMOUD K**** A*********']]]), $this->finalReply('What is the full name?')]);
+
+        $reply = $this->chat('create the customer')->assertOk()->json('data');
+
+        $this->assertSame([], $reply['actions']);
+        $this->assertStringContainsString('masked', $this->lastToolMessages()[0]['content']);
+        $this->assertSame(0, AssistantAction::query()->count());
+    }
+
     public function test_an_attached_receipt_reaches_the_provider_as_an_image_and_only_its_name_is_saved(): void
     {
         $id = $this->uploadReceipt()->assertCreated()->json('data.id');
