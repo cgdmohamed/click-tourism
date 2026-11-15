@@ -63,6 +63,8 @@ class DemoDataSeeder extends Seeder
             return;
         }
 
+        $this->enableAssistantForDemo();
+
         $branch = Branch::query()->where('code', 'HQ')->first();
         if (! $branch || Booking::query()->where('branch_id', $branch->id)->exists()) {
             return;
@@ -102,6 +104,26 @@ class DemoDataSeeder extends Seeder
     }
 
     /** @return array<int, Customer> */
+    /**
+     * The disposable demo resets every few minutes, so anything switched on in Settings is lost.
+     * When the demo container is given a provider key (OPENAI_API_KEY in its environment),
+     * switch the assistant on here so visitors can try it at once. Never touches a real
+     * installation: it only runs in the isolated demo, and the key itself stays in the environment.
+     */
+    private function enableAssistantForDemo(): void
+    {
+        if (! UserSeeder::isIsolatedDemo() || trim((string) config('services.openai.key')) === '') {
+            return;
+        }
+
+        $settings = app(SettingService::class);
+        $settings->set('assistant', 'provider', 'openai');
+        $settings->set('assistant', 'enabled', 'true');
+        if (trim((string) $settings->get('assistant', 'data_processing_accepted_at', '')) === '') {
+            $settings->set('assistant', 'data_processing_accepted_at', now()->toIso8601String());
+        }
+    }
+
     private function seedCustomers(Branch $branch): array
     {
         $definitions = [

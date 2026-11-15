@@ -99,7 +99,7 @@ class PaymentController extends ApiController
         $data = $request->validate([
             'allocations' => ['required', 'array', 'min:1'],
             'allocations.*.booking_id' => ['required', 'string'],
-            'allocations.*.amount_minor' => ['required', 'integer', 'min:1'],
+            'allocations.*.amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
         ]);
 
         return $this->ok($payments->allocate($payment, $data['allocations'], $this->actorId()));
@@ -136,13 +136,13 @@ class PaymentController extends ApiController
             'cash_account_id' => ['required', 'string'],
             'method' => ['nullable', 'in:cash,bank_transfer,card,wallet'],
             'payment_method_id' => ['nullable', 'string'],
-            'amount_minor' => ['required', 'integer', 'min:1'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
             'currency' => ['required', 'string', 'size:3', Rule::exists('currencies', 'code')->where('is_active', true)],
-            'fx_rate' => ['nullable', 'string'],
+            'fx_rate' => ['nullable', 'numeric', 'gt:0'],
             'paid_at' => ['nullable', 'date'],
             'allocations' => ['nullable', 'array'],
             'allocations.*.booking_id' => ['required', 'string'],
-            'allocations.*.amount_minor' => ['required', 'integer', 'min:1'],
+            'allocations.*.amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
         ]);
 
         $payment = $payments->record($data, $this->actorId(), $request->header('Idempotency-Key'));
@@ -156,7 +156,7 @@ class PaymentController extends ApiController
 
         $data = $request->validate([
             'invoice_id' => ['required', 'string'],
-            'amount_minor' => ['required', 'integer', 'min:1'],
+            'amount_minor' => ['required', 'integer', 'min:1', 'max:9999999999999'],
         ]);
 
         $invoice = Invoice::query()->where('public_id', $data['invoice_id'])->firstOrFail();
