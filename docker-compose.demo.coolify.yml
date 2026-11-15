@@ -59,6 +59,11 @@ services:
       DEMO_RESET_SECONDS: "600"
       DEMO_PASSWORD: ${DEMO_PASSWORD:-password} # scan-secrets: allow (throwaway shared password of the isolated public demo only)
       APP_OPTIMIZE: "true"
+      # Optional: with a key here the seeder switches the assistant on in every demo reset, so
+      # visitors can try it at once. Use a dedicated key with a spending limit; it stays in the
+      # container environment and is never written to the database or the repository.
+      OPENAI_API_KEY: ${DEMO_OPENAI_API_KEY:-}
+      ASSISTANT_DAILY_TOKEN_BUDGET: ${DEMO_ASSISTANT_DAILY_TOKEN_BUDGET:-200000}
       META_APP_ID: ""
       META_APP_SECRET: ""
       WHATSAPP_ACCESS_TOKEN: ""
